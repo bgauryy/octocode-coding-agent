@@ -1,5 +1,5 @@
 import { BASH_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
-import { isOctocodeReader, isOctocodeSearch } from "../../../mcp/src/presets/octocode/names.ts";
+import { isOctocodeReader, isOctocodeSearch, routesSearchToOctocode } from "../../../mcp/src/presets/octocode/names.ts";
 import { isMcpToolName } from "../../../mcp/src/servers.ts";
 /**
  * System prompt construction and project context loading
@@ -95,13 +95,24 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 export type SystemPromptSections = Record<string, string>;
 
 /**
- * The `environment` section (`octocode/instructions/system/environment.md`): platform and shell, and today's local date.
- * The last default section (custom sections follow it); a new day changes only this section.
+ * The `environment` section (`octocode/instructions/system/environment.md`): platform and shell, today's local date and,
+ * for a session other processes can reach, its process name. The last default section (custom sections follow it); a
+ * new day changes only this section, and a session's name holds until `/new` or `/resume` starts another conversation.
  */
-export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = process.env): string {
+export function currentEnvironment(
+	now = new Date(),
+	env: NodeJS.ProcessEnv = process.env,
+	processName?: string,
+): string {
 	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	const shell = env.SHELL?.split(/[\\/]/).pop() || (process.platform === "win32" ? "cmd" : "sh");
-	return renderInstruction("system/environment.md", { platform: process.platform, arch: process.arch, shell, date });
+	return renderInstruction("system/environment.md", {
+		platform: process.platform,
+		arch: process.arch,
+		shell,
+		date,
+		processName,
+	});
 }
 /** Normalize prompt input into the mutable, collection-complete shape exposed to extensions. */
 export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOptions): NormalizedBuildSystemPromptOptions {
@@ -214,14 +225,14 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 			.map(([namespace, purpose]) => `- ${namespace}__*: ${purpose}`),
 	].join("\n");
-	// The default bash search rule shows only while no Octocode search tool is declared; once the server's tools are
-	// declared they carry their own descriptions and the prompt says nothing about code search.
-	const octocodeSearch = declaredTools.some(isOctocodeSearch);
+	// One predicate decides who owns code search: Octocode, when one of its search tools is declared or the policy's
+	// research section already routes search to it (a server still connecting); otherwise bash, when it is declared.
+	const octocodeSearch = declaredTools.some(isOctocodeSearch) || routesSearchToOctocode(customSections);
 	contents.rules = buildRules(
 		declaredTools,
 		toolGuidelines,
 		promptGuidelines,
-		!customPrompt && !customSections.octocode_communication,
+		!customPrompt && !customSections.communication,
 		!customPrompt && declaredTools.includes(BASH_TOOL) && !octocodeSearch,
 	);
 	contents.docs = renderInstruction("system/docs.md", { root: dirname(getReadmePath()) });

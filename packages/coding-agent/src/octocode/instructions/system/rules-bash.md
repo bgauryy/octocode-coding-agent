@@ -1,1 +1,1 @@
-Use bash for file operations like ls, rg, find, since no dedicated search or read tool is declared
+Search and read files with bash (rg, fd, ls, sed -n), since no dedicated search or read tool is declared

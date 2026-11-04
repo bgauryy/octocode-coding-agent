@@ -96,6 +96,20 @@ it("allows only host-owned reads; read-only annotations and similarly named tool
 	).toContain("blocks");
 });
 
+it("lets the mcp tool report and restart under the plan gate, not stop a server", () => {
+	const manage = { name: "mcp", sourceInfo: { path: "builtin:mcp", owner: "builtin" } } as never;
+	const refusal = (intent: unknown) => planningRefusal({ toolName: "mcp", input: { intent } }, manage);
+	for (const intent of ["list", "tools", "restart"]) expect(refusal(intent), intent).toBeUndefined();
+	for (const intent of ["stop", "future", undefined]) expect(refusal(intent), String(intent)).toContain("blocks");
+	// Only the MCP host's own tool, and none of a server's tools by that road.
+	expect(
+		planningRefusal({ toolName: "mcp", input: { intent: "list" } }, {
+			name: "mcp",
+			sourceInfo: { path: "/project/fake.ts" },
+		} as never),
+	).toContain("blocks");
+});
+
 it("lets the planner inspect the repository with read-only shell commands and nothing else", async () => {
 	await shellParserReady();
 	const bash = { name: "bash", sourceInfo: { owner: "native", path: "<inline:octocode>" } } as never;

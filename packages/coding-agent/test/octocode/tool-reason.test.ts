@@ -83,7 +83,8 @@ describe("the required reason on native tools", () => {
 		};
 		withNativePermissionOwners(fake.api).registerTool(own as never);
 		const registered = fake.tools.get("file");
-		expect(registered.parameters).toBe(own.parameters);
+		expect(registered.parameters.properties).toEqual(own.parameters.properties);
+		expect(registered.parameters.required).toEqual(["reason"]);
 		expect(registered.prepareArguments({ reason: "kept" })).toEqual({ reason: "kept" });
 		expect(prepareArguments).toHaveBeenCalledWith({ reason: "kept" });
 		expect(registered.renderCall).toBe(renderCall);
@@ -98,7 +99,8 @@ describe("the required reason on native tools", () => {
 		const renderCall = vi.fn();
 		withNativePermissionOwners(fake.api).registerTool({ ...tool("web"), prepareArguments, renderCall } as never);
 		const registered = fake.tools.get("web");
-		expect(registered.prepareArguments({ command: "raw" })).toBe(prepared);
+		// The tool's own preparation runs first; the reason is settled on its result.
+		expect(registered.prepareArguments({ command: "raw" })).toEqual({ command: "prepared", reason: "web prepared" });
 		expect(prepareArguments).toHaveBeenCalledWith({ command: "raw" });
 		expect(registered.renderCall).toBe(renderCall);
 	});
@@ -140,10 +142,12 @@ describe("the required reason on native tools", () => {
 		expect(beforeToolCall.mock.calls[0][0].args.reason).toBe("top-level goal");
 		expect(callReason(args)).toBe("top-level goal");
 		expect(modeExecute.mock.calls[0][1]).toEqual({ command: "list" });
-		const missing = await run(registered, { type: "coordinate", command: "list" });
-		expect(missing.isError).toBe(true);
-		expect(missing.result.content).toMatchObject([{ text: expect.stringMatching(/reason/) }]);
-		expect(modeExecute).toHaveBeenCalledTimes(1);
+		// A call that leaves the reason out still runs, with one derived from its arguments.
+		const missing = await run(registered, { type: "coordinate", command: "list" }, beforeToolCall);
+		expect(missing.isError).toBe(false);
+		expect(beforeToolCall.mock.calls[1][0].args.reason).toBe("agent list");
+		expect(modeExecute).toHaveBeenCalledTimes(2);
+		expect(modeExecute.mock.calls[1][1]).toEqual({ command: "list" });
 	});
 
 	it("leaves non-object parameters alone and reads only text reasons", () => {
@@ -222,9 +226,16 @@ describe("the file tool's renamed reason", () => {
 		expect(beforeToolCall.mock.calls[0][0].args.reason).toBe(reason);
 		expect(fs.readFileSync(path.join(cwd, "nested.txt"), "utf8")).toBe("covered");
 
-		const missing = await run(tool, { queries: [{ type: "write", path: "missing.txt", content: "no" }] });
-		expect(missing.isError).toBe(true);
-		expect(missing.result.content).toMatchObject([{ text: expect.stringMatching(/reason/) }]);
-		expect(fs.existsSync(path.join(cwd, "missing.txt"))).toBe(false);
+		// Left out everywhere, the reason is derived from the change's path, for the call and its query.
+		const missing = await run(
+			tool,
+			{ queries: [{ type: "write", path: "missing.txt", content: "derived" }] },
+			beforeToolCall,
+		);
+		expect(missing).toMatchObject({ isError: false });
+		const seen = beforeToolCall.mock.calls[1][0].args;
+		expect(seen.reason).toBe("file missing.txt");
+		expect(seen.queries[0].reason).toBe("file missing.txt");
+		expect(fs.readFileSync(path.join(cwd, "missing.txt"), "utf8")).toBe("derived");
 	});
 });

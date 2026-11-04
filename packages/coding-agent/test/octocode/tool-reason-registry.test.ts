@@ -36,11 +36,16 @@ const argumentContainers = (schema: Schema): Schema[] => [
 	...(schema.anyOf ?? []).flatMap(argumentContainers),
 ];
 
-const missingNestedReason = (tools: Array<{ name: string; parameters: unknown }>): string[] =>
+/** The tools with an argument object that declares its own `reason` slot, though only `file` queries should. */
+const nestedReasonSlots = (tools: Array<{ name: string; parameters: unknown }>): string[] =>
 	tools
-		.filter(({ parameters }) =>
-			argumentContainers(parameters as Schema).some((schema) => schema.properties?.reason?.type !== "string"),
-		)
+		.filter(({ parameters }) => argumentContainers(parameters as Schema).some((schema) => schema.properties?.reason))
+		.map(({ name }) => name);
+
+/** `reason` is the first declared property, so it is read before a long `queries` array. */
+const reasonNotFirst = (tools: Array<{ name: string; parameters: unknown }>): string[] =>
+	tools
+		.filter(({ parameters }) => Object.keys((parameters as Schema).properties ?? {})[0] !== "reason")
 		.map(({ name }) => name);
 
 let saved: NodeJS.ProcessEnv;
@@ -66,15 +71,11 @@ describe("the required reason on every core tool", () => {
 		expect(tools.map(({ name }) => name).sort()).toEqual(expect.arrayContaining(getNativeToolNames().sort()));
 		const reasoned = tools.filter(({ name }) => takesCallReason(name));
 		expect(missingReason(reasoned)).toEqual([]);
-		expect(missingNestedReason(reasoned)).toEqual([]);
-		// The top-level slot is the one the model reads and carries the description; nested slots only accept a lifted value.
+		expect(reasonNotFirst(reasoned)).toEqual([]);
+		// Only the top-level slot is the model's; a nested one is declared where the tool reads it per item (`file` queries).
+		expect(nestedReasonSlots(reasoned)).toEqual(["file"]);
 		for (const { name, parameters } of reasoned) {
-			const root = parameters as Schema;
-			const described = root.properties?.reason?.description;
-			expect(described, `${name} top-level reason`).toBeTruthy();
-			for (const container of argumentContainers(root)) {
-				expect(container.properties?.reason?.description, `${name} nested reason`).not.toBe(described);
-			}
+			expect((parameters as Schema).properties?.reason?.description, `${name} top-level reason`).toBeTruthy();
 		}
 	});
 
@@ -93,6 +94,7 @@ describe("the required reason on every core tool", () => {
 		expect(tool).toBeDefined();
 		expect(takesCallReason(MCP_MANAGE_TOOL_NAME)).toBe(true);
 		expect(missingReason([tool!])).toEqual([]);
-		expect(missingNestedReason([tool!])).toEqual([]);
+		expect(reasonNotFirst([tool!])).toEqual([]);
+		expect(nestedReasonSlots([tool!])).toEqual([]);
 	});
 });

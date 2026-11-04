@@ -30,6 +30,7 @@ import * as sessionBinding from "./session-binding.ts";
 import * as sessionCommands from "./session-commands.ts";
 import * as sessionNavigation from "./session-navigation.ts";
 import * as sessionRender from "./session-render.ts";
+import * as sessionWindow from "./session-window.ts";
 import * as settingsSelector from "./settings-selector.ts";
 import * as startup from "./startup.ts";
 import * as startupChecks from "./startup-checks.ts";
@@ -113,6 +114,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	handleCtrlZ: lifecycle.handleCtrlZ,
 	handleDebugCommand: infoCommands.handleDebugCommand,
 	handleDequeue: messageQueue.handleDequeue,
+	loadEarlierFromKey: sessionWindow.loadEarlierFromKey,
 	handleEvent: agentEvents.handleEvent,
 	handleExportCommand: sessionCommands.handleExportCommand,
 	handleFatalRuntimeError: crashReporting.handleFatalRuntimeError,
@@ -154,6 +156,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	renderSessionEntries: sessionRender.renderSessionEntries,
 	renderSessionItems: sessionRender.renderSessionItems,
 	renderWidgets: extensionChrome.renderWidgets,
+	sendCarriedMessages: messageQueue.sendCarriedMessages,
 	resetExtensionUI: extensionChrome.resetExtensionUI,
 	restoreQueuedMessagesToEditor: messageQueue.restoreQueuedMessagesToEditor,
 	setCustomEditorComponent: extensionChrome.setCustomEditorComponent,
@@ -212,9 +215,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	unregisterSignalHandlers: lifecycle.unregisterSignalHandlers,
 	updateAvailableProviderCount: viewState.updateAvailableProviderCount,
 	updateEditorBorderColor: viewState.updateEditorBorderColor,
-	updatePendingMessagesDisplay: messageQueue.updatePendingMessagesDisplay,
 	updateTerminalTitle: startup.updateTerminalTitle,
-	updateThinkingBlockVisibility: viewState.updateThinkingBlockVisibility,
 };
 
 /** Adds every host method to `host`, each calling its implementation with `host`. */

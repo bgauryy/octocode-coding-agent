@@ -20,7 +20,7 @@ describe("Octocode launch policy", () => {
 			cwd: "/work/app",
 			env: {
 				WORKSPACE_ROOT: "/work/app",
-				ALLOWED_PATHS: "/work/app,/work/app/.octa/code/session-data,/work/app/.octa/code/temp/sessions",
+				ALLOWED_PATHS: "/work/app,/work/app/.octocode/code/session-data,/work/app/.octocode/code/temp/sessions",
 			},
 		});
 		// The real bundled bin resolves (octocode-mcp is a dependency).
@@ -33,8 +33,8 @@ describe("Octocode launch policy", () => {
 		const roots = env.ALLOWED_PATHS.split(",");
 		expect(roots).toEqual([
 			"/work/app",
-			"/work/app/.octa/code/session-data",
-			"/work/app/.octa/code/temp/sessions",
+			"/work/app/.octocode/code/session-data",
+			"/work/app/.octocode/code/temp/sessions",
 			"/skills/review",
 		]);
 		expect(roots).not.toContain(home);

@@ -1,5 +1,6 @@
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import { envInt } from "../../../../../common/src/env.ts";
+import { isKnownLongCommand, LONG_COMMAND_AFTER_SECONDS } from "./long-commands.ts";
 import { effectiveTimeout } from "./results.ts";
 
 /** When a foreground command moves to the background by itself: the threshold, and which calls it applies to. */
@@ -24,6 +25,8 @@ export function backgroundAfterSeconds(setting: number | undefined, env: NodeJS.
  * deliberately waits (`background: false` together with a `timeout`), a `sleep` (which is stopped instead), or the
  * threshold is off or not shorter than the call's own deadline. A deliberate wait is also stopped at its deadline
  * (`deliberate`) instead of moving: `background: false` means the call wants its answer within that timeout.
+ * A known long command (test runner, `yarn run check`, build, server) moves after `LONG_COMMAND_AFTER_SECONDS` when that is
+ * sooner than the threshold; every other command keeps the threshold.
  */
 export function foregroundPlan(
 	params: { command: string; timeout?: unknown; background?: boolean },
@@ -32,7 +35,8 @@ export function foregroundPlan(
 ): { timeout: number; clamped: boolean; movable: boolean; auto: boolean; deliberate: boolean } {
 	const { seconds, clamped } = effectiveTimeout(params.timeout);
 	const movable = !SLEEP_COMMAND.test(params.command);
-	const after = backgroundAfterSeconds(afterSetting, env);
+	const base = backgroundAfterSeconds(afterSetting, env);
+	const after = base > 0 && isKnownLongCommand(params.command) ? Math.min(base, LONG_COMMAND_AFTER_SECONDS) : base;
 	const deliberate = params.background === false && typeof params.timeout === "number" && params.timeout > 0;
 	const auto = movable && !deliberate && after > 0 && after < seconds;
 	return { timeout: auto ? after : seconds, clamped, movable, auto, deliberate };

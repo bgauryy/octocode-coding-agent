@@ -231,7 +231,7 @@ describe("file restore after compaction", () => {
 		};
 		const guard = new FileGuard();
 		guard.restore([]);
-		expect(guard.check(file, "edit", "w.ts")).toMatch(/not read in this session/);
+		expect(guard.check(file, "write", "w.ts")).toMatch(/not read in this session/);
 		const ctx = {
 			cwd: dir,
 			sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
@@ -250,7 +250,7 @@ describe("file restore after compaction", () => {
 		expect(sent[0].options).toEqual({ triggerTurn: false });
 		// Octocode holds the message until the running turn ends: a model call without it records nothing.
 		expect(settleRestoredFiles([{ role: "user", content: "x" }], pending, guard)).toBe(false);
-		expect(guard.check(file, "edit", "w.ts")).toMatch(/not read in this session/);
+		expect(guard.check(file, "write", "w.ts")).toMatch(/not read in this session/);
 		expect(
 			settleRestoredFiles(
 				[{ role: "custom", customType: RESTORED_FILES_TYPE, details: { id: "other" } }],

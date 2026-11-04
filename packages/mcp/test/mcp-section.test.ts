@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { type McpServerListing, mcpServerPurposes, renderMcpStatusSection, renderMcpsSection } from "../src/section.ts";
 
-const FILE =
-	'// MCP server "docs" · catalog abc · call a tool as mcp__docs__<function> with the input object.\n/** Use docs. */\ndeclare namespace docs {\n\tfunction search(input: {}): unknown;\n}';
+const INTRO =
+	"Each block is one MCP server: its instructions and a typed function for each tool. To call a tool, replace `*` in the block's `tools` prefix with the function's name and pass the input object.\n";
+const FILE = "/** Use docs. */\ndeclare namespace docs {\n\tfunction search(input: {}): unknown;\n}";
 
 const listing = (name: string, overrides: Partial<McpServerListing> = {}): McpServerListing => ({
 	entry: { name, config: { command: "x" }, source: "test" },
@@ -21,7 +22,7 @@ describe("MCP section", () => {
 	it("gives each server with declared tools a block with its name, prefix and contract, sorted by server", () => {
 		const section = renderMcpsSection([listing("b", { contract: "B_FILE" }), listing("a", { contract: FILE })])!;
 		expect(section).toBe(
-			`<mcp name="a" tools="mcp__a__*">\n${FILE}\n</mcp>\n<mcp name="b" tools="mcp__b__*">\nB_FILE\n</mcp>`,
+			`${INTRO}<mcp name="a" tools="mcp__a__*">\n${FILE}\n</mcp>\n<mcp name="b" tools="mcp__b__*">\nB_FILE\n</mcp>`,
 		);
 		expect(renderMcpsSection([listing("a", { contract: FILE }), listing("b", { contract: "B_FILE" })])).toBe(section);
 	});
@@ -68,7 +69,7 @@ describe("MCP section", () => {
 	it("carries a long contract whole, once, and adds no routing text of its own", () => {
 		const contract = `Search first.\n${"Complete instructions.\n".repeat(400)}FINAL_RULE`;
 		const section = renderMcpsSection([listing("docs", { contract })])!;
-		expect(section).toBe(`<mcp name="docs" tools="mcp__docs__*">\n${contract}\n</mcp>`);
+		expect(section).toBe(`${INTRO}<mcp name="docs" tools="mcp__docs__*">\n${contract}\n</mcp>`);
 		expect(section.match(/FINAL_RULE/g)).toHaveLength(1);
 		expect(section).not.toContain("declarations carry");
 	});
@@ -81,7 +82,7 @@ describe("MCP section", () => {
 		expect(section).toContain(
 			'<mcp name="slow" tools="mcp__slow__*">\nSlow docs\nNot connected yet: its instructions and tools are listed here once it connects.\n</mcp>',
 		);
-		expect(section.startsWith('<mcp name="ok"')).toBe(true);
+		expect(section.startsWith(`${INTRO}<mcp name="ok"`)).toBe(true);
 		// A failed or stopped connection leaves the block as it was: the state is in mcp_status.
 		expect(
 			renderMcpsSection([described("slow", "Slow docs", { declared: false, pending: true, state: "failed" })]),
@@ -93,7 +94,7 @@ describe("MCP section", () => {
 	it("says so when a connected server has no tool enabled for the agent", () => {
 		const section = renderMcpsSection([described("idle", "Idle docs", { declared: false })])!;
 		expect(section).toBe(
-			`<mcp name="idle" tools="mcp__idle__*">\nIdle docs\nNone of its tools is enabled for this agent.\n</mcp>`,
+			`${INTRO}<mcp name="idle" tools="mcp__idle__*">\nIdle docs\nNone of its tools is enabled for this agent.\n</mcp>`,
 		);
 	});
 

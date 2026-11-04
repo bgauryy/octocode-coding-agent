@@ -7,6 +7,7 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import { showSessionSelector } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const TAB = "\t";
@@ -46,7 +47,7 @@ describe("/resume session picker displaced by another view", () => {
 			keybindings,
 			programStatus: { setBlocked: vi.fn() },
 			extensionSelector: undefined,
-			activeSelectorToken: undefined,
+			uiStore: createUiStore(),
 			activeSelectorDispose: undefined,
 			sessionManager: {
 				getCwd: () => "/work/s5c-repo",

@@ -41,13 +41,14 @@ export function fakeHost() {
 	const sent: Array<{ message: any; options: any }> = [];
 	const entries: Array<{ customType: string; data: unknown }> = [];
 	let activeTools: string[] | undefined;
+	const registerToolBatches: string[][] = [];
 	const api = {
 		getSettings: () => ({}),
 		getThinkingLevel: () => "off",
 		registerTool: (tool: { name: string }) => tools.set(tool.name, tool),
-		registerToolBatches: [] as string[][],
+		registerToolBatches,
 		registerTools(batch: Array<{ name: string }>) {
-			this.registerToolBatches.push(batch.map((tool) => tool.name));
+			registerToolBatches.push(batch.map((tool) => tool.name));
 			for (const tool of batch) tools.set(tool.name, tool);
 		},
 		registerCommand: (name: string, command: unknown) => commands.set(name, command),
@@ -66,6 +67,7 @@ export function fakeHost() {
 		sendUserMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
 		appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
 		// As the real host: registration activates only direct and model-only tools, and not those with `defaultActive: false`.
+		getHiddenDeclarations: () => [],
 		getActiveTools: () =>
 			activeTools ??
 			[...tools.values()]
@@ -87,7 +89,8 @@ export function fakeHost() {
 			explicitSkills: [],
 		}),
 		events: { on: () => () => undefined, emit: () => undefined },
-	};
+		// Names only: a method renamed on the host fails here instead of quietly going unused in every test.
+	} satisfies Partial<Record<keyof ExtensionAPI | "registerToolBatches", unknown>>;
 	const emit = async (event: string, payload: unknown, ctx: unknown) => {
 		const results: unknown[] = [];
 		for (const handler of handlers.get(event) ?? []) results.push(await handler(payload, ctx));
@@ -206,8 +209,10 @@ export function fakeCtx(options: {
 		isIdle: () => options.idle ?? true,
 		isProjectTrusted: () => true,
 		abort: () => undefined,
+		failRun: () => undefined,
 		hasPendingMessages: () => false,
 		isMessageQueued: () => false,
+		replaceQueuedMessage: () => false,
 		signal: undefined,
 		sessionManager: {
 			getSessionId: () => "session-test",

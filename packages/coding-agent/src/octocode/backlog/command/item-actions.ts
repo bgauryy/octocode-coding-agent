@@ -71,19 +71,52 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 
 	const tasks = createTaskActions(applyAndSay, apply);
 
+	/**
+	 * The two answers an item needs before it can be claimed or closed, asked when missing (the same questions for every
+	 * route to ongoing). Returns the fields to set, or the reason the user did not answer.
+	 */
+	const askWhyGoal = async (
+		ctx: ExtensionCommandContext,
+		item: Item,
+	): Promise<{ fields: Pick<UpdateInput, "why" | "goal"> } | { refused: string }> => {
+		const fields: Pick<UpdateInput, "why" | "goal"> = {};
+		if (!item.why) {
+			const why = await ctx.ui.input("Why does this matter?");
+			if (!why) return { refused: "Move cancelled: reason needed." };
+			fields.why = why;
+		}
+		if (!item.goal) {
+			const goal = await ctx.ui.input("What result means done?");
+			if (!goal) return { refused: "Move cancelled: goal needed." };
+			fields.goal = goal;
+		}
+		return { fields };
+	};
+
 	/** Mark `item` ongoing for this session and hand it to the agent, now or after the current run. */
-	const handOff = (
+	const handOff = async (
 		ctx: ExtensionCommandContext,
 		backlog: Backlog,
 		item: Item,
 		prompt: (item: Item, store: BacklogStore) => string,
-	): boolean => {
+	): Promise<boolean> => {
+		const asked = await askWhyGoal(ctx, item);
+		if ("refused" in asked) {
+			say(ctx, asked.refused, "warning");
+			return false;
+		}
 		let claimed!: Item;
 		try {
-			backlog.store.dispatch(item.ref, item.version, { ...backlog.actor, kind: "human" }, (next) => {
-				claimed = next;
-				api.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
-			});
+			backlog.store.dispatch(
+				item.ref,
+				item.version,
+				{ ...backlog.actor, kind: "human" },
+				(next) => {
+					claimed = next;
+					api.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+				},
+				asked.fields,
+			);
 		} catch (error) {
 			say(ctx, errorMessage(error), "warning");
 			return false;
@@ -102,16 +135,9 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 	): Promise<string | undefined> => {
 		const patch: UpdateInput = { state, version: item.version, force: true };
 		if (state === "ongoing" || state === "done") {
-			if (!item.why) {
-				const why = await ctx.ui.input("Why does this matter?");
-				if (!why) return "Move cancelled: reason needed.";
-				patch.why = why;
-			}
-			if (!item.goal) {
-				const goal = await ctx.ui.input("What result means done?");
-				if (!goal) return "Move cancelled: goal needed.";
-				patch.goal = goal;
-			}
+			const asked = await askWhyGoal(ctx, item);
+			if ("refused" in asked) return asked.refused;
+			Object.assign(patch, asked.fields);
 		}
 		if (state === "done" && item.state !== "done") {
 			const summary = await ctx.ui.input("What changed?");

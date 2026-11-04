@@ -14,6 +14,7 @@ import { registerMessageRenderer } from "../src/octocode/team/tools/messages.ts"
 import { INTERNAL_MESSAGE_TYPE } from "../src/octocode/shared/messages.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
 
 const BODY = "please review the plan";
@@ -35,7 +36,9 @@ async function attach(harness: Harness) {
 		chatContainer,
 		isInitialized: true,
 		outputPad: 1,
-		toolOutputExpanded: false,
+		uiStore: createUiStore(),
+		pendingMessagesContainer: new Container(),
+		getAppKeyDisplay: () => "alt+up",
 		pendingTools: new Map(),
 		entriesRenderedByRebuild: new Set<string>(),
 		programStatus: { handleEvent: vi.fn() },
@@ -45,7 +48,6 @@ async function attach(harness: Harness) {
 		defaultEditor: {},
 		clearStatusIndicator: vi.fn(),
 		showWorkingStatusIndicator: vi.fn(),
-		updatePendingMessagesDisplay: vi.fn(),
 		updateTerminalTitle: vi.fn(),
 		updateEditorBorderColor: vi.fn(),
 		getMarkdownThemeWithSettings: () => undefined,

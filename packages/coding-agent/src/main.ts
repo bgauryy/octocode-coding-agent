@@ -285,7 +285,7 @@ export async function main(args: string[]) {
 	// Read piped stdin content (if any) - skip for RPC mode which uses stdin for JSON-RPC
 	let stdinContent: string | undefined;
 	if (appMode !== "rpc") {
-		stdinContent = await readPipedStdin();
+		stdinContent = parsed.noStdin ? undefined : await readPipedStdin();
 		if (stdinContent !== undefined && appMode === "interactive") {
 			appMode = "print";
 		}
@@ -332,7 +332,7 @@ export async function main(args: string[]) {
 
 	if (appMode === "rpc") {
 		printTimings();
-		await runRpcMode(runtime);
+		await runRpcMode(runtime, { noDialogs: parsed.noDialogs });
 	} else if (appMode === "interactive") {
 		const interactiveMode = new InteractiveMode(runtime, {
 			startupDiagnostics,

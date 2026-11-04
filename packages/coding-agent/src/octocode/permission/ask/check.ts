@@ -2,7 +2,7 @@ import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../../share
 import type { ToolInvocation } from "../../../core/features/types.ts";
 import { interactive } from "../../shared/interactive.ts";
 import { withDialog } from "../../shared/locks.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { SourceDecision } from "../source-policy/rules.ts";
 import { shellTargetAccess } from "../file-access.ts";
 import { commandWriteTargets } from "../shell/write-targets.ts";
@@ -32,6 +32,13 @@ export interface CheckHost {
 	readonly select: Dialog;
 	replacementSourceDecision(invocation: ToolInvocation, cwd: string, indices?: number[]): SourceDecision | undefined;
 	decided(request: PermissionRequest, verdict: Verdict, note?: string, snapshot?: Snapshot): Verdict;
+}
+
+/** A `file` call reduced to the queries at `indices`; undefined when the call is not one or no indices apply. */
+export function selectedFileQueries(invocation: ToolInvocation, indices?: number[]): ToolInvocation | undefined {
+	const { input } = invocation;
+	if (!indices || invocation.toolName !== "file" || !isRecord(input) || !Array.isArray(input.queries)) return undefined;
+	return { ...invocation, input: { ...input, queries: input.queries.filter((_query, at) => indices.includes(at)) } };
 }
 
 /** The check behind `Permission.check` and its replacement variants: mode table, session grants, then the dialog. */
@@ -178,6 +185,7 @@ export async function checkPermission(
 				: undefined,
 		);
 	};
+	const rule = (each: ActionClass) => decide(request.asMode ?? host.mode(), each);
 	const automatic = (): Verdict | undefined => {
 		if (signal.aborted)
 			return decided({
@@ -192,13 +200,12 @@ export async function checkPermission(
 		const sourceAllows =
 			source?.decision === "allow" &&
 			!classes.some((each) => ["net.private", "upload.outside", "agent.spawn"].includes(each));
-		if (sourceAllows && [...targetClasses].every((each) => decide(host.mode(), each) === "allow"))
+		if (sourceAllows && [...targetClasses].every((each) => rule(each) === "allow"))
 			return { allowed: true, via: "policy", lasts: "call" };
-		if (classes.every((each) => decide(host.mode(), each) === "allow"))
-			return { allowed: true, via: "mode", lasts: "call" };
+		if (classes.every((each) => rule(each) === "allow")) return { allowed: true, via: "mode", lasts: "call" };
 		const covered = (each: ActionClass): boolean =>
 			(sourceAllows && !targetClasses.has(each)) ||
-			decide(host.mode(), each) === "allow" ||
+			rule(each) === "allow" ||
 			host.spawnGrants.has(each) ||
 			host.kinds.has(each) ||
 			(each === action && grantKey !== undefined && host.grants.has(grantKey));
@@ -282,6 +289,7 @@ export async function checkPermission(
 		...(grant ? { grant } : {}),
 	};
 	if (!grant) delete asked.grant;
+	request.onAsk?.();
 	return withDialog(async () => {
 		// A preceding dialog may have granted this scope while this call waited. A forcing reason is never granted.
 		const now = automatic();

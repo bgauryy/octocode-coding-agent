@@ -103,6 +103,8 @@ export async function handleBashCommand(
 		);
 
 		if (host.bashComponent) {
+			// The streamed tail is bounded and folds redrawn lines; the result holds the whole (trimmed) output.
+			host.bashComponent.replaceOutput(result.output);
 			host.bashComponent.setComplete(
 				result.exitCode,
 				result.cancelled,

@@ -5,19 +5,22 @@
 
 import { visibleWidth } from "../utils/width.ts";
 
+/** APC string terminator (ST, ESC \). APC ends with ST; BEL ends only OSC, and a terminal may swallow the rest of the row after it. */
+const ST = "\x1b\\";
+
 /**
  * Cursor position marker - APC (Application Program Command) sequence.
  * This is a zero-width escape sequence that terminals ignore.
  * Components emit this at the cursor position when focused.
  * TUI finds and strips this marker, then positions the hardware cursor there.
  */
-export const CURSOR_MARKER = "\x1b_octo:c\x07";
+export const CURSOR_MARKER = `\x1b_octo:c${ST}`;
 
 /** Fake cursor markers - zero-width APC sequences around the text drawn as the cursor. See resolveFakeCursors(). */
-export const FAKE_CURSOR_START = "\x1b_octo:fc\x07";
-const FAKE_CURSOR_END = "\x1b_octo:/fc\x07";
+export const FAKE_CURSOR_START = `\x1b_octo:fc${ST}`;
+const FAKE_CURSOR_END = `\x1b_octo:/fc${ST}`;
 // CURSOR_MARKER + FAKE_CURSOR_START + text + FAKE_CURSOR_END. Truncating the line right after the cursor cell drops the end.
-const FOCUSED_FAKE_CURSOR = /(\x1b_octo:c\x07)\x1b_octo:fc\x07(.*?)(?:\x1b_octo:\/fc\x07|$)/s;
+const FOCUSED_FAKE_CURSOR = /(\x1b_octo:c\x1b\\)\x1b_octo:fc\x1b\\(.*?)(?:\x1b_octo:\/fc\x1b\\|$)/s;
 
 /** Wrap text in fake cursor markers. */
 export function renderFakeCursor(text: string): string {
@@ -26,30 +29,26 @@ export function renderFakeCursor(text: string): string {
 
 /**
  * Find and extract cursor position from rendered lines.
- * Searches for CURSOR_MARKER, calculates its position, and strips it from the output.
- * Only scans the bottom terminal height lines (visible viewport).
- * @param lines - Rendered lines to search
+ * Strips every CURSOR_MARKER from every row, so none reaches the terminal, and reports the position of
+ * the bottom-most one in the bottom terminal height lines (visible viewport).
+ * @param lines - Rendered lines; changed in place
  * @param height - Terminal height (visible viewport size)
- * @returns Cursor position { row, col } or null if no marker found
+ * @returns Cursor position { row, col } or null if no marker is in the viewport
  */
 export function extractCursorPosition(lines: string[], height: number): { row: number; col: number } | null {
-	// Only scan the bottom `height` lines (visible viewport)
 	const viewportTop = Math.max(0, lines.length - height);
-	for (let row = lines.length - 1; row >= viewportTop; row--) {
+	let position: { row: number; col: number } | null = null;
+	for (let row = lines.length - 1; row >= 0; row--) {
 		const line = lines[row];
 		const markerIndex = line.indexOf(CURSOR_MARKER);
-		if (markerIndex !== -1) {
+		if (markerIndex === -1) continue;
+		if (position === null && row >= viewportTop) {
 			// Calculate visual column (width of text before marker)
-			const beforeMarker = line.slice(0, markerIndex);
-			const col = visibleWidth(beforeMarker);
-
-			// Strip marker from the line
-			lines[row] = line.slice(0, markerIndex) + line.slice(markerIndex + CURSOR_MARKER.length);
-
-			return { row, col };
+			position = { row, col: visibleWidth(line.slice(0, markerIndex)) };
 		}
+		lines[row] = line.replaceAll(CURSOR_MARKER, "");
 	}
-	return null;
+	return position;
 }
 
 /**

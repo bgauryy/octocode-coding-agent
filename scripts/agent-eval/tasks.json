@@ -1,0 +1,340 @@
+{
+	"version": 1,
+	"ref": "refs/octocode/eval-baseline-2026-11-04",
+	"preamble": "This checkout has no installed dependencies: do not install any. TypeScript files run directly with `node`. Nobody can answer questions during this task, so decide and finish. Give your complete answer in your last message.",
+	"tasks": [
+		{
+			"id": "q-001",
+			"split": "dev",
+			"kind": "question",
+			"prompt": "By default, after how many model requests is a subagent asked to wrap up, and after how many is it stopped outright? Give both numbers and the source file that defines them.",
+			"graders": [{ "type": "facts", "all": ["budget\\.ts", "\\b160\\b", "\\b240\\b"] }],
+			"evidence": [
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/budget.ts",
+					"match": "DEFAULT_MAX_REQUESTS = 160"
+				},
+				{ "path": "packages/coding-agent/src/octocode/subagents/budget.ts", "match": "HARD_LIMIT_FACTOR = 1\\.5" }
+			],
+			"reference": {
+				"answer": "Soft limit 160, hard stop at 240 (160 x 1.5), both in packages/coding-agent/src/octocode/subagents/budget.ts.",
+				"wrong": [
+					"Soft limit 100, hard stop at 150, in packages/coding-agent/src/octocode/subagents/budget.ts.",
+					"It wraps up at 160 and stops at 240; see subagents/model.ts."
+				]
+			}
+		},
+		{
+			"id": "q-002",
+			"split": "dev",
+			"kind": "question",
+			"prompt": "When the cost of a model request is calculated, how are 1-hour and 12-hour prompt-cache writes priced relative to the input rate, and which token counts are added up to pick a context price tier? Give the multipliers and the source file.",
+			"graders": [
+				{
+					"type": "facts",
+					"all": [
+						"model-helpers\\.ts",
+						"(?:1[- ]?h(?:our)?\\b|CACHE_WRITE_1H)[\\s\\S]{0,160}?(?:\\b2\\b|\\b2x|2×|×\\s?2\\b|twice|double)|(?:\\b2\\b|\\b2x|2×|twice|double)[\\s\\S]{0,80}?(?:\\b1[- ]?h(?:our)?\\b)",
+						"(?:12[- ]?h(?:our)?\\b|CACHE_WRITE_12H)[\\s\\S]{0,160}?2\\.5|2\\.5[\\s\\S]{0,80}?12[- ]?h",
+						"input[\\s\\S]{0,60}?cache[ _-]?read[\\s\\S]{0,60}?cache[ _-]?write|cache[ _-]?read[\\s\\S]{0,60}?cache[ _-]?write[\\s\\S]{0,60}?input"
+					]
+				}
+			],
+			"evidence": [
+				{ "path": "packages/ai/src/models/model-helpers.ts", "match": "CACHE_WRITE_1H_INPUT_MULTIPLIER = 2;" },
+				{ "path": "packages/ai/src/models/model-helpers.ts", "match": "CACHE_WRITE_12H_INPUT_MULTIPLIER = 2\\.5;" },
+				{
+					"path": "packages/ai/src/models/model-helpers.ts",
+					"match": "inputTokens = usage\\.input \\+ usage\\.cacheRead \\+ usage\\.cacheWrite"
+				}
+			],
+			"reference": {
+				"answer": "In packages/ai/src/models/model-helpers.ts, 1-hour writes cost 2x the input rate and 12-hour writes 2.5x. The tier is picked from input + cacheRead + cacheWrite.",
+				"wrong": [
+					"In packages/ai/src/models/model-helpers.ts, cache writes all cost 1.25x the input rate; only input tokens pick the tier.",
+					"1-hour writes cost 2x and 12-hour writes 2.5x of input, from input + cacheRead + cacheWrite, in core/cache-stats.ts."
+				]
+			}
+		},
+		{
+			"id": "q-003",
+			"split": "dev",
+			"kind": "question",
+			"prompt": "In headless print mode (`octocode -p \"...\"`, text output), which assistant stop reasons make the process exit with code 1? List them and name the source file.",
+			"graders": [{ "type": "facts", "all": ["print-mode\\.ts", "\\berror\\b", "\\baborted\\b", "\\blength\\b"] }],
+			"evidence": [
+				{
+					"path": "packages/coding-agent/src/modes/print-mode.ts",
+					"match": "message\\?\\.stopReason === \"error\" \\|\\| message\\?\\.stopReason === \"aborted\""
+				},
+				{ "path": "packages/coding-agent/src/modes/print-mode.ts", "match": "assistantMsg\\.stopReason === \"length\"" }
+			],
+			"reference": {
+				"answer": "packages/coding-agent/src/modes/print-mode.ts exits 1 for stop reasons error, aborted and, in text mode, length.",
+				"wrong": ["packages/coding-agent/src/modes/print-mode.ts exits 1 for stop reasons error and aborted only."]
+			}
+		},
+		{
+			"id": "q-004",
+			"split": "dev",
+			"kind": "question",
+			"prompt": "List every non-test source module outside `packages/ai` that calls the function `activeRates`. Give each file's path.",
+			"graders": [
+				{
+					"type": "facts",
+					"all": [
+						"cache-warmer\\.ts",
+						"cache-stats\\.ts",
+						"model-selector/details\\.ts",
+						"shared/util\\.ts",
+						"subagents/model\\.ts"
+					],
+					"none": ["session-manager/", "budget\\.ts"]
+				}
+			],
+			"evidence": [
+				{ "path": "packages/coding-agent/src/core/cache-warmer.ts", "match": "activeRates\\(" },
+				{ "path": "packages/coding-agent/src/core/cache-stats.ts", "match": "activeRates\\(" },
+				{
+					"path": "packages/coding-agent/src/modes/interactive/components/model-selector/details.ts",
+					"match": "activeRates\\("
+				},
+				{ "path": "packages/coding-agent/src/octocode/shared/util.ts", "match": "activeRates\\(" },
+				{ "path": "packages/coding-agent/src/octocode/subagents/model.ts", "match": "activeRates\\(" }
+			],
+			"reference": {
+				"answer": "packages/coding-agent/src/core/cache-warmer.ts, packages/coding-agent/src/core/cache-stats.ts, packages/coding-agent/src/modes/interactive/components/model-selector/details.ts, packages/coding-agent/src/octocode/shared/util.ts and packages/coding-agent/src/octocode/subagents/model.ts.",
+				"wrong": [
+					"Only packages/coding-agent/src/core/cache-stats.ts and packages/coding-agent/src/core/cache-warmer.ts.",
+					"core/cache-warmer.ts, core/cache-stats.ts, model-selector/details.ts, shared/util.ts, subagents/model.ts and subagents/budget.ts."
+				]
+			}
+		},
+		{
+			"id": "q-005",
+			"split": "dev",
+			"kind": "question",
+			"prompt": "From the lockfile: which versions of `marked` does this repository resolve, and which package needs the older one? What package and version does coding-agent's `highlight.js-browser` dependency really install?",
+			"graders": [
+				{
+					"type": "facts",
+					"all": [
+						"18\\.1\\.1",
+						"16\\.4\\.2",
+						"mermaid",
+						"highlight\\.js[^\\n]{0,60}11\\.12\\.0|11\\.12\\.0[^\\n]{0,60}highlight\\.js"
+					]
+				}
+			],
+			"evidence": [
+				{ "path": "yarn.lock", "match": "\"marked@npm:\\^16\\.3\\.0\":\\n  version: 16\\.4\\.2" },
+				{ "path": "yarn.lock", "match": "\"marked@npm:18\\.1\\.1\":\\n  version: 18\\.1\\.1" },
+				{
+					"path": "yarn.lock",
+					"match": "\"highlight\\.js-browser@npm:highlight\\.js@11\\.12\\.0, highlight\\.js@npm:11\\.12\\.0\":"
+				},
+				{ "path": "yarn.lock", "match": "\"mermaid@npm:12\\.2\\.0\":[\\s\\S]{0,900}marked: \"npm:\\^16\\.3\\.0\"" }
+			],
+			"reference": {
+				"answer": "marked resolves to 18.1.1 for the workspaces and 16.4.2 for mermaid (mermaid@12.2.0 asks for ^16.3.0). highlight.js-browser is an alias of highlight.js 11.12.0.",
+				"wrong": [
+					"marked resolves only to 18.1.1, used by the workspaces. highlight.js-browser is highlight.js 11.12.0.",
+					"marked resolves to 18.1.1 and 16.4.2, the older one for mermaid. highlight.js-browser is highlight.js 10.7.3."
+				]
+			}
+		},
+		{
+			"id": "q-006",
+			"split": "dev",
+			"kind": "edit",
+			"prompt": "Add an exported function `jsonlValues(text: string): unknown[]` to `packages/common/src/jsonl.ts`. It returns, in order, the parsed value of each well-formed line of JSONL text and skips blank and malformed lines. Add a test for it to the existing `packages/common/test/jsonl.test.ts`. Change no other file.",
+			"graders": [
+				{
+					"type": "changedPaths",
+					"allow": ["^packages/common/src/jsonl\\.ts$", "^packages/common/test/jsonl\\.test\\.ts$"],
+					"require": ["^packages/common/src/jsonl\\.ts$", "^packages/common/test/jsonl\\.test\\.ts$"]
+				},
+				{ "type": "command", "cmd": ["node", "{{checks}}/q-006.check.mjs"], "timeoutSec": 60 }
+			],
+			"reference": { "patch": "fixtures/patches/q-006.reference.patch" }
+		},
+		{
+			"id": "q-007",
+			"split": "dev",
+			"kind": "question",
+			"delegates": "researcher",
+			"prompt": "Delegate this question to a subagent with the `researcher` profile and wait for its report before you answer. When an `agent` call names neither a model nor a profile, what route does the child get? Give the tier's name, the default thinking level and the environment variable that changes it, the range of shares of the parent's price that tier's candidates must fall in, and the source file that defines them.",
+			"graders": [
+				{ "type": "child", "role": "researcher" },
+				{
+					"type": "facts",
+					"all": [
+						"subagents/model\\.ts|\\bmodel\\.ts",
+						"\\bmedium\\b",
+						"OCTOCODE_SUBAGENT_THINKING",
+						"0\\.15|\\b15\\s?%",
+						"0\\.8\\b|\\b80\\s?%"
+					]
+				}
+			],
+			"evidence": [
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/model.ts",
+					"match": "SUBAGENT_DEFAULT_TIER: ModelTier = \"medium\""
+				},
+				{ "path": "packages/coding-agent/src/octocode/subagents/model.ts", "match": "MEDIUM_MAX_SHARE = 0\\.8" },
+				{ "path": "packages/coding-agent/src/octocode/subagents/model.ts", "match": "MEDIUM_MIN_SHARE = 0\\.15" },
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/model.ts",
+					"match": "SUBAGENT_THINKING_ENV = \"OCTOCODE_SUBAGENT_THINKING\""
+				},
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/model.ts",
+					"match": "SUBAGENT_DEFAULT_THINKING = \"medium\""
+				},
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/claim.ts",
+					"match": "preferred: profile \\? profile\\.model : SUBAGENT_DEFAULT_TIER"
+				}
+			],
+			"reference": {
+				"answer": "The medium tier at medium thinking (OCTOCODE_SUBAGENT_THINKING changes it); candidates cost 0.15 to 0.8 of the parent's price. See packages/coding-agent/src/octocode/subagents/model.ts.",
+				"wrong": [
+					"It inherits the parent's model at the parent's thinking level; subagents/model.ts.",
+					"The small tier at low thinking (OCTOCODE_SUBAGENT_THINKING changes it), 0.05 to 0.5 of the parent's price; subagents/model.ts."
+				]
+			}
+		},
+		{
+			"id": "q-008",
+			"split": "dev",
+			"kind": "edit",
+			"delegates": "implementer",
+			"setup": { "patch": "fixtures/patches/q-008.setup.patch", "mode": "committed" },
+			"prompt": "Bug report: `cutText` in the common package, with `{ chars: true, tail: true }`, can return text that starts with half a surrogate pair. `cutText(\"a\\u{1F600}b\", 2, { chars: true, tail: true })` should return `\"b\"`. Delegate the fix to a subagent with the `implementer` profile, in this checkout and not in an isolated worktree, and wait for its report before you answer. The fix and a regression test in a new file `packages/common/test/text.test.ts` must be in this checkout's working tree when you finish, with no other file changed.",
+			"graders": [
+				{ "type": "child", "role": "implementer" },
+				{
+					"type": "changedPaths",
+					"allow": ["^packages/common/src/text\\.ts$", "^packages/common/test/text\\.test\\.ts$"],
+					"require": ["^packages/common/src/text\\.ts$", "^packages/common/test/text\\.test\\.ts$"]
+				},
+				{ "type": "command", "cmd": ["node", "{{checks}}/q-008.check.mjs"], "timeoutSec": 60 }
+			],
+			"reference": { "patch": "fixtures/patches/q-008.reference.patch" }
+		},
+		{
+			"id": "q-009",
+			"split": "dev",
+			"kind": "review",
+			"delegates": "reviewer",
+			"setup": { "patch": "fixtures/patches/q-009.setup.patch", "mode": "uncommitted" },
+			"prompt": "This checkout has an uncommitted change (`git diff`). Delegate a review of it to a subagent with the `reviewer` profile and wait for its report before you answer. Do not change any file. Say whether the change is safe to merge; for each defect, name the file and the behavior that changes.",
+			"graders": [
+				{ "type": "child", "role": "reviewer" },
+				{
+					"type": "facts",
+					"all": [
+						"budget\\.ts",
+						"(?:\\b0\\b|zero)[\\s\\S]{0,240}?(?:\\boff\\b|disabl|no longer|\\b160\\b|default)|(?:\\boff\\b|disabl|no longer)[\\s\\S]{0,240}?(?:\\b0\\b|zero)"
+					]
+				}
+			],
+			"evidence": [
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/budget.ts",
+					"match": "return value >= 0 \\? value : DEFAULT_MAX_REQUESTS"
+				},
+				{ "path": "packages/coding-agent/src/octocode/subagents/budget.ts", "match": "0 turning it off" }
+			],
+			"reference": {
+				"answer": "Not safe. In packages/coding-agent/src/octocode/subagents/budget.ts, `configured > 0` means OCTOCODE_SUBAGENT_MAX_REQUESTS=0 no longer turns the budget off: it falls back to the default of 160.",
+				"wrong": [
+					"Safe to merge. The change in packages/coding-agent/src/octocode/subagents/budget.ts is only a rename of a local variable.",
+					"Safe to merge: a rename, with nothing changed in behavior."
+				]
+			}
+		},
+		{
+			"id": "q-010",
+			"split": "heldout",
+			"kind": "question",
+			"prompt": "If the result shape of `jsonlLines` or `parseJsonlLine` in the common package changed, which non-test source modules that call them would be affected? List each file's path.",
+			"graders": [
+				{
+					"type": "facts",
+					"all": [
+						"handoff\\.ts",
+						"checkpoint-store\\.ts",
+						"shared-file\\.ts",
+						"session-manager/entries\\.ts|\\bentries\\.ts"
+					]
+				}
+			],
+			"evidence": [
+				{ "path": "packages/coding-agent/src/octocode/subagents/handoff.ts", "match": "parseJsonlLine\\(" },
+				{ "path": "packages/coding-agent/src/octocode/files/checkpoint-store.ts", "match": "jsonlLines\\(" },
+				{ "path": "packages/coding-agent/src/core/session-manager/shared-file.ts", "match": "jsonlLines\\(" },
+				{ "path": "packages/coding-agent/src/core/session-manager/entries.ts", "match": "parseJsonlLine\\(" }
+			],
+			"reference": {
+				"answer": "packages/coding-agent/src/octocode/subagents/handoff.ts, packages/coding-agent/src/octocode/files/checkpoint-store.ts, packages/coding-agent/src/core/session-manager/shared-file.ts and packages/coding-agent/src/core/session-manager/entries.ts.",
+				"wrong": [
+					"Only packages/coding-agent/src/core/session-manager/entries.ts and packages/coding-agent/src/core/session-manager/shared-file.ts."
+				]
+			}
+		},
+		{
+			"id": "q-011",
+			"split": "heldout",
+			"kind": "question",
+			"delegates": "researcher",
+			"prompt": "Delegate this question to a subagent with the `researcher` profile and wait for its report before you answer. Under the workspace, where is a subagent's saved conversation stored, and which function tells a new subagent which names are already taken so it does not continue another agent's conversation? Give the path pattern, the function's name and its source file.",
+			"graders": [
+				{ "type": "child", "role": "researcher" },
+				{ "type": "facts", "all": ["temp/agents[\\s\\S]{0,60}?session", "scratchNames", "scratch\\.ts"] }
+			],
+			"evidence": [
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/handoff/scratch.ts",
+					"match": "export function scratchNames"
+				},
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/handoff/scratch.ts",
+					"match": "\\.octa/code/temp/agents"
+				},
+				{
+					"path": "packages/coding-agent/src/octocode/subagents/process/session.ts",
+					"match": "path\\.join\\(root, \"session\"\\)"
+				}
+			],
+			"reference": {
+				"answer": "In .octocode/code/temp/agents/<name>/session/. `scratchNames` in packages/coding-agent/src/octocode/subagents/handoff/scratch.ts lists the taken names.",
+				"wrong": [
+					"In ~/.octocode/octocodecode/sessions. `scratchNames` in subagents/handoff/scratch.ts lists the taken names.",
+					"In .octocode/code/temp/agents/<name>/session/; the names come from `teamWorkspace` in team/store/workspace.ts."
+				]
+			}
+		},
+		{
+			"id": "q-012",
+			"split": "heldout",
+			"kind": "review",
+			"delegates": "reviewer",
+			"setup": { "patch": "fixtures/patches/q-012.setup.patch", "mode": "uncommitted" },
+			"prompt": "This checkout has an uncommitted change (`git diff`). Delegate a review of it to a subagent with the `reviewer` profile and wait for its report before you answer. Do not change any file. Say whether the change is safe to merge; for each defect, name the file and the behavior that changes.",
+			"graders": [
+				{ "type": "child", "role": "reviewer" },
+				{ "type": "facts", "all": ["web-guard", "169\\.254|link[- ]local|metadata"] }
+			],
+			"evidence": [
+				{ "path": "packages/common/src/web-guard.ts", "match": "\\[\"169\\.254\\.0\\.0\", 16\\]" },
+				{ "path": "packages/common/src/web-guard.ts", "match": "link-local \\(cloud metadata\\)" }
+			],
+			"reference": {
+				"answer": "Not safe. packages/common/src/web-guard.ts drops 169.254.0.0/16 from the blocked IPv4 ranges, so requests can reach link-local addresses such as the cloud metadata service.",
+				"wrong": ["Safe to merge. packages/common/src/web-guard.ts only tidies a list of ranges."]
+			}
+		}
+	]
+}

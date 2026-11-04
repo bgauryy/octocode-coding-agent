@@ -246,12 +246,15 @@ describe("default MCP in the shared host", () => {
 		await h.close();
 		await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
 	});
-	it("recovers after a server exits during a call and exposes failures without stale tools", async () => {
+	it("keeps the tools declared after a server exits during a call, fails calls while it is down and recovers", async () => {
 		const h = host();
 		await h.start();
 		await h.prompt();
 		await expect(h.call("mcp__octocode__crash")).rejects.toThrow();
 		await vi.waitFor(() => expect(h.state.findServer("octocode")?.connection?.state).toBe("disconnected"));
+		expect(h.tools.get("mcp__octocode__shout").exposure).toBe("direct");
+		await expect(h.call("mcp__octocode__shout", { text: "back" })).rejects.toThrow(/is disconnected.*reconnecting/s);
+		await vi.waitFor(() => expect(h.state.findServer("octocode")?.connection?.state).toBe("connected"));
 		expect(await h.call("mcp__octocode__shout", { text: "back" })).toMatchObject({ content: [{ text: "BACK" }] });
 	});
 });

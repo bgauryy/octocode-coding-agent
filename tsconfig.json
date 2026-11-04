@@ -28,7 +28,6 @@
 			"@octocodeai/octocode-webview/*": ["./packages/webview/src/*.ts"],
 			"@octocodeai/octocodecode/mcp": ["./packages/mcp/src/client/index.ts"],
 			"@octocodeai/octocodecode/mcp/oauth": ["./packages/mcp/src/client/oauth/index.ts"],
-			"@octocodeai/octocodecode/mcp/testing": ["./packages/mcp/src/client/testing/index.ts"],
 			"@octocodeai/octocode-mcp": ["./packages/mcp/src/client/index.ts"],
 			"@octocodeai/octocode-mcp/oauth": ["./packages/mcp/src/client/oauth/index.ts"],
 			"@octocodeai/octocode-mcp/testing": ["./packages/mcp/src/client/testing/index.ts"],

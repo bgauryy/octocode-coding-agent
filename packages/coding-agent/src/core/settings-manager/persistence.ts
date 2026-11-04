@@ -3,7 +3,7 @@ import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
 import { describeIgnoredKey, ignoredSettingsKeys } from "./ignored-keys.ts";
 import { migrateSettings } from "./load.ts";
-import { mergeAllSettings } from "./merge.ts";
+import { effectiveSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
 
@@ -140,7 +140,7 @@ export class SettingsPersistence {
 
 	save(): void {
 		const state = this.state;
-		state.settings = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
+		state.settings = effectiveSettings(state);
 
 		if (state.globalSettingsLoadError) {
 			return;
@@ -159,7 +159,7 @@ export class SettingsPersistence {
 		const state = this.state;
 		this.assertProjectTrustedForWrite();
 		state.projectSettings = structuredClone(settings);
-		state.settings = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
+		state.settings = effectiveSettings(state);
 
 		if (state.projectSettingsLoadError) {
 			return;

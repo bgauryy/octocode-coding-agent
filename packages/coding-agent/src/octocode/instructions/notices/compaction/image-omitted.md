@@ -1,0 +1,1 @@
+[image from {{from}} omitted; {{#if saved}}saved at {{saved}}{{#if failed}}; {{#if oneFailed}}image{{else}}images{{/if}} {{failed}} of {{total}} could not be saved{{/if}}; read {{#if oneCopy}}that file{{else}}those files{{/if}} to see {{#if oneImage}}it{{else}}them{{/if}} again{{else}}it could not be saved{{/if}}]

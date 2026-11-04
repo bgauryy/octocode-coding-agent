@@ -15,6 +15,7 @@ export default mergeConfig(
 			hookTimeout: 30000,
 			maxWorkers: 4,
 			coverage: {
+				provider: "v8",
 				// The host tests exercise the database workspace compiled into this package.
 				allowExternal: true,
 				include: ["src/octocode/**/*.ts", "src/config/{database,workspace,workspace-database}.ts", "../db/src/**/*.ts"],

@@ -1,9 +1,11 @@
 /**
  * Which file a catalog gets, shared by sessions (`presentation/`) and `octocode mcp compact`: the stored file while it
- * matches, else a new render that keeps every override still describing the catalog.
+ * matches, else a new render with the overrides that describe the catalog. Overrides come from two places, a server's
+ * stored ones and its preset's, in one form with one staleness rule (`presetOverridesFor`).
  */
 
 import { checkOverrides } from "./fidelity.ts";
+import { presetOverridesFor, toPresetOverrides } from "./preset-overrides.ts";
 import {
 	catalogHash,
 	COMPACT_GENERATOR_VERSION,
@@ -13,18 +15,7 @@ import {
 	toolHash,
 } from "./render.ts";
 import { readGenerated, readGeneratedMeta, writeGenerated } from "./store.ts";
-import type { CompactServerInput, DescriptionOverrides, GeneratedMeta } from "./types.ts";
-
-type CatalogHashes = Pick<GeneratedMeta, "hash" | "toolHashes" | "instructionsHash">;
-
-/** The hashes a stored file records for the catalog it was rendered from. */
-export function catalogHashes(input: CompactServerInput): Required<CatalogHashes> {
-	return {
-		hash: catalogHash(input),
-		toolHashes: Object.fromEntries(input.tools.map((tool) => [tool.name, toolHash(tool)])),
-		instructionsHash: instructionsHash(input.instructions),
-	};
-}
+import type { CompactServerInput, DescriptionOverrides, GeneratedMeta, PresetOverrides } from "./types.ts";
 
 const pick = <T>(record: Record<string, T> | undefined, keep: ReadonlySet<string>): Record<string, T> | undefined => {
 	const entries = Object.entries(record ?? {}).filter(([tool]) => keep.has(tool));
@@ -43,25 +34,25 @@ function compactOverrides(overrides: DescriptionOverrides): DescriptionOverrides
 }
 
 /**
- * The part of `overrides`, written for the catalog `written`, that still describes `input`: all of it for the same
- * catalog; otherwise the entries of tools whose hash is unchanged, and the server text while the instructions are.
+ * The overrides a stored file keeps for its server. A file written before overrides were keyed has them unkeyed, so
+ * they are keyed here for `input`, the first catalog it meets: all of them for the catalog they were written for, else
+ * those of tools whose hash is unchanged and the server text while the instructions are. Its overrides from the preset
+ * alone are not its own.
  */
-export function carryOverrides(
-	overrides: DescriptionOverrides | undefined,
-	written: CatalogHashes,
-	input: CompactServerInput,
-): DescriptionOverrides | undefined {
-	if (!overrides) return undefined;
-	if (written.hash === catalogHash(input)) return overrides;
+function authoredOverrides(meta: GeneratedMeta, input: CompactServerInput): PresetOverrides | undefined {
+	if (meta.authored) return meta.authored;
+	if (!meta.overrides || meta.optimizedBy?.model === "preset") return undefined;
+	if (meta.hash === catalogHash(input)) return toPresetOverrides(meta.overrides, input);
 	const unchanged = new Set(
-		input.tools.filter((tool) => written.toolHashes?.[tool.name] === toolHash(tool)).map((tool) => tool.name),
+		input.tools.filter((tool) => meta.toolHashes?.[tool.name] === toolHash(tool)).map((tool) => tool.name),
 	);
-	return compactOverrides({
-		...(written.instructionsHash === instructionsHash(input.instructions) ? { server: overrides.server } : {}),
-		tools: pick(overrides.tools, unchanged),
-		triggers: pick(overrides.triggers, unchanged),
-		fields: pick(overrides.fields, unchanged),
+	const kept = compactOverrides({
+		...(meta.instructionsHash === instructionsHash(input.instructions) ? { server: meta.overrides.server } : {}),
+		tools: pick(meta.overrides.tools, unchanged),
+		triggers: pick(meta.overrides.triggers, unchanged),
+		fields: pick(meta.overrides.fields, unchanged),
 	});
+	return kept && toPresetOverrides(kept, input);
 }
 
 /** `top` over `base`, entry by entry (field docs path by path). */
@@ -78,6 +69,53 @@ export function mergeOverrides(
 		triggers: { ...base.triggers, ...top.triggers },
 		fields,
 	});
+}
+
+/** The overrides that describe `input`: the stored ones over the preset's (`preset`, already read for this catalog). */
+export function describedOverrides(
+	meta: GeneratedMeta | undefined,
+	input: CompactServerInput,
+	preset: DescriptionOverrides | undefined,
+): DescriptionOverrides | undefined {
+	const authored = meta && authoredOverrides(meta, input);
+	return mergeOverrides(preset, authored && presetOverridesFor(authored, input));
+}
+
+/** `overrides` split by what it rewrites: the server text, then each tool's description, trigger and fields together. */
+function overrideEntries(overrides: DescriptionOverrides): DescriptionOverrides[] {
+	const tools = new Set([
+		...Object.keys(overrides.tools ?? {}),
+		...Object.keys(overrides.triggers ?? {}),
+		...Object.keys(overrides.fields ?? {}),
+	]);
+	const entries = [...tools].flatMap((tool) => {
+		const only = new Set([tool]);
+		const entry = compactOverrides({
+			tools: pick(overrides.tools, only),
+			triggers: pick(overrides.triggers, only),
+			fields: pick(overrides.fields, only),
+		});
+		return entry ? [entry] : [];
+	});
+	return overrides.server === undefined ? entries : [{ server: overrides.server }, ...entries];
+}
+
+/**
+ * The overrides of `candidate` that render faithfully. A bad one fails open to the server's own text by itself: it must
+ * not void the others, which would silently cost every agent the whole compaction.
+ */
+function faithfulOverrides(
+	input: CompactServerInput,
+	candidate: DescriptionOverrides | undefined,
+): DescriptionOverrides | undefined {
+	if (!candidate) return undefined;
+	const passes = (overrides: DescriptionOverrides) =>
+		checkOverrides(input, renderServer(input, overrides), overrides).ok;
+	if (passes(candidate)) return candidate;
+	const kept = overrideEntries(candidate)
+		.filter(passes)
+		.reduce<DescriptionOverrides | undefined>((all, entry) => mergeOverrides(all, entry), undefined);
+	return kept && passes(kept) ? kept : undefined;
 }
 
 export interface ServerFile {
@@ -98,10 +136,10 @@ export interface ResolveOptions {
 
 /**
  * The file for a catalog: the stored one when this generator rendered it from this exact catalog and preset overrides.
- * Otherwise a new render with the stored overrides that still describe the catalog (`carryOverrides`, which also keeps
- * them across a generator change) over the preset's, kept only when the whole render passes the fidelity check; the
- * render is stored. A stored file rendered from the preset alone carries nothing once the preset changes, so a release
- * that changes the preset reaches users. `name` is the configured server name, which names the stored files.
+ * Otherwise a new render with the `describedOverrides` that pass the fidelity check (`faithfulOverrides`); the render
+ * is stored. The stored overrides stay as written, stale ones too, so a release that changes the preset reaches
+ * every entry they do not replace, and a stale one applies again if the server's text comes back. `name` is the
+ * configured server name, which names the stored files.
  */
 export function resolveServerFile(
 	dir: string,
@@ -109,38 +147,31 @@ export function resolveServerFile(
 	input: CompactServerInput,
 	options: ResolveOptions = {},
 ): ServerFile {
-	const hashes = catalogHashes(input);
+	const hash = catalogHash(input);
 	const preset = presetHash(options.preset);
 	const stored = readGenerated(dir, name);
 	const previous = stored?.meta ?? readGeneratedMeta(dir, name);
-	const samePreset = previous?.presetHash === preset;
 	if (
 		!options.refresh &&
-		samePreset &&
-		stored?.meta.hash === hashes.hash &&
+		previous?.presetHash === preset &&
+		stored?.meta.hash === hash &&
 		stored.meta.generatorVersion === COMPACT_GENERATOR_VERSION
 	)
 		return { text: stored.text, meta: stored.meta, rendered: false };
-	const presetOnly = previous?.optimizedBy?.model === "preset";
-	const carried =
-		previous && (samePreset || !presetOnly) ? carryOverrides(previous.overrides, previous, input) : undefined;
-	const candidate = mergeOverrides(options.preset, carried);
-	const withOverrides = candidate && renderServer(input, candidate);
-	const overrides =
-		candidate && withOverrides && checkOverrides(input, withOverrides, candidate).ok ? candidate : undefined;
-	const text = overrides && withOverrides ? withOverrides : renderServer(input);
-	// "preset" marks overrides from the preset alone; carried overrides keep their writer, also when it is unnamed.
-	const optimizedBy = !overrides
-		? undefined
-		: carried
-			? previous?.optimizedBy
-			: options.preset
-				? { model: "preset", at: new Date().toISOString() }
-				: undefined;
+	const authored = previous && authoredOverrides(previous, input);
+	const overrides = faithfulOverrides(input, describedOverrides(previous, input, options.preset));
+	const text = overrides ? renderServer(input, overrides) : renderServer(input);
+	// "preset" marks overrides from the preset alone; stored overrides keep their writer, also when it is unnamed.
+	const optimizedBy = authored
+		? previous?.optimizedBy
+		: overrides && options.preset
+			? { model: "preset", at: new Date().toISOString() }
+			: undefined;
 	const meta: GeneratedMeta = {
-		...hashes,
+		hash,
 		generatorVersion: COMPACT_GENERATOR_VERSION,
 		...(overrides ? { overrides } : {}),
+		...(authored ? { authored } : {}),
 		...(preset ? { presetHash: preset } : {}),
 		...(optimizedBy ? { optimizedBy } : {}),
 		generatedAt: new Date().toISOString(),

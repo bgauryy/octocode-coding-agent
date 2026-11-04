@@ -30,6 +30,8 @@ export interface RunDetails {
 	profile: string;
 	goal: string;
 	toolCalls: number;
+	/** It edited a file after its last passing `bash verify` run. */
+	editedAfterVerify?: boolean;
 	/** Model requests the child made in this run (`budget.ts`); absent before its first reply. */
 	requests?: number;
 	/** Conversation cache usage, excluding auxiliary requests; latest is the last completed message. */
@@ -50,6 +52,8 @@ export interface RunDetails {
 	startedAt: number;
 	/** waiting: for a free slot; running: foreground, still working; background: returned at once, the report arrives as a message. */
 	status: "waiting" | "running" | "background" | "done" | "failed";
+	/** With `background`: every slot was taken, so it starts when one frees. Cleared as it starts. */
+	queued?: boolean;
 	/** The child waits for the user's answer to one of its dialogs (shown in this session). */
 	waiting?: boolean;
 	/** The child compacts its context now. */

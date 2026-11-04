@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 interface CodingAgentPackageJson {
@@ -25,6 +25,14 @@ describe("package distribution entrypoints", () => {
 			if (subpath !== "./rpc-entry") expect(entry.import).toBe("./dist/bundle/octocode.js");
 			expect(entry.types).toBeUndefined();
 		}
+	});
+
+	test("the published bundle keeps testing helpers out of its root and its subpaths", () => {
+		expect(Object.keys(packageJson.exports).filter((subpath) => /test/i.test(subpath))).toEqual([]);
+		const bundle = readFileSync(new URL("../src/bundle.ts", import.meta.url), "utf8");
+		expect(bundle).not.toMatch(/\btesting\b/);
+		// The source still has them, for this repository's own tests.
+		expect(existsSync(new URL("../../mcp/src/client/testing/index.ts", import.meta.url))).toBe(true);
 	});
 
 	test("every local dependency has an exact npm version for a release", () => {

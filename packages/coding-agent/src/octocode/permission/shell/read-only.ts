@@ -167,6 +167,14 @@ function splits(raw: string): boolean {
 }
 
 /**
+ * A substitution that prints a commit id or ref name, so it cannot become an option: `$(git merge-base main HEAD)`, the
+ * first step of reviewing a branch, with an optional `..HEAD`. `rev-parse` echoes words it does not know, so its flags
+ * are spelled out and its operands may not start with `-`.
+ */
+const PRINTS_A_REVISION =
+	/^"?\$\(git (?:merge-base(?: --[a-z-]+)*(?: [\w@~^/.:-]+)+|rev-parse(?: --(?:short|verify|abbrev-ref))*(?: [A-Za-z0-9_@~^/.:][\w@~^/.:-]*)+)\)(?:\.\.\.?[\w@~^/.-]+)?"?$/;
+
+/**
  * Whether a word the parse cannot spell out (`raw`, its source text; `previous`, the value of the word before it) still
  * cannot become an option of a reader whose writing options `test` names: it is not split (`splits`) and its value starts
  * with a literal character other than `-` (`src/*.ts`, `./"$F"`, `"src/$X"`; a glob there matches only names with that
@@ -179,6 +187,7 @@ function cannotBeOption(
 	values: ReadonlySet<string> | undefined,
 	test: OptionTest,
 ): boolean {
+	if (PRINTS_A_REVISION.test(raw)) return true;
 	if (splits(raw)) return false;
 	if (/^(?:""|'')*["']?[A-Za-z0-9_./]/.test(raw)) return true;
 	if (previous !== undefined && values?.has(previous) && DOUBLE_QUOTED.test(raw)) return true;
@@ -211,7 +220,7 @@ export function computedOption(
 }
 
 /** `git` subcommands that only read the repository. */
-const GIT_READERS = new Set([
+export const GIT_READERS: ReadonlySet<string> = new Set([
 	"status",
 	"log",
 	"diff",
@@ -226,6 +235,13 @@ const GIT_READERS = new Set([
 	"grep",
 	"cat-file",
 	"show-ref",
+	"merge-base",
+	"for-each-ref",
+	"cherry",
+	"show-branch",
+	"name-rev",
+	"check-ignore",
+	"range-diff",
 ]);
 /** Redirections that write nowhere: to a file descriptor (`2>&1`), or to exactly `/dev/null` (not `/dev/nullx`, not `/dev/null/../x`). */
 const HARMLESS_REDIRECT = /(?:&|\d*)>>?\s*(?:&\d+|\/dev\/null)(?=\s|$)/g;

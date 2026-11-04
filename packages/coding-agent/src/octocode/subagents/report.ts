@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -59,6 +60,22 @@ function contradicted(token: string, rest: string): boolean {
 	return line.split(/[^\p{L}]+/u).some((word) => statusWord(word) !== undefined);
 }
 
+/** What may follow a delimited outcome word: the end of the line, punctuation, `(`, or a spaced dash. */
+const DELIMITED = /^(?:[ \t]*(?:\n|$)|[ \t]*[.:,;!?(]|[ \t]*[-\u2013\u2014](?:[ \t]|$))/u;
+
+/**
+ * Whether the first word is the report's outcome rather than the start of a sentence (`Failed login attempts now lock…`).
+ * It counts when delimited, with markup around the word allowed (`**Blocked**:`) but not alone (`**Blocked** requests
+ * are logged`). `done` also counts as plain prose (`Done with the audit`) unless its line names another outcome.
+ */
+function leadsOutcome(status: ReportStatus, token: string, rest: string): boolean {
+	const word = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+	const trailing = token.slice(token.lastIndexOf(word) + word.length);
+	const after = (trailing + rest).replace(/^[*_`~]+/, "");
+	if (DELIMITED.test(after)) return true;
+	return status === "done" && !contradicted(token, rest);
+}
+
 /** Where a report named its outcome: its first word (the preferred form) or a labelled last line. */
 type OutcomeSource = "first" | "last";
 
@@ -73,7 +90,7 @@ export function reportOutcome(text: string | undefined): { status: ReportStatus;
 	const lead = body.replace(OUTCOME_LABEL, "");
 	const token = lead.split(/\s/, 1)[0] ?? "";
 	const first = statusWord(token);
-	if (first && !contradicted(token, lead.slice(token.length))) return { status: first, source: "first" };
+	if (first && leadsOutcome(first, token, lead.slice(token.length))) return { status: first, source: "first" };
 	const last = body.split("\n").at(-1)?.trim() ?? "";
 	if (!OUTCOME_LABEL.test(last)) return undefined;
 	const rest = last.replace(OUTCOME_LABEL, "").trim();
@@ -307,7 +324,10 @@ export class ReportTracker {
 	} {
 		if (this.sections === 0) {
 			const pointer = this.partialFile
-				? `Full partial report: ${shortPath(this.partialFile)} (read only the parts you need).`
+				? renderInstruction("notices/subagents/report-pointer.md", {
+						partial: true,
+						file: shortPath(this.partialFile),
+					})
 				: undefined;
 			return {
 				text: `${this.lastText}${pointer ? `\n${pointer}` : ""}`,
@@ -330,7 +350,7 @@ export class ReportTracker {
 		// A failed follow-up's current answer includes the failure notice, not only the older saved report.
 		const artifact = this.failure ? { sha256: sha256(body) } : this.artifact;
 		const pointer = artifact.path
-			? `Full report: ${shortPath(artifact.path)} (read only the parts you need).`
+			? renderInstruction("notices/subagents/report-pointer.md", { partial: false, file: shortPath(artifact.path) })
 			: undefined;
 		return {
 			text: `${body}${pointer ? `\n${pointer}` : ""}`,

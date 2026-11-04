@@ -93,7 +93,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 				selected = choice.ref;
 				const item = backlog.store.get(choice.ref);
 				if (choice.action === "do" && item) {
-					if (handOff(ctx, backlog, item, doItPrompt)) return;
+					if (await handOff(ctx, backlog, item, doItPrompt)) return;
 				} else if (await actions(ctx, backlog, choice.ref)) return;
 			}
 		}
@@ -102,7 +102,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	/** Without a custom component (RPC): the board as a select list. */
 	const selectBoard = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
 		const ADD = "+ Add an item";
-		const EXPORT = "Export to .octa/code/backlog.md";
+		const EXPORT = "Export to .octocode/code/backlog.md";
 		const HTML = "Open as HTML";
 		for (;;) {
 			const items = backlog.store.list().items;
@@ -146,16 +146,16 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		do: {
 			args: "<id>",
 			description: "hand an item to the agent now",
-			run: (ctx, backlog, ref) => {
+			run: async (ctx, backlog, ref) => {
 				if (!ref) return say(ctx, "Usage: /backlog do <id>", "warning");
 				const item = backlog.store.get(ref);
 				if (!item) return say(ctx, `No backlog item ${ref}.`, "warning");
-				handOff(ctx, backlog, item, doItPrompt);
+				await handOff(ctx, backlog, item, doItPrompt);
 			},
 		},
 		export: {
 			args: "",
-			description: "write .octa/code/backlog.md",
+			description: "write .octocode/code/backlog.md",
 			run: (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog export", "warning");
 				doExport(ctx, backlog);
@@ -163,7 +163,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		},
 		html: {
 			args: "",
-			description: "write .octa/code/backlog.html and open it in the browser",
+			description: "write .octocode/code/backlog.html and open it in the browser",
 			run: (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog html", "warning");
 				return doHtml(ctx, backlog);

@@ -370,7 +370,7 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	}
 
 	const errors = [...validator.Errors(args)];
-	const failure = formatValidationFailure(toolCall.name, errors, toolCall.arguments);
+	const failure = formatValidationFailure(toolCall.name, errors, toolCall.arguments, schema);
 	// An envelope mistake: properties the root does not allow, with no problem inside a nested value. A `boolean` error
 	// ("schema is false") sits at the unexpected property itself; its sibling at the object names it.
 	const located = errors.filter((error) => error.keyword !== "boolean");

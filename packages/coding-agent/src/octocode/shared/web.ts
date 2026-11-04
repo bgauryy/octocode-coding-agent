@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { serialQueue } from "../../../../common/src/serial-queue.ts";
 import { openFile } from "./open.ts";
 
 interface WebServer {
@@ -11,12 +12,7 @@ interface WebServer {
 export function webLauncher(api: ExtensionAPI, open = openFile) {
 	let server: WebServer | undefined;
 	let key = "";
-	let pending: Promise<unknown> = Promise.resolve();
-	const enqueue = <T>(action: () => Promise<T>): Promise<T> => {
-		const next = pending.then(action);
-		pending = next.catch(() => undefined);
-		return next;
-	};
+	const enqueue = serialQueue();
 	const close = () =>
 		enqueue(async () => {
 			const previous = server;

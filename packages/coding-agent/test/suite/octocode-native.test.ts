@@ -28,7 +28,6 @@ it("runs native tools and releases team resources across a real session reload",
 		OCTOCODE_HOME: join(root, ".octocode"),
 		OCTOCODE_CODING_AGENT_DIR: join(root, ".octocode", "agent"),
 		OCTOCODE_MCP: "0",
-		OCTOCODE_API: "0",
 		OCTOCODE_MODELS_DEV: "0",
 		OCTOCODE_EXTRA_SKILLS: "0",
 		OCTOCODE_MEMORY_AUTO: "0",
@@ -150,7 +149,7 @@ it("runs native tools and releases team resources across a real session reload",
 			await harness.session.prompt(`Write run-${run}.txt and retain its reservation.`);
 			expect(getAssistantTexts(harness).at(-1)).toBe(`completed ${run}`);
 			expect(harness.getPendingResponseCount()).toBe(0);
-			expect(prompts.at(-1)).toContain("# Delegation");
+			expect(prompts.at(-1)).toContain("## Manage running children");
 			expect(getToolResult(harness, "file").isError).not.toBe(true);
 			expect(readFileSync(join(harness.tempDir, `run-${run}.txt`), "utf8")).toBe(`updated ${run}`);
 			expect(store.list()).toHaveLength(1);

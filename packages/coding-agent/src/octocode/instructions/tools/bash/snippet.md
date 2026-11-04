@@ -1,0 +1,1 @@
+Run builds, tests, git, formatters and platform CLIs; move, copy, archive and unpack files (mv, cp, tar, zip, unzip); inspect binaries (file, strings); cut or reshape output with flags and pipes (head, tail, grep -c, sort, jq). When search and read tools are declared, use them for code instead, locally and on GitHub or package registries, and change file contents with `file`

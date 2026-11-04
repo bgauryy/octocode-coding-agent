@@ -207,3 +207,45 @@ describe("OutputAccumulator carriage returns", () => {
 		expect((await output.readFullOutput(10 * 1024 * 1024)).content).toBe(raw);
 	});
 });
+
+describe("OutputAccumulator spill cap", () => {
+	const lines = numbered(200_000, 6);
+
+	it("gives the model the same view with the cap on, and only the file changes", async () => {
+		const free = accumulate([lines], { spillMaxBytes: 0, smartTrim: true });
+		const capped = accumulate([lines], { spillMaxBytes: 100_000, smartTrim: true });
+		await Promise.all([free.output.closeTempFile(), capped.output.closeTempFile()]);
+
+		expect(capped.snapshot.content).toBe(free.snapshot.content);
+		expect(capped.snapshot.truncation).toEqual(free.snapshot.truncation);
+		expect(free.output.spillDroppedBytes).toBe(0);
+		expect(readFileSync(free.snapshot.fullOutputPath!, "utf8")).toBe(lines);
+
+		const dropped = capped.output.spillDroppedBytes;
+		expect(dropped).toBeGreaterThan(lines.length - 100_000 - 1);
+		const saved = readFileSync(capped.snapshot.fullOutputPath!, "utf8");
+		expect(saved.length).toBeLessThan(100_000 + 300);
+		expect(saved.startsWith(lines.slice(0, 50_000))).toBe(true);
+		expect(saved.endsWith(lines.slice(-25_000))).toBe(true);
+		expect(saved).toMatch(/\[\.\.\. [\d.]+ [KM]B dropped here: .*bash\.spillMaxBytes cap \(0 lifts it\)/);
+	});
+
+	it("leaves a file under the cap untouched and defaults to a cap far above ordinary output", async () => {
+		const below = accumulate([lines], { spillMaxBytes: lines.length });
+		const unset = accumulate([lines]);
+		await Promise.all([below.output.closeTempFile(), unset.output.closeTempFile()]);
+		for (const { snapshot, output } of [below, unset]) {
+			expect(readFileSync(snapshot.fullOutputPath!, "utf8")).toBe(lines);
+			expect(output.spillDroppedBytes).toBe(0);
+		}
+	});
+
+	it("reads structured output from the capped file like any other", async () => {
+		const { output } = accumulate([lines], { spillMaxBytes: 100_000 });
+		await output.closeTempFile();
+		const full = await output.readFullOutput(1_000);
+		expect(full.truncated).toBe(true);
+		expect(full.content.startsWith("line-000001\n")).toBe(true);
+		expect(full.content.endsWith("line-200000\n")).toBe(true);
+	});
+});

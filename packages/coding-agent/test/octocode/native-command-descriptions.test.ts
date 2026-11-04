@@ -19,7 +19,6 @@ it("gives every native and bundled extension command a short description with it
 	vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
 	vi.stubEnv("OCTOCODE_OFFLINE", "1");
 	vi.stubEnv("OCTOCODE_MCP", "0");
-	vi.stubEnv("OCTOCODE_API", "0");
 	vi.stubEnv("OCTOCODE_EXTRA_SKILLS", "0");
 	const settingsManager = SettingsManager.inMemory();
 	const resourceLoader = new DefaultResourceLoader({

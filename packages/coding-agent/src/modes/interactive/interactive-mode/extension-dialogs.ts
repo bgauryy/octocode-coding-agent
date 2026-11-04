@@ -18,7 +18,7 @@ import type { InteractiveModeHost } from "./host.ts";
 type ExtensionDialogsHost = Pick<
 	InteractiveModeHost,
 	| "activeSelectorDispose"
-	| "activeSelectorToken"
+	| "defaultEditor"
 	| "disposeActiveSelector"
 	| "editor"
 	| "editorContainer"
@@ -30,11 +30,13 @@ type ExtensionDialogsHost = Pick<
 	| "hideExtensionSelector"
 	| "keybindings"
 	| "programStatus"
+	| "session"
 	| "settingsManager"
 	| "showExtensionConfirm"
 	| "showExtensionSelector"
 	| "toggleToolOutputExpansion"
 	| "ui"
+	| "uiStore"
 >;
 
 /**
@@ -53,7 +55,7 @@ function takeOpenDialog(host: object): (() => void) | undefined {
 	return cancel;
 }
 
-type SlotHost = Pick<ExtensionDialogsHost, "activeSelectorDispose" | "activeSelectorToken" | "disposeActiveSelector">;
+type SlotHost = Pick<ExtensionDialogsHost, "activeSelectorDispose" | "disposeActiveSelector" | "uiStore">;
 
 /**
  * Take the editor slot for a dialog or a non-overlay custom component. Whatever holds it (an extension dialog, a
@@ -66,11 +68,10 @@ function takeSlot(host: SlotHost, cancel: () => void): () => void {
 	takeOpenDialog(host)?.();
 	host.disposeActiveSelector();
 	const token = {};
-	host.activeSelectorToken = token;
+	host.uiStore.getState().takeSlot(token);
 	host.activeSelectorDispose = cancel;
 	return () => {
-		if (host.activeSelectorToken !== token) return;
-		host.activeSelectorToken = undefined;
+		if (!host.uiStore.getState().releaseSlot(token)) return;
 		host.activeSelectorDispose = undefined;
 	};
 }
@@ -133,6 +134,9 @@ export function showExtensionSelector(
 			tui: host.ui,
 			timeout: opts?.timeout,
 			onToggleToolsExpanded: () => host.toggleToolOutputExpansion(),
+			// A dialog that opens mid-run (an approval) keeps what the user types: it is submitted as if typed in the editor
+			// (dialog unit tests build hosts without a session).
+			onSubmitText: host.session?.isStreaming ? (text) => host.defaultEditor.onSubmit?.(text) : undefined,
 		});
 
 		host.editorContainer.clear();
@@ -237,9 +241,15 @@ export function showExtensionEditor(
 	host: ExtensionDialogsHost,
 	title: string,
 	prefill?: string,
+	opts?: ExtensionUIDialogOptions,
 ): Promise<string | undefined> {
 	return new Promise((resolve) => {
-		const finish = openDialog(host, resolve, () => host.hideExtensionEditor(), undefined);
+		if (opts?.signal?.aborted) {
+			resolve(undefined);
+			return;
+		}
+
+		const finish = openDialog(host, resolve, () => host.hideExtensionEditor(), opts?.signal);
 		host.extensionEditor = new ExtensionEditorComponent(
 			host.ui,
 			host.keybindings,

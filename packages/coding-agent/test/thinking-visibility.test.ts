@@ -1,12 +1,12 @@
 import { Container } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
-import {
-	toggleThinkingBlockVisibility,
-	updateThinkingBlockVisibility,
-} from "../src/modes/interactive/interactive-mode/view-state.ts";
+import { toggleThinkingBlockVisibility } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
+import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const plain = (component: AssistantMessageComponent) =>
 	component
@@ -25,23 +25,24 @@ function transcript() {
 	chatContainer.addChild(top);
 	chatContainer.addChild(group);
 	const context = {
-		hideThinkingBlock: false,
+		uiStore: createUiStore(),
 		settingsManager: { setHideThinkingBlock: vi.fn() },
 		chatContainer,
 		ui: { requestRender: vi.fn() },
 		footerDataProvider: { setExtensionStatus: vi.fn() },
-		updateThinkingBlockVisibility: () => updateThinkingBlockVisibility(createFakeHost(context)),
 	};
-	return { top, nested, context, host: createFakeHost(context) };
+	const host = createFakeHost(context);
+	bindViewState(host);
+	bindRender(context.uiStore, context.ui);
+	return { top, nested, context, host };
 }
 
 describe("thinking visibility has one owner: the host setting", () => {
 	beforeAll(() => initTheme("dark", false));
 
 	it("applies the setting to every assistant message, including nested ones", () => {
-		const { top, nested, context, host } = transcript();
-		context.hideThinkingBlock = true;
-		updateThinkingBlockVisibility(host);
+		const { top, nested, context } = transcript();
+		context.uiStore.getState().setHideThinking(true);
 		expect(plain(top)).not.toContain("Top thought.");
 		expect(plain(nested)).not.toContain("Nested thought.");
 		expect(context.ui.requestRender).toHaveBeenCalledTimes(1);

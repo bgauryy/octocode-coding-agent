@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { assignMcpToolNames } from "../tool-names.ts";
-import { structureApplicability } from "./applicability.ts";
+import { structureApplicability, withOverrideNotes } from "./applicability.ts";
 import { inlineTinyRefs } from "./inline-refs.ts";
 import { dedupeFieldDocs } from "./field-docs.ts";
 import { isHoistableUnion, oneLine } from "./schema-nodes.ts";
@@ -9,7 +9,7 @@ import { schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides } from "./types.ts";
 
 /** Bump when the rendered text changes for the same catalog, so stored files regenerate. */
-export const COMPACT_GENERATOR_VERSION = 12;
+export const COMPACT_GENERATOR_VERSION = 15;
 
 /**
  * A field doc repeated by at least this many tools is written once, in the server's shared-fields block, when every
@@ -69,7 +69,7 @@ function callNames(input: CompactServerInput): Map<string, string> {
 
 /**
  * Each tool's function in the file, by MCP tool name. A function is named by its call name after
- * `mcp__<server>__`, so the header's calling rule holds. A call name with another form (a plugin server's `-`, a
+ * `mcp__<server>__`, so the `mcps` section's calling rule holds. A call name with another form (a plugin server's `-`, a
  * shortened name) gets a function named after the tool, unique within the file, and a `// call as` line.
  */
 export function functionNames(input: CompactServerInput): Map<string, FunctionName> {
@@ -175,8 +175,8 @@ function renderTool(
 	context: RenderContext = {},
 ): string {
 	const scope = scopeOf(name.fn);
-	const fieldDocs = overrides?.fields?.[tool.name];
-	const input = schemaToTs(structureApplicability(inlineTinyRefs(tool.inputSchema)), { scope, fieldDocs, ...context });
+	const { schema, fieldDocs } = withOverrideNotes(inlineTinyRefs(tool.inputSchema), overrides?.fields?.[tool.name]);
+	const input = schemaToTs(structureApplicability(schema), { scope, fieldDocs, ...context });
 	const outputDocs = fieldDocs && outputFieldDocs(fieldDocs);
 	const output: { type: string; aliases: string[] } =
 		tool.outputSchema === undefined
@@ -266,8 +266,7 @@ function findHoistedTypes(
 }
 
 /**
- * The model-facing text for one server: a header naming how to call its tools, its instructions, docs shared by
- * several tools, and one typed function per tool inside `declare namespace`. Tools are sorted by name; overrides
+ * The model-facing text for one server: its instructions, docs shared by several tools, and one typed function per tool inside `declare namespace`. Tools are sorted by name; overrides
  * replace prose only.
  */
 export function renderServer(input: CompactServerInput, overrides?: DescriptionOverrides): string {
@@ -275,10 +274,10 @@ export function renderServer(input: CompactServerInput, overrides?: DescriptionO
 	const names = functionNames(input);
 	const sharedDocs = findSharedDocs(tools, names, overrides);
 	const hoisted = findHoistedTypes(tools, names, overrides, sharedDocs);
-	const explicit = [...names.values()].some((name) => name.explicit)
-		? ` A function after a "${CALL_AS.trim()} <name>" line is called by that name.`
+	// Only a name the section's calling rule cannot produce needs a word here.
+	let out = [...names.values()].some((name) => name.explicit)
+		? `// A function after a "${CALL_AS.trim()} <name>" line is called by that name.\n`
 		: "";
-	let out = `// MCP server "${oneLine(input.server)}" · catalog ${catalogHash(input).slice(0, 12)} · call a tool as mcp__${input.server}__<function> with the input object.${explicit}\n`;
 	const instructions = oneLine(overrides?.server ?? input.instructions);
 	if (instructions) out += `/** ${instructions} */\n`;
 	out += `declare namespace ${namespaceName(input.server)} {\n`;

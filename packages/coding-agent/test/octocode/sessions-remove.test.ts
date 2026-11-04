@@ -32,7 +32,7 @@ afterEach(() => {
 function fixture(id: string, pid: number | null = null) {
 	const root = fs.realpathSync(tmp("octocode-rm-"));
 	const workspace = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(workspace.root, ".octa", "code");
+	const state = path.join(workspace.root, ".octocode", "code");
 	const file = path.join(state, "sessions", `${id}.jsonl`);
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	fs.writeFileSync(file, `${JSON.stringify({ type: "session", id, cwd: root })}\n`);
@@ -45,6 +45,19 @@ function fixture(id: string, pid: number | null = null) {
 }
 
 describe("removeSessions", () => {
+	it("removes the checkpoints and backups saved beside the transcript, and leaves other sessions' alone", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const one = fixture("s-siblings");
+		const beside = [`${one.file}.checkpoint-abc.md`, `${one.file}.bak`, `${one.file}.1.bak`];
+		for (const file of beside) fs.writeFileSync(file, "x");
+		const other = `${path.dirname(one.file)}/other.jsonl.bak`;
+		fs.writeFileSync(other, "x");
+		const result = await removeSessions(index, [{ id: "s-siblings", file: one.file }], {});
+		expect(result.removed).toEqual(["s-siblings"]);
+		for (const file of beside) expect(fs.existsSync(file)).toBe(false);
+		expect(fs.existsSync(other)).toBe(true);
+	});
+
 	it("removes the transcript, both folders of the session's own workspace and its rows, whatever the current cwd", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const one = fixture("s-one");

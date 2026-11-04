@@ -1,5 +1,5 @@
 import { animationClock } from "../tokens/clock.ts";
-import { MOTION, SPINNER } from "../tokens/design.ts";
+import { ELLIPSIS, MOTION, SPINNER } from "../tokens/design.ts";
 import type { TUI } from "../tui.ts";
 import { Text } from "./text.ts";
 
@@ -26,13 +26,13 @@ export class Loader extends Text {
 	private renderIndicatorVerbatim = false;
 	private spinnerColorFn: (str: string) => string;
 	private messageColorFn: (str: string) => string;
-	private message: string = "Loading...";
+	private message: string = `Loading${ELLIPSIS}`;
 
 	constructor(
 		ui: TUI,
 		spinnerColorFn: (str: string) => string,
 		messageColorFn: (str: string) => string,
-		message: string = "Loading...",
+		message: string = `Loading${ELLIPSIS}`,
 		indicator?: LoaderIndicatorOptions,
 	) {
 		super("", 1, 0);

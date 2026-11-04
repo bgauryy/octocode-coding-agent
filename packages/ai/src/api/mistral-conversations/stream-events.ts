@@ -69,6 +69,8 @@ export async function consumeChatStream(
 		}
 	};
 
+	// Usage arrives in the last chunk, so a stream dropped before it has recorded nothing of what was generated.
+	output.usage.lowerBound = true;
 	for await (const event of mistralStream) {
 		const chunk = event.data;
 		await onProviderStreamEvent?.(chunk, model);
@@ -86,6 +88,7 @@ export async function consumeChatStream(
 			output.usage.cacheWrite = 0;
 			output.usage.totalTokens = sumUsageTokens(output.usage, chunk.usage.total_tokens);
 			calculateCost(model, output.usage);
+			delete output.usage.lowerBound;
 		}
 
 		const choice = chunk.choices[0];
@@ -211,6 +214,8 @@ export async function consumeChatStream(
 		}
 	}
 
+	// A stream that ended properly is the whole count, even without a usage chunk.
+	delete output.usage.lowerBound;
 	finishCurrentBlock(currentBlock);
 	for (const index of toolBlocksByKey.values()) {
 		const block = output.content[index];

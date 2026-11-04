@@ -75,8 +75,12 @@ export class UIPromptTracker {
 					opts,
 					(answer) => (typeof answer.text === "string" ? answer.text : REFUSED),
 				),
-			editor: (title, prefill) =>
-				this.tracked({ kind: "editor", title, allowsText: false }, () => ui.editor(title, prefill)),
+			editor: (title, prefill, opts) =>
+				this.tracked(
+					{ kind: "editor", title, allowsText: false },
+					(signal) => ui.editor(title, prefill, { ...opts, signal }),
+					opts,
+				),
 			custom: (factory, options) =>
 				this.tracked({ kind: "custom", allowsText: false }, () => ui.custom(factory, options)),
 		};

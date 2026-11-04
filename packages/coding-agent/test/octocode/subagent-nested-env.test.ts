@@ -1,7 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CHILD_OWNED_ENV, dropForeignChildEnv } from "../../src/octocode/subagents/process/child-env.ts";
+import {
+	CHILD_OWNED_ENV,
+	dropForeignChildEnv,
+	NESTING_ENV,
+	nestingOf,
+	nestingRefusal,
+} from "../../src/octocode/subagents/process/child-env.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 
 const resolver = pathToFileURL(fileURLToPath(new URL("../../scripts/source-resolver.ts", import.meta.url))).href;
@@ -78,5 +84,29 @@ describe("an Octocode that a subagent's command starts", () => {
 		const nested = env("100 1793000000");
 		expect(dropForeignChildEnv(nested, 555, alive)).toBe(true);
 		expect(nested).toEqual({ OCTOCODE_SESSION_ID: "s1" });
+	});
+});
+
+describe("the nesting counter", () => {
+	it("counts each task, and survives the clearing that makes a nested session top-level", () => {
+		const child = subagentProcessEnv(undefined, { PATH: "/bin" }, { id: "first" });
+		expect(child[NESTING_ENV]).toBe("1");
+		expect(CHILD_OWNED_ENV).not.toContain(NESTING_ENV);
+		const shell: NodeJS.ProcessEnv = { ...child, OCTOCODE_PARENT_PID: "100 1793000000" };
+		expect(dropForeignChildEnv(shell, 555, () => true)).toBe(true);
+		expect(shell.OCTOCODE_SUBAGENT).toBeUndefined();
+		expect(nestingOf(shell)).toBe(1);
+		// The nested session may start one more; what it starts cannot, through its own nested session.
+		expect(nestingRefusal(shell)).toBeUndefined();
+		const grandchild = subagentProcessEnv(undefined, shell, { id: "second" });
+		expect(grandchild[NESTING_ENV]).toBe("2");
+		const deepest: NodeJS.ProcessEnv = { ...grandchild, OCTOCODE_PARENT_PID: "100 1793000000" };
+		dropForeignChildEnv(deepest, 555, () => true);
+		expect(nestingRefusal(deepest)).toMatch(/2 agent tasks deep/);
+	});
+
+	it("reads no counter, or a bad one, as a top-level session", () => {
+		for (const value of [undefined, "", "x", "-1", "1.5"]) expect(nestingOf({ [NESTING_ENV]: value })).toBe(0);
+		expect(nestingRefusal({})).toBeUndefined();
 	});
 });

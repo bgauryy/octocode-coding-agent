@@ -1,11 +1,12 @@
 import {
 	type EditorTheme,
-	GLYPH,
 	getKeybindings,
+	GLYPH,
 	type Keybinding,
 	type KeyId,
 	type MarkdownTheme,
 	type SelectListTheme,
+	SEPARATOR,
 	type SettingsListTheme,
 } from "@octocodeai/octocode-tui";
 import { highlight, supportsLanguage } from "../utils/syntax-highlight.ts";
@@ -238,4 +239,17 @@ export function keyHint(keybinding: Keybinding, description: string): string {
 
 export function rawKeyHint(key: string, description: string): string {
 	return theme.fg("dim", formatKeyText(key)) + theme.fg("muted", ` ${description}`);
+}
+
+/** A key and the verb it triggers: `[keyText("tui.select.confirm"), "select"]`. Say `interrupt` for the agent run, `cancel` for a dialog. */
+export type KeyHintPair = readonly [key: string, verb: string];
+
+/** Plain `key verb · key verb`, for text a caller colors itself or measures. */
+export function hintText(hints: readonly KeyHintPair[]): string {
+	return hints.map(([key, verb]) => `${formatKeyText(key)} ${verb}`).join(SEPARATOR);
+}
+
+/** The one key-hint line of selectors, dialogs and indicators: `key verb · key verb` in `rawKeyHint` colors. */
+export function hintLine(hints: readonly KeyHintPair[]): string {
+	return hints.map(([key, verb]) => rawKeyHint(key, verb)).join(theme.fg("dim", SEPARATOR));
 }

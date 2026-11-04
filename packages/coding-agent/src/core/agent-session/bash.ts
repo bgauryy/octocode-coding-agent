@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { sessionOutputDir, withSessionStorage } from "../../config/runtime-paths.ts";
-import { readOutputFile } from "../../utils/output-files.ts";
+import { DISPLAY_OUTPUT_MAX_BYTES, outputFileReadable } from "../../utils/output-files.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";
 import { type BashOperations, createLocalBashOperations } from "../tools/bash.ts";
@@ -60,6 +60,7 @@ export class SessionBash {
 						},
 						signal: abortController.signal,
 						maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
+						spillMaxBytes: session.settingsManager.getBashSpillMaxBytes(),
 						outputDir: sessionOutputDir("bash"),
 					},
 				),
@@ -90,16 +91,15 @@ export class SessionBash {
 			excludeFromContext: options?.excludeFromContext,
 		};
 		if (result.truncated) {
+			// The record keeps the spill's path, not a copy: up to 32 MiB per command would go to the JSONL, the database mirror
+			// and memory for the life of the session, and only a view ever reads it (`application/normalize.ts`).
 			try {
-				bashMessage.fullOutput = result.fullOutputPath
-					? readOutputFile(result.fullOutputPath, 32 * 1024 * 1024)?.replace(/\r/g, "")
-					: undefined;
+				if (!result.fullOutputPath || !outputFileReadable(result.fullOutputPath, DISPLAY_OUTPUT_MAX_BYTES))
+					bashMessage.fullOutputUnavailable = "Full shell output is unavailable; the displayed output is truncated";
 			} catch (error) {
 				bashMessage.fullOutputUnavailable =
 					error instanceof Error ? error.message : "Full shell output could not be retained";
 			}
-			if (bashMessage.fullOutput === undefined)
-				bashMessage.fullOutputUnavailable ??= "Full shell output is unavailable; the displayed output is truncated";
 		}
 
 		// If agent is streaming, defer adding to avoid breaking tool_use/tool_result ordering
@@ -139,10 +139,14 @@ export class SessionBash {
 	flushPending(): void {
 		if (this._pendingMessages.length === 0) return;
 
-		for (const bashMessage of this._pendingMessages) {
-			this.host.session.sessionManager.appendMessage(bashMessage);
+		try {
+			// Written ones leave the queue one by one, so a failure part way cannot append them twice on the next flush.
+			while (this._pendingMessages.length > 0) {
+				this.host.session.sessionManager.appendMessage(this._pendingMessages[0]);
+				this._pendingMessages.shift();
+			}
+		} finally {
+			this.host.refreshContext();
 		}
-		this._pendingMessages = [];
-		this.host.refreshContext();
 	}
 }

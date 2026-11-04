@@ -106,7 +106,7 @@ describe("MCP connection catalog lifecycle", () => {
 		expect(fixture.published).toEqual([]);
 		await fixture.connection.close();
 	});
-	it("suppresses unchanged refreshes, validates reconnects and withdraws closed catalogs", async () => {
+	it("suppresses unchanged refreshes, keeps the catalog through a reconnect and withdraws closed catalogs", async () => {
 		const fixture = connectionFixture();
 		const { connection } = fixture;
 		try {
@@ -118,7 +118,8 @@ describe("MCP connection catalog lifecycle", () => {
 			expect(fixture.published).toEqual([["read"]]);
 			await connection.reconnect();
 			expect(connection.tools).toBe(tools);
-			expect(fixture.published).toEqual([["read"], [], ["read"]]);
+			// The drop keeps the catalog, so a reconnect that offers the same tools publishes nothing.
+			expect(fixture.published).toEqual([["read"]]);
 			fixture.version("2");
 			await connection.reconnect();
 			expect(connection.tools[0]).not.toBe(tools[0]);

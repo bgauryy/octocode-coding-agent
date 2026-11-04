@@ -1,4 +1,10 @@
-import { CombinedAutocompleteProvider, type EditorTheme, TuiMainScreen, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	CombinedAutocompleteProvider,
+	type EditorTheme,
+	stripTerminalSequences,
+	TuiMainScreen,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
@@ -213,7 +219,7 @@ describe("Octocode prompt box", () => {
 	const CODES: Record<string, number> = { error: 31, accent: 35, muted: 90, dim: 2 };
 	const tagged = { fg: (color: string, text: string) => `\x1b[${CODES[color] ?? 39}m${text}\x1b[39m` };
 	const painted = (code: number, text: string) => `\x1b[${code}m${text}\x1b[39m`;
-	const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m|\x1b_[^\x07]*\x07/g, "");
+	const plain = (line: string) => stripTerminalSequences(line);
 	function boxed(hint = { value: true }) {
 		const { tui, input, keys } = terminal();
 		const editor = decorateEditor(

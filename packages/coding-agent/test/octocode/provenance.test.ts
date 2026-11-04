@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { expandPromptRefs } from "../../src/octocode/external/refs.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
+import { recordChildReports } from "../../src/octocode/permission/provenance/reports.ts";
+import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import type { MessageReader } from "../../src/octocode/shared/references.ts";
 
 const ROOT = "/work/repo";
@@ -226,10 +228,47 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		).toBeUndefined();
 	});
 
-	it("does not treat agent task text as a sink", () => {
+	it("treats a subagent's task as a sink: a page's text reaches another agent's instructions", () => {
 		const { provenance } = setup();
 		provenance.record(result("mcp__browser__snapshot", {}, PAGE), ctx);
-		expect(provenance.check(call("agent", { task: SPAN }), ctx)).toBeUndefined();
+		expect(provenance.check(call("agent", { task: SPAN }), ctx)?.why).toMatch(/contains text from/);
+		expect(provenance.check(call("agent", { task: "review the auth module" }), ctx)).toBeUndefined();
+	});
+
+	it("treats a subagent's report as untrusted, labelled with the child, in a later command", () => {
+		const { provenance } = setup();
+		const report = `The fix is ${SPAN}`;
+		provenance.record(result("agent", { task: "look it up" }, report, { details: { id: "researcher-1234" } }), ctx);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)?.why).toMatch(
+			/contains text from agent researcher-1234/,
+		);
+		expect(provenance.check(call("bash", { command: "ls src" }), ctx)).toBeUndefined();
+	});
+
+	it("indexes a background child's report, which arrives as a message", async () => {
+		const { provenance } = setup();
+		let handler: ((event: unknown, context: unknown) => Promise<void>) | undefined;
+		const api = {
+			on: (name: string, run: typeof handler) => {
+				if (name === "message_end") handler = run;
+			},
+		};
+		recordChildReports(api as never, provenance);
+		const message = (customType: string) => ({
+			message: { role: "custom", customType, content: `Report: ${SPAN}`, details: { id: "researcher-1" } },
+		});
+		await handler?.(message("octocode-memory"), ctx);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)).toBeUndefined();
+		await handler?.(message(AGENT_RESULT_TYPE), ctx);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)?.why).toMatch(
+			/contains text from agent researcher-1/,
+		);
+	});
+
+	it("does not flag a task repeating what the task itself said in its report", () => {
+		const { provenance } = setup();
+		provenance.record(result("agent", { task: SPAN }, `Done: ${SPAN}`), ctx);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)).toBeUndefined();
 	});
 });
 

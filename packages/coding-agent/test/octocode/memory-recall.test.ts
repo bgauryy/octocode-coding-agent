@@ -79,7 +79,7 @@ describe("memory tool guidance", () => {
 		expect(guidance).toMatch(/corrects your approach, confirms a non-obvious one, or asks you to remember/);
 		expect(guidance).toMatch(/Don't save what code, git history, AGENTS\.md, skills or the backlog/);
 		expect(guidance).toMatch(/update or delete one that proves wrong/);
-		expect(guidance).toMatch(/and when a report proposes something to remember/);
+		expect(guidance).toMatch(/and when they confirm what a report proposes/);
 		expect(child.promptGuidelines).toEqual([
 			expect.stringMatching(/^Memory is read-only here.*report one that proves wrong\.$/),
 		]);
@@ -97,7 +97,7 @@ describe("memory age labels", () => {
 			/^M1 \(workspace, decision, 12d\) Rewind keeps checkpoints/m,
 		);
 		const result = (await fire("before_agent_start", { prompt: "rewind checkpoints" }, ctxFor())) as any;
-		expect(result.message.content.split("\n")[1]).toMatch(/^M1 \(workspace, decision, 12d\) \(agent-written\) Rewind/);
+		expect(result.message.content.split("\n")[1]).toMatch(/^M1 \(workspace, decision, 12d\) \(agent-written\) "Rewind/);
 	});
 });
 
@@ -242,5 +242,20 @@ describe("reference kind", () => {
 			/^Updated M1 \(workspace, reference, 0d\)/,
 		);
 		expect(parseTemplate("kind: reference\n---\n").kind).toBe("reference");
+	});
+
+	it("ranks a memory nobody used for long below an equal one in use, and keeps a pinned one up", () => {
+		const store = memoryStore(cwd);
+		const old = Date.now() - 100 * DAY_MS;
+		const add = (title: string, body: string, pinned = false) =>
+			store.set({ title, body: `parser ${body}`, author: "agent", pinned }, old).memory;
+		const unused = add("first entry", "tokens split on commas before lookup");
+		const used = add("second thing", "errors recover at statement ends always");
+		const pinned = add("third item", "grammar tables generated during builds nightly", true);
+		store.markUsed([used.id]);
+		const ids = store.search("parser").map((hit) => hit.id);
+		expect(ids).toHaveLength(3);
+		expect(ids.indexOf(used.id)).toBeLessThan(ids.indexOf(unused.id));
+		expect(ids.indexOf(pinned.id)).toBeLessThan(ids.indexOf(unused.id));
 	});
 });

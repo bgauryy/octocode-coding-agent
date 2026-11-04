@@ -5,22 +5,23 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { hostIdentity } from "../host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
 	catalogHash,
-	catalogHashes,
 	checkOverrides,
 	COMPACT_GENERATOR_VERSION,
 	type CompactServerInput,
+	describedOverrides,
 	type DescriptionOverrides,
 	serverGeneratedDir,
 	type GeneratedMeta,
 	parseOverrides,
+	presetStatus,
 	readGenerated,
 	renderServer,
 	resolveServerFile,
-	toolHash,
 	toPresetOverrides,
 	writeGenerated,
 } from "../compact/index.ts";
@@ -197,9 +198,10 @@ async function apply(context: CompactContext, args: string[]): Promise<number> {
 	const dir = dirOf(context, server);
 	try {
 		writeGenerated(dir, server, text, {
-			...catalogHashes(input),
+			hash: catalogHash(input),
 			generatorVersion: COMPACT_GENERATOR_VERSION,
 			overrides,
+			authored: toPresetOverrides(overrides, input),
 			...(typeof model === "string" ? { optimizedBy: { model, at: new Date().toISOString() } } : {}),
 			generatedAt: new Date().toISOString(),
 		});
@@ -225,15 +227,19 @@ async function preset(context: CompactContext, args: string[]): Promise<number> 
 	return 0;
 }
 
-/** Tools whose stored overrides no longer describe the live tool: changed or gone. */
-function staleTools(meta: GeneratedMeta, live: CompactServerInput): string[] {
-	const overridden = new Set(
-		[meta.overrides?.tools, meta.overrides?.triggers, meta.overrides?.fields].flatMap((entries) =>
-			Object.keys(entries ?? {}),
-		),
+/**
+ * Tools whose overrides no longer describe the live tool: the file's overrides that the live catalog would not get, and
+ * the stored ones that are stale (a session already renders those from the server's text).
+ */
+function staleTools(meta: GeneratedMeta, live: CompactServerInput, preset: DescriptionOverrides | undefined): string[] {
+	const current = describedOverrides(meta, live, preset);
+	const differing = (["tools", "triggers", "fields"] as const).flatMap((kind) =>
+		Object.entries(meta.overrides?.[kind] ?? {})
+			.filter(([tool, entry]) => !isDeepStrictEqual(entry, current?.[kind]?.[tool]))
+			.map(([tool]) => tool),
 	);
-	const current = new Map(live.tools.map((tool) => [tool.name, toolHash(tool)]));
-	return [...overridden].filter((tool) => meta.toolHashes?.[tool] !== current.get(tool)).sort();
+	const stored = presetStatus(meta.authored ?? {}, [live]).flatMap((entry) => entry.tool ?? []);
+	return [...new Set([...differing, ...stored])].sort();
 }
 
 interface ListRow {
@@ -275,7 +281,8 @@ async function list(context: CompactContext, args: string[]): Promise<number> {
 				row.stale = stored
 					? stored.meta.hash !== live || stored.meta.generatorVersion !== COMPACT_GENERATOR_VERSION
 					: undefined;
-				const stale = stored ? staleTools(stored.meta, input) : [];
+				const preset = findMcpPreset(context.options.presets, entry.name)?.compactOverrides?.(input);
+				const stale = stored ? staleTools(stored.meta, input, preset) : [];
 				if (stale.length) row.staleTools = stale;
 				if (!stored) row.note = `no file; live catalog ${live.slice(0, 12)}`;
 			} catch (error) {

@@ -19,7 +19,7 @@ export const EXCLUDE_WORKSPACE_STATE = `:(top,glob,icase,exclude)${stateGlob}`;
 export async function rejectTrackedWorkspaceState(cwd: string, tree: string): Promise<void> {
 	if (await git(cwd, ["ls-files", "--cached", `--with-tree=${tree}`, "--", WORKSPACE_STATE_PATHSPEC]))
 		throw new Error(
-			"Git tracks private workspace state under .octa/code. Remove it from the index and commit before using worktrees.",
+			"Git tracks private workspace state under .octocode/code. Remove it from the index and commit before using worktrees.",
 		);
 }
 

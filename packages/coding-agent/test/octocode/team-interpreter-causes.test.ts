@@ -11,7 +11,7 @@ const CONFINED = "node --permission --no-experimental-sqlite --allow-fs-read=*";
 
 /** The confined form with the words `export` and `alias` where they are only data: Node's code, a path or an argument. */
 const DATA_WORDS = [
-	`${CONFINED} -e 'console.log(require("fs").readdirSync(".octa/code/temp/agents/x/export"))'`,
+	`${CONFINED} -e 'console.log(require("fs").readdirSync(".octocode/code/temp/agents/x/export"))'`,
 	`${CONFINED} -e "export const alias = 1"`,
 	`${CONFINED} -e 'x' .octocode/export/alias.json`,
 	`${CONFINED} -e 'x' > out/export.txt`,
@@ -101,7 +101,9 @@ describe("the reservation gate's refusal of inline code", () => {
 		stops.push(() => fake.emit("session_shutdown", {}, ctx));
 		const lock = (paths: string[]) =>
 			fake.tools.get("coordinate").execute("c", { action: "lock", paths, reason: "auth" }, undefined, undefined, ctx);
-		const gate = (command: string, input = { command }) => reservationGate({ toolName: "bash", input } as never, ctx);
+		// Inline code is held back only when its text names a reserved path: a trailing comment names it.
+		const gate = (command: string, input = { command: `${command}\n# src/a.ts` }) =>
+			reservationGate({ toolName: "bash", input } as never, ctx);
 		return { lock, gate };
 	}
 
@@ -116,9 +118,9 @@ describe("the reservation gate's refusal of inline code", () => {
 		expect(refused).toMatchObject({ block: true });
 		expect(refused?.reason).toContain("(`NODE_OPTIONS` appears in the line");
 		// A bare node only lacks the flags: the gate adds them rather than refusing with that cause.
-		const bare = { command: `node -e 'x'` };
+		const bare = { command: `node -e 'x'\n# src/a.ts` };
 		expect(await peer.gate(bare.command, bare)).toBeUndefined();
-		expect(bare.command).toBe(`${CONFINED} -e 'x'`);
+		expect(bare.command).toBe(`${CONFINED} -e 'x'\n# src/a.ts`);
 		const lifted = await peer.gate(`export X=1; node -e 'x'`);
 		expect(lifted?.reason).toContain("`export` appears in the line");
 		expect(lifted?.reason).toContain("reserved by");

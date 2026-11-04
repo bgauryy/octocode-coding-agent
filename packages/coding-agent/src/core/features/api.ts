@@ -236,6 +236,11 @@ export function createExtensionAPI(
 			return runtime.getActiveTools();
 		},
 
+		getHiddenDeclarations(): string[] {
+			assertActive();
+			return runtime.getHiddenDeclarations();
+		},
+
 		getAllTools() {
 			assertActive();
 			return runtime.getAllTools();

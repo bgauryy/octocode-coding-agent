@@ -41,6 +41,11 @@ export interface WorkingStatusEditor extends EditorComponent {
 export type CompactionQueuedMessage = {
 	text: string;
 	mode: "steer" | "followUp";
+	/**
+	 * Carried over a session switch rather than typed during compaction. A carried message waits for the user (Enter in
+	 * an empty editor, the queue list, Alt+Up, Esc); compaction and run events never send it.
+	 */
+	carried?: true;
 };
 
 export type CompactionCostNotice = {

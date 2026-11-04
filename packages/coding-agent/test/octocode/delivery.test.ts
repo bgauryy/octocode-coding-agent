@@ -177,16 +177,29 @@ describe("Delivery", () => {
 		expect(t.sent).toHaveLength(4);
 	});
 
-	it("leaves the queue alone outside the TUI and forgets messages of an ended session", async () => {
+	it("re-appends a message clear_queue removed outside the TUI, and leaves one still queued alone", async () => {
+		const cleared = setup("rpc");
+		await cleared.emit("session_start", {}, cleared.ctx);
+		await cleared.emit("agent_start", {}, cleared.ctx);
+		const report1 = report("a");
+		cleared.api.sendMessage(report1, { deliverAs: "steer" });
+		await cleared.emit("agent_settled", {}, cleared.ctx);
+		// RPC or the application port cleared the queue: the report is added back, not left waiting for shutdown.
+		expect(cleared.sent.at(-1)).toEqual({ message: report1, options: { triggerTurn: false } });
+		expect(cleared.delivery.pending).toBe(0);
+
 		const t = setup("rpc");
+		Object.assign(t.ctx, { isMessageQueued: () => true });
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
 		t.api.sendMessage(report("a"), { deliverAs: "steer" });
 		await t.emit("agent_settled", {}, t.ctx);
 		// RPC abort keeps Octocode's queue: the next run starts the message, so re-sending would duplicate it.
 		expect(t.sent).toHaveLength(1);
-		expect(t.delivery.pending).toBe(0);
+		expect(t.delivery.pending).toBe(1);
+	});
 
+	it("forgets messages of an ended session", async () => {
 		const tui = setup();
 		await tui.emit("session_start", {}, tui.ctx);
 		await tui.emit("agent_start", {}, tui.ctx);

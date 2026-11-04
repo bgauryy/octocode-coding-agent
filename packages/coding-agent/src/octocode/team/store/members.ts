@@ -23,17 +23,26 @@ function retire(db: Db, id: string, now: number, reason: string): void {
 	deliveries.deadLetterOf(db, id, now);
 }
 
-/** `join`'s write, run in its transaction: takes the name unless a running process other than this one holds it. */
+/**
+ * `join`'s write, run in its transaction: takes the name unless a running process other than this one holds it. A row
+ * naming `parent` is one the parent holds for this child with its reservations (`ChildLeases`): the child takes it over
+ * and the reservations stay.
+ */
 export function claimMember(
 	db: Db,
 	team: string,
 	workspace: agents.MemberWorkspace,
 	member: Member,
 	context?: agentEvents.LifecycleContext,
+	parent?: ProcessIdentity,
 ): boolean {
 	if (agents.insert(db, team, workspace, member, context) || agents.refresh(db, member, workspace, context))
 		return true;
 	const holder = agents.processOf(db, member.id);
+	if (holder && parent && sameIdentity(holder, parent)) {
+		agents.setProcess(db, member.id, member);
+		return agents.refresh(db, member, workspace, context);
+	}
 	if (holder && sameProcess(holder.pid, holder.started)) return false;
 	retire(db, member.id, Date.now(), "replaced dead registration");
 	return agents.insert(db, team, workspace, member, context);

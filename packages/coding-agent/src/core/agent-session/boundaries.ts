@@ -284,7 +284,7 @@ export class SessionBoundaries {
 		const runner = session.extensionRunner;
 		if (!runner.hasHandlers("agent_before_settle")) return session.agent.hasQueuedMessages();
 		run.isBeforeSettle = true;
-		run.abortDuringBeforeSettle = false;
+		run.beforeSettleAbort = new AbortController();
 		try {
 			const result = await runner.emitBoundary(
 				{ type: "agent_before_settle", outcome: this._lastActivityOutcome },
@@ -293,7 +293,7 @@ export class SessionBoundaries {
 			this._commitBoundaryDrafts(result.entries);
 			this.host.flushPendingCustomMessages();
 			const finalContext = this._buildBoundaryContext([], "agent_before_settle");
-			if (run.abortDuringBeforeSettle) return false;
+			if (run.beforeSettleAbort.signal.aborted) return false;
 			const shouldContinue = result.continue || session.agent.hasQueuedMessages();
 			if (shouldContinue && !finalContext.canContinue) {
 				if (result.continue) this._reportInvalidBoundaryContinuation("agent_before_settle");

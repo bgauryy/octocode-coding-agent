@@ -15,6 +15,7 @@ import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
 import { estimateProjectedContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
+import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
 import { convertToLlm } from "../messages.ts";
 import type { SessionProjection } from "../session-manager.ts";
 import { normalizeBuildSystemPromptOptions } from "../system-prompt.ts";
@@ -72,6 +73,9 @@ async function compactBeforeNextAssistantResponse(host: AgentHooksHost, context:
 		return { ...context, messages: projection.messages };
 	}
 	await host.runAutoCompaction("threshold", false);
+	// What compaction handlers just sent (a child's assignment, the note of running work) belongs in this request, not
+	// after its turn. Every tool call of the last turn has its result here, so nothing can split a pair.
+	host.inputs.flushDuringRun(host.run.outcome);
 	return {
 		...context,
 		messages: session.sessionManager.buildSessionProjection().messages,
@@ -211,6 +215,7 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 		const routeThinking = route.thinkingLevel ?? thinkingLevel;
 		if (exceedsCompactionThreshold(host, route.model, projection, routeThinking)) {
 			await host.runAutoCompaction("threshold", false, route.model, routeThinking);
+			host.inputs.flushDuringRun(host.run.outcome);
 			// The compaction changed the projection, so the request is prepared again: a `prepareRequest` hook this session
 			// wraps runs twice for this request and must give the same answer for the same input.
 			({ previous, context } = await prepare());
@@ -279,19 +284,7 @@ export function installHiddenDeclarationsProjection(host: AgentHooksHost): void 
 	const previousTransformContext = agent.transformContext;
 	agent.transformContext = async (messages, signal) => {
 		const transformed = previousTransformContext ? await previousTransformContext(messages, signal) : messages;
-		const hidden = host.tools.hiddenDeclarations;
-		if (hidden.size === 0) return transformed;
-		return transformed.map((message) => {
-			if (message.role !== "system" || (!message.toolsAdded && !message.toolsRemoved)) return message;
-			const { toolsAdded, toolsRemoved, ...rest } = message;
-			const added = toolsAdded?.filter((tool) => !hidden.has(tool.name)) ?? [];
-			const removed = toolsRemoved?.filter((tool) => !hidden.has(tool.name)) ?? [];
-			return {
-				...rest,
-				...(added.length > 0 ? { toolsAdded: added } : {}),
-				...(removed.length > 0 ? { toolsRemoved: removed } : {}),
-			};
-		});
+		return withoutHiddenDeclarations(transformed, host.tools.hiddenDeclarations);
 	};
 }
 

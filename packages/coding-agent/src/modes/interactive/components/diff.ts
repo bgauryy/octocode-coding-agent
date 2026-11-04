@@ -65,6 +65,7 @@ export interface RenderDiffOptions {
 	filePath?: string;
 }
 
+/** Ends a tinted line: the terminal's default background. */
 const DEFAULT_BG = "\x1b[49m";
 /** How strongly a changed line, and a changed word inside it, are tinted toward the diff colour. */
 const LINE_TINT = { dark: 0.16, light: 0.12 };
@@ -86,15 +87,16 @@ interface DiffTints {
  */
 function diffTints(): DiffTints | undefined {
 	try {
-		if (theme.getBgAnsi("toolSuccessBg") !== DEFAULT_BG || theme.getBgAnsi("toolPendingBg") !== DEFAULT_BG)
-			return undefined;
+		const mode = theme.getColorMode();
+		// Tints are backgrounds: none without color.
+		if (mode === "none") return undefined;
+		if (theme.paintsBackground("toolSuccessBg") || theme.paintsBackground("toolPendingBg")) return undefined;
 		const colors = theme.colors;
 		const base = colors.toolSuccessBg;
 		const added = colors.toolDiffAdded;
 		const removed = colors.toolDiffRemoved;
 		if (!base || !added || !removed) return undefined;
 		const appearance = theme.appearance === "light" ? "light" : "dark";
-		const mode = theme.getColorMode();
 		const tint = (color: typeof base, amount: number) => backgroundAnsi(mixColors(base, color, amount, "srgb"), mode);
 		return {
 			line: { "+": tint(added, LINE_TINT[appearance]), "-": tint(removed, LINE_TINT[appearance]) },

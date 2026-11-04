@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { PARENT_FENCE_NOTE } from "../shared/fence.ts";
 import {
 	findReferences,
@@ -35,13 +36,18 @@ export async function taskReferences(
 
 /** A browser child's mode line; empty for any other child. */
 export function browserModeLine(browserMode: boolean | undefined): string {
-	return browserMode === undefined ? "" : `Browser mode: headless=${browserMode}.`;
+	return browserMode === undefined
+		? ""
+		: renderInstruction("subagent/browser-mode.md", { headless: String(browserMode) });
 }
 
 /** How the child returns the structured result its parent asked for (`resultSchema`); empty without one. */
 export function resultContractBlock(resultContract: ResultContract | undefined): string {
 	return resultContract
-		? `Result contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
+		? renderInstruction("subagent/result-contract.md", {
+				hash: resultContract.hash,
+				schema: JSON.stringify(resultContract.schema),
+			})
 		: "";
 }
 

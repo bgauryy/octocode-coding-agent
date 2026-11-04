@@ -2,7 +2,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { ApplicationAssets } from "../src/core/application/assets.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
+import { normalizeApplicationMessage } from "../src/core/application/normalize.ts";
 import { convertToLlm } from "../src/core/messages.ts";
 import { createHarness } from "./suite/harness.ts";
 
@@ -23,7 +25,10 @@ it("retains complete trusted shell output through completion and a JSON session 
 		outputPath = result.fullOutputPath;
 		expect(result.truncated).toBe(true);
 		const stored = harness.session.messages.find((message) => message.role === "bashExecution")!;
-		expect(stored).toMatchObject({ fullOutput: original });
+		// The record names the spill; it holds no copy for the JSONL, the database mirror and memory to carry.
+		expect(stored).toMatchObject({ fullOutputPath: outputPath });
+		expect(stored).not.toHaveProperty("fullOutput");
+		expect(JSON.stringify(harness.sessionManager.getEntries()).length).toBeLessThan(original.length / 2);
 		const modelText = JSON.stringify(convertToLlm([stored]));
 		expect(modelText).not.toContain("middle output 7500");
 		expect(modelText).toContain("trimmed: first");
@@ -41,6 +46,23 @@ it("retains complete trusted shell output through completion and a JSON session 
 		harness.cleanup();
 		if (outputPath) rmSync(outputPath, { force: true });
 	}
+});
+
+it("still shows the full output an older session recorded, and names the file when this process cannot read it", () => {
+	const assets = new ApplicationAssets({ memory: true });
+	const shown = (source: object) =>
+		normalizeApplicationMessage(
+			{ role: "bashExecution", command: "c", output: "tail", truncated: true, ...source },
+			"m",
+			assets,
+		);
+	expect(shown({ fullOutput: "whole output" }).content?.[1]).toMatchObject({ text: "whole output" });
+	const elsewhere = shown({ fullOutputPath: "/saved/by/an/earlier/process.log" });
+	expect(elsewhere.content?.[1]).toMatchObject({ text: "tail" });
+	expect(elsewhere.content?.at(-1)).toMatchObject({
+		providerType: "shell-output-unavailable",
+		text: expect.stringContaining("/saved/by/an/earlier/process.log"),
+	});
 });
 
 it("does not grant imported output paths file-read authority and displays the unavailable full output", async () => {

@@ -1,4 +1,5 @@
 import { type Db, deliveries, num } from "../../../../../db/src/api.ts";
+import { USER_SENDER } from "../../shared/messages.ts";
 import type { Ask } from "../asks.ts";
 import { type DeadLetter, type Message, type SendOptions, toAsk, toMessage, toTraffic, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
@@ -48,7 +49,7 @@ export function insertMessage(
 }
 
 export function asks(db: Db, team: string, child: string, parent: string, since: number): Ask[] {
-	return deliveries.asks(db, team, child, parent, since).map(toAsk);
+	return deliveries.asks(db, team, child, parent, USER_SENDER, since).map(toAsk);
 }
 
 export function deadLetters(db: Db, team: string, sender: string, limit = INBOX_BATCH_SIZE): DeadLetter[] {

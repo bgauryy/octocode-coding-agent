@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
@@ -54,7 +55,7 @@ export interface Segment {
  * read, and `rg` with context for a session without it (`--tools` left it out), since results span many lines.
  */
 export function archiveSearch(): string {
-	return "Search it with the `archive` tool: `keywords` (ranked) or `query` (regex), then `file`/`line`; if a term misses, try another term or spelling. Without it: `rg -n -C 8 <term>` in the folder.";
+	return renderInstruction("notices/recovery/archive-search.md");
 }
 
 /** The label of a segment file whose header cannot be read. */

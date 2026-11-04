@@ -25,49 +25,49 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "permissions",
 		requiresNative: true,
 		description: "Inspect or change permissions",
-		argumentHint: "<mode|grants|log|plan>",
+		argumentHint: "[mode|grants|log|plan]",
 	},
 	{
 		name: "agents",
 		requiresNative: true,
 		description: "List or control agents",
-		argumentHint: "<operation>",
+		argumentHint: "[operation]",
 	},
 	{
 		name: "plan",
 		requiresNative: true,
 		description: "Plan a task before making changes",
-		argumentHint: "<description|--show|--off|--approve revision>",
+		argumentHint: "[description|--show|--off|--approve revision]",
 	},
 	{
 		name: "btw",
 		description: "Ask a side question without tools",
-		argumentHint: "<question|--cancel|--clear>",
+		argumentHint: "[question|--cancel|--clear]",
 	},
 	{
 		name: "context",
 		description: "Inspect or set the context budget",
-		argumentHint: "<all|size|reset|full|tokens>",
+		argumentHint: "[all|size|reset|full|tokens]",
 		argumentValues: ["all", "size", "reset", "full"],
 	},
 	{
 		name: "diff",
 		description: "Show repository changes",
-		argumentHint: "<path>",
+		argumentHint: "[path]",
 		argumentKind: "path",
 	},
-	{ name: "help", description: "Find commands", argumentHint: "<search>" },
+	{ name: "help", description: "Find commands", argumentHint: "[search]" },
 	{ name: "settings", description: "Open settings" },
 	{
 		name: "model",
 		description: "Choose the AI model",
-		argumentHint: "<provider/model>",
+		argumentHint: "[provider/model]",
 	},
 	{ name: "tree", description: "Navigate the session tree" },
 	{
 		name: "effort",
 		description: "Set reasoning effort",
-		argumentHint: "<level>",
+		argumentHint: "[level]",
 	},
 	{
 		name: "modelsettings",
@@ -77,7 +77,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "export",
 		description: "Export session to HTML or JSONL",
-		argumentHint: "<path>",
+		argumentHint: "[path]",
 		argumentKind: "path",
 	},
 	{
@@ -90,7 +90,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "bug",
 		description: "Report a bug to the developers",
-		argumentHint: "<description>",
+		argumentHint: "[description]",
 	},
 	{ name: "copy", description: "Copy last agent message" },
 	{ name: "rename", description: "Rename this session", argumentHint: "<name>" },
@@ -111,37 +111,37 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "login",
 		description: "Connect AI providers",
-		argumentHint: "<provider|pi>",
+		argumentHint: "[provider|pi]",
 	},
 	{ name: "logout", description: "Remove a provider credential" },
 	{
 		name: "github",
 		description: "GitHub code-search access; AI uses /login",
-		argumentHint: "<status|login|logout>",
+		argumentHint: "[status|login|logout]",
 		argumentValues: ["status", "login", "logout"],
 	},
 	{
 		name: "new",
 		description: "Start a new session",
-		argumentHint: "<name-for-current-session>",
+		argumentHint: "[name-for-current-session]",
 	},
 	// User request (2026-11-01): the two names users reach for to start over; each runs the /new handler.
 	{
 		name: "clear",
 		description: "Start a new session (same as /new)",
-		argumentHint: "<name-for-current-session>",
+		argumentHint: "[name-for-current-session]",
 	},
 	{
 		name: "reset",
 		description: "Start a new session (same as /new)",
-		argumentHint: "<name-for-current-session>",
+		argumentHint: "[name-for-current-session]",
 	},
-	{ name: "compact", description: "Compact the session context", argumentHint: "<instructions>" },
-	{ name: "resume", description: "Browse and resume sessions", argumentHint: "<search>" },
+	{ name: "compact", description: "Compact the session context", argumentHint: "[instructions]" },
+	{ name: "resume", description: "Browse and resume sessions", argumentHint: "[search]" },
 	{
 		name: "skills",
 		description: "Find, inspect and toggle skills",
-		argumentHint: "<search|list|info|enable|disable>",
+		argumentHint: "[search|list|info|enable|disable]",
 		argumentValues: ["list", "info", "enable", "disable"],
 	},
 	{ name: "debug", description: "Save diagnostics" },
@@ -168,6 +168,15 @@ export function reservedCommandNames(reservedCommands: readonly CommandReservati
 export function getBuiltinCommand(name: string): BuiltinSlashCommand | undefined {
 	return BUILTIN_SLASH_COMMANDS.find((command) => command.name === name);
 }
+
+/** The commands a built-in feature registers, by the feature that owns each: with the feature off the name stays known but unavailable. */
+const FEATURE_COMMANDS: ReadonlyMap<string, string> = new Map([
+	["mcp", "mcp"],
+	["llama", "llama.cpp"],
+]);
+
+/** The built-in feature that owns slash command `name`, if one does. */
+export const featureOfCommand = (name: string): string | undefined => FEATURE_COMMANDS.get(name);
 
 export function parseSlashCommand(text: string): { name: string; args: string } | undefined {
 	const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());

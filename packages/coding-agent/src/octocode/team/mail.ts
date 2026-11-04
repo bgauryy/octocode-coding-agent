@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
 import type { DeadLetter, MailDetails, Message } from "./model.ts";
-import { userProofValid } from "./proof.ts";
+import { parentProofValid, userProofValid } from "./proof.ts";
 import { deadLetterText, messageText } from "./routing.ts";
 import { spillIntact } from "./spill.ts";
 import type { TeamStore } from "./store.ts";
@@ -42,6 +42,11 @@ export class Mail {
 				userProofValid(this.secret(), message)) &&
 			spillIntact(message.text)
 		);
+	}
+
+	/** Whether the parent signed `message` for this process, and the file it points at, if any, still holds what was saved. */
+	private parentSigned(message: Message): boolean {
+		return parentProofValid(this.secret(), message) && spillIntact(message.text);
 	}
 
 	/** Binds in-process user provenance to the exact text and recipients, as the child proof does. */
@@ -122,7 +127,14 @@ export class Mail {
 
 	private send(batch: Message[], parentId: string | undefined, stopped: boolean, onRejected?: () => void): boolean {
 		const content = batch
-			.map((message) => messageText(message, { parentId, stopped, fromUser: this.verified(message) }))
+			.map((message) =>
+				messageText(message, {
+					parentId,
+					stopped,
+					fromUser: this.verified(message),
+					parentUnverified: !this.parentSigned(message),
+				}),
+			)
 			.join("\n\n");
 		return this.inject(
 			content,
@@ -158,11 +170,15 @@ export class Mail {
 		if (this.holding.signal.aborted) this.holding = new AbortController();
 	}
 
-	/** Tells this agent, once and without waking it, about messages it sent that their recipients left without reading. */
-	reportDeadLetters(db: TeamStore, id: string): void {
+	/**
+	 * Tells this agent, once and without waking it, about messages it sent that their recipients left without reading or
+	 * answering. A child leaves before its report is built, so a question it read waits while `reporting` says that report is
+	 * still to come: the report closes it (`closeQuestionsTo`), and only a run that ends without one reports it unanswered.
+	 */
+	reportDeadLetters(db: TeamStore, id: string, reporting: (recipient: string) => boolean = () => false): void {
 		this.recordNotices(db);
 		if (this.noticePending) return;
-		const letters = db.deadLetters(id);
+		const letters = db.deadLetters(id).filter((letter) => !letter.read?.some(reporting));
 		if (letters.length === 0) return;
 		const generation = this.generation;
 		this.noticePending = true;

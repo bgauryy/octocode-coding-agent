@@ -85,7 +85,7 @@ export function toolBlock(text: string, fn: string): string | undefined {
 	const range = file.blocks.get(fn);
 	if (!range) return undefined;
 	const own = file.lines.slice(range[0], range[1] + 1).join("\n");
-	// Hoisted types the block names, and those they name: the block reads complete on its own (an indexed contract).
+	// Hoisted types the block names, and those they name: the block reads complete on its own.
 	const typeLines = typesUsedBy(file, own).flatMap(([start, end]) => file.lines.slice(start, end + 1));
 	const body = typeLines.length ? `${HOISTED_HEAD}\n${typeLines.join("\n")}\n${own}` : own;
 	const used = [...file.shared].filter(([field]) =>

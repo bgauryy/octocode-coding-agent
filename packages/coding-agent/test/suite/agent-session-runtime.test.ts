@@ -375,7 +375,7 @@ describe("AgentSessionRuntime characterization", () => {
 		expect(events).toEqual([{ type: "session_before_fork", entryId: "missing-entry", position: "at" }]);
 	});
 
-	it("reports why an unflushed session cannot be forked", async () => {
+	it("starts an empty session when forking one with no file yet, since it holds no conversation", async () => {
 		const { runtime } = await createRuntimeForTest(() => {});
 		const sessionFile = runtime.session.sessionFile;
 		const leafId = runtime.session.sessionManager.getLeafId();
@@ -383,9 +383,15 @@ describe("AgentSessionRuntime characterization", () => {
 		expect(existsSync(sessionFile!)).toBe(false);
 		expect(leafId).toBeTruthy();
 
-		await expect(runtime.fork(leafId!, { position: "at" })).rejects.toThrow(
-			"This session has not been saved yet. Send a message before cloning or forking it.",
-		);
+		await expect(runtime.fork(leafId!, { position: "at" })).resolves.toEqual({
+			cancelled: false,
+			selectedText: undefined,
+		});
+		expect(runtime.session.sessionFile).not.toBe(sessionFile);
+		// A file that was never written cannot be its parent.
+		expect(runtime.session.sessionManager.getHeader()?.parentSession).toBeUndefined();
+		expect(runtime.session.messages).toEqual([]);
+		expect(existsSync(sessionFile!)).toBe(false);
 	});
 
 	it("duplicates the current active branch when forking at the current position", async () => {
@@ -638,7 +644,7 @@ describe("AgentSessionRuntime characterization", () => {
 	it("starts a new session in a separately declared workspace and keeps the old one saved", async () => {
 		const { runtime, tempDir } = await createRuntimeForTest(() => {});
 		const otherDir = join(tempDir, "worktree");
-		mkdirSync(join(otherDir, ".octa", "code", "workspace"), { recursive: true });
+		mkdirSync(join(otherDir, ".octocode", "code", "workspace"), { recursive: true });
 		await runtime.session.prompt("before");
 		const oldFile = runtime.session.sessionFile!;
 

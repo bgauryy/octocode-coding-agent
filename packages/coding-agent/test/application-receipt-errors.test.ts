@@ -1,7 +1,9 @@
+import { Container } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const SECRET = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH";
@@ -11,6 +13,8 @@ function session(id: string): AgentSession {
 		sessionId: id,
 		messages: [],
 		isStreaming: false,
+		getSteeringMessages: () => [],
+		getFollowUpMessages: () => [],
 		subscribe: () => () => {},
 		async prompt() {},
 		async abort() {},
@@ -60,7 +64,14 @@ describe("application receipt persistence failures", () => {
 		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
 		const agentSession = session("receipt-interactive");
 		const showError = vi.fn();
-		const host = createFakeHost({ session: agentSession, showError, handleEvent: async () => {} });
+		const host = createFakeHost({
+			session: agentSession,
+			showError,
+			handleEvent: async () => {},
+			uiStore: createUiStore(),
+			pendingMessagesContainer: new Container(),
+			ui: { requestRender: () => {} },
+		});
 		subscribeToAgent(host);
 		const service = getApplicationPort(agentSession);
 		service.setReceiptStore(failingStore);

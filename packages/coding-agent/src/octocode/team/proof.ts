@@ -16,6 +16,38 @@ export const userProof = (secret: string, message: Pick<Message, "id" | "to" | "
 		.update(JSON.stringify(["octocode-user-message", message.id, message.to, message.text]))
 		.digest("hex");
 
+/**
+ * The same for the agent that started this child: a row's `from` says the parent for anyone who writes it, and the parent's
+ * text is read as steering the task (`PARENT_FENCE_NOTE`). It also covers who forwarded a message and the note on it, since
+ * a parent's note is read the same way. A separate domain, so a signature for one is never one for the other.
+ */
+export const parentProof = (
+	secret: string,
+	message: Pick<Message, "id" | "from" | "to" | "text" | "forwardedBy" | "note">,
+): string =>
+	createHmac("sha256", secret)
+		.update(
+			JSON.stringify([
+				"octocode-parent-message",
+				message.id,
+				message.from,
+				message.to,
+				message.text,
+				message.forwardedBy ?? null,
+				message.note ?? null,
+			]),
+		)
+		.digest("hex");
+
+/** Whether `message` carries the parent's signature made with `secret` (false without a secret or a signature). */
+export function parentProofValid(
+	secret: string | undefined,
+	message: Pick<Message, "id" | "from" | "to" | "text" | "forwardedBy" | "note" | "proof">,
+): boolean {
+	if (!secret || !message.proof) return false;
+	return sameSecret(parentProof(secret, message), message.proof);
+}
+
 /** Whether `message`, recorded as from the user, carries the signature of `secret` (false without a secret or a signature). */
 export function userProofValid(
 	secret: string | undefined,

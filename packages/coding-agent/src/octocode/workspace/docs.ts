@@ -17,8 +17,11 @@ import { WORKSPACE_STATE, workspaceStateDir } from "../../config/workspace.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { firstHeading, isSymlink, readFrontmatter, truncate } from "./reports.ts";
 
-/** The saved skill output of other tools; never listed. Only the top-level folder is excluded. */
-const EXCLUDED_TOP = new Set(["skills"]);
+/**
+ * Never listed as authored documents: the saved skill output of other tools, and the workspace state folder inside
+ * `.octocode/` (listed only through its backlog export and opted-in scratch). Only the top-level folder is excluded.
+ */
+const EXCLUDED_TOP = new Set(["skills", WORKSPACE_STATE.split(path.sep)[1]]);
 /** Scratch space: listed only when the request opts in. */
 const SCRATCH_TOP = "tmp";
 const RUNTIME_PREFIX = WORKSPACE_STATE.split(path.sep).join("/") + "/";

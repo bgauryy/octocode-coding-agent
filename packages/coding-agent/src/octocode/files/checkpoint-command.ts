@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
@@ -164,7 +165,14 @@ export function registerCheckpoints(
 				say(ctx, "No file changes to rewind on this branch.");
 				return;
 			}
-			// Restoring overwrites workspace files and cannot itself be undone: ask first when someone can answer.
+			// Restoring overwrites workspace files and cannot itself be undone: with nobody to ask, the count must be typed.
+			if (!ctx.hasUI && value === "")
+				return say(
+					ctx,
+					"/rewind asks for confirmation; without an interactive session, name the turns: /rewind <turns>.",
+					"warning",
+				);
+			// Ask first when someone can answer.
 			if (
 				ctx.hasUI &&
 				!(await ctx.ui.confirm(
@@ -179,7 +187,7 @@ export function registerCheckpoints(
 				void api.sendMessage(
 					{
 						customType: "octocode-rewind",
-						content: `The user ran /rewind. ${describe(result, ctx.cwd, turns.length)} Those files are back to their earlier content: read them again before editing.`,
+						content: renderInstruction("notices/rewind.md", { what: describe(result, ctx.cwd, turns.length) }),
 						display: false,
 					},
 					{ triggerTurn: false },

@@ -22,6 +22,12 @@ describe("the outcome word a report starts with", () => {
 		["  Outcome : DONE.", "done"],
 		["Done with the audit and the fixes", "done"],
 		["Done. Fixed the failing test", "done"],
+		["Failed, tests red", "failed"],
+		["Blocked; needs a decision", "blocked"],
+		["Partial (two of three)", "partial"],
+		["Blocked\nneeds a decision", "blocked"],
+		["**Failed**: tests red", "failed"],
+		["Done (no code change needed)", "done"],
 	])("reads %j as %s", (text, status) => expect(reportStatus(text)).toBe(status));
 
 	it.each([
@@ -42,6 +48,10 @@ describe("the outcome word a report starts with", () => {
 		["Reporting: done"],
 		["Done with the audit, but blocked by the missing fixture"],
 		["Partial progress, tests failed"],
+		["Failed login attempts now lock the account"],
+		["Blocked requests are now logged"],
+		["Partial matches were ignored"],
+		["**Blocked** requests are now logged"],
 	])("treats %j as unknown, never a failure", (text) => expect(reportStatus(text)).toBeUndefined());
 });
 

@@ -109,6 +109,12 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		this.save();
 	}
 
+	setOptimizePrompts(enabled: boolean): void {
+		this.globalSettings.optimizePrompts = enabled;
+		this.markModified("optimizePrompts");
+		this.save();
+	}
+
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number } {
 		return {
 			timeoutMs: this.settings.retry?.provider?.timeoutMs,

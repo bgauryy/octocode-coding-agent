@@ -6,7 +6,13 @@ import { describe, expect, it } from "vitest";
 import { SUMMARIZER_RESULT_CHARS } from "../../src/octocode/compaction/checkpoint-text.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { SHARED_SUMMARY_PROMPT, sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
-import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
+import {
+	SHARED_IMAGE_FOCUS,
+	STANDALONE_IMAGE_FOCUS,
+	SUMMARY_FOCUS,
+	SUMMARY_METHOD_DETAILS,
+	writeSummary,
+} from "../../src/octocode/compaction/summary.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 
@@ -69,6 +75,7 @@ function setup(options: Setup = {}) {
 		getThinkingLevel: () => options.thinking ?? "high",
 		createUsageRecorder: () => (message: unknown) => recordedUsage.push(message),
 		getActiveTools: () => [],
+		getHiddenDeclarations: () => [],
 		getSettings: () => options.settings ?? { thinkingBudgets: { high: 4_000 }, transport: "sse" },
 		appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
 	} as never;
@@ -153,6 +160,55 @@ describe("cache-sharing compaction summary", () => {
 		expect(options).not.toHaveProperty("toolChoice");
 		expect(context).not.toHaveProperty("tools");
 		expect(context).not.toHaveProperty("systemPrompt");
+	});
+
+	it("asks for what an image shows on the shared request, and says images do not arrive only on the standalone one", async () => {
+		const shared = setup();
+		await writeSummary(shared.api, shared.event, shared.ctx);
+		expect(finalPrompt(shared.calls[0])).toContain(SHARED_IMAGE_FOCUS);
+		expect(finalPrompt(shared.calls[0])).toContain(SUMMARY_FOCUS);
+		expect(finalPrompt(shared.calls[0])).not.toContain("Images do not reach you");
+		const standalone = setup();
+		await writeSummary(standalone.api, standalone.event, standalone.ctx, { ...model, id: "previous" } as never);
+		const sent = JSON.stringify(standalone.calls[0].context.messages);
+		expect(sent).toContain(STANDALONE_IMAGE_FOCUS);
+		expect(sent).not.toContain(SHARED_IMAGE_FOCUS);
+	});
+
+	describe("with a cold prompt cache", () => {
+		const TTL = 300_000;
+		const replyAt = (timestamp: number) => [
+			{
+				type: "message",
+				id: "r",
+				message: { role: "assistant", timestamp, usage: { cacheRead: 100, cacheWrite: 0 }, stopReason: "stop" },
+			},
+		];
+
+		it("does not cache the history of a summary nothing will read, and keeps the instruction preference", async () => {
+			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - TTL - 1_000) });
+			await writeSummary(api, event, ctx, undefined, undefined, undefined, TTL);
+			expect(calls[0].options).toMatchObject({ cacheRetention: "none", instructionCacheRetention: "long" });
+			expect(calls[0].options.sessionId).toBe("sid-1");
+		});
+
+		it("leaves a warm request unchanged, and an unknown lifetime or an empty clock", async () => {
+			for (const [branch, ttl] of [
+				[replyAt(Date.now() - 1_000), TTL],
+				[replyAt(Date.now() - TTL - 1_000), undefined],
+				[[], TTL],
+			] as const) {
+				const { calls, api, ctx, event } = setup({ branch: [...branch] });
+				await writeSummary(api, event, ctx, undefined, undefined, undefined, ttl);
+				expect(calls[0].options).toMatchObject({ cacheRetention: "short", instructionCacheRetention: "long" });
+			}
+		});
+
+		it("leaves the standalone request's preferences alone", async () => {
+			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - TTL - 1_000) });
+			await writeSummary(api, event, ctx, { ...model, id: "previous" } as never, undefined, undefined, TTL);
+			expect(calls[0].options.cacheRetention).toBe("short");
+		});
 	});
 
 	it("uses the session cache preferences for the summary request", async () => {
@@ -278,6 +334,9 @@ describe("cache-sharing compaction summary", () => {
 		expect(prompt).toContain("## User Messages");
 		expect(prompt).toContain("## Recovery");
 		expect(prompt).toContain("<read-files>");
+		// An update has a size target, so the summary consolidates instead of growing until it no longer fits; a first one has none.
+		expect(prompt).toMatch(/under about \d+ tokens: consolidate/);
+		expect(finalPrompt(first.calls[0])).not.toMatch(/under about \d+ tokens/);
 	});
 
 	it("gives the complete text of an earlier checkpoint that was saved to a file, keeping the cached messages as they are", async () => {

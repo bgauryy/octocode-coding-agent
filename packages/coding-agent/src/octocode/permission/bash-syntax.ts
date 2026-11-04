@@ -113,6 +113,23 @@ export function translatedString(node: Node): boolean {
 }
 
 /**
+ * Wall-clock budgets for one parse. A guard that gets no parse sees no writes, so a busy machine must not read as a
+ * harmless command: a stall past the first budget gets the second, which only a truly pathological input exhausts.
+ */
+const PARSE_BUDGETS_MS = [50, 1000];
+
+function parseInTime(parser: Parser, source: string): ReturnType<Parser["parse"]> {
+	for (const budget of PARSE_BUDGETS_MS) {
+		const deadline = performance.now() + budget;
+		const tree = parser.parse(source, undefined, { progressCallback: () => performance.now() > deadline });
+		if (tree) return tree;
+		// A cancelled parse otherwise resumes where it stopped.
+		parser.reset();
+	}
+	return null;
+}
+
+/**
  * Parses `source` and hands the root to `read`; undefined when the grammar is not loaded, the source is over the size
  * limit, parsing exceeds its time budget or the tree has an error or a missing node. The tree is freed afterwards.
  */
@@ -122,8 +139,7 @@ export function parseBash<T>(source: string, read: (root: Node) => T): T | undef
 	let tree: ReturnType<Parser["parse"]> = null;
 	try {
 		parser.setLanguage(language);
-		const deadline = performance.now() + 50;
-		tree = parser.parse(source, undefined, { progressCallback: () => performance.now() > deadline });
+		tree = parseInTime(parser, source);
 		return !tree || !onlyMisreadHerestrings(tree.rootNode) ? undefined : read(tree.rootNode);
 	} catch {
 		return undefined;
@@ -171,11 +187,9 @@ export function bashSyntax(source: string): BashSyntax {
 	let tree: ReturnType<Parser["parse"]> = null;
 	try {
 		parser.setLanguage(language);
-		const deadline = performance.now() + 50;
-		tree = parser.parse(source, undefined, {
-			progressCallback: () => performance.now() > deadline,
-		});
+		tree = parseInTime(parser, source);
 		if (!tree || !onlyMisreadHerestrings(tree.rootNode)) return unresolved("parse unavailable");
+		const deadline = performance.now() + PARSE_BUDGETS_MS.at(-1)!;
 		const pending: Array<{ node: Node; depth: number }> = [{ node: tree.rootNode, depth: 0 }];
 		let count = 0;
 		const directoryChanges: number[] = [];

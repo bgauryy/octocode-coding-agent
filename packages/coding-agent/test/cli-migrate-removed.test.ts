@@ -24,7 +24,6 @@ describe("`octocode migrate` is gone", () => {
 				OCTOCODE_HOME: home,
 				OCTOCODE_CODING_AGENT_DIR: home,
 				OCTOCODE_OFFLINE: "1",
-				OCTOCODE_API: "0",
 				OCTOCODE_MCP: "0",
 				OCTOCODE_MODELS_DEV: "0",
 			},

@@ -4,7 +4,9 @@ import type { DatabaseSync } from "node:sqlite";
 import { privateDir } from "../../common/src/file-mode.ts";
 import { loadSqlite } from "./sqlite.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
-import { AgentDbError, ensureSchema, schemaState } from "./schema.ts";
+import { prepareSchema } from "./migrate.ts";
+import { SCHEMA_PLAN, type SchemaPlan } from "./migrations.ts";
+import { AgentDbError } from "./schema.ts";
 
 /** The open SQLite handle of an agent database; features pass it to `api.ts` functions and never call it themselves. */
 export type Db = DatabaseSync;
@@ -38,7 +40,10 @@ interface DatabaseLocations {
 }
 
 /** Open an independent connection. The host supplies the database and archive paths. */
-export function openDatabase({ file: target, archiveDir, privateParent }: DatabaseLocations): AgentDb {
+export function openDatabase(
+	{ file: target, archiveDir, privateParent }: DatabaseLocations,
+	plan: SchemaPlan = SCHEMA_PLAN,
+): AgentDb {
 	// Private to this user: it holds prompts, notes and memories. SQLite gives its -wal and -shm files the same mode.
 	// Our own folder is tightened when it already exists; a folder named by OCTOCODE_AGENT_DB is only created.
 	if (privateParent) privateDir(path.dirname(target));
@@ -89,7 +94,7 @@ export function openDatabase({ file: target, archiveDir, privateParent }: Databa
 	};
 	try {
 		db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
-		const { fts } = schemaState(db, target) ?? transaction(() => ensureSchema(db, target));
+		const { fts } = prepareSchema(db, target, transaction, plan);
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
 		tighten(target);
 		let open = true;

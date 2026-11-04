@@ -225,7 +225,7 @@ describe("Native features through the SDK", () => {
 		// Folded into /harness: one name per command.
 		for (const retired of ["plugins", "hooks", "config"]) expect(commands).not.toContain(retired);
 		expect(session.systemPrompt).toContain("demo-skill");
-		expect(turn.context).toMatch(/Delegation/);
+		expect(turn.context).toContain("<delegation>");
 		// The banner is the TUI header (none over RPC), never a session entry.
 		expect(session.sessionManager.getEntries().some((entry) => entry.type === "custom")).toBe(false);
 		expect((ui as { header?: unknown }).header).toBeUndefined();
@@ -468,6 +468,7 @@ describe("Native features through the SDK", () => {
 		expect(note(/Running: /)).toBeDefined();
 		// The reported child is done: the slow one alone still runs.
 		expect(/Running: (.+)$/.exec(note(/Running: /)!)![1].split(", ")).toEqual([slowId]);
+		ui.confirms.push(true);
 		await session.prompt(`/agents kill ${slowId}`);
 		expect(note(new RegExp(`^Stopping ${slowId}`))).toBeDefined();
 		// A stop the user asked for wakes no turn: its report is delivered as a session message.

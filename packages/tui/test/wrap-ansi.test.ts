@@ -12,6 +12,17 @@ describe("wrapTextWithAnsi", () => {
 		assert.strictEqual(lines.join(""), cluster);
 	});
 
+	it("puts a wide character wider than the width on its own row without empty rows", () => {
+		assert.deepStrictEqual(wrapTextWithAnsi("日本", 1), ["日", "本"]);
+		assert.deepStrictEqual(wrapTextWithAnsi("a日b", 1), ["a", "日", "b"]);
+	});
+
+	it("does not emit an empty row before a wide character when only style codes are active", () => {
+		const lines = wrapTextWithAnsi("\x1b[1m日本\x1b[0m", 1);
+		assert.strictEqual(lines.length, 2);
+		assert.ok(lines.every((line) => visibleWidth(line) > 0));
+	});
+
 	describe("underline styling", () => {
 		it("should not apply underline style before the styled text", () => {
 			const underlineOn = "\x1b[4m";

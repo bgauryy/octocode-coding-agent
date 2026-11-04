@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
@@ -61,7 +62,9 @@ export function registerBackgroundHooks(api: ExtensionAPI) {
 	api.on("session_shutdown", async () => reset(true));
 	const takeContext = () => {
 		if (!pending.length) return undefined;
-		const content = capContext(`Context from background hooks:\n${pending.join("\n\n")}`);
+		const content = capContext(
+			renderInstruction("notices/hooks/context.md", { source: "background", text: pending.join("\n\n") }),
+		);
 		pending = [];
 		return { customType: "octocode-hook-context", content, display: false };
 	};

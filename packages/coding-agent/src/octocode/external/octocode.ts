@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ApiCallError, ApiClient } from "../api/client.ts";
 import { ERR, MESSAGE_KEY_MAX, PROTOCOL_VERSION } from "../api/protocol.ts";
-import { apiDir, listInstances } from "../api/registry.ts";
+import { apiDir, listInstances, selectInstance } from "../api/registry.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
 import { PROMPT_TIMEOUT_MS, promptTimeoutValid } from "./protocol.ts";
@@ -30,10 +30,12 @@ export class OctocodeBackend implements ExternalBackend {
 	private cancelling: Promise<void> | undefined;
 
 	private readonly client: ApiClient;
+	private readonly caller: Record<string, unknown>;
 	readonly sessionId: string;
 	readonly cwd: string;
-	private constructor(client: ApiClient, sessionId: string, cwd: string) {
+	private constructor(client: ApiClient, caller: Record<string, unknown>, sessionId: string, cwd: string) {
 		this.client = client;
+		this.caller = caller;
 		this.sessionId = sessionId;
 		this.cwd = cwd;
 	}
@@ -43,11 +45,13 @@ export class OctocodeBackend implements ExternalBackend {
 		env: NodeJS.ProcessEnv = process.env,
 	): Promise<OctocodeBackend> {
 		const cwd = canonical(input.cwd);
-		const records = listInstances(apiDir(env)).filter((entry) => entry.id === input.instanceId);
-		if (records.length !== 1) throw new Error("Octocode instance is not uniquely discoverable");
-		const instance = records[0];
-		if (instance.protocol !== PROTOCOL_VERSION || canonical(instance.cwd) !== cwd)
-			throw new Error("Octocode instance protocol or workspace mismatch");
+		const instance = selectInstance(listInstances(apiDir(env)), input.instanceId);
+		if (instance.protocol !== PROTOCOL_VERSION)
+			throw new Error(
+				`Octocode instance ${instance.id} speaks API protocol ${instance.protocol}, not ${PROTOCOL_VERSION}`,
+			);
+		if (canonical(instance.cwd) !== cwd)
+			throw new Error(`Octocode instance ${instance.id} workspace mismatch: it runs in ${instance.cwd}, not ${cwd}`);
 		if (instance.socket !== undefined) {
 			let valid = false;
 			try {
@@ -93,7 +97,13 @@ export class OctocodeBackend implements ExternalBackend {
 		) {
 			throw new Error("Octocode live session or workspace mismatch");
 		}
-		return new OctocodeBackend(client, status.sessionId, cwd);
+		const own = listInstances(apiDir(env), false).find((entry) => entry.pid === process.pid);
+		const caller = {
+			pid: process.pid,
+			cwd: own?.cwd ?? process.cwd(),
+			...(own ? { instanceId: own.id, name: own.name } : {}),
+		};
+		return new OctocodeBackend(client, caller, status.sessionId, cwd);
 	}
 
 	private async status(options: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Record<string, unknown>> {
@@ -151,6 +161,7 @@ export class OctocodeBackend implements ExternalBackend {
 				{
 					text,
 					from: "Octocode external adapter",
+					caller: this.caller,
 					expectedSessionId: this.sessionId,
 					requireIdle: true,
 					key,

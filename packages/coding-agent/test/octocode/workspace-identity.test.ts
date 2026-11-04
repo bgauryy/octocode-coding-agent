@@ -29,13 +29,13 @@ describe("workspace identity", () => {
 		fs.mkdirSync(sub, { recursive: true });
 		expect(readWorkspaceIdentity(sub)).toBeUndefined();
 		expect(workspaceGit(sub)).toBeNull();
-		expect(workspaceStateDir(sub)).toBe(path.join(sub, ".octa", "code"));
-		expect(fs.existsSync(path.join(folder, ".octa"))).toBe(false);
+		expect(workspaceStateDir(sub)).toBe(path.join(sub, ".octocode", "code"));
+		expect(fs.existsSync(path.join(folder, ".octocode"))).toBe(false);
 		const workspace = workspaceIdentity(folder);
 		expect(workspaceIdentity(sub)).toEqual(workspace);
 		expect(workspaceRoot(sub)).toBe(sub);
 		const nested = path.join(folder, "one");
-		fs.mkdirSync(path.join(nested, ".octa", "code", "workspace"), { recursive: true });
+		fs.mkdirSync(path.join(nested, ".octocode", "code", "workspace"), { recursive: true });
 		expect(workspaceIdentity(sub)).toMatchObject({ root: nested, name: "one" });
 		expect(workspaceIdentity(sub).id).not.toBe(workspace.id);
 	});
@@ -178,12 +178,12 @@ describe("workspace identity", () => {
 	it("rejects unsafe state directories, traversal and malformed markers", () => {
 		const root = tmp();
 		const outside = tmp();
-		fs.symlinkSync(outside, path.join(root, ".octa"), "dir");
+		fs.symlinkSync(outside, path.join(root, ".octocode"), "dir");
 		expect(() => workspaceIdentity(root)).toThrow(/real directory/);
 		expect(fs.readdirSync(outside)).toEqual([]);
-		fs.unlinkSync(path.join(root, ".octa"));
+		fs.unlinkSync(path.join(root, ".octocode"));
 		const dir = ensureWorkspaceStateDir(root, "session-data/one");
-		expect(dir).toBe(path.join(fs.realpathSync(root), ".octa", "code", "session-data", "one"));
+		expect(dir).toBe(path.join(fs.realpathSync(root), ".octocode", "code", "session-data", "one"));
 		for (const input of ["../escape", "sessions/../../escape", "..\\escape", "/absolute"])
 			expect(() => ensureWorkspaceStateDir(root, input)).toThrow(/Invalid workspace state subpath/);
 		const marker = path.join(workspaceStateDir(root), "workspace", "id");
@@ -202,16 +202,16 @@ describe("private workspace data in Git operations", () => {
 		const repo = makeRepo();
 		try {
 			// Even if no user ignore rule exists and the repository explicitly requests copying every runtime file.
-			repo.write(".octa/code/session-data/private.txt", "private parent session");
+			repo.write(".octocode/code/session-data/private.txt", "private parent session");
 			expect(await dirtyCounts(repo.root)).toEqual({ dirty: 0, untracked: 0 });
 			expect((await readRepositoryDiff(repo.root)).untracked).toEqual([]);
-			await expect(readUntrackedDiff(repo.root, ".octa/code/session-data/private.txt")).rejects.toThrow(/private/);
-			repo.write(".worktreeinclude", ".octa/code/**\n");
+			await expect(readUntrackedDiff(repo.root, ".octocode/code/session-data/private.txt")).rejects.toThrow(/private/);
+			repo.write(".worktreeinclude", ".octocode/code/**\n");
 			expect((await copyIncluded(repo.root, tmp())).copied).toEqual([]);
 			const child = await createWorktree(repo.root, "state-isolation", tmp(), true);
-			expect(fs.existsSync(path.join(child.path, ".octa", "code"))).toBe(false);
-			fs.mkdirSync(path.join(child.path, ".octa", "code"), { recursive: true });
-			fs.writeFileSync(path.join(child.path, ".octa", "code", "child-session"), "private child session");
+			expect(fs.existsSync(path.join(child.path, ".octocode", "code"))).toBe(false);
+			fs.mkdirSync(path.join(child.path, ".octocode", "code"), { recursive: true });
+			fs.writeFileSync(path.join(child.path, ".octocode", "code", "child-session"), "private child session");
 			fs.writeFileSync(path.join(child.path, "result.txt"), "result");
 			const saved = await finishWorktree(child);
 			expect(sh(repo.root, "diff", "--name-only", "HEAD", saved.ref!)).toBe("result.txt");
@@ -224,9 +224,9 @@ describe("private workspace data in Git operations", () => {
 		const repo = makeRepo();
 		try {
 			workspaceIdentity(repo.root);
-			sh(repo.root, "add", "-f", ".octa/code/workspace/id");
+			sh(repo.root, "add", "-f", ".octocode/code/workspace/id");
 			sh(repo.root, "commit", "-qm", "incorrectly staged marker");
-			sh(repo.root, "rm", "--cached", ".octa/code/workspace/id");
+			sh(repo.root, "rm", "--cached", ".octocode/code/workspace/id");
 			await expect(createWorktree(repo.root, "stale-id", tmp())).rejects.toThrow(/tracks private workspace state/);
 		} finally {
 			repo.cleanup();

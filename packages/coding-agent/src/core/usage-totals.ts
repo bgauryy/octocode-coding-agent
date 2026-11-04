@@ -43,6 +43,7 @@ export function combineUsage(first: Usage, second: Usage): Usage {
 		...(first.reasoning !== undefined || second.reasoning !== undefined
 			? { reasoning: (first.reasoning ?? 0) + (second.reasoning ?? 0) }
 			: {}),
+		...(first.lowerBound || second.lowerBound ? { lowerBound: true } : {}),
 		totalTokens: first.totalTokens + second.totalTokens,
 		cost: {
 			input: first.cost.input + second.cost.input,
@@ -73,6 +74,7 @@ export function customMessageUsage(entry: SessionEntry): Usage | undefined {
 		output: finite(raw.output),
 		cacheRead: finite(raw.cacheRead),
 		cacheWrite: finite(raw.cacheWrite),
+		...(raw.lowerBound === true ? { lowerBound: true } : {}),
 		totalTokens: finite(raw.totalTokens),
 		cost: {
 			input: finite(cost.input),

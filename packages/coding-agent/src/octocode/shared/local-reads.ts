@@ -4,7 +4,7 @@ import { resolveToolPath } from "./home.ts";
 import { canonicalPath } from "./home/repo.ts";
 import { sha256, sha256File } from "../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
+import { LOCAL_READ_TOOLS, OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
 export { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 
 interface LocalRead {
@@ -32,7 +32,12 @@ export function appendReadDigests<T extends { type: string }>(
 	return [...content, { type: "text", text: `Whole-source SHA-256 for optional anchored edits:\n${lines.join("\n")}` }];
 }
 
-type Snapshot = { sha256: string; size: number; mtimeMs: number; ctimeMs: number };
+/** A file's identity before retrieval; a searched directory has no file identity, only `searchedAt`, when the search began. */
+type Snapshot = { sha256: string; size: number; mtimeMs: number; ctimeMs: number; searchedAt?: number };
+
+const SEARCH_TOOL = `${OCTOCODE_TOOL_PREFIX}localSearch`;
+/** A search row's lines are checked against the whole file; a larger file is not credited (read it with localFetch). */
+const SEARCH_CREDIT_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Capture requested files before retrieval so a changed file cannot be credited as the returned version. */
 export async function snapshotLocalReads(
@@ -41,12 +46,16 @@ export async function snapshotLocalReads(
 	cwd: string,
 ): Promise<Map<string, Snapshot>> {
 	const snapshots = new Map<string, Snapshot>();
-	if (!LOCAL_READ_TOOLS.has(tool)) return snapshots;
+	if (!LOCAL_READ_TOOLS.has(tool) && tool !== SEARCH_TOOL) return snapshots;
 	for (const query of Array.isArray(input.queries) ? input.queries : []) {
 		if (!isRecord(query) || typeof query.path !== "string") continue;
 		const file = canonicalPath(resolveToolPath(cwd, query.path));
 		try {
 			const stat = fs.statSync(file);
+			if (stat.isDirectory() && tool === SEARCH_TOOL) {
+				snapshots.set(file, { sha256: "", size: 0, mtimeMs: 0, ctimeMs: 0, searchedAt: Date.now() });
+				continue;
+			}
 			const sha256 = stat.isFile() ? await sha256File(file) : undefined;
 			if (sha256) snapshots.set(file, { sha256, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
 		} catch {
@@ -78,6 +87,12 @@ export async function completedLocalReads(
 		if (!isRecord(row) || row.status === "error" || !isRecord(row.data)) continue;
 		const data = row.data;
 		const query: unknown = queries[nonnegative(row.index) ? row.index : position];
+		if (Array.isArray(data.files)) {
+			const root = output.root ?? output.base;
+			const baseDir = typeof root === "string" && path.isAbsolute(root) ? root : cwd;
+			reads.push(...searchReads(snapshots, data, baseDir));
+			continue;
+		}
 		if (
 			data.error ||
 			(data.contentView && data.contentView !== "none") ||
@@ -148,6 +163,84 @@ export async function completedLocalReads(
 		else for (const lines of spans) reads.push({ ...base, whole: false, lines });
 	}
 	return reads;
+}
+
+/**
+ * The source lines a `localSearch` content row showed, as partial reads. A line counts only when its shown text is
+ * exactly that line of the file as it was before the search began, so a sanitized, shortened or stale line, and a
+ * `matchOnly` match (which carries a `column`), never count. A searched directory's files count when they were last
+ * modified before the search began.
+ */
+function searchReads(snapshots: Map<string, Snapshot>, data: Record<string, unknown>, baseDir: string): LocalRead[] {
+	if (data.error) return [];
+	const reads: LocalRead[] = [];
+	for (const entry of data.files as unknown[]) {
+		if (
+			!isRecord(entry) ||
+			typeof entry.path !== "string" ||
+			!Array.isArray(entry.matches) ||
+			entry.clipped ||
+			entry.truncated
+		)
+			continue;
+		const file = canonicalPath(path.isAbsolute(entry.path) ? entry.path : resolveToolPath(baseDir, entry.path));
+		const source = unchangedSource(file, snapshots);
+		if (!source) continue;
+		const shown = new Set<number>();
+		for (const match of entry.matches as unknown[]) {
+			if (!isRecord(match) || typeof match.value !== "string" || match.clipped || match.truncated || "column" in match)
+				continue;
+			for (const [number, text] of shownLines(match)) if (source.lines[number - 1] === text) shown.add(number);
+		}
+		const spans: Array<[number, number]> = [];
+		for (const line of [...shown].sort((a, b) => a - b)) {
+			const last = spans.at(-1);
+			if (last && line === last[1] + 1) last[1] = line;
+			else spans.push([line, line]);
+		}
+		for (const lines of spans) reads.push({ file, sha256: source.sha256, size: source.size, whole: false, lines });
+	}
+	return reads;
+}
+
+/** `[line number, text]` of each line a match row shows: numbered when it has context, else its one `line`. */
+function shownLines(match: Record<string, unknown>): Array<[number, string]> {
+	const value = String(match.value);
+	const numbered = value.split("\n").map((line) => /^(\d+)\t([\s\S]*)$/.exec(line));
+	if (numbered.every((line) => line !== null))
+		return numbered.map((line) => [Number(line[1]), line[2]] as [number, string]);
+	return positive(match.line) && !value.includes("\n") ? [[match.line, value]] : [];
+}
+
+/** The file's lines when it is unchanged since the snapshot of its search (or since before it began, for a directory). */
+function unchangedSource(
+	file: string,
+	snapshots: Map<string, Snapshot>,
+): { sha256: string; size: number; lines: string[] } | undefined {
+	const before = snapshots.get(file);
+	let searchedAt: number | undefined;
+	if (!before?.sha256)
+		for (const [dir, snapshot] of snapshots)
+			if (snapshot.searchedAt !== undefined && file.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep))
+				searchedAt = snapshot.searchedAt;
+	if (!before?.sha256 && searchedAt === undefined) return undefined;
+	try {
+		const stat = fs.statSync(file);
+		if (stat.size > SEARCH_CREDIT_MAX_BYTES) return undefined;
+		const data = fs.readFileSync(file);
+		const digest = sha256(data);
+		if (before?.sha256) {
+			if (stat.size !== before.size || stat.mtimeMs !== before.mtimeMs || stat.ctimeMs !== before.ctimeMs)
+				return undefined;
+			if (digest !== before.sha256) return undefined;
+		} else if (searchedAt !== undefined && Math.max(stat.mtimeMs, stat.ctimeMs) >= searchedAt) return undefined;
+		const after = fs.statSync(file);
+		if (after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || after.size !== data.length)
+			return undefined;
+		return { sha256: digest, size: data.length, lines: data.toString("utf8").split("\n") };
+	} catch {
+		return undefined;
+	}
 }
 
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0;

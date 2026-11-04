@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { getMcpSessionHandoff } from "../../../../mcp/src/session-servers.ts";
@@ -11,6 +12,7 @@ import { askSpawn, profileSelectsBrowser } from "./profiles.ts";
 import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { childSession, childSessionFile } from "./process/session.ts";
+import { retakeReservation } from "./reservation.ts";
 
 /**
  * Finished background runs that stay reachable: a message from the parent or the user resumes their saved conversation
@@ -203,14 +205,18 @@ export class Lingering {
 			const entry: LingeringRun = { until: Date.now() + seconds * 1000, generation, run, ctx };
 			this.hold(entry);
 			this.persist();
-			const stop = `type \`coordinate\` with action \`stop\` and id ${id} ends that`;
-			if (outcome === "blocked")
-				return `\n\n${id} is blocked and stays resumable for ${seconds} s: answer it with \`agent\` type \`message\` to ${id} and it continues this conversation; ${stop}.`;
-			if (awaited === "peer")
-				return `\n\n${id} is waiting for a reply to its question to another agent and stays resumable for ${seconds} s: \`agent\` type \`message\` to ${id} continues this conversation; ${stop}.`;
-			if (awaited === "parent")
-				return `\n\n${id} is waiting for your reply to its question and stays resumable for ${seconds} s: answer it with \`agent\` type \`message\` to ${id} (\`replyTo\` its question) and it continues this conversation; ${stop}.`;
-			return `\n\n${id} stays reachable for ${seconds} s: \`agent\` type \`message\` to it continues this conversation; ${stop}.`;
+			const blocked = outcome === "blocked";
+			const peer = !blocked && awaited === "peer";
+			const parent = !blocked && awaited === "parent";
+			const note = renderInstruction("notices/subagents/lingering.md", {
+				id,
+				seconds,
+				blocked,
+				peer,
+				parent,
+				reachable: !blocked && !peer && !parent,
+			});
+			return `\n\n${note}`;
 		};
 	}
 
@@ -241,6 +247,7 @@ export class Lingering {
 		if (!runs.slots.tryTake()) throw new Error(subagentLimitError(runs.running.keys(), maxSubagents()));
 		this.resuming.add(id);
 		let run: Run | undefined;
+		let retaken = "";
 		try {
 			const author = request?.message.from;
 			// A relayed or forwarded message is named in the prompt: the user approves a resume nobody typed here.
@@ -267,12 +274,16 @@ export class Lingering {
 				...withoutServers(last.identity),
 				...(Object.keys(servers).length > 0 ? { mcpServers: servers } : {}),
 				...(stopped.length > 0 ? { mcpStopped: stopped } : {}),
+				// A relay's author is a peer; the parent's own forward of one is still the parent's decision.
+				peerResumed: author !== undefined && author !== from && request?.message.forwardedBy !== from,
 				relay: ctx.hasUI,
 				permission: { mode: permission.mode, grants: [...new Set([...grants, ...permission.childGrants()])] },
 			};
 			run = claimRun(runs, last, { goal: last.identity.goal }, ctx, [], identity);
+			retaken = retakeReservation(runs.team, run);
 			// Retire the parked address before launching. A crash here never auto-replays uncertain execution.
 			this.forget(id);
+			runs.reports.supersede(id);
 			this.start(run, ctx, {
 				text,
 				message: request
@@ -290,6 +301,6 @@ export class Lingering {
 		} finally {
 			this.resuming.delete(id);
 		}
-		return `Resumed ${id} with your message; its reply arrives as a background report.`;
+		return `Resumed ${id} with your message; its reply arrives as a background report.${retaken}`;
 	}
 }

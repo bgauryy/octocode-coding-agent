@@ -1,6 +1,7 @@
-import { userProof } from "../proof.ts";
+import type { Message } from "../model.ts";
+import { parentProof, userProof } from "../proof.ts";
 
-/** Secrets of the subagents this session started, by agent id (`Team.vouch`): what signs a message the user types for one. */
+/** Secrets of the subagents this session started, by agent id (`Team.vouch`): what signs a message the user types for one, and this session's own. */
 export class Vouches {
 	private readonly secrets = new Map<string, string>();
 
@@ -21,6 +22,12 @@ export class Vouches {
 	signed(id: number, recipient: string, text: string): string | undefined {
 		const secret = this.secrets.get(recipient);
 		return secret ? userProof(secret, { id, to: recipient, text }) : undefined;
+	}
+
+	/** The signature of this session's own message to child `message.to`; undefined when this session did not start it. */
+	signedByParent(message: Pick<Message, "id" | "from" | "to" | "text" | "forwardedBy" | "note">): string | undefined {
+		const secret = this.secrets.get(message.to);
+		return secret ? parentProof(secret, message) : undefined;
 	}
 
 	clear(): void {

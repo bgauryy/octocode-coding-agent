@@ -17,6 +17,7 @@ import type { InteractiveModeHost } from "../src/modes/interactive/interactive-m
 import { stripAnsi } from "../src/utils/ansi.ts";
 import * as imageConvert from "../src/utils/image-convert.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPuoAAAAASUVORK5CYII=";
 const sessions: AgentSession[] = [];
@@ -65,11 +66,10 @@ function fixture(messages: AgentMessage[] = []) {
 		getMarkdownTransformers: () => [],
 		getMarkdownThemeWithSettings: getMarkdownTheme,
 		hiddenThinkingLabel: "Thinking…",
-		hideThinkingBlock: false,
 		outputPad: 1,
 		pendingTools: new Map(),
 		entriesRenderedByRebuild: new Set<string>(),
-		toolOutputExpanded: false,
+		uiStore: createUiStore(),
 		ui: { requestRender() {} },
 		settingsManager: { getShowImages: () => true, getImageWidthCells: () => 20, getShowCacheMissNotices: () => false },
 		sessionManager: {
@@ -85,7 +85,7 @@ function fixture(messages: AgentMessage[] = []) {
 		},
 		getRegisteredToolDefinition: (): ReturnType<InteractiveModeHost["getRegisteredToolDefinition"]> => undefined,
 		programStatus: { handleEvent() {} },
-		updatePendingMessagesDisplay() {},
+		pendingMessagesContainer: new Container(),
 		maybeShowThinkingDropNotice() {},
 		maybeShowCacheMissNotice() {},
 		maybeShowInstallChangeWarning() {},

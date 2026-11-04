@@ -3,15 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sharedAgentDb } from "../../src/config/database.ts";
-import { trust } from "../../../db/src/api.ts";
+import { closeSharedAgentDb, trust } from "../../../db/src/api.ts";
 import { enforceFolderTrust } from "../../src/main/trust-gate.ts";
 import { runTrustCommand } from "../../src/cli/trust-command.ts";
 import { FolderGrantRefusedError, grantFolder, refuseFolder } from "../../src/octocode/trust/grants.ts";
 import { folderEntry } from "../../src/octocode/trust/identity.ts";
 import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
+import { belowSession, insideSessionShell } from "../../src/octocode/trust/session-shell.ts";
 
 /**
  * The B409 trust review fixes, each through the entry point it concerns, with an isolated home and agent database.
@@ -119,6 +120,56 @@ describe("a re-grant after the stored birth time stopped matching (finding 3)", 
 		const fresh = grantFolder(box.other, "folder", { source: "command", surface: "cli" }, box.opts);
 		expect(fresh.id).not.toBe(stale.id);
 		expect(resolveFolderTrust(box.other, box.opts).state).toBe("trusted");
+	});
+});
+
+describe("trust recorded from a session's process tree", () => {
+	it("counts the variable by presence, so blanking it changes nothing", () => {
+		expect(insideSessionShell({ OCTOCODE_SESSION_ID: "" })).toBe(true);
+		expect(insideSessionShell({ OCTOCODE_SESSION_ID: "s1" })).toBe(true);
+		expect(insideSessionShell({})).toBe(false);
+	});
+
+	it("walks up the process tree to a session's title, and fails open when it cannot", () => {
+		const tree: Record<number, { ppid: number; command: string }> = {
+			30: { ppid: 20, command: "/bin/zsh -c octocode trust add --yes" },
+			20: { ppid: 10, command: "octocode-main-abc123" },
+			10: { ppid: 1, command: "-zsh" },
+			40: { ppid: 10, command: "node /code/octocodecode/dist/cli.js" },
+		};
+		const row = (pid: number) => tree[pid];
+		expect(belowSession(30, row)).toBe(true);
+		expect(belowSession(40, row)).toBe(false);
+		expect(belowSession(99, row)).toBe(false);
+		const loop = () => ({ ppid: 7, command: "sh" });
+		expect(belowSession(7, loop)).toBe(false);
+	});
+
+	it("`trust add --yes` with no terminal refuses below a session, even with the variable removed, and works for a script", async () => {
+		const box = sandbox();
+		closeSharedAgentDb();
+		vi.stubEnv("OCTOCODE_AGENT_DB", box.env.OCTOCODE_AGENT_DB);
+		vi.stubEnv("OCTOCODE_HOME", box.env.OCTOCODE_HOME);
+		vi.stubEnv("OCTOCODE_SESSION_ID", undefined);
+		const errors: string[] = [];
+		const run = (args: string[], below: boolean, confirm?: () => Promise<boolean>) =>
+			runTrustCommand(args, {
+				cwd: box.other,
+				confirm,
+				belowSession: () => below,
+				out: () => {},
+				err: (text: string) => errors.push(text),
+			});
+		try {
+			expect(await run(["add", "--yes"], true)).toBe(1);
+			expect(errors.join("\n")).toMatch(/inside an Octocode session's shell/);
+			expect(resolveFolderTrust(box.other).state).toBe("undecided");
+			expect(await run(["add", "--yes"], false)).toBe(0);
+			expect(resolveFolderTrust(box.other).state).toBe("trusted");
+		} finally {
+			closeSharedAgentDb();
+			vi.unstubAllEnvs();
+		}
 	});
 });
 

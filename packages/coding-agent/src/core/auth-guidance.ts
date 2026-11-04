@@ -6,6 +6,9 @@ const UNKNOWN_PROVIDER = "unknown";
 /** Where the message is read: inside a session (slash commands work) or on the command line (they do not). */
 export type AuthGuidanceSurface = "session" | "cli";
 
+/** Nothing can run until the user gives this model credentials. Protocols mark it so a client can route to sign-in. */
+export class AuthRequiredError extends Error {}
+
 function getProviderLoginHelp(surface: AuthGuidanceSurface = "session"): string {
 	const action =
 		surface === "cli"

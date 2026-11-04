@@ -1,13 +1,9 @@
-import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
-import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
-import { completeSimple } from "@octocodeai/octocode-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { GOAL_HEADING, summarySection } from "../../core/compaction/summary-format.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { currentCatalog } from "../subagents/catalog.ts";
-import { resolveTier } from "../subagents/model.ts";
+import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 
 /** How long the title call may take before it is given up. */
 // The call runs in the background and its write is guarded, so a slow model costs nothing; 5 s dropped 13 of 30 titles
@@ -29,11 +25,7 @@ const TITLE_PROMPT = renderInstruction("workflows/title.md", { noTask: NO_TASK }
 /** The part of `session_compact` the titler reads. */
 type CompactedEvent = { compactionEntry: { summary: string } };
 
-export type CompleteTitle = (
-	model: Model<Api>,
-	context: ReturnType<typeof normalizeContext>,
-	options: SimpleStreamOptions,
-) => Promise<AssistantMessage>;
+export type CompleteTitle = CompleteSmall;
 
 /** The texts of the session's user messages with text, oldest first. */
 function userMessages(ctx: ExtensionContext): string[] {
@@ -67,44 +59,19 @@ async function requestTitle(
 	ctx: ExtensionContext,
 	request: string,
 	signal: AbortSignal,
-	complete: CompleteTitle = completeSimple,
+	complete?: CompleteTitle,
 ): Promise<{ title: string } | "none" | undefined> {
-	try {
-		if (!ctx.model) return undefined;
-		const available = ctx.modelRegistry.getAvailable();
-		const chosen = resolveTier("small", available, ctx.model, currentCatalog());
-		const model = chosen && available.find((each) => each.provider === chosen.provider && each.id === chosen.id);
-		if (!model) return undefined;
-		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-		if (!auth.ok) return undefined;
-		const quoted = cleanTitle(request, INPUT_MAX).replaceAll("</request>", "");
-		const reply = await complete(
-			model,
-			normalizeContext({
-				messages: [
-					{
-						role: "user",
-						content: [{ type: "text", text: `${TITLE_PROMPT}\n\n<request>\n${quoted}\n</request>` }],
-						timestamp: Date.now(),
-					},
-				],
-			}),
-			{
-				signal,
-				maxTokens: 256,
-				cacheRetention: "none",
-				...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
-				...(auth.headers ? { headers: auth.headers } : {}),
-				...(auth.env ? { env: auth.env } : {}),
-			},
-		);
-		if (reply.stopReason === "error" || reply.stopReason === "aborted") return undefined;
-		const title = titleFromReply(contentText(reply.content));
-		if (title?.toUpperCase() === NO_TASK) return "none";
-		return title ? { title } : undefined;
-	} catch {
-		return undefined;
-	}
+	const quoted = cleanTitle(request, INPUT_MAX).replaceAll("</request>", "");
+	const reply = await callSmallModel(ctx, {
+		text: `${TITLE_PROMPT}\n\n<request>\n${quoted}\n</request>`,
+		signal,
+		maxTokens: 256,
+		...(complete ? { complete } : {}),
+	});
+	if ("error" in reply) return undefined;
+	const title = titleFromReply(reply.text);
+	if (title?.toUpperCase() === NO_TASK) return "none";
+	return title ? { title } : undefined;
 }
 
 /**

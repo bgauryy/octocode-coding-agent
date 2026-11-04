@@ -73,6 +73,18 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: set((a) => (a.print = true)),
 	},
 	{
+		name: "--no-stdin",
+		kind: "boolean",
+		help: ["Do not read piped stdin (for a parent that leaves the pipe open)"],
+		apply: set((a) => (a.noStdin = true)),
+	},
+	{
+		name: "--no-dialogs",
+		kind: "boolean",
+		help: ["RPC mode: no one answers dialogs, so behave as headless and refuse asks instead of waiting"],
+		apply: set((a) => (a.noDialogs = true)),
+	},
+	{
 		name: "--continue",
 		short: "-c",
 		kind: "boolean",

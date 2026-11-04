@@ -361,7 +361,9 @@ describe("the reservation gate with the shell parse", () => {
 		stops.push(() => fake.emit("session_shutdown", {}, ctx));
 		const lock = (paths: string[]) =>
 			fake.tools.get("coordinate").execute("c", { action: "lock", paths, reason: "auth" }, undefined, undefined, ctx);
-		const gate = (command: string) => reservationGate({ toolName: "bash", input: { command } } as never, ctx);
+		// Inline code is held back only when its text names a reserved path: a trailing comment names it for these cases.
+		const gate = (command: string) =>
+			reservationGate({ toolName: "bash", input: { command: `${command}\n# src/a.ts` } } as never, ctx);
 		/** Runs the gate on a call with an id, then the result hooks on a plain result; returns the verdict, the command the call runs and the result text. */
 		const call = async (command: string) => {
 			const event = { type: "tool_call", toolCallId: "call-1", toolName: "bash", input: { command } };
@@ -405,7 +407,7 @@ describe("the reservation gate with the shell parse", () => {
 		});
 		expect(refused?.reason).toContain(`runs ${name} on inline code`);
 		expect(refused?.reason).toContain(
-			"write the code to a script file under .octa/code/temp/ and run that file, or use the file tool for edits",
+			"write the code to a script file under .octocode/code/temp/ and run that file, or use the file tool for edits",
 		);
 		// The holder's own commands run.
 		expect(await owner.gate(command)).toBeUndefined();
@@ -421,9 +423,11 @@ describe("the reservation gate with the shell parse", () => {
 			// Nobody holds anything: the command runs as written, with no note.
 			expect(await peer.call(command)).toEqual({ verdict: undefined, command, text: "ok" });
 			await owner.lock(["src/a.ts"]);
-			const confined = await peer.call(command);
+			// Inline code is rewritten only when its text names the reserved path.
+			expect((await peer.call(command)).command).toBe(command);
+			const confined = await peer.call(`${command}\n# src/a.ts`);
 			expect(confined.verdict).toBeUndefined();
-			expect(confined.command).toBe(rewritten);
+			expect(confined.command).toBe(`${rewritten}\n# src/a.ts`);
 			expect(confined.text).toContain("ERR_ACCESS_DENIED");
 			expect(confined.text).toContain("--permission --no-experimental-sqlite --allow-fs-read=*");
 			// The holder's own command runs as written.
@@ -447,11 +451,11 @@ describe("the reservation gate with the shell parse", () => {
 			// The flags added, another fault remains: that one is named.
 			["node -e 'x' --inspect", "node", "`--inspect` after the code"],
 		] as const) {
-			const { verdict, command: ran } = await peer.call(command);
+			const { verdict, command: ran } = await peer.call(`${command}\n# src/a.ts`);
 			expect(verdict, command).toMatchObject({ block: true });
 			expect(verdict?.reason).toContain(`runs ${name} on inline code`);
 			expect(verdict?.reason).toContain(cause);
-			expect(ran).toBe(command);
+			expect(ran).toBe(`${command}\n# src/a.ts`);
 		}
 	});
 
@@ -463,7 +467,7 @@ describe("the reservation gate with the shell parse", () => {
 		await owner.lock(["src/a.ts"]);
 		writeFileSync(path.join(cwd, "in.txt"), "hello");
 		const run = async (command: string) => {
-			const { verdict, command: confined } = await peer.call(command);
+			const { verdict, command: confined } = await peer.call(`${command}\n# src/a.ts`);
 			expect(verdict, command).toBeUndefined();
 			expect(confined).not.toBe(command);
 			return spawnSync("bash", ["-c", confined], { cwd, encoding: "utf8" });
@@ -534,7 +538,7 @@ describe("the reservation gate with the shell parse", () => {
 		const owner = await member(db, cwd);
 		const peer = await member(db, cwd, {
 			shellCommands: parsedShell,
-			shellReadOnly: (command) => command === "{ python3 -c 'print(1)'; }",
+			shellReadOnly: (command) => command.startsWith("{ python3 -c 'print(1)'; }"),
 			shellWrites: async (command) => (command.includes("> src/a.ts") ? ["src/a.ts"] : []),
 		});
 		await owner.lock(["src/a.ts"]);

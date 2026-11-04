@@ -84,6 +84,9 @@ export function failure(id: RpcId, code: number, message: string, data?: unknown
 
 export const success = (id: RpcId, result: unknown): RpcResponse => ({ jsonrpc: "2.0", id, result });
 
+/** `queued` of a send still waiting for the receiving session's user to allow it. */
+export const WAITING_FOR_USER = "waiting-for-user";
+
 /** An event the instance publishes. `seq` is per instance and strictly increasing, so a client can resume with `since`. */
 export interface ApiEvent {
 	seq: number;

@@ -1,10 +1,16 @@
 import { ERR, RpcError } from "./protocol.ts";
 
-/** What a settled run hands to `wait` callers: the final assistant text and why the run ended. */
+/** What a settled run hands to `wait` callers: the final assistant text, why the run ended and, when it failed, the reason. */
 export type RunResult = {
 	text: string;
 	stopReason?: string;
+	errorMessage?: string;
 };
+
+/** An error, an abort or a reply cut at the output limit is not a result a script should treat as success. */
+export function runSucceeded(result: Pick<RunResult, "stopReason">): boolean {
+	return result.stopReason === undefined || result.stopReason === "stop" || result.stopReason === "toolUse";
+}
 
 interface Waiter {
 	resolve(result: RunResult): void;
@@ -17,6 +23,8 @@ interface Waiter {
  */
 export interface SendReceipt {
 	phase: "preparing" | "accepted" | "uncertain" | "cancelled" | "settled";
+	/** Still preparing because the session's user is deciding whether to let the message in: a run settling meanwhile does not void it. */
+	waitingForUser?: boolean;
 	/** The asynchronous host handoff failed after an acknowledgement; retries must not dispatch again. */
 	failure?: Error;
 	reject(error: Error): void;
@@ -30,6 +38,12 @@ export interface SendReceipt {
 }
 
 const SEND_RECEIPT_LIMIT = 128;
+
+/** Why a send still being prepared ran out of the sender's timeout. */
+export const preparationExpired = (receipt: Pick<SendReceipt, "waitingForUser">): string =>
+	receipt.waitingForUser
+		? "The session's user did not answer the permission dialog within the sender's timeout; nothing was sent"
+		: "Message preparation timed out; nothing was sent";
 
 /**
  * The receipts of one session's sends, keyed by the client's idempotency `key`, and the callers waiting for a run to
@@ -141,6 +155,11 @@ export class SendReceipts {
 		return { receipt, waiter };
 	}
 
+	/** A send with no key that now waits for the user: its id becomes its key, so its sender can ask for the outcome. Only such a send takes a slot. */
+	adopt(receipt: SendReceipt, key: string): void {
+		this.byKey.set(key, receipt);
+	}
+
 	/** The message is going out: the receipt leaves `preparing`. A keyed send (or one that waits) keeps its waiter for the run's end; otherwise nobody waits. */
 	accept(receipt: SendReceipt, waiter: Waiter, keep: boolean): void {
 		this.preparing.delete(receipt);
@@ -149,21 +168,29 @@ export class SendReceipts {
 		else waiter.resolve({ text: "" });
 	}
 
-	/** The send failed. After dispatch the receipt stays (`uncertain`, so a retry with its key sees the outcome); before, nothing was sent and the key is free again. */
-	fail(receipt: SendReceipt, waiter: Waiter, key: string | undefined, failure: Error, dispatched: boolean): void {
+	/**
+	 * The send failed. After dispatch the receipt stays (`uncertain`, so a retry with its key sees the outcome); so does one
+	 * the session refused (`refused`: the same key repeats that refusal, and only a new key asks again). Otherwise nothing
+	 * was sent and the key is free again.
+	 */
+	fail(
+		receipt: SendReceipt,
+		waiter: Waiter,
+		key: string | undefined,
+		failure: Error,
+		outcome: "dispatched" | "refused" | "not-sent",
+	): void {
 		this.preparing.delete(receipt);
 		this.waiters.delete(waiter);
 		receipt.reject(failure);
-		if (dispatched) {
+		if (outcome === "dispatched") {
 			receipt.phase = "uncertain";
 			receipt.failure = failure;
 			// This receipt cannot own turn.abort now, and a rejected handoff may never emit agent_settled.
 			// The session's actual idle/pending state still controls whether a new send may start.
-			if (this.activeKey === key) this.activeKey = undefined;
-		} else {
-			if (key) this.byKey.delete(key);
-			if (this.activeKey === key) this.activeKey = undefined;
-		}
+		} else if (outcome === "refused") receipt.phase = "cancelled";
+		else if (key) this.byKey.delete(key);
+		if (this.activeKey === key) this.activeKey = undefined;
 	}
 
 	/** A caller without a key stops waiting once it has its answer. */
@@ -201,7 +228,8 @@ export class SendReceipts {
 	settle(result: RunResult): void {
 		this.completedVersion++;
 		for (const receipt of this.preparing)
-			this.cancelPreparation(receipt, "The session ran while the message was being prepared");
+			if (!receipt.waitingForUser)
+				this.cancelPreparation(receipt, "The session ran while the message was being prepared");
 		for (const receipt of this.byKey.values()) if (receipt.phase === "accepted") receipt.phase = "settled";
 		this.activeKey = undefined;
 		for (const waiter of Array.from(this.waiters)) {
@@ -216,8 +244,9 @@ export class SendReceipts {
 		const expired = new Promise<never>((_, reject) => {
 			timer = setTimeout(() => {
 				if (receipt.phase === "preparing") {
-					this.cancelPreparation(receipt, "Message preparation timed out; nothing was sent");
-					reject(new RpcError(ERR.unavailable, "Message preparation timed out; nothing was sent"));
+					const message = preparationExpired(receipt);
+					this.cancelPreparation(receipt, message);
+					reject(new RpcError(ERR.unavailable, message, { execution: "not-sent" }));
 				} else
 					reject(
 						new RpcError(ERR.timeout, "Timed out waiting for the agent to finish; the message was delivered", {

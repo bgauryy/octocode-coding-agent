@@ -6,7 +6,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
  * parses rides in its task (`report.ts`). Depends only on the selected tools, so lean siblings share one cached prompt.
  */
 export function leanPromptSections(input: { canShell: boolean; canSave: boolean; readOnly: boolean }): {
-	octocode_lean: string;
+	lean: string;
 } {
-	return { octocode_lean: renderInstruction("lean/lean.md", input) };
+	return { lean: renderInstruction("sections/lean.md", input) };
 }

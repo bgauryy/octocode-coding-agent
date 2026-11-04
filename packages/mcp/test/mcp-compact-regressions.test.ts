@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import {
-	catalogHashes,
+	catalogHash,
 	checkFidelity,
 	COMPACT_GENERATOR_VERSION,
 	generatedDir,
@@ -56,7 +56,7 @@ it("loads metadata and text from the same snapshot when another writer replaces 
 	const dir = tmp();
 	const input = { server: "s", tools: [tool({ type: "string" })] };
 	const text = renderServer(input);
-	const meta = { ...catalogHashes(input), generatorVersion: COMPACT_GENERATOR_VERSION, generatedAt: "fixture" };
+	const meta = { hash: catalogHash(input), generatorVersion: COMPACT_GENERATOR_VERSION, generatedAt: "fixture" };
 	writeGenerated(dir, "s", text, meta);
 	writeFileSync(join(dir, "s.txt"), renderServer({ server: "s", tools: [tool({ type: "number" })] }));
 	expect(readGenerated(dir, "s")).toEqual({ text, meta });
@@ -69,7 +69,7 @@ it("regenerates legacy split caches while preserving their authored overrides", 
 	const optimizedBy = { model: "author", at: "2026-10-28T00:00:00.000Z" };
 	writeFileSync(
 		join(dir, "s.json"),
-		JSON.stringify({ ...catalogHashes(input), generatorVersion: COMPACT_GENERATOR_VERSION, overrides, optimizedBy }),
+		JSON.stringify({ hash: catalogHash(input), generatorVersion: COMPACT_GENERATOR_VERSION, overrides, optimizedBy }),
 	);
 	writeFileSync(join(dir, "s.txt"), "A stale or mixed legacy text file.");
 	const result = resolveServerFile(dir, "s", input);
@@ -90,7 +90,7 @@ it("loads external compact overrides only at a loadout rebuild, including their 
 	const before = describe();
 	const overrides = { tools: { a: "Applied wording." }, triggers: { a: "Use the applied trigger." } };
 	writeGenerated(generatedDir(agentDir), "s", renderServer(input, overrides), {
-		...catalogHashes(input),
+		hash: catalogHash(input),
 		generatorVersion: COMPACT_GENERATOR_VERSION,
 		overrides,
 		generatedAt: "fixture",

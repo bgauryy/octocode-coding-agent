@@ -4,7 +4,7 @@ import { validateToolArguments } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import {
-	catalogHashes,
+	catalogHash,
 	COMPACT_GENERATOR_VERSION,
 	generatedDir,
 	readGenerated,
@@ -53,7 +53,7 @@ describe("compact MCP presentation", () => {
 		const first = readGenerated(dir, "octocode");
 		expect(first?.text).toContain("declare namespace octocode {");
 		expect(first?.text).toContain("function shout(input: ");
-		expect(first?.text).toContain('// MCP server "octocode"');
+		expect(first?.text).toContain("declare namespace octocode");
 		await reconnect(h.state.findServer("octocode")!);
 		await h.prompt();
 		expect(readGenerated(dir, "octocode")?.meta.generatedAt).toBe(first?.meta.generatedAt);
@@ -90,7 +90,7 @@ describe("compact MCP presentation", () => {
 			triggers: { shout: "Use the applied shout trigger." },
 		};
 		writeGenerated(generatedDir(agentDir), "octocode", renderServer(input, overrides), {
-			...catalogHashes(input),
+			hash: catalogHash(input),
 			generatorVersion: COMPACT_GENERATOR_VERSION,
 			overrides,
 			generatedAt: "fixture",
@@ -130,7 +130,7 @@ describe("compact MCP presentation", () => {
 		const contract = sections.mcps;
 		expect(contract).toContain("declare namespace octocode {");
 		expect(contract).toContain("function shout(");
-		expect(contract).toContain("mcp__octocode__<function>");
+		expect(contract).toContain('tools="mcp__octocode__*"');
 		// Every server is connected: no status section, and no other MCP section.
 		expect(Object.keys(sections).filter((name) => name.startsWith("mcp"))).toEqual(["mcps"]);
 		expect(contract).toContain('<mcp name="octocode" tools="mcp__octocode__*">');

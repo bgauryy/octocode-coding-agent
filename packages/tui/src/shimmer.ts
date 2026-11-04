@@ -26,8 +26,9 @@ const STEPS = 8;
  * their cell width.
  */
 export function shimmerText(text: string, options: ShimmerOptions): string {
-	if (text.length === 0) return text;
 	const { base, peak, mode } = options;
+	// Without color a shimmer has nothing to vary.
+	if (text.length === 0 || mode === "none") return text;
 	const periodMs = Math.max(1, options.periodMs ?? 2000);
 	const halfWidth = Math.max(1, options.halfWidth ?? 5);
 	const padding = Math.max(0, options.padding ?? 10);

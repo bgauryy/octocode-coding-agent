@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
@@ -12,7 +13,7 @@ import { capChars, textResult } from "../shared/util.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { type FetchedImage, pageFetcher } from "./fetch.ts";
-import { classifyHost } from "../../../../common/src/web-guard.ts";
+import { classifyHost, metadataRefusal, reachesMetadata } from "../../../../common/src/web-guard.ts";
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
 import { search } from "./search.ts";
@@ -113,6 +114,12 @@ async function approveFetch(
 	} catch {
 		return { private: false };
 	}
+	// An invariant, like the state folder: `net.private` runs in `full`, and this request returns the machine's credentials.
+	if (await reachesMetadata(target)) {
+		const refusal = metadataRefusal(target.host);
+		permission.refused([`web ${url}`], refusal, "web");
+		throw new Error(refusal);
+	}
 	const privateHost = (await classifyHost(target)).kind === "private";
 	const grant = { key: target.host, label: target.host };
 	const verdict = await permission.check(ctx, {
@@ -135,13 +142,13 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 		timedTool({
 			name: "web",
 			label: "Web",
-			promptSnippet:
-				"Look up public web pages: documentation, release notes, advisories, or anything the repository cannot answer",
+			promptSnippet: renderInstruction("tools/web/snippet.md"),
 			description:
 				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it. Successful page fetches are cached for 15 minutes (images are not).",
-			// The research policy routes GitHub and package lookups and, when this agent can browse, rendered pages; these lines
-			// own only how to use a result (guidelines are static, so they cannot depend on the selected tools).
-			promptGuidelines: ["Read the source behind a search snippet before relying on its claim."],
+			// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
+			// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
+			// on the selected tools).
+			promptGuidelines: renderInstruction("tools/web/guidelines.md").split("\n"),
 			parameters: Type.Object({
 				url: Type.Optional(Type.String({ description: "Public http(s) page to read; give this or query, not both" })),
 				query: Type.Optional(Type.String({ description: "Search terms; give this or url, not both" })),

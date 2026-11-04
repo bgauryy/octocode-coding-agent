@@ -11,7 +11,6 @@
 import type { Component, Container, SelectListTheme, TUI } from "@octocodeai/octocode-tui";
 import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { TSchema } from "typebox";
-import type { ContractUsage } from "./contract-tiers.ts";
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
 
 /** The host application's name, version and runtime. */
@@ -132,6 +131,8 @@ export interface McpBrowserPort {
 
 /** Tool rows, as the host draws them. */
 export interface McpRenderPort {
+	/** Renders a model-facing template from the host's instructions folder. */
+	instruction(name: string, values: Record<string, string | number | boolean | undefined>): string;
 	toolHeader(
 		theme: McpTheme,
 		context: McpRenderContext,
@@ -177,16 +178,7 @@ export interface McpUiPort {
 	): Promise<void>;
 }
 
-/**
- * Recorded tool usage for contract tiers (`contract-tiers.ts`). Optional: without it every `auto` tool takes its
- * cold-start tier. The host freezes what it returns per workspace, scope and day, so sessions of one day agree.
- */
-export interface McpUsagePort {
-	contractUsage(cwd: string): ContractUsage | undefined;
-}
-
 export interface McpHostPorts {
-	usage?: McpUsagePort;
 	identity: McpIdentityPort;
 	paths: McpPathsPort;
 	output: McpOutputPort;
@@ -220,4 +212,3 @@ export const hostModels = (): McpModelsPort => port("models");
 export const hostBrowser = (): McpBrowserPort => port("browser");
 export const hostRender = (): McpRenderPort => port("render");
 export const hostUi = (): McpUiPort => port("ui");
-export const hostUsage = (): McpUsagePort | undefined => installed.usage;

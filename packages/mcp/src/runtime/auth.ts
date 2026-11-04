@@ -3,6 +3,7 @@
 import { McpAuthRequiredError } from "../client/index.ts";
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "../client/oauth/index.ts";
 import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { firstLine } from "../../../common/src/clip.ts";
 import type { McpServerEntry } from "../config.ts";
 import {
 	createMcpAuthProvider,
@@ -26,6 +27,31 @@ export function unavailableError(
 		return new Error(`MCP server "${entry.name}" is stopped in this session; connect or restart it to use it`);
 	if (closed) return new Error(`MCP server "${entry.name}" is shut down`);
 	return undefined;
+}
+
+/**
+ * Why a call fails while its server is not connected, or undefined when it is. The server's tools stay declared through
+ * a drop, so the error carries what the declarations no longer say: the state and how to restart the server.
+ */
+export function callWhileDownError(
+	entry: McpServerEntry,
+	{ state, error, stopped, closed }: { state: string; error: string | undefined; stopped: boolean; closed: boolean },
+): Error | undefined {
+	if (state === "connected") return undefined;
+	const unavailable = unavailableError(entry, { stopped, closed });
+	if (unavailable) return unavailable;
+	if (state === "needs-auth") return new Error(signInRequiredMessage(entry));
+	const restart = `If it stays down, restart it with the mcp tool (intent "restart", server "${entry.name}").`;
+	if (state === "connecting")
+		return new Error(`MCP server "${entry.name}" is reconnecting; retry the call shortly. ${restart}`);
+	const why = error ? ` (${firstLine(error)})` : "";
+	if (state === "failed")
+		return new Error(
+			`MCP server "${entry.name}" is disconnected: it failed to connect${why}. Restart it with the mcp tool (intent "restart", server "${entry.name}").`,
+		);
+	return new Error(
+		`MCP server "${entry.name}" is disconnected${why} and reconnecting; retry the call shortly. ${restart}`,
+	);
 }
 
 /** OAuth servers that still reject the request after a refresh need the user to sign in again. */

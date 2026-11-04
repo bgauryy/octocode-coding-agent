@@ -10,8 +10,8 @@ import type { Team } from "../team/session.ts";
 import { sessionChildren } from "../shared/session-children.ts";
 import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
-import { noteMerge } from "./ref-link.ts";
-import { mergeAgent, pendingRefs, reservedChanges } from "./worktree.ts";
+import { landChild } from "./merge-child.ts";
+import { pendingRefs } from "./worktree.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
 export interface BackgroundRun {
@@ -22,9 +22,12 @@ export interface BackgroundRun {
 export type Background = Map<string, BackgroundRun>;
 
 const AGENTS_USAGE =
-	"Usage: /agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history | external ...]";
+	"Usage: /agents [tell <agent|all> [#<message to answer>] <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history | external ...]";
 const AGENTS_SUBCOMMANDS: Array<[string, string]> = [
-	["tell", "tell <agent|all> <message> — message an agent, or every agent of this session"],
+	[
+		"tell",
+		"tell <agent|all> [#<message to answer>] <message> — message an agent, or every agent of this session; #n answers its question",
+	],
 	["interrupt", "interrupt <id> <message> — stop a subagent's current step and continue it with the message"],
 	["kill", "kill <id> — stop a running subagent"],
 	["merge", "merge <id> — merge an isolated subagent into this tree"],
@@ -72,17 +75,23 @@ export function agentsCommand(
 	const running = () => [...background.keys(), ...foreground.keys()];
 	const tell = async (args: string, ctx: ExtensionCommandContext, interrupt = false) => {
 		const to = args.split(/\s+/, 1)[0] ?? "";
-		const text = args.slice(to.length).trim();
+		const rest = args.slice(to.length).trim();
+		// `#12 …` answers message 12: that closes the agent's question.
+		const answering = interrupt ? null : /^#(\d+)\s+/.exec(rest);
+		const text = answering ? rest.slice(answering[0].length) : rest;
 		if (!to || !text)
 			return say(
 				ctx,
-				interrupt ? "Usage: /agents interrupt <id> <message>" : "Usage: /agents tell <agent|all> <message>",
+				interrupt
+					? "Usage: /agents interrupt <id> <message>"
+					: "Usage: /agents tell <agent|all> [#<message to answer>] <message>",
 				"warning",
 			);
 		try {
 			const result = await team.send(to, text, {
 				from: USER_SENDER,
 				replyRequired: false,
+				...(answering ? { replyTo: Number(answering[1]) } : {}),
 				...(interrupt ? { interrupt } : {}),
 			});
 			const done =
@@ -94,8 +103,15 @@ export function agentsCommand(
 			say(ctx, errorMessage(error), "warning");
 		}
 	};
-	const kill = (id: string, ctx: ExtensionCommandContext) => {
+	const kill = async (id: string, ctx: ExtensionCommandContext) => {
 		const ids = running();
+		// The report that follows says the run ended; what the stop cost it cannot be undone, so someone at the keyboard is asked.
+		if (
+			ctx.hasUI &&
+			ids.includes(id) &&
+			!(await ctx.ui.confirm("Stop subagent?", `Stop ${id}? Work it has not reported is lost.`))
+		)
+			return say(ctx, "Nothing stopped.");
 		const refused = !id
 			? `Usage: /agents kill <id>. ${ids.length ? `Running: ${ids.join(", ")}` : "None is running."}`
 			: foreground.has(id)
@@ -116,15 +132,10 @@ export function agentsCommand(
 		}
 		try {
 			// A merge writes files like any other writer: another agent's reservation stops it unless the user, asked, overrides it.
-			const held = await reservedChanges(ctx.cwd, id, (file, shown) => team.reservation(file, shown));
-			if (held.length > 0) {
-				const listed = `${held.slice(0, 5).join("\n")}${held.length > 5 ? `\n(${held.length - 5} more)` : ""}`;
-				const confirmed = ctx.hasUI && (await ctx.ui.confirm(`Merge ${id} over reservations?`, listed));
-				if (!confirmed) return say(ctx, `Not merged: ${id} changes reserved files.\n${listed}`, "warning");
-			}
-			const result = await mergeAgent(ctx.cwd, id);
-			const noted = result.ok && result.ref ? noteMerge(ctx, result.ref, result.into ?? "HEAD") : "";
-			say(ctx, `${result.text}${noted}`, result.ok ? "info" : "error");
+			const result = await landChild(team, id, ctx, (listed) =>
+				ctx.hasUI ? ctx.ui.confirm(`Merge ${id} over reservations?`, listed) : Promise.resolve(false),
+			);
+			say(ctx, result.text, result.reserved ? "warning" : result.ok ? "info" : "error");
 		} catch (error) {
 			say(ctx, errorMessage(error), "error");
 		}

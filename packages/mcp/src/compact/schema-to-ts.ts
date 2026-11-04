@@ -220,6 +220,8 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 					}),
 				),
 			];
+			const bare = new Set(parts.map((part) => part.replace(/^\/\*\* With [^*]*\*\/ /, "")));
+			if (bare.size === 1) return [...bare].join("");
 			return parts.length ? parts.join(" | ") : "unknown";
 		}
 		const sharedProperties = shared.properties as Node;
@@ -361,7 +363,7 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 				out += `${inner}${identifier(key)}: unknown;\n`;
 				continue;
 			}
-			const doc = docText(property, fieldPath);
+			const doc = isNode(property) && restated.has(property) ? "" : docText(property, fieldPath);
 			const placeholder = !doc && placeholders?.has(key);
 			if (!placeholder && (!isNode(property) || !restated.has(property))) options.onDoc?.(key, doc);
 			options.onField?.(fieldPath, required.has(key), upstreamDoc(property));

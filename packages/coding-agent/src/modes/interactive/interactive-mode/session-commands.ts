@@ -37,7 +37,7 @@ type SessionCommandsHost = Pick<
 	| "editorContainer"
 	| "getPathCommandArgument"
 	| "handleFatalRuntimeError"
-	| "hideThinkingBlock"
+	| "uiStore"
 	| "keybindings"
 	| "outputPad"
 	| "promptForMissingSessionCwd"
@@ -56,7 +56,6 @@ type SessionCommandsHost = Pick<
 	| "showStatus"
 	| "showWarning"
 	| "themeController"
-	| "toolOutputExpanded"
 	| "ui"
 >;
 
@@ -106,7 +105,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		if (chatRestoredBeforeSessionStart) {
 			return;
 		}
-		host.hideThinkingBlock = host.settingsManager.getHideThinkingBlock();
+		host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
 		host.outputPad = host.settingsManager.getOutputPad();
 		host.rebuildChatFromMessages();
 		chatRestoredBeforeSessionStart = true;
@@ -118,7 +117,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		host.keybindings.reload();
 		const activeHeader = host.customHeader ?? host.builtInHeader;
 		if (isExpandable(activeHeader)) {
-			activeHeader.setExpanded(host.toolOutputExpanded);
+			activeHeader.setExpanded(host.uiStore.getState().view.toolsExpanded);
 		}
 		setRegisteredThemes(host.session.resourceLoader.getThemes().themes);
 		host.applyRuntimeSettings();
@@ -330,7 +329,7 @@ export async function handleClearCommand(host: SessionCommandsHost, previousName
 	host.clearStatusIndicator();
 	try {
 		const result = await host.runtimeHost.newSession(previousName ? { previousName } : undefined);
-		if (result.cancelled) return;
+		if (result.cancelled) return host.showStatus("New session cancelled.");
 		host.chatContainer.addChild(new Spacer(1));
 		host.chatContainer.addChild(noticeLine("success", "New session started", host.outputPad));
 		host.ui.requestRender();
@@ -343,6 +342,11 @@ export async function handleClearCommand(host: SessionCommandsHost, previousName
 
 export async function handleCompactCommand(host: SessionCommandsHost, customInstructions?: string): Promise<void> {
 	validateCompactionInstructions(customInstructions);
+	if (host.session.isStreaming) {
+		// Compacting needs an idle session and would abort the reply: wait for the turn to settle, then compact.
+		host.showStatus("Compaction will run after this turn finishes.");
+		await host.session.settled();
+	}
 	host.clearStatusIndicator();
 
 	try {

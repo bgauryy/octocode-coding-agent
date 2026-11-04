@@ -14,7 +14,7 @@ export default mergeConfig(
 			globalSetup: [fileURLToPath(new URL("test/home-guard.global.ts", import.meta.url))],
 			testTimeout: 30000,
 			// Tests run offline by default; opt in with allowNetwork() from test/test-network-env.ts.
-			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MODELS_DEV: "0", OCTOCODE_API: "0" },
+			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MODELS_DEV: "0" },
 			unstubEnvs: true,
 			reporters: process.env.GITHUB_ACTIONS ? ["dot", "github-actions"] : ["dot"],
 			silent: "passed-only",

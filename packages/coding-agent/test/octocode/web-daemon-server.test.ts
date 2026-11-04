@@ -14,6 +14,7 @@ import { mermaidScript } from "@octocodeai/octocode-webview";
 import { sharedAgentDb } from "../../src/config/database.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
 import { daemonPage } from "../../src/octocode/web-daemon/build.ts";
+import { LaunchCodes } from "../../src/octocode/web-daemon/launch-code.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { fakeSession, frame, isolatedEnv } from "./web-daemon-fixture.ts";
 
@@ -115,6 +116,53 @@ describe("daemon HTTP rules (R1-R9)", () => {
 			(await get(`/api/sessions?token=${server.token}`, { headers: { Authorization: "Bearer wrong" } })).status,
 		).toBe(401);
 		expect((await get(`/api/sessions`, { headers: { Authorization: `Basic ${server.token}` } })).status).toBe(401);
+	});
+
+	it("opens the page once from a code the launch token alone can issue, with the token only in the redirect's fragment", async () => {
+		const { get, authed, server, origin } = await daemon();
+		expect((await get("/api/admin/launch-code", { method: "POST" })).status).toBe(401);
+		expect(
+			(
+				await get("/api/admin/launch-code", {
+					method: "POST",
+					headers: { Authorization: `Bearer ${server.remoteToken}` },
+				})
+			).status,
+		).toBe(403);
+		const { code } = (await (await authed("/api/admin/launch-code", { method: "POST" })).json()) as { code: string };
+		expect(code).not.toContain(server.token);
+		const door = await fetch(`${origin}/open/${code}?s=sess-1&view=activity`, { redirect: "manual" });
+		expect(door.status).toBe(303);
+		expect(door.headers.get("cache-control")).toBe("no-store");
+		const target = new URL(door.headers.get("location")!, origin);
+		expect(target.pathname + target.search).toBe("/?s=sess-1");
+		expect(new URLSearchParams(target.hash.slice(1)).get("access")).toBe(server.token);
+		expect(new URLSearchParams(target.hash.slice(1)).get("view")).toBe("activity");
+		// Used once, it is gone; a made-up one never worked.
+		expect((await fetch(`${origin}/open/${code}`, { redirect: "manual" })).status).toBe(401);
+		expect((await fetch(`${origin}/open/nope`, { redirect: "manual" })).status).toBe(401);
+	});
+
+	it("ignores a session or view in the door's query that a page should not be given", async () => {
+		const { authed, origin } = await daemon();
+		const { code } = (await (await authed("/api/admin/launch-code", { method: "POST" })).json()) as { code: string };
+		const door = await fetch(
+			`${origin}/open/${code}?s=${encodeURIComponent('"><x')}&view=${encodeURIComponent("a&b")}`,
+			{
+				redirect: "manual",
+			},
+		);
+		const target = new URL(door.headers.get("location")!, origin);
+		expect(target.search).toBe("");
+		expect(new URLSearchParams(target.hash.slice(1)).get("view")).toBeNull();
+	});
+
+	it("ends a code nobody used", () => {
+		let now = 1_000;
+		const codes = new LaunchCodes(() => now);
+		const code = codes.issue();
+		now += 5 * 60_000;
+		expect(codes.take(code)).toBe(false);
 	});
 
 	it("refuses another Host or Origin with 403, on every route including the page and health", async () => {
@@ -291,7 +339,7 @@ describe("daemon with attached sessions and repositories", () => {
 			);
 		expect((await ctx.authed(`${base}/api/reports`, { method: "POST" })).status).toBe(405);
 		// The history stays addressable when a different checkout replaces the one recorded at this path.
-		fs.rmSync(path.join(root, ".octa"), { recursive: true });
+		fs.rmSync(path.join(root, ".octocode"), { recursive: true });
 		const replacement = registeredWorkspace(root, sharedAgentDb(ctx.env));
 		expect(replacement.id).not.toBe(key);
 		expect(await (await ctx.authed(`${base}/api/reports`)).json()).toEqual({ reports: [] });

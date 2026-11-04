@@ -33,7 +33,13 @@ function prefixIgnorePattern(line: string, prefix: string): string | null {
 	return negated ? `!${prefixed}` : prefixed;
 }
 
-export function addIgnoreRules(ig: IgnoreMatcher, dir: string, rootDir: string): void {
+/** Adds the rules of `dir`'s ignore files. An unreadable one goes to `onUnreadable`, since its ignored files are then searched. */
+export function addIgnoreRules(
+	ig: IgnoreMatcher,
+	dir: string,
+	rootDir: string,
+	onUnreadable?: (file: string, error: unknown) => void,
+): void {
 	const relativeDir = relative(rootDir, dir);
 	const prefix = relativeDir ? `${toPosixPath(relativeDir)}/` : "";
 
@@ -49,6 +55,8 @@ export function addIgnoreRules(ig: IgnoreMatcher, dir: string, rootDir: string):
 			if (patterns.length > 0) {
 				ig.add(patterns);
 			}
-		} catch {}
+		} catch (error) {
+			onUnreadable?.(ignorePath, error);
+		}
 	}
 }

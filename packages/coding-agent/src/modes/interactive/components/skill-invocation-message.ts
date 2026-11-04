@@ -30,7 +30,7 @@ export class SkillInvocationMessageComponent extends CollapsibleMessageComponent
 		const hint = expanded ? "" : theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
 		content.addChild(
 			new Text(
-				theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
+				theme.fg("customMessageLabel", `${theme.bold("[skill]")} `) +
 					theme.fg("customMessageText", sanitizeTerminalText(name)) +
 					theme.fg("dim", ` \u00b7 ${plural(lines, "line")}`),
 				0,

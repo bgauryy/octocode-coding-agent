@@ -25,7 +25,7 @@ import { MAIN_CHECKOUT, switchToWorktree } from "./switch.ts";
 import { existingWorktree } from "./target.ts";
 
 const USAGE =
-	"Usage: /worktree [list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | remove <name> [--force]]";
+	"Usage: /worktree [list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | merge <branch> | remove <name> [--force]]";
 
 /** The tmux launch dependencies (`open.ts`) plus the team's live agents. */
 export interface WorktreeCommandDependencies extends OpenDependencies {
@@ -35,6 +35,8 @@ export interface WorktreeCommandDependencies extends OpenDependencies {
 	parked?: () => ParkedResident[];
 	/** The session's folder, for completing names: the process directory does not follow `switch` or `/resume`. */
 	cwd?: () => string | undefined;
+	/** Lands a linked worktree's branch in the main checkout: the user typed it, so nothing asks again. */
+	merge?: (branch: string, ctx: ExtensionCommandContext) => Promise<{ ok: boolean; text: string }>;
 }
 
 /** Line breaks in a path or git message, shown as `\n` and `\r` so each worktree stays on its own line. */
@@ -203,6 +205,7 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 						"switch",
 						"switch <name|main> — move this session into a worktree or back to main (the old one stays saved)",
 					],
+					["merge", "merge <branch> — in the main checkout, land a linked worktree's branch"],
 					[
 						"remove",
 						"remove <name> [--force] — remove one that holds no unsaved work, live agents, reachable finished agents or tmux panes",
@@ -219,6 +222,10 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 				if (action === "open") return await open(rest, ctx, deps);
 				if (action === "switch" && rest.length === 1) return await switchToWorktree(rest[0], ctx);
 				if (action === "remove") return await remove(rest, ctx, deps);
+				if (action === "merge" && rest.length === 1 && deps.merge) {
+					const { ok, text } = await deps.merge(rest[0], ctx);
+					return say(ctx, text, ok ? "info" : "warning");
+				}
 				say(ctx, USAGE, "warning");
 			} catch (error) {
 				say(ctx, errorMessage(error), "error");

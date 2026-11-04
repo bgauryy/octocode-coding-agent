@@ -83,7 +83,7 @@ describe("AgentSession retry", () => {
 					if (callCount <= failCount) {
 						const msg = createAssistantMessage("", {
 							stopReason: "error",
-							errorMessage: options?.errorMessage ?? "overloaded_error",
+							errorMessage: options?.errorMessage ?? "500 internal server error",
 							...(options?.retryAfterMs === undefined ? {} : { retryAfterMs: options.retryAfterMs }),
 						});
 						stream.push({ type: "start", partial: msg });
@@ -249,26 +249,156 @@ describe("AgentSession retry", () => {
 		expect(created.getCallCount()).toBe(1);
 	});
 
-	it("stops rate-limit retries once the waiting window is spent", async () => {
-		const created = await createSession({
-			failCount: 99,
-			maxRetries: 3,
-			baseDelayMs: 1,
-			maxAgentDelayMs: RATE_LIMIT_WINDOW_MS,
-			errorMessage: "429 rate limit",
-			retryAfterMs: 1,
+	describe("capacity and transport failures", () => {
+		it.each([
+			"overloaded_error",
+			"529 overloaded",
+			"503 Service Unavailable",
+			"502 Bad Gateway",
+			"504 status code (no body)",
+			"520 status code (no body)",
+			"524 status code (no body)",
+			"server_busy",
+			"The model is at capacity",
+			"The service is temporarily unavailable",
+			"read ECONNRESET",
+			"connection reset by peer",
+			"other side closed",
+			"socket hang up",
+			"websocket closed: 1006",
+			"terminated",
+			"Anthropic stream ended before message_stop",
+			"Stream ended without finish_reason",
+		])("gives %s the rate-limit budget", async (errorMessage) => {
+			const created = await createSession({ failCount: 99, maxRetries: 2, errorMessage });
+			await created.session.prompt("Test");
+			expect(created.getCallCount()).toBe(1 + RATE_LIMIT_MIN_RETRIES);
 		});
-		const delays: number[] = [];
-		created.session.subscribe((event) => {
-			if (event.type === "auto_retry_start") delays.push(event.delayMs);
+
+		it.each([
+			"getaddrinfo ENOTFOUND api.example.com",
+			"request to https://api.example.com failed, reason: ",
+			"500 Internal error",
+			"Request timed out",
+			"Provider returned error",
+		])("keeps the configured budget for %s", async (errorMessage) => {
+			const created = await createSession({ failCount: 99, maxRetries: 2, baseDelayMs: 4, errorMessage });
+			const delays: number[] = [];
+			created.session.subscribe((event) => {
+				if (event.type === "auto_retry_start") delays.push(event.delayMs);
+			});
+			await created.session.prompt("Test");
+			expect(created.getCallCount()).toBe(3);
+			expect(delays).toEqual([4, 8]);
 		});
-		// Leave 1 ms of the window: every delay is at least 1 ms (its random spread only adds), so the next wait is
-		// clamped to it whatever the draw, and the one after is refused.
-		(created.session as unknown as { _c: { retry: { _rateLimitWaitedMs: number } } })._c.retry._rateLimitWaitedMs =
-			RATE_LIMIT_WINDOW_MS - 1;
-		await created.session.prompt("Test");
-		expect(delays).toEqual([1]);
-		expect(created.getCallCount()).toBe(2);
+
+		it("leaves retries off when maxRetries is 0, and fails terminal quota text fast", async () => {
+			const off = await createSession({ failCount: 99, maxRetries: 0, errorMessage: "503 Service Unavailable" });
+			await off.session.prompt("Test");
+			expect(off.getCallCount()).toBe(1);
+
+			const quota = await createSession({ failCount: 99, maxRetries: 3, errorMessage: "503 insufficient_quota" });
+			await quota.session.prompt("Test");
+			expect(quota.getCallCount()).toBe(1);
+		});
+
+		it("spreads the delays and treats retry-after as a floor", async () => {
+			const random = vi.spyOn(Math, "random").mockReturnValue(1);
+			try {
+				const spread = await createSession({ failCount: 2, maxRetries: 3, baseDelayMs: 4, errorMessage: "overloaded" });
+				const delays: number[] = [];
+				spread.session.subscribe((event) => {
+					if (event.type === "auto_retry_start") delays.push(event.delayMs);
+				});
+				await spread.session.prompt("Test");
+				expect(delays).toEqual([6, 12]);
+			} finally {
+				random.mockRestore();
+			}
+			const zero = vi.spyOn(Math, "random").mockReturnValue(0);
+			try {
+				const floored = await createSession({
+					failCount: 1,
+					maxRetries: 3,
+					baseDelayMs: 1,
+					errorMessage: "503 Service Unavailable",
+					retryAfterMs: 30,
+				});
+				const delays: number[] = [];
+				floored.session.subscribe((event) => {
+					if (event.type === "auto_retry_start") delays.push(event.delayMs);
+				});
+				await floored.session.prompt("Test");
+				expect(delays).toEqual([30]);
+			} finally {
+				zero.mockRestore();
+			}
+		});
+	});
+
+	describe("the retry window", () => {
+		/** Each provider call takes this long, as a stalled stream does before it fails. */
+		function everyCallTakes(ms: number, session: { subscribe: AgentSession["subscribe"] }) {
+			const real = Date.now.bind(Date);
+			let offset = 0;
+			const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
+			session.subscribe((event) => {
+				if (event.type === "agent_start") offset += ms;
+			});
+			return clock;
+		}
+
+		it("counts wall-clock time from the first failure, so a stream stall spends it", async () => {
+			const created = await createSession({ failCount: 99, maxRetries: 1, errorMessage: "503 Service Unavailable" });
+			const clock = everyCallTakes(RATE_LIMIT_WINDOW_MS / 2, created.session);
+			try {
+				await created.session.prompt("Test");
+			} finally {
+				clock.mockRestore();
+			}
+			// Failures at about 0.5, 1.0 and 1.5 windows from the start: the third call fails a full window after the first.
+			expect(created.getCallCount()).toBe(3);
+		});
+
+		it("always allows the configured attempts, however long they took", async () => {
+			const created = await createSession({ failCount: 99, maxRetries: 3, errorMessage: "429 rate limit" });
+			const clock = everyCallTakes(RATE_LIMIT_WINDOW_MS * 2, created.session);
+			try {
+				await created.session.prompt("Test");
+			} finally {
+				clock.mockRestore();
+			}
+			expect(created.getCallCount()).toBe(4);
+		});
+
+		it("pulls a raised attempt into what is left of the window, but not below retry-after", async () => {
+			const start = Date.now();
+			let now = start;
+			const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+			try {
+				const created = await createSession({
+					failCount: 2,
+					maxRetries: 1,
+					baseDelayMs: 1,
+					maxAgentDelayMs: 200,
+					errorMessage: "503 Service Unavailable",
+					retryAfterMs: 50,
+				});
+				const delays: number[] = [];
+				created.session.subscribe((event) => {
+					if (event.type === "auto_retry_start") {
+						delays.push(event.delayMs);
+						// Leave 5 ms of the window, less than the provider asked for.
+						now = start + RATE_LIMIT_WINDOW_MS - 5;
+					}
+				});
+				await created.session.prompt("Test");
+				expect(delays.length).toBe(2);
+				expect(delays[1]).toBeGreaterThanOrEqual(50);
+			} finally {
+				clock.mockRestore();
+			}
+		});
 	});
 
 	it("prompt waits for retry completion even when assistant message_end handling is delayed", async () => {

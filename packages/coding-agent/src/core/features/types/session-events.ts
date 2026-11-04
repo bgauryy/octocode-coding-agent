@@ -70,6 +70,11 @@ export interface SessionBeforeForkEvent {
 	position: "before" | "at";
 }
 
+/** Fired before `/quit` ends the session (can be cancelled) */
+export interface SessionBeforeQuitEvent {
+	type: "session_before_quit";
+}
+
 /** Fired before context compaction. Return values are ignored; preparation is an isolated snapshot. */
 export interface SessionBeforeCompactEvent {
 	customInstructions?: string;
@@ -153,6 +158,7 @@ export type SessionEvent =
 	| SessionInfoChangedEvent
 	| SessionBeforeSwitchEvent
 	| SessionBeforeForkEvent
+	| SessionBeforeQuitEvent
 	| SessionBeforeCompactEvent
 	| SessionCompactEvent
 	| SessionCompactFailedEvent

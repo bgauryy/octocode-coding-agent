@@ -1,5 +1,6 @@
 import type { RpcCommand, RpcExtensionErrorEvent } from "../rpc-types.ts";
 import type { JsonAgentSessionEvent } from "../../json-event.ts";
+import type { RpcReady } from "../session-identity.ts";
 
 // ============================================================================
 // Types
@@ -14,6 +15,10 @@ export type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
 export interface RpcClientOptions {
 	/** Executable and argument prefix for source or standalone CLIs; takes precedence over cliPath. */
 	invocation?: { command: string; args: string[] };
+	/** Called with the session's first record: the protocol and Octocode versions and the session id. */
+	onReady?: (ready: RpcReady) => void;
+	/** Called with a failure the agent could not tie to a command; without this, it goes to stderr. */
+	onProtocolError?: (message: string) => void;
 	/** @internal Canonical identity announced by an ACP-owned worker before extension startup. */
 	onSessionIdentity?: (sessionId: string) => void;
 	/** Called with the id of a dialog the agent closed without this host's response (`extension_ui_dismiss`); close it. */

@@ -1,3 +1,4 @@
+import { renderInstruction } from "../prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,6 +7,8 @@ import { buildSessionProjection, type CompactionEntry, type SessionEntry } from 
 import { getCompactionBoundarySystem } from "../session-manager/context.ts";
 import type { CompactionResult } from "./types.ts";
 import { clipWithMarker } from "./inline.ts";
+import { GOAL_HEADING, summarySection, TLDR_HEADING } from "./summary-format.ts";
+import { RECOVERY_HEADING, splitSummary, USER_HEADING } from "./summary-view.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
 
 export class CheckpointPersistenceError extends Error {}
@@ -16,6 +19,38 @@ export class CheckpointPersistenceError extends Error {}
  */
 export function inlineSummaryTokens(reserveTokens: number): number {
 	return Math.floor(reserveTokens * 0.8);
+}
+
+/**
+ * The size an updated summary is asked to stay under: half of what fits inline, since code appends the user's messages
+ * and the rest after it. Without a target each update only adds, until the next one no longer fits.
+ */
+export function summaryTargetTokens(capTokens: number): number {
+	return Math.floor(capTokens / 2);
+}
+
+/**
+ * The most characters of one file list kept in a summary (about 750 tokens, some 25 paths). The lists are a union over
+ * every compaction, so they only grow; a longer one goes to a checkpoint file and the summary names that file.
+ */
+const FILE_LIST_INLINE_CHARS = 3_000;
+
+const FILE_LIST_BLOCK = /(\n\n<(read-files|modified-files)>\n)([\s\S]*?)(\n<\/\2>)/g;
+
+/** `summary` with each over-long file list moved to a file by `save`; a list that cannot be saved stays whole. */
+export function spillFileLists(summary: string, save: (text: string) => string | undefined): string {
+	return summary.replace(FILE_LIST_BLOCK, (block: string, open: string, _tag: string, list: string, close: string) => {
+		if (list.length <= FILE_LIST_INLINE_CHARS) return block;
+		let file: string | undefined;
+		try {
+			file = save(`${list}\n`);
+		} catch {
+			return block;
+		}
+		return file
+			? `${open}${renderInstruction("notices/recovery/file-list.md", { count: list.split("\n").length, file })}${close}`
+			: block;
+	});
 }
 
 export function persistCheckpointText(text: string, sessionFile?: string): string {
@@ -38,6 +73,47 @@ export function archivedSummary(details: unknown): string | undefined {
 	return typeof archive?.summary === "string" ? archive.summary : undefined;
 }
 
+/** The `## Recovery` section at the end of a summary, whose lines are all bullets; empty when it has none. */
+function recoverySection(summary: string): string {
+	const at = summary.lastIndexOf(`\n\n${RECOVERY_HEADING}\n`);
+	if (at < 0) return "";
+	const lines = summary.slice(at + 2).split("\n");
+	const end = lines.findIndex((line, index) => index > 0 && !line.startsWith("- "));
+	const section = lines.slice(0, end < 0 ? undefined : end);
+	return section.length > 1 ? `\n\n${section.join("\n")}` : "";
+}
+
+/**
+ * What stays in the context when a summary goes to a file: the reference, then as much of what the next model must not
+ * have to go looking for as `fits`. In order of what goes first: the Recovery section, the goal, the TL;DR and the newest
+ * user messages, each whole or not at all, since the file holds the complete text. Everything here is also in the file.
+ */
+function archivedView(summary: string, file: string, fits: (text: string) => boolean): string {
+	const reference = `The complete context checkpoint is saved at ${file}. Search it and read only the relevant bounded line ranges before continuing; do not load the whole file into context. It preserves the summary, user messages, file lists and recovery information without truncation.`;
+	const { body, messages, omitted } = splitSummary(summary);
+	const section = (heading: string): string => {
+		const lines = summarySection(body, heading);
+		return lines.length > 0 ? `\n\n${heading}\n${lines.join("\n")}` : "";
+	};
+	const view = { goal: "", tldr: "", recovery: "", newest: [] as string[] };
+	const render = ({ goal, tldr, recovery, newest }: typeof view): string => {
+		const left = omitted + messages.length - newest.length;
+		const note = left > 0 ? `\nEarlier user messages not kept here: ${left} (the checkpoint file has them).` : "";
+		const kept = newest.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n");
+		return `${reference}${goal}${tldr}${newest.length > 0 ? `\n\n${USER_HEADING}${note}\n${kept}` : ""}${recovery}`;
+	};
+	const add = (change: Partial<typeof view>): boolean => {
+		if (!fits(render({ ...view, ...change }))) return false;
+		Object.assign(view, change);
+		return true;
+	};
+	add({ recovery: recoverySection(summary) });
+	add({ goal: section(GOAL_HEADING) });
+	add({ tldr: section(TLDR_HEADING) });
+	for (const message of [...messages].reverse()) if (!add({ newest: [message, ...view.newest] })) break;
+	return render(view);
+}
+
 export function finalizeCompactionResult(
 	result: CompactionResult,
 	options: { branchEntries: SessionEntry[]; contextWindow: number; reserveTokens: number; sessionFile?: string },
@@ -55,8 +131,13 @@ export function finalizeCompactionResult(
 	if (earlierArchives.size > 0) {
 		result = {
 			...result,
-			summary: `${result.summary}\n\nEarlier complete checkpoints (read in bounded line ranges):\n${[...earlierArchives].join("\n")}`,
+			summary: `${result.summary}\n\n${renderInstruction("notices/recovery/earlier-checkpoints.md")}\n${[...earlierArchives].join("\n")}`,
 		};
+	}
+	const { sessionFile } = options;
+	if (sessionFile) {
+		const summary = spillFileLists(result.summary, (text) => persistCheckpointText(text, sessionFile));
+		if (summary !== result.summary) result = { ...result, summary };
 	}
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return result;
 	// The prompt and tool state the entry will carry (`appendCompaction`), so the estimate counts the same context.
@@ -87,7 +168,7 @@ export function finalizeCompactionResult(
 	}
 	if (charsToTokens(result.summary.length) <= summaryBudget && projectedTokens(result.summary) <= available)
 		return result;
-	if (!options.sessionFile) {
+	if (!sessionFile) {
 		// An in-memory session keeps nothing on disk: the summary stays inline, cut to fit, with a marker.
 		let keep = Math.min(result.summary.length, summaryBudget * CHARS_PER_TOKEN);
 		for (let attempt = 0; attempt < 8 && keep > 0; attempt++) {
@@ -100,9 +181,10 @@ export function finalizeCompactionResult(
 			"Compaction cannot fit the retained context and a shortened checkpoint in the target window.",
 		);
 	}
-	const file = persistCheckpointText(result.summary, options.sessionFile);
-	const summary = `The complete context checkpoint is saved at ${file}. Search it and read only the relevant bounded line ranges before continuing; do not load the whole file into context. It preserves the summary, user messages, file lists and recovery information without truncation.`;
-	if (charsToTokens(summary.length) > summaryBudget || projectedTokens(summary) > available) {
+	const file = persistCheckpointText(result.summary, sessionFile);
+	const fits = (text: string) => charsToTokens(text.length) <= summaryBudget && projectedTokens(text) <= available;
+	const summary = archivedView(result.summary, file, fits);
+	if (!fits(summary)) {
 		throw new CheckpointPersistenceError(
 			"Compaction cannot fit the retained context and its checkpoint reference in the target window.",
 		);

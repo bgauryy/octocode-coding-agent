@@ -1,0 +1,1 @@
+{{#if isolated}}{{id}} ran isolated and cannot resume: for what is left, start a new `agent` task that cites `report:{{id}}`.{{else}}To continue it: `agent` type `task` with `resume: {{id}}`, a `goal` and a `task` for what is left. That resume gives it {{allowance}} more requests.{{/if}}

@@ -1,7 +1,10 @@
 import { ModelThinkingLevelSchema } from "@octocodeai/octocode-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
+import { BashSettingsProperties } from "./settings-schema/bash.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
+import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
+import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import {
@@ -89,14 +92,7 @@ export const SettingsSchema = Type.Object(
 		shellCommandPrefix: Type.Optional(
 			Type.String({ description: "Prefix prepended to every bash command, for example to enable shell aliases." }),
 		),
-		bashBackgroundAfterSeconds: Type.Optional(
-			Type.Number({
-				description:
-					"Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it.",
-				minimum: 0,
-				default: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds,
-			}),
-		),
+		...BashSettingsProperties,
 		externalAgents: Type.Optional(
 			Type.Boolean({
 				description:
@@ -104,12 +100,11 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.externalAgents,
 			}),
 		),
-		bashOutputMaxBytes: Type.Optional(
-			Type.Number({
+		sessionApi: Type.Optional(
+			Type.Boolean({
 				description:
-					"Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens. Output of the user's own `!` commands follows the same limit.",
-				minimum: 1024,
-				default: SETTINGS_DEFAULTS.bashOutputMaxBytes,
+					"Start the local session API on an owner-only Unix socket, so other processes of this user can find and message a running session. On by default; on Windows, which has no such socket here, it starts only with `/api on` or `OCTOCODE_API_HTTP`. Read from the global settings file; a project file cannot change it. `/api on` and `/api off` override it for the running process. Takes effect for new sessions.",
+				default: SETTINGS_DEFAULTS.sessionApi,
 			}),
 		),
 		...McpSettingsProperties,
@@ -332,6 +327,8 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		retention: Type.Optional(RetentionSettingsSchema),
+		subagents: Type.Optional(SubagentSettingsSchema),
+		optimizePrompts: Type.Optional(OptimizePromptsSchema),
 		websocketConnectTimeoutMs: Type.Optional(
 			timeoutSetting({
 				description: 'WebSocket connect or open handshake timeout in milliseconds; 0 or "disabled" disables it.',

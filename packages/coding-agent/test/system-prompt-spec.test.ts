@@ -18,14 +18,15 @@ describe("system prompt section spec", () => {
 			"mcps:base:keep",
 			"addendum:session:keep",
 			"cwd:session:keep",
-			"octocode_work:session:keep",
-			"octocode_research:session:keep",
-			"octocode_delegation:session:keep",
-			"octocode_safety:session:keep",
-			"octocode_communication:session:keep",
-			"octocode_lean:session:keep",
+			"work:session:keep",
+			"research:session:keep",
+			"delegation:session:keep",
+			"safety:session:keep",
+			"communication:session:keep",
+			"lean:session:keep",
 			"project_context:session:keep",
 			"skills:session:keep",
+			"hooks:session:keep",
 			"role:session:keep",
 			"environment:volatile:keep",
 			"planning:volatile:keep",
@@ -65,7 +66,7 @@ describe("system prompt section spec", () => {
 				} as never,
 			],
 			baseSections: { [MCPS_SECTION]: '<mcp name="docs" tools="mcp__docs__*">Docs</mcp>' },
-			sections: { octocode_work: "Work.", [MCP_STATUS_SECTION]: "- docs: connecting" },
+			sections: { work: "Work.", [MCP_STATUS_SECTION]: "- docs: connecting" },
 			environment: "Date: 2026-10-31",
 		});
 		expect(sections.preamble).toBe("You are Exact.");
@@ -78,7 +79,7 @@ describe("system prompt section spec", () => {
 			"rules",
 			MCPS_SECTION,
 			"cwd",
-			"octocode_work",
+			"work",
 			"skills",
 			"environment",
 			MCP_STATUS_SECTION,
@@ -92,7 +93,7 @@ describe("system prompt section spec", () => {
 			cwd: "/tmp",
 			selectedTools: [],
 			baseSections: { [MCPS_SECTION]: "servers" },
-			sections: { octocode_work: "Work." },
+			sections: { work: "Work." },
 		});
 		const message = { role: "system", content: "", sections, timestamp: 0 };
 		expect(findInstructionCacheBoundary([message])).toBe("cwd");

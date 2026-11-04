@@ -9,6 +9,8 @@ import { getInstructionsDir } from "../config.ts";
  * - `{{name}}` inserts a value (never rescanned for directives);
  * - `{{#if flag}}…{{else}}…{{/if}}` and `{{#unless flag}}…{{/unless}}`, inline or as lines of their own (a block whose
  *   condition is false then leaves no blank line); a flag is true unless it is false, 0, "" or undefined;
+ * - `{{> shared/rule.md}}` inserts another instruction file, rendered with the same values, so a rule shared by several
+ *   prompts has one source (alone on its line, it leaves no blank line when it renders empty);
  * - `<!-- … -->` comments are removed, so a rationale can sit beside the text it explains.
  *
  * A name the caller did not pass is an error, not an empty string. The newline that ends the file's last line is not part
@@ -16,11 +18,15 @@ import { getInstructionsDir } from "../config.ts";
  */
 export type TemplateValues = Record<string, string | number | boolean | undefined>;
 
-type Node = string | { variable: string } | { flag: string; negate: boolean; ifTrue: Node[]; otherwise: Node[] };
+type Node =
+	| string
+	| { variable: string }
+	| { include: string; line: boolean }
+	| { flag: string; negate: boolean; ifTrue: Node[]; otherwise: Node[] };
 
 const COMMENT = /<!--(?:(?!-->)[\s\S])*-->/g;
 const WHOLE_LINE_COMMENT = /^[ \t]*<!--(?:(?!-->)[\s\S])*-->[ \t]*(?:\n|$)/gm;
-const TAG = /\{\{\s*(?:(#if|#unless)\s+([\w.]+)|(else)|(\/if|\/unless)|([\w.]+))\s*\}\}/g;
+const TAG = /\{\{\s*(?:(#if|#unless)\s+([\w.]+)|(else)|(\/if|\/unless)|([\w.]+)|>\s*([\w./-]+))\s*\}\}/g;
 
 interface Frame {
 	kind: "#if" | "#unless";
@@ -40,6 +46,7 @@ function parse(source: string): Node[] {
 	for (const match of source.matchAll(TAG)) {
 		let start = match.index;
 		let end = start + match[0].length;
+		let line = false;
 		if (!match[5]) {
 			// A directive alone on its line takes the line with it.
 			const lineStart = source.lastIndexOf("\n", start - 1) + 1;
@@ -48,11 +55,13 @@ function parse(source: string): Node[] {
 			if (source.slice(lineStart, start).trim() === "" && source.slice(end, stop).trim() === "") {
 				start = lineStart;
 				end = lineEnd === -1 ? stop : lineEnd + 1;
+				line = true;
 			}
 		}
 		if (start > cursor) current().push(source.slice(cursor, start));
 		cursor = end;
 		if (match[5]) current().push({ variable: match[5] });
+		else if (match[6]) current().push({ include: match[6], line });
 		else if (match[1]) stack.push({ kind: match[1] as Frame["kind"], flag: match[2], ifTrue: [] });
 		else if (match[3]) {
 			const frame = stack.at(-1);
@@ -86,7 +95,10 @@ function emit(nodes: Node[], values: TemplateValues): string {
 	for (const node of nodes) {
 		if (typeof node === "string") text += node;
 		else if ("variable" in node) text += String(lookup(values, node.variable) ?? "");
-		else text += emit(Boolean(lookup(values, node.flag)) !== node.negate ? node.ifTrue : node.otherwise, values);
+		else if ("include" in node) {
+			const included = renderInstruction(node.include, values);
+			text += included && node.line ? `${included}\n` : included;
+		} else text += emit(Boolean(lookup(values, node.flag)) !== node.negate ? node.ifTrue : node.otherwise, values);
 	}
 	return text;
 }
@@ -101,8 +113,7 @@ export function renderTemplate(source: string, values: TemplateValues): string {
 let sources: Map<string, string> | undefined;
 
 /**
- * Every instruction file, read together on first use (about 50 KB; the generated `rendered/` captures are not prompt
- * sources). A running process keeps the text it started with while the files change on disk, so its loaded code never
+ * Every instruction file, read together on first use (about 70 KB). A running process keeps the text it started with while the files change on disk, so its loaded code never
  * meets a template naming a value that code does not pass.
  */
 function instructionSources(): Map<string, string> {
@@ -112,15 +123,14 @@ function instructionSources(): Map<string, string> {
 	for (const entry of fs.readdirSync(root, { recursive: true, withFileTypes: true })) {
 		const file = path.join(entry.parentPath, entry.name);
 		const name = path.relative(root, file).split(path.sep).join("/");
-		if (entry.isFile() && name.endsWith(".md") && !name.startsWith("rendered/"))
-			read.set(name, fs.readFileSync(file, "utf8"));
+		if (entry.isFile() && name.endsWith(".md")) read.set(name, fs.readFileSync(file, "utf8"));
 	}
 	sources = read;
 	return read;
 }
 
 /** The text of an instruction file. `name` is relative to the instructions folder, such as `policy/work.md`. */
-function instructionSource(name: string): string {
+export function instructionSource(name: string): string {
 	const text = instructionSources().get(name);
 	if (text === undefined) throw new Error(`Instruction template: no file ${name} in ${getInstructionsDir()}`);
 	return text;

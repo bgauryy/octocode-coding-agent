@@ -207,6 +207,9 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	 */
 	executionMode?: ToolExecutionMode;
 
+	/** How long a call may keep running after an abort before it is abandoned, in ms. If omitted, a short default applies. */
+	abortGraceMs?: number;
+
 	/** Execute the tool. */
 	execute(
 		toolCallId: string,

@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ContextEditEntryDraft } from "../../core/features/index.ts";
 import { imageExtension, saveContentCopy } from "../shared/spill.ts";
 import { partText, stringOrEmpty } from "../shared/util.ts";
@@ -50,12 +51,15 @@ function saveImages(message: unknown): SavedImages {
 
 /** The note that replaces a message's images: where each is saved, and which could not be. */
 function imageNote({ copies, failed, total }: SavedImages, from = "an earlier tool call"): string {
-	if (copies.length === 0) return `[image from ${from} omitted; it could not be saved]`;
-	const missing =
-		failed.length === 0
-			? ""
-			: `; ${failed.length === 1 ? "image" : "images"} ${failed.join(", ")} of ${total} could not be saved`;
-	return `[image from ${from} omitted; saved at ${copies.join(", ")}${missing}; read ${copies.length === 1 ? "that file" : "those files"} to see ${copies.length === 1 && failed.length === 0 ? "it" : "them"} again]`;
+	return renderInstruction("notices/compaction/image-omitted.md", {
+		from,
+		saved: copies.join(", "),
+		failed: failed.join(", "),
+		oneFailed: failed.length === 1,
+		total,
+		oneCopy: copies.length === 1,
+		oneImage: copies.length === 1 && failed.length === 0,
+	});
 }
 
 export function parts(message: unknown): unknown[] {

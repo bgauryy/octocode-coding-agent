@@ -4,6 +4,7 @@ import {
 	type Focusable,
 	fuzzyFilter,
 	getKeybindings,
+	GLYPH,
 	Input,
 	Key,
 	matchesKey,
@@ -211,7 +212,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredItems[i];
 			const isSelected = i === this.selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", "→ ") : "  ";
+			const prefix = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
 			// Model ids, names and providers can come from vendor model lists and the remote catalog.
 			const id = plainText(item.model?.id ?? item.fullId);
 			const styledId = item.model ? id : theme.strikethrough(id);

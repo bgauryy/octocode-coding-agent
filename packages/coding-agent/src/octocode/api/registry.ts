@@ -16,7 +16,10 @@ export interface InstanceRecord {
 	socket?: string;
 	/** Loopback HTTP endpoint and its bearer token (absent unless HTTP is enabled). */
 	http?: { url: string; token: string };
+	/** The conversation it runs; a session switch publishes a new record. */
 	session?: string;
+	/** Its process title, `octocode-<role>-<id>`: what `ps` and `/processes` call it. */
+	name?: string;
 }
 
 /** The instance records: `<Octocode home>/api` (OCTOCODE_HOME moves it with everything else). */
@@ -25,7 +28,7 @@ export const apiDir = (env: NodeJS.ProcessEnv = process.env): string => globalPa
 export const instancesDir = (dir: string): string => path.join(dir, "instances");
 const recordFile = (dir: string, id: string): string => path.join(instancesDir(dir), `${id}.json`);
 
-export const newInstanceId = (): string => `pi-${crypto.randomBytes(3).toString("hex")}`;
+export const newInstanceId = (): string => `oc-${crypto.randomBytes(3).toString("hex")}`;
 export const newToken = (): string => crypto.randomBytes(32).toString("base64url");
 
 /** Create the directory tree owner-only. Sockets and tokens live here, so it must not be readable by other users. */
@@ -70,6 +73,46 @@ export function listInstances(dir: string, prune = true): InstanceRecord[] {
 		}
 	}
 	return found.sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/**
+ * The instances `selector` names: an instance id, or else what the process is known by elsewhere: its process name
+ * (`octocode-main-c0ea9f3e`), the id `/processes` shows (`c0ea9f3e`), its session id or its pid. Two processes can run
+ * one saved session, so all but the instance id can name several.
+ */
+export function matchInstances(instances: readonly InstanceRecord[], selector: string): InstanceRecord[] {
+	const exact = instances.filter((entry) => entry.id === selector);
+	if (exact.length) return exact;
+	return instances.filter(
+		(entry) =>
+			entry.name === selector ||
+			entry.name?.endsWith(`-${selector}`) ||
+			entry.session === selector ||
+			String(entry.pid) === selector,
+	);
+}
+
+/** One instance in an error or a list: everything a caller could name it by. */
+export function describeInstance(entry: InstanceRecord): string {
+	return `${entry.id} (${[entry.name, `pid ${entry.pid}`, entry.cwd].filter(Boolean).join(", ")})`;
+}
+
+const noInstance = (selector: string, running: readonly InstanceRecord[]): string =>
+	[
+		`No running instance matches "${selector}".`,
+		running.length ? `Running: ${running.map(describeInstance).join("; ")}.` : "No instance is running.",
+		"A session whose API is off (the sessionApi setting or /api off) comes back with /api on.",
+	].join(" ");
+
+/** The one instance `selector` names; a miss or an ambiguous name is an error that lists what would work. */
+export function selectInstance(instances: readonly InstanceRecord[], selector: string): InstanceRecord {
+	const found = matchInstances(instances, selector);
+	if (found.length === 0) throw new Error(noInstance(selector, instances));
+	if (found.length > 1)
+		throw new Error(
+			`Several instances match "${selector}"; use an instance id: ${found.map(describeInstance).join("; ")}.`,
+		);
+	return found[0];
 }
 
 /** A fallback socket's private folder in the temp directory: `octocode-<uid>-XXXXXX`, made by `mkdtemp`. */

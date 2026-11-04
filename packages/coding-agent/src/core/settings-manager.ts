@@ -19,7 +19,7 @@ export { CACHE_WARMING_MODES } from "./settings-manager/constants.ts";
 import { DisplaySettingsAccessors } from "./settings-manager/accessors/display.ts";
 import type { SettingsManagerApi } from "./settings-manager/api.ts";
 import { migrateSettings, tryLoadSettingsFromStorage } from "./settings-manager/load.ts";
-import { deepMergeSettings, mergeAllSettings } from "./settings-manager/merge.ts";
+import { deepMergeSettings, effectiveSettings, mergeAllSettings } from "./settings-manager/merge.ts";
 import { SettingsPersistence } from "./settings-manager/persistence.ts";
 import type { SettingsState } from "./settings-manager/state.ts";
 import {
@@ -67,6 +67,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 			globalSettings: initialGlobal,
 			projectSettings: initialProject,
 			settings: mergeAllSettings({}, initialGlobal, initialProject),
+			durableOverrides: {},
 			cacheOverrides: {},
 			projectTrusted,
 			globalSettingsLoadError: globalLoadError,
@@ -155,7 +156,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		if (inherited) state.warnings.push(...inherited.warnings);
 		// Pi's values never stand in for Octocode's own file while that file is invalid.
 		state.inheritedSettings = inherited && !state.globalSettingsLoadError ? migrateSettings(inherited.settings) : {};
-		state.settings = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
+		state.settings = effectiveSettings(state);
 	}
 
 	/** Create an in-memory SettingsManager (no file I/O) */
@@ -238,7 +239,8 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		this.refreshInherited();
 	}
 
-	applyOverrides(overrides: Partial<Settings>): void {
+	applyOverrides(overrides: Partial<Settings>, options?: { durable?: boolean }): void {
+		if (options?.durable) this.state.durableOverrides = deepMergeSettings(this.state.durableOverrides, overrides);
 		this.state.cacheOverrides = mergeCachePreferences([
 			{ source: "previous override", values: this.state.cacheOverrides },
 			{ source: "override", values: overrides },

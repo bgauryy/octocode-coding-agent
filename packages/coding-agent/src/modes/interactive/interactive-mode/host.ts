@@ -128,6 +128,7 @@ export interface InteractiveModeMethods {
 	handleCtrlZ(): void;
 	handleDebugCommand(): void;
 	handleDequeue(): void;
+	loadEarlierFromKey(): void;
 	handleEvent(event: AgentSessionEvent): Promise<void>;
 	handleExportCommand(text: string): Promise<void>;
 	handleFatalRuntimeError(prefix: string, error: unknown): Promise<never>;
@@ -175,6 +176,7 @@ export interface InteractiveModeMethods {
 		options?: { updateFooter?: boolean; populateHistory?: boolean },
 	): void;
 	renderWidgets(): void;
+	sendCarriedMessages(): Promise<void>;
 	resetExtensionUI(): void;
 	restoreQueuedMessagesToEditor(options?: { abort?: boolean; currentText?: string }): number;
 	setCustomEditorComponent(factory: EditorFactory | undefined): void;
@@ -202,7 +204,7 @@ export interface InteractiveModeMethods {
 	showError(errorMessage: string): void;
 	showExtensionConfirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
 	showExtensionCustom: ExtensionUIContext["custom"];
-	showExtensionEditor(title: string, prefill?: string): Promise<string | undefined>;
+	showExtensionEditor(title: string, prefill?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
 	showExtensionError(extensionPath: string, error: string, stack?: string): void;
 	showExtensionInput(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
 	showExtensionSelector(
@@ -247,9 +249,7 @@ export interface InteractiveModeMethods {
 	unregisterSignalHandlers(): void;
 	updateAvailableProviderCount(): void;
 	updateEditorBorderColor(): void;
-	updatePendingMessagesDisplay(): void;
 	updateTerminalTitle(): void;
-	updateThinkingBlockVisibility(): void;
 }
 
 export type InteractiveModeHost = InteractiveModeState & InteractiveModeMethods;

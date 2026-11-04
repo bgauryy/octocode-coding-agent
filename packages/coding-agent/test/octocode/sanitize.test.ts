@@ -170,6 +170,36 @@ describe("secret redaction", () => {
 		expect(secretProblem("plain")).toBeUndefined();
 	});
 
+	it.each([
+		["AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI1K7MDENG"],
+		["GROQ_API_KEY=abcd1234efgh"],
+		["HF_TOKEN=abcd1234efgh"],
+		["DB_PASSWORD=abcd1234efgh"],
+		["export MY_TOKEN=abcd1234efgh"],
+		['{"api_key":"abcd1234efgh"}'],
+		['{"password": "abcd1234efgh"}'],
+		["{'token': 'abcd1234efgh'}"],
+		["password=abcd1234efgh"],
+		["client-secret-key: abcd1234efgh"],
+		[`gsk_${"a1".repeat(12)}`],
+		[`hf_${"a1".repeat(12)}`],
+	])("finds the credential in %s", (text) => {
+		expect(secretProblem(text)).toBeDefined();
+		expect(redactSecrets(text)).toContain("[redacted]");
+		expect(redactSecrets(text)).not.toContain("abcd1234efgh");
+	});
+
+	it.each([
+		["TOKENIZER=abcd1234efgh"],
+		["mytoken=abcd1234efgh"],
+		["const token = getToken(user1)"],
+		['{"password": "<your-password1>"}'],
+		["token: short1"],
+		["max_tokens: 12345678"],
+	])("leaves %s alone", (text) => {
+		expect(secretProblem(text)).toBeUndefined();
+	});
+
 	it("compiles no regular expression per call", () => {
 		const construct = vi.spyOn(globalThis, "RegExp");
 		try {

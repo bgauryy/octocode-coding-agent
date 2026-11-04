@@ -154,7 +154,13 @@ export class MemoryStore {
 	 * Best matches for the words of `query`, best first. With FTS5: BM25 over title, keywords and body (weighted 5/3/1).
 	 * Without it: the same column weights times each term's inverse document frequency. Project hits get a small boost either way.
 	 */
-	search(query: string, scope: ScopeFilter = "all", limit = 10, exclude: ReadonlySet<number> = new Set()): MemoryHit[] {
+	search(
+		query: string,
+		scope: ScopeFilter = "all",
+		limit = 10,
+		exclude: ReadonlySet<number> = new Set(),
+		now = Date.now(),
+	): MemoryHit[] {
 		const match = ftsQuery(query);
 		if (!match) return [];
 		const hits = this.agentDb.fts
@@ -163,6 +169,7 @@ export class MemoryStore {
 		return hits
 			.filter((hit) => !exclude.has(hit.id))
 			.map((hit) => (hit.scope !== "global" ? { ...hit, score: hit.score * PROJECT_BOOST } : hit))
+			.map((hit) => (unusedForLong(hit, now) ? { ...hit, score: hit.score * UNUSED_DISCOUNT } : hit))
 			.sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
 			.slice(0, limit);
 	}
@@ -321,6 +328,12 @@ export class MemoryStore {
 		meta.write(this.db, SETTING_AUTO, on ? "on" : "off");
 	}
 }
+
+/** A memory nobody used for this long ranks lower in a search; nothing expires, and a pinned one stays where it is. */
+const UNUSED_DAYS = 90;
+const UNUSED_DISCOUNT = 0.75;
+const unusedForLong = (memory: Memory, now: number): boolean =>
+	!memory.pinned && now - (memory.lastUsed ?? memory.updatedAt) > UNUSED_DAYS * DAY_MS;
 
 /** `12d`: whole days since the memory was last updated, the staleness signal on every line the model reads. */
 export const memoryAge = (memory: Pick<Memory, "updatedAt">, now = Date.now()): string =>

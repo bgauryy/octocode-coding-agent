@@ -1,17 +1,20 @@
 # Instructions: the model-facing prompt text
 
-Every sentence the model reads from Octocode itself lives in this folder as Markdown, except the text that belongs to a tool or to the MCP server (see [Where the rest lives](#where-the-rest-lives)). Browse the folder to read it; read [`rendered/`](rendered/README.md) to see the full context each agent receives.
+Every sentence the model reads from Octocode itself lives in this folder as Markdown, except the text that belongs to a tool or to the MCP server (see [Where the rest lives](#where-the-rest-lives)). Browse the folder to read it; read `.octocode/tmp/agent-prompts/`, which every build writes, to see the full context each agent receives.
 
 ```text
 instructions/
   README.md          this map
-  policy/            work.md research.md delegation.md subagent.md safety.md communication.md scratch.md readonly.md
+  sections/          index.md: the map of every prompt section; <name>.md: a template composing that section's parts
+  shared/            one rule each, included by the policies that need it (`{{> shared/rule.md}}`)
+  policy/            the parts of the `work`, `research`, `delegation`, `safety` and `communication` sections: work.md research.md delegation.md subagent.md safety.md communication.md scratch.md readonly.md
   lean/              lean.md                  (the whole policy of a `lean: true` child)
-  subagent/          identity.md worktree.md why.md team.md report.md   (a child's task message)
-  system/            preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md
-  workflows/         planning.md plan-approved.md plan-reminder.md side-question.md summarization.md title.md
+  subagent/          identity.md worktree.md why.md team.md report.md   (a child's task message); role-skills.md (its role section)
+  notices/           runtime messages the model reads: compaction, recovery, resume, subagents, mail, hooks, the loop guard
+  tools/             each tool's snippet and guidelines (`tools/<tool>/snippet.md`, `guidelines.md`)
+  system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md
+  workflows/         planning.md plan-approved.md plan-reminder.md side-question.md summarization.md title.md optimize-prompt.md
   roles/             researcher.md implementer.md reviewer.md browser.md lean.md   (profiles with front matter)
-  rendered/          GENERATED context per agent (system, tools, messages); never edit
   policy.ts lean.ts task.ts report.ts   thin TypeScript: derive the flags once, render the files
 ```
 
@@ -20,43 +23,26 @@ instructions/
 A file is plain Markdown plus a small template syntax (renderer: [`../../core/prompt-template.ts`](../../core/prompt-template.ts)):
 
 - `{{name}}` inserts a value the TypeScript passes in; an unknown name is an error.
+- `{{> shared/rule.md}}` inserts another instruction file with the same values. A rule two prompts share lives once in `shared/`, not copied.
 - `{{#if flag}}…{{else}}…{{/if}}` and `{{#unless flag}}…{{/unless}}` work inline and on lines of their own; a block that is off on its own lines leaves no blank line.
 - Write no comments, size notes or other metadata in these files: only text the model reads (and a role's front matter). The reason for a rule belongs in the commit or backlog item that added it.
 - Every file ends with a newline; the renderer drops the last one.
 
-Change the text here, never in the TypeScript. A new condition is a new named flag in `policy.ts` (`policyFlags`), then `{{#if}}` in the file. After an edit run `yarn workspace @octocodeai/octocodecode run generate:prompts`; `test/octocode/e2e-agent-context.test.ts` fails while `rendered/` is stale, and the prompt tests pin exact wording.
+Change the text here, never in the TypeScript. A new condition is a new named flag in `policy.ts` (`policyFlags`), then `{{#if}}` in the file. After an edit run `yarn workspace @octocodeai/octocodecode run generate:prompts`; the prompt tests pin exact wording.
 
 ## Assembly order
 
 The core assembles the prompt from named sections in the order of `core/system-prompt-spec.ts` (`composeSystemPromptSections`); each is wrapped in a tag of its name, and `preamble` is bare. The tier decides cache reuse: `base` sections depend only on tools and the install, `session` on the project and request, `volatile` change within a session.
 
-| Order | Section                  | Tier     | Source                                                                   | Condition                                                                                                                                             |
-| ----- | ------------------------ | -------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | `preamble`               | base     | `system/preamble.md`                                                     | replaced by a custom prompt (`SYSTEM.md`)                                                                                                             |
-| 2     | `tools`                  | base     | each tool's `promptSnippet`                                              | declared, non-MCP tools with a snippet                                                                                                                |
-| 3     | `rules`                  | base     | tool `promptGuidelines`; `system/rules-bash.md`, `system/rules-floor.md` | bash line: no custom prompt, `bash` declared and no Octocode search tool declared; floor: no custom prompt and no `octocode_communication` section    |
-| 4     | `docs`                   | base     | `system/docs.md`                                                         | dropped under a custom prompt; cleared for subagents                                                                                                  |
-| 5     | `mcps`                   | base     | `packages/mcp/src/section.ts`                                            | MCP servers connected or declared                                                                                                                     |
-| 6     | `addendum`               | session  | `APPEND_SYSTEM.md`                                                       | user file present                                                                                                                                     |
-| 7     | `cwd`                    | session  | working directory                                                        | always                                                                                                                                                |
-| 8     | `octocode_work`          | session  | `policy/work.md`; a read-only subagent: `policy/readonly.md`             | not a lean child; `main` (else a child), `shell`; read-only: `canSave`, `mcp`, `browserControl`, `agentTool`                                          |
-| 9     | `octocode_research`      | session  | `policy/research.md`                                                     | `octocode`, `shell`, `web`                                                                                                                            |
-| 10    | `octocode_delegation`    | session  | `policy/delegation.md` (main) or `policy/subagent.md` (child)            | main: only with the agent tool; `browserProfiles`, `profiles`; child: `canSave`, `agentTool`; none for a read-only subagent (`readonly.md` covers it) |
-| 11    | `octocode_safety`        | session  | `policy/safety.md`                                                       | `main`/`child`, `agentTool`, `gitState`; none for a read-only subagent (`readonly.md` covers it)                                                      |
-| 12    | `octocode_communication` | session  | `policy/communication.md`                                                | main: formats and the TL;DR; a child: one cross-tree line, only with `agentTool` (its output rules are the report contract and its role)              |
-| 13    | `octocode_lean`          | session  | `lean/lean.md`                                                           | a `lean: true` child instead of 8–12                                                                                                                  |
-| 14    | `project_context`        | session  | `system/project-context.md` + AGENTS.md files                            | context files found; after the policy, so long project instructions sit near the end, not between the MCP catalog and the policy                      |
-| 15    | `skills`                 | session  | `core/skills.ts` (`formatSkillsForPrompt`)                               | skills present and a reader tool                                                                                                                      |
-| 16    | `role`                   | session  | `roles/<profile>.md` body                                                | a subagent with a profile                                                                                                                             |
-| 17    | `environment`            | volatile | `system/environment.md`                                                  | always (date changes it)                                                                                                                              |
-| 18    | `planning`               | volatile | `workflows/planning.md`                                                  | planning active                                                                                                                                       |
-| 19    | `mcp_status`             | volatile | `packages/mcp/src/section.ts`                                            | server status changes                                                                                                                                 |
+[`sections/index.md`](sections/index.md) is the one map: every section of an agent's prompt in order, with its cache tier and what writes it, and each is wrapped in a tag of its name. The code reads that table (`core/system-prompt-spec.ts`), so changing it changes the prompt. A section in the `policy` or `lean` group is a template, `sections/<name>.md`, that composes its parts and states when each applies. Dynamic sections come only from what the session loaded: `mcps` and `mcp_status` from its MCP servers, `skills` from its skills, `hooks` from its hooks, and `tools` and `rules` from its tools. A section with nothing to say is removed.
 
-`octocode/turn.ts` (`registerTurnSetup`) chooses `policy.ts` or `lean.ts` for each request, and `octocode/tool-loadout.ts` rebuilds the prompt through `core/system-prompt.ts` when the tools change.
+`octocode/turn.ts` (`registerTurnSetup`) chooses `policy.ts` or `lean.ts` for each request, and `core/agent-session/tool-loadout.ts` rebuilds the prompt through `core/system-prompt.ts` when the tools change.
 
-Flags are derived once, in `policyFlags` of `policy.ts`: audience (`main` = the session that answers the user, otherwise a subagent; `readOnly` = a read-only subagent, never the main session) and tools (`shell`, `web`, `mcp`, `canSave`, `agentTool`, `octocode`).
+Flags are derived once, in `policyFlags` of `policy.ts`: audience (`main` = the session that answers the user, otherwise a subagent; `readOnly` = a read-only subagent, never the main session) and tools (`shell`, `web`, `mcp`, `canSave`, `agentTool`, `externalAgent`, `octocode`, `localReader`, `askUser`).
 
-The policy never says when or how to use an MCP server or its tools: each server explains itself through its instructions, tool descriptions and schemas (`<mcps>` and the declarations), and `mcp_status` names a server that is not ready. The policy states what applies to every agent and, without the research server, the native fallbacks. Do not add routing text for a server to the policy, a role, a tool description or `core/skills.ts`; change the server's own text instead. One exception: a tool's own `promptSnippet` may name the dedicated tools for the work it should not do (for example `bash`: search and read with the declared search and read tools); common policy still names no server's tools.
+Each MCP server explains itself through its instructions, tool descriptions and schemas (`<mcps>` and the declarations), and `mcp_status` names a server that is not ready. The policy states what applies to every agent and, without the research server, the native fallbacks. Do not add routing text for a server to the policy, a role, a tool description or `core/skills.ts`; change the server's own text instead. Two exceptions, both for the default research server: `policy/research.md` says when to use Octocode instead of reading code in bash and names `localFetch` for files to edit, because agents read through bash without that rule; and a tool's own `promptSnippet` may name the dedicated tools for the work it should not do (for example `bash`: search and read with the declared search and read tools). Which Octocode tool answers which question stays the server's text.
+
+Text here is for the agent reading it, so anything that depends on what a session loaded comes from what is loaded: a server's tools from `<mcps>`, skills from the catalog, profiles from the list, and a tool named in policy only behind the flag saying it is declared. A role's `skills:` and `tools:` are defaults, and one that is not available is left out. Generated output stays out of this folder.
 
 ## A child's task message
 
@@ -66,20 +52,23 @@ After a child's context is compacted, `subagents/identity-reminder.ts` sends the
 
 ## Where the rest lives
 
-- **Tool descriptions, snippets and guidelines** stay in each tool module (for example `octocode/files/tool.ts`, `octocode/agent-tool.ts`), because they change with the tool's behavior. They appear in `<tools>`, `<rules>` and the tool declarations; each agent's `rendered/<agent>/tools.md` shows them as the model receives them.
-- **MCP section text** stays in `packages/mcp` (a separate workspace that may not import coding-agent): `src/section.ts`, `src/presets/`. It appears as `<mcps>` in `rendered/main/system.md`, and the connected server's tool declarations in `rendered/main/tools.md`.
-- **Compaction prompts and the checkpoint format** stay in `core/compaction/` (`summary-format.ts`): code parses their headings. The summarizer's system prompt is `workflows/summarization.md`.
-- **Skills wrapper** text is in `core/skills.ts`; prompt-hook evaluation in `octocode/hooks/prompt.ts`; runtime notices (budget stops, mail, restore) in the module that sends them.
+Everything the model reads from Octocode is here, except:
+
+- **A tool's `description` and schema fields** stay in its module (`AGENTS.md`: tool descriptions own tool mechanics, and they change with the tool). Its snippet and guidelines are in `tools/<tool>/`. So are a tool's results, refusals and errors, which reply to a call and stay with the code that makes them.
+- **An MCP server's own text** comes from the server, with shipped rewrites in `packages/mcp/src/presets/`. The wording around it is here: `sections/mcps.md`, `mcp-server.md` and `mcp_status.md`, rendered through the MCP host's `render.instruction` port.
+- **Headings and markers code parses** stay beside their parser (`core/compaction/summary-format.ts`, `summary-view.ts`, the `<skill>`, `<saved-results>` and `<summary>` tags) and reach the Markdown as `{{values}}`.
+
+Each agent's `<agent>/` folder shows all of it as the model receives it.
 
 ## Shipping and generating
 
-The Markdown folders are read at run time through `getInstructionsDir()` (`src/config.ts`): `src/` in a checkout, `dist/octocode/instructions/` in the package, `instructions/` next to a compiled binary. `scripts/copy-instructions.mjs` copies them for the package build (`scripts/build-coding-agent.mjs`) and `scripts/stage-binary.mjs`; `README.md`, `rendered/` and the TypeScript are not copied.
+The Markdown folders are read at run time through `getInstructionsDir()` (`src/config.ts`): `src/` in a checkout, `dist/octocode/instructions/` in the package, `instructions/` next to a compiled binary. `scripts/copy-instructions.mjs` copies them for the package build (`scripts/build-coding-agent.mjs`) and `scripts/stage-binary.mjs`; `README.md` and the TypeScript are not copied.
 
-`yarn workspace @octocodeai/octocodecode run generate:prompts` rewrites `rendered/` by running `test/octocode/e2e-agent-context.test.ts` with `-u`; without `-u` the same test fails while a file differs, is missing or is not produced by any agent. The capture code is in `test/octocode/agent-context/` (`capture.ts` starts the sessions, `render.ts` writes the files). The machine's date, platform, shell and paths are replaced by fixed placeholders, so the files are the same on every machine.
+Every `build:offline` writes each agent's final prompt to `.octocode/tmp/agent-prompts/`, a temp folder Git ignores; `yarn workspace @octocodeai/octocodecode run generate:prompts` does it alone (`scripts/write-agent-prompts.ts`, with the capture code in `test/octocode/agent-context/`). `test/octocode/e2e-agent-context.test.ts` checks what each context must hold. The machine's date, platform, shell and paths are replaced by fixed placeholders. `scripts/agent-eval/understand.mjs` asks a small model running each prompt how it would work.
 
-### Reading `rendered/`
+### Reading the prompts
 
-[`rendered/README.md`](rendered/README.md) links each agent (`main`, `general` = a child without a role, `researcher`, `implementer`, `reviewer`, `browser`, `lean`). Each agent folder holds only the text the model receives, with no sizes or other metadata:
+The folder's `README.md` links each agent (`main`, `general` = a child without a role, `researcher`, `implementer`, `reviewer`, `browser`, `lean`). Each agent folder holds only the text the model receives, with no sizes or other metadata:
 
 - `system.md`: the whole system prompt, section by section.
 - `tools.md`: every tool declaration the model receives, with its description and pretty-printed parameter schema; MCP tools included.
@@ -87,10 +76,10 @@ The Markdown folders are read at run time through `getInstructionsDir()` (`src/c
 
 The main session is a real session; each child is started the way `subagents/tool.ts` starts one, so a change to a profile, flag or tool list shows up in the child's files. The parent's task text and the goal are placeholders. The model is scripted: these files show what Octocode sends, not how a provider caches or answers it.
 
-An MCP tool has three layers, and `rendered/` shows the first two:
+An MCP tool has three layers, and these files show the first two:
 
 - **Provider declaration** (`tools.md`): the trigger line and the top-level field names and types (`thinParameters`, `packages/mcp/src/presentation/declaration.ts`). A tool the block does not describe yet (one a server added after it was described) keeps its full JSON declaration until the block is described again.
 - **Contract the model reads** (`<mcps>` in `system.md`): the server's instructions and each enabled tool's description and signature (or its JSON Schema with `mcpPresentation: "json"`).
 - **The server's own input schema** (its `tools/list` reply): not rendered here. The host validates every call against it (`validationParameters`, `packages/mcp/src/tool-definition.ts`); whether the server checks again is up to the server. Permission, the read-only role guard and the plan gate decide separately whether a call may run.
 
-Prompts that no agent folder shows, because no first request carries them: the summarizer (`workflows/summarization.md`, `core/compaction/summary-format.ts`, `octocode/compaction/shared-summary.ts`), the branch summary (`core/compaction/branch-summarization.ts`), the side question (`workflows/side-question.md`), the session title (`workflows/title.md`), plan mode (`workflows/planning.md`, `plan-approved.md`, `plan-reminder.md`), the hook evaluator (`octocode/hooks/prompt.ts`) and the bug-report summarizer (`core/bug-report.ts`).
+Prompts that no agent folder shows, because no first request carries them: `workflows/` (compaction, side question, title, planning, hook evaluation, bug report) and `notices/`.

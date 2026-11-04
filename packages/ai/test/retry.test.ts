@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "../src/providers/faux.ts";
-import { isRetryableAssistantError, type RetryPolicy, retryAssistantCall, retryDelayMs } from "../src/utils/retry.ts";
+import {
+	isRateLimitedText,
+	isRetryableAssistantError,
+	RATE_LIMIT_MIN_RETRIES,
+	RATE_LIMIT_WINDOW_MS,
+	type RetryPolicy,
+	retryAssistantCall,
+	retryBudget,
+	retryDelayMs,
+} from "../src/utils/retry.ts";
 
 const openAIExplicitRetryMessage =
 	"An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_******** in your message.";
@@ -37,6 +46,10 @@ describe("provider retry classification", () => {
 	it.each([
 		'400 {"error":"max_tokens: 150000 > 64000, which is the maximum allowed"}',
 		"400 invalid request: messages.1500.content is empty",
+		// Digits inside an id are not a status code.
+		"400 messages: tool_use ids were found without tool_result blocks: toolu_01Ab429xYz",
+		"400 messages: tool_use ids were found without tool_result blocks: toolu_01X500kQ",
+		"400 unknown tool call call_503a",
 		'400 tool "timeout_tool" has an invalid schema',
 	])(
 		"does not retry a deterministic request error whose text only contains a status-like number or word: %s",
@@ -45,12 +58,18 @@ describe("provider retry classification", () => {
 		},
 	);
 
-	it.each(["HTTP 429", "OpenAI API error (500): server failed", "request timeout", "Request timed out", "terminated"])(
-		"still retries a standalone transient status or word: %s",
-		(errorMessage) => {
-			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
-		},
-	);
+	it.each([
+		"HTTP 429",
+		"OpenAI API error (500): server failed",
+		"request timeout",
+		"Request timed out",
+		"terminated",
+		"529 status code (no body)",
+		"read ECONNRESET",
+		"connection reset by peer",
+	])("still retries a standalone transient status or word: %s", (errorMessage) => {
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
+	});
 
 	it("matches Bun fetch socket drop wording", () => {
 		expect(
@@ -168,6 +187,19 @@ describe("provider retry classification", () => {
 	});
 });
 
+describe("retryBudget", () => {
+	it("does not raise the budget for a failure that names a host that will not resolve", () => {
+		expect(retryBudget(2, wrappedDnsLookupError)).toBe(2);
+		expect(retryBudget(2, "fetch failed: getaddrinfo ENOTFOUND api.example.com")).toBe(2);
+		expect(retryBudget(2, "The pending stream has been canceled")).toBe(RATE_LIMIT_MIN_RETRIES);
+	});
+
+	it("does not read a status code out of an id as a rate limit", () => {
+		expect(isRateLimitedText("toolu_01Ab429xYz")).toBe(false);
+		expect(isRateLimitedText("HTTP 429")).toBe(true);
+	});
+});
+
 describe("retryDelayMs", () => {
 	it("caps agent retry delay", () => {
 		// Regression for #8826.
@@ -211,14 +243,53 @@ describe("retryAssistantCall", () => {
 	});
 
 	it("retries a transient error up to maxRetries then returns the final error", async () => {
-		const produce = vi.fn(async () => fauxAssistantMessage("", { stopReason: "error", errorMessage: "terminated" }));
+		const produce = vi.fn(async () =>
+			fauxAssistantMessage("", { stopReason: "error", errorMessage: "request timeout" }),
+		);
 		const onRetryScheduled = vi.fn();
 		const onRetryFinished = vi.fn();
 		const res = await retryAssistantCall(produce, enabled, undefined, { onRetryScheduled, onRetryFinished });
 		expect(res.stopReason).toBe("error");
 		expect(produce).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
 		expect(onRetryScheduled).toHaveBeenCalledTimes(3);
-		expect(onRetryFinished).toHaveBeenCalledWith(false, 3, "terminated");
+		expect(onRetryFinished).toHaveBeenCalledWith(false, 3, "request timeout");
+	});
+
+	it("gives a capacity or transport failure the raised budget of an agent turn", async () => {
+		const produce = vi.fn(async () => fauxAssistantMessage("", { stopReason: "error", errorMessage: "terminated" }));
+		const onRetryScheduled = vi.fn();
+		await retryAssistantCall(produce, enabled, undefined, { onRetryScheduled });
+		expect(produce).toHaveBeenCalledTimes(1 + RATE_LIMIT_MIN_RETRIES);
+		expect(onRetryScheduled.mock.calls[0]?.[1]).toBe(RATE_LIMIT_MIN_RETRIES);
+	});
+
+	it("waits at least what a capacity failure's retry-after asked for", async () => {
+		let n = 0;
+		const produce = vi.fn(async () => {
+			n++;
+			return n === 1
+				? { ...fauxAssistantMessage("", { stopReason: "error", errorMessage: "503" }), retryAfterMs: 20 }
+				: fauxAssistantMessage("recovered");
+		});
+		const onRetryScheduled = vi.fn();
+		await retryAssistantCall(produce, enabled, undefined, { onRetryScheduled });
+		expect(onRetryScheduled.mock.calls[0]?.[2]).toBeGreaterThanOrEqual(20);
+	});
+
+	it("stops the raised attempts when the wall-clock window is spent, keeping the configured ones", async () => {
+		const real = Date.now.bind(Date);
+		let offset = 0;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
+		try {
+			const produce = vi.fn(async () => {
+				offset += RATE_LIMIT_WINDOW_MS;
+				return fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+			});
+			await retryAssistantCall(produce, { enabled: true, maxRetries: 2, baseDelayMs: 0 }, undefined);
+			expect(produce).toHaveBeenCalledTimes(3);
+		} finally {
+			clock.mockRestore();
+		}
 	});
 
 	it("reports capped retry delays", async () => {
@@ -228,7 +299,7 @@ describe("retryAssistantCall", () => {
 		const produce = vi.fn(async () => {
 			n++;
 			return n < 5
-				? fauxAssistantMessage("", { stopReason: "error", errorMessage: "terminated" })
+				? fauxAssistantMessage("", { stopReason: "error", errorMessage: "request timeout" })
 				: fauxAssistantMessage("recovered");
 		});
 		const onRetryScheduled = vi.fn();
@@ -324,5 +395,11 @@ describe("retryAssistantCall", () => {
 		expect(res.errorMessage).toBeUndefined();
 		expect(produce).toHaveBeenCalledTimes(1);
 		expect(onRetryFinished).toHaveBeenCalledWith(false, 1, "terminated");
+	});
+	it("reads a status code that ends a sentence, as a status, but not a decimal", () => {
+		const retryable = (errorMessage: string) =>
+			isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }));
+		expect(retryable("Upstream returned 502.")).toBe(true);
+		expect(retryable("cost is 502.25 dollars")).toBe(false);
 	});
 });

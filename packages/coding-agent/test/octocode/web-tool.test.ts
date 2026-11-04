@@ -89,6 +89,25 @@ const noticeText = (value: Fetched) => {
 	return value.text;
 };
 
+describe("web and cloud metadata addresses", () => {
+	it.each([
+		"http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+		"http://[fd00:ec2::254]/latest/meta-data/",
+		"http://168.63.129.16/machine?comp=goalstate",
+		"http://[::ffff:169.254.169.254]/",
+		"http://2852039166/",
+	])("refuses %s in every mode, with no ask and no request", async (url) => {
+		for (const mode of ["full", "workspace", "manual"] as const) {
+			const permission = fakePermission(mode);
+			const check = vi.spyOn(permission, "check");
+			const refused = vi.spyOn(permission, "refused");
+			await expect(webTool([], permission).execute("1", { url })).rejects.toThrow(/cloud metadata address/);
+			expect(check).not.toHaveBeenCalled();
+			expect(refused).toHaveBeenCalledOnce();
+		}
+	});
+});
+
 describe("web request boundaries", () => {
 	it("bounds the whole provider chain even when the current provider ignores cancellation", async () => {
 		vi.useFakeTimers();

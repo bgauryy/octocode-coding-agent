@@ -60,7 +60,7 @@ export function folderName(id: string): string[] {
 	}
 }
 
-/** One place cleanup looks: a workspace's `.octa/code`, the global agent folder, or the legacy per-folder transcripts. */
+/** One place cleanup looks: a workspace's `.octocode/code`, the global agent folder, or the legacy per-folder transcripts. */
 export interface SweepScope {
 	label: string;
 	workspaceId?: string;

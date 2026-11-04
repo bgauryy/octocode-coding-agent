@@ -137,7 +137,7 @@ describe("skill tool", () => {
 		expect(tool.prepareLoadout({})).toBeUndefined();
 	});
 
-	it("expands a Claude skill's host variables like the /skill command, and cuts an oversized file", async () => {
+	it("expands a Claude skill's host variables like the /skill command, and returns an oversized file whole", async () => {
 		const f = fixtures();
 		const dir = path.join(f.root, "claude");
 		fs.mkdirSync(dir);
@@ -149,8 +149,8 @@ describe("skill tool", () => {
 		const { call } = setup(() => captureSkillResourceSnapshot(loaded));
 		const text = (await call("claude-skill")).content[0].text;
 		expect(text).toContain(`Dir is ${dir}`);
-		expect(text).toContain("[Cut at 256 KB.");
-		expect(text.length).toBeLessThan(270 * 1024);
+		expect(text).not.toContain("[Cut at");
+		expect(text.length).toBeGreaterThan(300 * 1024);
 	});
 
 	it("pins instructions and references to the captured file and refuses a replaced canonical link", async () => {
@@ -334,7 +334,7 @@ describe("skill policy", () => {
 	const base = { octocode: true, profiles: [], canDelegate: true };
 
 	it("is stated once, by the skills section, so neither the policy nor the tool's listing restates the trigger", () => {
-		const trigger = "when the task matches its description";
+		const trigger = "whose description matches the task";
 		for (const canDelegate of [true, false]) {
 			const prompt = octocodePrompt({ ...base, canDelegate });
 			expect(prompt).not.toContain(trigger);
@@ -343,7 +343,7 @@ describe("skill policy", () => {
 		expect(octocodePrompt({ ...base, canDelegate: false })).toContain("finish your task yourself.");
 		// The skills section carries the rule for whichever loader the session has; the tool says only what it does.
 		expect(formatSkillsForPrompt(fixtures().loaded.skills.slice(0, 1), "skill")).toContain(
-			`Use the skill tool with a skill's name to load it ${trigger}.`,
+			`Use the skill tool, one call per name, to load every skill ${trigger}; several can apply.`,
 		);
 		const { tool } = setup(fixtures().snapshot);
 		// The tool list points to the skills section instead of restating its trigger.
@@ -393,7 +393,7 @@ describe("a session with skills", () => {
 		]);
 		await h.session.prompt("do alpha work");
 		const sections = getCurrentSystemMessage(h.session.messages)?.sections;
-		expect(sections?.skills).toContain("Use the skill tool with a skill's name to load it");
+		expect(sections?.skills).toContain("Use the skill tool, one call per name, to load every skill");
 		expect(sections?.skills).toContain("<name>alpha</name>");
 		expect(sections?.skills).not.toContain("<name>hidden</name>");
 		const result = getToolResult(h, "skill");

@@ -712,7 +712,9 @@ describe("AgentSession prompt characterization", () => {
 			expect(harness.faux.state.callCount).toBe(0);
 			expect(harness.getPendingResponseCount()).toBe(1);
 			expect(harness.eventsOfType("agent_start")).toEqual([]);
-			expect(harness.eventsOfType("agent_settled")).toEqual([{ type: "agent_settled", aborted: true }]);
+			expect(harness.eventsOfType("agent_settled")).toEqual([
+				expect.objectContaining({ type: "agent_settled", aborted: true }),
+			]);
 			expect(harness.session.isIdle).toBe(true);
 		});
 	});

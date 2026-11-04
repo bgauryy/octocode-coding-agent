@@ -11,6 +11,7 @@ import {
 	Text,
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme, theme } from "../../../theme/theme.ts";
+import { hintLine, type KeyHintPair, keyText } from "./keybinding-hints.ts";
 import { plainText } from "./styled-line.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -85,10 +86,12 @@ export class SelectSubmenu extends Container {
 
 		// Hint
 		this.addChild(new Spacer(1));
-		const hint = submenuOptions?.searchable
-			? "  Type to filter \u00b7 enter to select \u00b7 esc to go back"
-			: "  enter to select \u00b7 esc to go back";
-		this.addChild(new Text(theme.fg("dim", hint), 0, 0));
+		const keys: KeyHintPair[] = [
+			[keyText("tui.select.confirm"), "select"],
+			[keyText("tui.select.cancel"), "back"],
+		];
+		if (submenuOptions?.searchable) keys.unshift(["type", "filter"]);
+		this.addChild(new Text(`  ${hintLine(keys)}`, 0, 0));
 	}
 
 	private buildSelectList(options: SelectItem[], preselect: string): SelectList {

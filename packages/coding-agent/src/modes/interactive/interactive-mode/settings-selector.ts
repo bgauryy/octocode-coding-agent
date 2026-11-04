@@ -22,7 +22,7 @@ type SettingsSelectorHost = Pick<
 	| "chatContainer"
 	| "defaultEditor"
 	| "editor"
-	| "hideThinkingBlock"
+	| "uiStore"
 	| "outputPad"
 	| "pendingMessagesContainer"
 	| "rebuildChatFromMessages"
@@ -37,7 +37,6 @@ type SettingsSelectorHost = Pick<
 	| "themeController"
 	| "ui"
 	| "updateEditorBorderColor"
-	| "updateThinkingBlockVisibility"
 >;
 
 export function showSettingsSelector(host: SettingsSelectorHost): void {
@@ -67,7 +66,7 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				currentTheme: host.themeController.getThemeSelection() || SYSTEM_THEME_NAME,
 				terminalTheme: host.themeController.getTerminalTheme(),
 				availableThemes: getAvailableThemes(),
-				hideThinkingBlock: host.hideThinkingBlock,
+				hideThinkingBlock: host.uiStore.getState().view.hideThinking,
 				mermaidRenderingMode: host.settingsManager.getMermaidRenderingMode(),
 				collapseChangelog: host.settingsManager.getCollapseChangelog(),
 				enableInstallTelemetry: host.settingsManager.getEnableInstallTelemetry(),
@@ -172,9 +171,8 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				},
 				onThemePreview: (themeName) => host.themeController.preview(themeName),
 				onHideThinkingBlockChange: (hidden) => {
-					host.hideThinkingBlock = hidden;
+					host.uiStore.getState().setHideThinking(hidden);
 					host.settingsManager.setHideThinkingBlock(hidden);
-					host.updateThinkingBlockVisibility();
 				},
 				onMermaidRenderingModeChange: (mode) => {
 					host.settingsManager.setMermaidRenderingMode(mode);

@@ -681,6 +681,24 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("bash.spillMaxBytes", () => {
+		it("defaults to 1 GiB, and 0 lifts the cap", () => {
+			const settingsPath = join(agentDir, "settings.json");
+			expect(SettingsManager.create(projectDir, agentDir).getBashSpillMaxBytes()).toBe(1024 ** 3);
+			writeFileSync(settingsPath, JSON.stringify({ bash: { spillMaxBytes: 4096 } }));
+			expect(SettingsManager.create(projectDir, agentDir).getBashSpillMaxBytes()).toBe(4096);
+			writeFileSync(settingsPath, JSON.stringify({ bash: { spillMaxBytes: 0 } }));
+			expect(SettingsManager.create(projectDir, agentDir).getBashSpillMaxBytes()).toBe(0);
+		});
+
+		it("falls back to the default for a negative value or a non-number", () => {
+			for (const value of [-5, "big"]) {
+				writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ bash: { spillMaxBytes: value } }));
+				expect(SettingsManager.create(projectDir, agentDir).getBashSpillMaxBytes()).toBe(1024 ** 3);
+			}
+		});
+	});
+
 	describe("shellCommandPrefix", () => {
 		it("should load shellCommandPrefix from settings", () => {
 			const settingsPath = join(agentDir, "settings.json");

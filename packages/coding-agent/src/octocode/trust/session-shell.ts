@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 /**
  * Trust is the user's decision, so a command that records it must not be one the agent can run. The bash tool gives its
  * children `OCTOCODE_SESSION_ID`; a process that has it runs inside a session's shell, where `octocode trust add --yes`
@@ -6,9 +8,49 @@
  * trust prompt, the user's own `/trust`) calls the grant functions directly and is not affected.
  */
 
-/** Whether this process was started from the shell of an Octocode session (or one of its subagents). */
+/**
+ * Whether this process was started from the shell of an Octocode session (or one of its subagents). By presence, not
+ * value: `OCTOCODE_SESSION_ID= octocode trust add` is the same shell. `belowSession` covers a variable removed outright.
+ */
 export function insideSessionShell(env: NodeJS.ProcessEnv = process.env): boolean {
-	return Boolean(env.OCTOCODE_SESSION_ID?.trim());
+	return env.OCTOCODE_SESSION_ID !== undefined;
+}
+
+/** How far up the process tree a session is looked for: deeper than any shell, wrapper and script chain in practice. */
+const MAX_ANCESTORS = 32;
+/** The process title a running session sets (`processes/title.ts`). */
+const SESSION_TITLE = /^octocode-[A-Za-z0-9._]+-[A-Za-z0-9._-]+(?:\s|$)/;
+
+/** One process's parent and command, from `ps`; undefined when it cannot say (no `ps`, as on Windows, or no such process). */
+function processRow(pid: number): { ppid: number; command: string } | undefined {
+	try {
+		const row = /^\s*(\d+)\s+(.*)$/s.exec(
+			execFileSync("ps", ["-o", "ppid=,command=", "-p", String(pid)], {
+				encoding: "utf8",
+				timeout: 2000,
+				stdio: ["ignore", "pipe", "ignore"],
+			}),
+		);
+		return row ? { ppid: Number(row[1]), command: row[2] ?? "" } : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Whether a running session is among this process's ancestors. Unlike a variable, a command in a session's shell cannot
+ * unset this. It costs up to one `ps` per ancestor, so it is for the rare command that records trust. Fails open: a
+ * platform that cannot say keeps today's check of the variable.
+ */
+export function belowSession(start: number = process.ppid, row = processRow): boolean {
+	let pid = start;
+	for (let depth = 0; depth < MAX_ANCESTORS && pid > 1; depth++) {
+		const found = row(pid);
+		if (!found) return false;
+		if (SESSION_TITLE.test(found.command)) return true;
+		pid = found.ppid;
+	}
+	return false;
 }
 
 /** Why a command refused to record trust inside a session's shell, and what the user does instead. */

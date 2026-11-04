@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
+import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
 import { type ChildEffect, newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";
 
 const LIMITS = { idleMs: 1_000, busyMs: 5_000 };
@@ -24,6 +25,52 @@ const reply = (stopReason: string, text = "answer") => ({
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
 	},
+});
+
+describe("reduceEvent: verification", () => {
+	const end = (toolName: string, details: unknown = {}, isError = false) => ({
+		type: "tool_execution_end",
+		toolName,
+		isError,
+		result: { content: [], details },
+	});
+	const verified = (exitCode = 0, stale = false) =>
+		end("bash", { verification: { state: exitCode === 0 ? "finished" : "failed", exitCode, stale } });
+	const flags = (effects: ChildEffect[]) => progress(effects).flatMap((update) => update.editedAfterVerify ?? []);
+
+	it("notes an edit after a passing verify run, and clears the note when a later run passes", () => {
+		const state = newChildState();
+		expect(flags(reduce(state, end("file")))).toEqual([]);
+		expect(flags(reduce(state, verified()))).toEqual([]);
+		expect(flags(reduce(state, end("file")))).toEqual([true]);
+		expect(flags(reduce(state, end("file")))).toEqual([]);
+		expect(flags(reduce(state, verified()))).toEqual([false]);
+	});
+
+	it("ignores a failed verify run, a stale one, and a file call that failed", () => {
+		for (const event of [verified(1), verified(0, true)]) {
+			const state = newChildState();
+			reduce(state, event);
+			expect(flags(reduce(state, end("file")))).toEqual([]);
+		}
+		const state = newChildState();
+		reduce(state, verified());
+		expect(flags(reduce(state, end("file", {}, true)))).toEqual([]);
+	});
+
+	it("counts a passing background job", () => {
+		const state = newChildState();
+		reduce(state, {
+			type: "message_end",
+			message: {
+				role: "custom",
+				customType: JOB_TYPE,
+				content: "Background bash done",
+				details: { verification: { state: "finished", exitCode: 0, stale: false } },
+			},
+		});
+		expect(flags(reduce(state, end("file")))).toEqual([true]);
+	});
 });
 
 describe("reduceEvent", () => {

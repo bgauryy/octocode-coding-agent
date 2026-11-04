@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -87,6 +87,31 @@ test("points links that leave the package at the release tag and keeps shipped o
 		readFileSync(join(root, "docs/a.md"), "utf8"),
 		`[back](../README.md) [up](${base}/CONFIG.md) [peer](b.md)`,
 	);
+});
+
+test("leaves dated reviews and RFCs out of the shipped docs, and links to them point at the release tag", (t) => {
+	const repo = tree(t, {
+		"docs/FEATURES.md": "[rfc](RFC_ACP_EXPOSURE.md) [review](WEBVIEW_REVIEW.md#a) [peer](ENTITIES.md)",
+		"docs/ENTITIES.md": "e",
+		"docs/RFC_ACP_EXPOSURE.md": "rfc",
+		"docs/WEBVIEW_REVIEW.md": "review",
+		"docs/PROVIDER_PROTOCOL_AUDIT.md": "audit",
+		"docs/FEATURE_VALIDATION.md": "validation",
+		"docs/FEATURE_COVERAGE.md": "coverage",
+		"docs/LIBRARY_ASSESSMENT.md": "assessment",
+		"docs/PLUGINS_MODS_HOOKS_CONFORMANCE.md": "conformance",
+		"docs/PLUGINS_MODS_HOOKS_ROLLOUT.md": "rollout",
+	});
+	const root = tree(t, { "docs/guide.md": "[audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md)" });
+	assert.equal(stageProjectDocs(join(repo, "docs"), root, source, "packages/agent"), 2);
+	assert.deepEqual(readdirSync(join(root, "docs/project")).sort(), ["ENTITIES.md", "FEATURES.md"]);
+	rewriteOutsideLinks(root, source, "packages/agent");
+	const base = "https://github.com/owner/repo/blob/v1.2.3";
+	assert.equal(
+		readFileSync(join(root, "docs/project/FEATURES.md"), "utf8"),
+		`[rfc](${base}/docs/RFC_ACP_EXPOSURE.md) [review](${base}/docs/WEBVIEW_REVIEW.md#a) [peer](ENTITIES.md)`,
+	);
+	assert.equal(readFileSync(join(root, "docs/guide.md"), "utf8"), `[audit](${base}/docs/PROVIDER_PROTOCOL_AUDIT.md)`);
 });
 
 test("ships the repository docs with links that work from their new folder", (t) => {

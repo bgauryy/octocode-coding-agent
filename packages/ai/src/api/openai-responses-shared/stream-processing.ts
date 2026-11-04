@@ -175,6 +175,7 @@ export async function processResponsesStream<TApi extends Api>(
 		response: Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>["response"],
 	): void => {
 		sawTerminalResponseEvent = true;
+		delete output.usage.lowerBound;
 		backfillReasoningSignatures(response.output ?? []);
 		artifacts.finish(response.output ?? []);
 		if (response?.id) {
@@ -210,6 +211,8 @@ export async function processResponsesStream<TApi extends Api>(
 		if (artifacts.accept(event)) continue;
 		if (event.type === "response.created") {
 			output.responseId = event.response.id;
+			// Usage arrives only with the terminal event, so a stream dropped before it has recorded nothing.
+			output.usage.lowerBound = true;
 		} else if (event.type === "response.output_item.added") {
 			createSlot(event.output_index, event.item);
 		} else if (event.type === "response.reasoning_summary_text.delta") {

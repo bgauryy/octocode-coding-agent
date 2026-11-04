@@ -36,14 +36,7 @@ export interface WorktreeResult {
 	stat?: string;
 }
 
-/**
- * The folder of every isolated worktree of the repository `cwd` belongs to. It is named by the repository's git
- * common directory, so the main checkout and each linked worktree share one folder, and a prune from any of them finds
- * the others' orphans.
- */
-export function worktreesDir(cwd: string, home = octocodeHome()): string {
-	return path.join(home, HOME_NAMES.worktrees, shortHash(repoKey(cwd).key));
-}
+export { worktreesDir } from "../shared/own-worktree.ts";
 
 /** The folder earlier versions used: named by the checkout's own root, so a linked worktree's orphans were not shared. */
 export function legacyWorktreesDir(root: string, home = octocodeHome()): string {

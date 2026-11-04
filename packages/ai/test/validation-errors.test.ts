@@ -55,6 +55,62 @@ describe("validation error messages", () => {
 		expect(message).toContain("root: unexpected property extra");
 	});
 
+	describe("a field sent inside a nested object that the input takes at the top level", () => {
+		const paging: Tool = {
+			name: "localSearch",
+			description: "search",
+			parameters: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					queries: {
+						type: "array",
+						items: {
+							type: "object",
+							additionalProperties: false,
+							required: ["path"],
+							properties: { path: { type: "string" } },
+						},
+					},
+					cursor: { type: "string" },
+				},
+			},
+		};
+		const send = (args: JsonObject): string => {
+			try {
+				validateToolArguments(paging, { type: "toolCall", id: "1", name: "localSearch", arguments: args });
+			} catch (error) {
+				return (error as Error).message;
+			}
+			throw new Error("expected validation to fail");
+		};
+
+		it("names the correct form first, with the value that was sent", () => {
+			const message = send({ queries: [{ cursor: "abc" }] });
+			const lines = message.split("\n");
+			expect(lines[1]).toBe(
+				'  - queries.0.cursor: goes at the top level of the input, not inside queries.0: {"cursor":"abc"}',
+			);
+			expect(message).toContain("queries.0: unexpected property cursor");
+		});
+
+		it("says nothing of the kind for a field the top level does not take", () => {
+			expect(send({ queries: [{ path: "a", other: 1 }] })).not.toContain("goes at the top level");
+		});
+
+		it("does not retype a long value", () => {
+			const message = send({ queries: [{ cursor: "x".repeat(5_000) }] });
+			expect(message).toContain('not inside queries.0: "cursor"');
+			expect(message.length).toBeLessThan(3_000);
+		});
+
+		it("accepts the corrected form", () => {
+			expect(
+				validateToolArguments(paging, { type: "toolCall", id: "1", name: "localSearch", arguments: { cursor: "abc" } }),
+			).toEqual({ cursor: "abc" });
+		});
+	});
+
 	it("caps the echoed arguments and reports how much was omitted", () => {
 		const message = failure({ queries: [{ view: "content", path: "x".repeat(20_000) }], mode: "bogus" });
 		expect(message.length).toBeLessThan(3_000);

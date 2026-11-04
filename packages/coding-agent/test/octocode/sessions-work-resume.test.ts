@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { unreportedWork } from "../../src/octocode/sessions/work.ts";
+import { unansweredCalls, unreportedWork } from "../../src/octocode/sessions/work.ts";
 
 const start = (call: string, runId?: string) => [
 	{
@@ -44,5 +44,36 @@ describe("background continuations of one child", () => {
 		const entries = [...start("first", "run-1"), ...start("second", "run-2"), report("run-1")];
 		expect(unreportedWork(entries)).toMatchObject([{ label: "second" }]);
 		expect(unreportedWork([...entries, report("run-2")])).toEqual([]);
+	});
+});
+
+describe("tool calls with no recorded result, on resume", () => {
+	const call = (id: string, command: string) => ({
+		type: "toolCall",
+		id,
+		name: "bash",
+		arguments: { command },
+	});
+	const assistant = (content: unknown[], stopReason = "toolUse") => ({
+		type: "message",
+		message: { role: "assistant", content, stopReason },
+	});
+	const result = (id: string) => ({ type: "message", message: { role: "toolResult", toolCallId: id } });
+	const user = { type: "message", message: { role: "user", content: "next" } };
+
+	it("names the latest message's calls that have no result", () => {
+		const entries = [assistant([call("a", "git push"), call("b", "rm build")]), result("b")];
+		expect(unansweredCalls(entries)).toEqual(['bash({"command":"git push"})']);
+		expect(unansweredCalls([...entries, result("a")])).toEqual([]);
+	});
+
+	it("ignores calls a later message moved past, and a reply the model never sees", () => {
+		expect(unansweredCalls([assistant([call("a", "x")]), user])).toEqual([]);
+		expect(unansweredCalls([assistant([call("a", "x")]), assistant([{ type: "text", text: "done" }], "stop")])).toEqual(
+			[],
+		);
+		expect(unansweredCalls([assistant([call("a", "x")], "aborted")])).toEqual([]);
+		expect(unansweredCalls([assistant([call("a", "x")], "error")])).toEqual([]);
+		expect(unansweredCalls([])).toEqual([]);
 	});
 });

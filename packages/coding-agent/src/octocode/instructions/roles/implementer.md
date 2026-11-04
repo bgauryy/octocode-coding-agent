@@ -1,7 +1,6 @@
 ---
 name: implementer
 description: Use when a scoped change is ready to build; researches, edits and verifies it; returns changed paths, results and integration needs.
-excludeTools: mcp__octocode__ghSearchHistory,mcp__octocode__ghSearchRepo,mcp__octocode__artifactSearch,mcp__octocode__ghGetHistoryItem,mcp__octocode__clasify
 skills: octocode-debugging
 model: medium:medium
 ---

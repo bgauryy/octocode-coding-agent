@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { WORKSPACE_STATE } from "../../config/workspace.ts";
 import path from "node:path";
 import { OCTOCODE_DIR, octocodeHome, resolveToolPath } from "../shared/home.ts";
+import { ownWorktreeRoot } from "../shared/own-worktree.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
@@ -16,8 +17,7 @@ const RUNS_LATER_AT_ROOT = [
 	".claude",
 	".codex",
 	".agents",
-	OCTOCODE_DIR,
-	WORKSPACE_STATE.split(path.sep).join("/"),
+	OCTOCODE_DIR, // also holds the workspace state folder (`WORKSPACE_STATE`)
 ].map((entry) => entry.toLowerCase());
 /** Octocode's scratch folder: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
 const SCRATCH_AT_ROOT = `${WORKSPACE_STATE.split(path.sep).join("/")}/temp`;
@@ -63,15 +63,30 @@ export function changesOnlyWorkspace(file: string, root: string): boolean {
 	}
 }
 
-/** The refusal for a change inside Octocode's state folder (its trust store, agent database, config), in every mode. */
-export function stateFolderRefusal(file: string, shown: string, tool: string): string | undefined {
+/**
+ * The refusal for a change inside Octocode's state folder (its trust store, agent database, config), in every mode. An
+ * isolated subagent works in a worktree under the Octocode home, so the home part of the rule does not apply to that
+ * one folder when the caller says where the process runs (`cwd`, `ownWorktreeRoot`): not to a sibling's worktree, and
+ * not to a checkout's own `.octocode/code` inside it.
+ */
+export function stateFolderRefusal(
+	file: string,
+	shown: string,
+	tool: string,
+	cwd?: string,
+	env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
 	const real = canonicalPath(file);
 	const parts = real.toLowerCase().split(path.sep);
-	const [octa, code] = WORKSPACE_STATE.split(path.sep);
+	const [parent, folder] = WORKSPACE_STATE.split(path.sep);
 	const state = parts.some(
-		(name, i) => name === octa && parts[i + 1] === code && (parts[i + 2] !== "temp" || parts[i + 3] === "sessions"),
+		(name, i) => name === parent && parts[i + 1] === folder && (parts[i + 2] !== "temp" || parts[i + 3] === "sessions"),
 	);
-	if (!state && !isWithin(real, canonicalPath(octocodeHome()))) return undefined;
+	if (!state) {
+		if (!isWithin(real, canonicalPath(octocodeHome()))) return undefined;
+		const own = cwd === undefined ? undefined : ownWorktreeRoot(cwd, env);
+		if (own !== undefined && isWithin(real, own)) return undefined;
+	}
 	return `${shown} is in Octocode's state folder; ${tool} does not change it. Ask the user to change it themselves.`;
 }
 
@@ -125,7 +140,7 @@ export function shellTargetAccess(
 	if (!spelled) return { uncertain: true };
 	const file = canonicalPath(shellPath(cwd, spelled));
 	if (target.kind === "write") {
-		const refusal = stateFolderRefusal(file, target.raw, "Bash");
+		const refusal = stateFolderRefusal(file, target.raw, "Bash", cwd);
 		if (refusal) return { refusal };
 	}
 	const root = workspaceRoot(cwd);

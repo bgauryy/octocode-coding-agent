@@ -1,10 +1,8 @@
+import { conditionallyRequired } from "./applicability.ts";
 import { toolBlock } from "./file.ts";
 import { functionNames, OUTPUT_FIELD_PREFIX, renderServer } from "./render.ts";
 import { isShapeless, schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides, JsonSchema } from "./types.ts";
-
-/** Longest override per kind, in characters; longer text defeats the point of compacting. */
-const OVERRIDE_LIMITS = { server: 1200, tool: 600, trigger: 200, field: 240 } as const;
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/gi;
 
@@ -59,15 +57,16 @@ function requiredTokens(schema: JsonSchema | undefined, out: Set<string>, seen =
 		if (value && typeof value === "object") requiredTokens(value as JsonSchema, out, seen);
 }
 
-function checkText(label: string, text: string, source: string, limit: number, problems: string[]): void {
-	if (text.length > limit) problems.push(`${label}: ${text.length} chars exceeds ${limit}`);
+/** An override must add no URL the source lacks. */
+function checkText(label: string, text: string, source: string, problems: string[]): void {
 	const known = new Set(source.match(URL_PATTERN) ?? []);
 	for (const url of text.match(URL_PATTERN) ?? []) if (!known.has(url)) problems.push(`${label}: adds URL ${url}`);
 }
 
 /**
  * Problems of one tool's rendered block against its schemas: a property name or enum/const value missing, a required
- * key shown only as optional, a branch-only requirement not stated, or a part the renderer could not express.
+ * key shown only as optional, a branch-only requirement not stated, a requirement the descriptions state that reads
+ * neither as required nor as the note itself, or a part the renderer could not express.
  */
 export function checkToolBlock(tool: CompactToolInput, block: string): string[] {
 	const problems: string[] = [];
@@ -90,6 +89,10 @@ export function checkToolBlock(tool: CompactToolInput, block: string): string[] 
 	for (const keys of conditional)
 		if (keys.length && !block.includes(`${keys.join(" + ")} required`))
 			problems.push(`${tool.name}: loses the alternative requiring ${keys.join(" + ")}`);
+	for (const { field, note } of conditionallyRequired(tool.inputSchema)) {
+		const mandatory = new RegExp(`(^|[\\s{;/])"?${escapeRegExp(field)}"?:`, "m").test(block);
+		if (!mandatory && !block.includes(note)) problems.push(`${tool.name}: loses "${note}" on ${field}`);
+	}
 	return problems;
 }
 
@@ -108,7 +111,7 @@ function fieldPaths(tool: CompactToolInput): Map<string, boolean> {
 
 /**
  * Checks a rendered file against its source catalog: every tool present and faithful (`checkToolBlock`), and
- * overrides within limits, without URLs the source lacks, naming tools and fields the server has, and not calling a
+ * overrides without URLs the source lacks, naming tools and fields the server has, and not calling a
  * required field optional. Structure comes from the schema, so a failure here means a renderer limit or a bad override.
  */
 export function checkFidelity(
@@ -123,18 +126,17 @@ export function checkFidelity(
 		if (block) problems.push(...checkToolBlock(tool, block));
 		else problems.push(`${tool.name}: missing from file`);
 	}
-	if (overrides?.server !== undefined)
-		checkText("server", overrides.server, input.instructions ?? "", OVERRIDE_LIMITS.server, problems);
+	if (overrides?.server !== undefined) checkText("server", overrides.server, input.instructions ?? "", problems);
 	for (const [tool, text] of Object.entries(overrides?.tools ?? {})) {
 		if (!names.has(tool)) problems.push(`override names unknown tool ${tool}`);
 		const source = input.tools.find((candidate) => candidate.name === tool)?.description ?? "";
-		checkText(tool, text, source, OVERRIDE_LIMITS.tool, problems);
+		checkText(tool, text, source, problems);
 	}
 	for (const [tool, text] of Object.entries(overrides?.triggers ?? {})) {
 		if (!names.has(tool)) problems.push(`trigger names unknown tool ${tool}`);
 		if (/[\r\n]/.test(text)) problems.push(`${tool} trigger: must be one line`);
 		const source = input.tools.find((candidate) => candidate.name === tool)?.description ?? "";
-		checkText(`${tool} trigger`, text, source, OVERRIDE_LIMITS.trigger, problems);
+		checkText(`${tool} trigger`, text, source, problems);
 	}
 	for (const [tool, fields] of Object.entries(overrides?.fields ?? {})) {
 		const declared = input.tools.find((candidate) => candidate.name === tool);
@@ -142,7 +144,7 @@ export function checkFidelity(
 		const source = JSON.stringify([declared?.inputSchema ?? {}, declared?.outputSchema ?? {}]);
 		const paths = declared ? fieldPaths(declared) : undefined;
 		for (const [field, text] of Object.entries(fields)) {
-			checkText(`${tool}.${field}`, text, source, OVERRIDE_LIMITS.field, problems);
+			checkText(`${tool}.${field}`, text, source, problems);
 			const required = paths?.get(field);
 			if (paths && required === undefined) problems.push(`${tool}.${field}: no such field`);
 			if (required && /\boptional\b/i.test(text)) problems.push(`${tool}.${field}: calls a required field optional`);

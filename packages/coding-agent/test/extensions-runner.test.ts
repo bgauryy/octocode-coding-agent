@@ -111,6 +111,7 @@ describe("ExtensionRunner", () => {
 	const extensionActions: ExtensionActions = {
 		sendMessage: () => {},
 		sendUserMessage: () => {},
+		getHiddenDeclarations: () => [],
 		appendEntry: () => {},
 		setSessionName: () => {},
 		getSessionName: () => undefined,

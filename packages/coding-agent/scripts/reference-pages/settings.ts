@@ -68,13 +68,20 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"doubleEscapeAction",
 			"treeFilterMode",
 			"defaultTools",
+			"subagents",
 			"mcpPresentation",
-			"mcpContractTiers",
 		],
 	},
 	{
 		heading: "Shell and packages",
-		fields: ["shellPath", "shellCommandPrefix", "bashBackgroundAfterSeconds", "bashOutputMaxBytes", "npmCommand"],
+		fields: [
+			"shellPath",
+			"shellCommandPrefix",
+			"bashBackgroundAfterSeconds",
+			"bashOutputMaxBytes",
+			"bash",
+			"npmCommand",
+		],
 	},
 	{
 		heading: "Telemetry and identity",
@@ -140,7 +147,8 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 	retry: "Automatic retry of transient model failures.",
 	"retry.provider": "Retries inside the provider SDK, separate from the session retries above.",
 	"retry.enabled": "`false` turns off all retries.",
-	"retry.maxRetries": "Retry attempts after a transient failure. Rate-limit errors have their own minimum.",
+	"retry.maxRetries":
+		"Retry attempts after a transient failure. Rate limits and capacity or transport failures have their own minimum.",
 	"retry.maxAgentDelayMs": "Longest wait before one retry, in milliseconds.",
 	branchSummary: "Summaries of abandoned branches when navigating the session tree.",
 	terminal:

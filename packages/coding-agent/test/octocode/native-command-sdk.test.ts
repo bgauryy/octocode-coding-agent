@@ -19,7 +19,6 @@ it("loads one native command per canonical name through the real SDK", async () 
 	vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
 	vi.stubEnv("OCTOCODE_OFFLINE", "1");
 	vi.stubEnv("OCTOCODE_MCP", "0");
-	vi.stubEnv("OCTOCODE_API", "0");
 	vi.stubEnv("OCTOCODE_EXTRA_SKILLS", "0");
 	const settingsManager = SettingsManager.inMemory();
 	const resourceLoader = new DefaultResourceLoader({
@@ -51,10 +50,10 @@ it("loads one native command per canonical name through the real SDK", async () 
 			"api",
 			"archive",
 			"backlog",
-			"hooks",
 			"jobs",
 			"memory",
 			"modelsettings",
+			"optimize",
 			"permissions",
 			"plan",
 			"resume",
@@ -68,7 +67,17 @@ it("loads one native command per canonical name through the real SDK", async () 
 			expect(commands.some((command) => command.name === name)).toBe(false);
 			expect(runner.getCommand(name)).toBeUndefined();
 		}
-		for (const removed of ["continue", "usage", "cost", "stats", "allowed-tools", "list-agents", "peers", "octocode"])
+		for (const removed of [
+			"continue",
+			"usage",
+			"cost",
+			"stats",
+			"allowed-tools",
+			"list-agents",
+			"peers",
+			"octocode",
+			"hooks",
+		])
 			expect(runner.getCommand(removed)).toBeUndefined();
 		await session.controlPlan({ action: "enter" });
 		for (const toolName of ["file", "bash", "agent", "execute", "browser", "debug", "mcp__unknown__read"]) {
@@ -77,8 +86,12 @@ it("loads one native command per canonical name through the real SDK", async () 
 			);
 		}
 		expect(
-			await runner.emitUserBash({ type: "user_bash", command: "echo bypass", excludeFromContext: true, cwd }),
+			await runner.emitUserBash({ type: "user_bash", command: "touch bypass", excludeFromContext: true, cwd }),
 		).toMatchObject({ result: { cancelled: true } });
+		// A read-only `!cmd` runs under plan mode, like an agent's read-only bash call.
+		expect(
+			await runner.emitUserBash({ type: "user_bash", command: "echo bypass", excludeFromContext: true, cwd }),
+		).toBeUndefined();
 		await session.controlPlan({ action: "leave" });
 
 		expect(commands.filter((command) => command.name === "mcp")).toHaveLength(1);

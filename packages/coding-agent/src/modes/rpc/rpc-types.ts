@@ -8,7 +8,13 @@ import type { PlanState } from "../../octocode/plan/state.ts";
 
 import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai";
-import type { PromptDisposition, QueuedInput, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
+import type {
+	PromptDisposition,
+	QueuedInput,
+	QueuedInputDisposition,
+	RunOutcome,
+	SessionStats,
+} from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionUIPermissionRequest } from "../../core/features/types.ts";
@@ -61,6 +67,10 @@ export interface RpcSlashCommand {
 // ============================================================================
 
 export interface RpcSessionState {
+	/** The version of this protocol, as in `rpc_ready`. */
+	protocolVersion: number;
+	/** The Octocode version answering. */
+	version: string;
 	model?: Model<any>;
 	thinkingLevel: ThinkingLevel;
 	isStreaming: boolean;
@@ -82,7 +92,14 @@ export interface RpcSessionState {
 // Success responses with data
 export type RpcResponse =
 	// Prompting
-	| { id?: string; type: "response"; command: "prompt"; success: true; data: { disposition: PromptDisposition } }
+	| {
+			id?: string;
+			type: "response";
+			command: "prompt";
+			success: true;
+			/** `outcome` is set on a `waitForCompletion` answer: how the run ended, since a failed run still answers success. */
+			data: { disposition: PromptDisposition; outcome?: RunOutcome };
+	  }
 	| { id?: string; type: "response"; command: "steer"; success: true; data: { disposition: QueuedInputDisposition } }
 	| {
 			id?: string;
@@ -222,7 +239,15 @@ export type RpcResponse =
 	  }
 
 	// Error response (any command can fail)
-	| { id?: string; type: "response"; command: string; success: false; error: string; execution?: "not-sent" };
+	| {
+			id?: string;
+			type: "response";
+			command: string;
+			success: false;
+			error: string;
+			execution?: "not-sent";
+			authRequired?: true;
+	  };
 
 // ============================================================================
 // Extension UI Events (stdout)

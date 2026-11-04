@@ -1,17 +1,17 @@
 /**
- * Renders agent session events: turns, queued messages, appended entries, streaming messages, and tool
- * executions. Run-state events go to run-state-events.ts.
+ * Renders agent session events: turns, queued messages, appended entries and custom messages. Messages and tool
+ * executions are drawn from application events (application-events.ts); the native stream only adds notices here.
+ * Run-state events go to run-state-events.ts.
  */
 
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
+import { disposeTranscript } from "./transcript-dispose.ts";
 import { ApplicationServiceError, getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../../core/messages.ts";
-import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
-import { addToolExecution } from "./session-render.ts";
-import { stoppedToolText } from "../../../core/application/interrupted-tools.ts";
 import { applicationRenderer } from "./application-events.ts";
+import { bindQueueState } from "../state/bind-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 const applicationDriven = new WeakSet<object>();
@@ -30,10 +30,11 @@ type AgentEventsHost = Pick<
 	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
+	| "getAppKeyDisplay"
 	| "getRegisteredToolDefinition"
 	| "handleEvent"
 	| "hiddenThinkingLabel"
-	| "hideThinkingBlock"
+	| "uiStore"
 	| "init"
 	| "isInitialized"
 	| "maybeShowCacheMissNotice"
@@ -41,6 +42,7 @@ type AgentEventsHost = Pick<
 	| "maybeShowThinkingDropNotice"
 	| "maybeSuggestBugReport"
 	| "outputPad"
+	| "pendingMessagesContainer"
 	| "pendingTools"
 	| "programStatus"
 	| "renderSessionEntries"
@@ -51,11 +53,9 @@ type AgentEventsHost = Pick<
 	| "showWorkingStatusIndicator"
 	| "streamingComponent"
 	| "streamingMessage"
-	| "toolOutputExpanded"
 	| "ui"
 	| "unsubscribe"
 	| "updateEditorBorderColor"
-	| "updatePendingMessagesDisplay"
 	| "updateTerminalTitle"
 	| "workingVisible"
 > &
@@ -65,6 +65,7 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 	const session = host.session;
 	const port = getApplicationPort(session);
 	const render = applicationRenderer(host, port);
+	const closeQueue = bindQueueState(host, port.stateSource);
 	applicationDriven.add(host);
 	// A failed redraw or a service failure is shown in the transcript: stderr would write over the screen.
 	const onError = (error: unknown) => {
@@ -80,6 +81,7 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 	}, onError);
 	host.unsubscribe = () => {
 		closeApplication();
+		closeQueue();
 		closeNative();
 		applicationDriven.delete(host);
 	};
@@ -118,11 +120,6 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			host.ui.requestRender();
 			break;
 
-		case "queue_update":
-			host.updatePendingMessagesDisplay();
-			host.ui.requestRender();
-			break;
-
 		case "entry_appended":
 			if (host.entriesRenderedByRebuild.delete(event.entry.id)) break;
 			if (event.entry.type === "custom") {
@@ -145,6 +142,7 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			} else if (event.entry.type === "compaction") {
 				const entries = host.sessionManager.buildContextEntries();
 				if (entries[0]?.id !== event.entry.id) break;
+				disposeTranscript(host.chatContainer);
 				host.chatContainer.clear();
 				const branch = host.sessionManager.getBranch();
 				const compactionIndex = branch.findIndex((entry) => entry.id === event.entry.id);
@@ -176,150 +174,18 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			host.updateEditorBorderColor();
 			break;
 
+		// Only custom messages reach here: `handleNativeContentNotice` takes every other message and tool event, and the
+		// application renderer draws them. The application stream has no custom message event.
 		case "message_start":
 			if (event.message.role === "custom") {
 				host.addMessageToChat(event.message);
 				host.ui.requestRender();
-			} else if (event.message.role === "user") {
-				host.addMessageToChat(event.message);
-				host.updatePendingMessagesDisplay();
-				host.ui.requestRender();
-			} else if (event.message.role === "assistant") {
-				host.streamingComponent = new AssistantMessageComponent(
-					undefined,
-					host.hideThinkingBlock,
-					host.getMarkdownThemeWithSettings(),
-					host.hiddenThinkingLabel,
-					host.outputPad,
-					host.getMarkdownTransformers(),
-					{
-						readAsset: (id) => getApplicationPort(host.session).readAsset(id),
-						showImages: host.settingsManager.getShowImages(),
-						imageWidthCells: host.settingsManager.getImageWidthCells(),
-						requestRender: () => host.ui.requestRender(),
-					},
-				);
-				// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
-				host.streamingComponent.setMouseHint(host.ui.mode === "fullscreen");
-				host.streamingMessage = event.message;
-				host.chatContainer.addChild(host.streamingComponent);
-				host.streamingComponent.updateMessage(
-					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
-					true,
-				);
-				host.ui.requestRender();
 			}
-			break;
-
-		case "message_update":
-			if (host.streamingComponent && event.message.role === "assistant") {
-				host.streamingMessage = event.message;
-				host.streamingComponent.updateMessage(
-					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
-					true,
-				);
-
-				for (const content of host.streamingMessage.content) {
-					if (content.type === "toolCall") {
-						if (!host.pendingTools.has(content.id)) {
-							const component = addToolExecution(
-								host,
-								content.name,
-								content.id,
-								content.arguments,
-								host.streamingComponent,
-							);
-							host.pendingTools.set(content.id, component);
-						} else {
-							const component = host.pendingTools.get(content.id);
-							if (component) {
-								component.updateArgs(content.arguments);
-							}
-						}
-					}
-				}
-				host.ui.requestRender();
-			}
-			break;
-
-		case "message_end":
-			if (event.message.role === "user") break;
-			if (host.streamingComponent && event.message.role === "assistant") {
-				host.streamingMessage = event.message;
-				const stopReason = host.streamingMessage.stopReason;
-				const toolText = stoppedToolText(stopReason, host.session.retryAttempt);
-				if (stopReason === "aborted") host.streamingMessage.errorMessage = toolText;
-				host.streamingComponent.updateMessage(
-					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
-					false,
-				);
-				for (const content of host.streamingMessage.content) {
-					if (content.type !== "toolCall") continue;
-					const component =
-						host.pendingTools.get(content.id) ??
-						addToolExecution(host, content.name, content.id, content.arguments, host.streamingComponent);
-					component.updateArgs(content.arguments);
-					host.pendingTools.set(content.id, component);
-				}
-
-				if (toolText !== undefined) {
-					// The tools never ran: a failure shows its provider error once on the message, not on every row.
-					for (const [, component] of host.pendingTools.entries()) {
-						component.updateResult({ content: [{ type: "text", text: toolText }], isError: true });
-					}
-					host.pendingTools.clear();
-					host.maybeSuggestBugReport(host.streamingMessage);
-				} else {
-					// Args are now complete - trigger diff computation for edit tools
-					for (const [, component] of host.pendingTools.entries()) {
-						component.setArgsComplete();
-					}
-					host.maybeShowThinkingDropNotice(host.streamingMessage);
-					host.maybeShowCacheMissNotice(host.streamingMessage);
-				}
-				host.streamingComponent = undefined;
-				host.streamingMessage = undefined;
-			}
-			host.ui.requestRender();
 			break;
 
 		case "bash_execution_update":
 			// The bash execution callback handles TUI output rendering.
 			break;
-
-		case "tool_execution_start": {
-			// Nested calls (from programmatic tool callers) are shown inside their parent's row.
-			if (event.parentToolCallId) break;
-			let component = host.pendingTools.get(event.toolCallId);
-			if (!component) {
-				component = addToolExecution(host, event.toolName, event.toolCallId, event.args);
-				host.pendingTools.set(event.toolCallId, component);
-			}
-			component.updateArgs(event.args);
-			component.markExecutionStarted();
-			host.ui.requestRender();
-			break;
-		}
-
-		case "tool_execution_update": {
-			const component = host.pendingTools.get(event.toolCallId);
-			if (component) {
-				component.updateResult({ ...event.partialResult, isError: false }, true);
-				host.ui.requestRender();
-			}
-			break;
-		}
-
-		case "tool_execution_end": {
-			if (event.isError) host.maybeShowInstallChangeWarning();
-			const component = host.pendingTools.get(event.toolCallId);
-			if (component) {
-				component.updateResult({ ...event.result, isError: event.isError, durationMs: event.durationMs });
-				host.pendingTools.delete(event.toolCallId);
-				host.ui.requestRender();
-			}
-			break;
-		}
 
 		default:
 			await handleRunStateEvent(host, event);

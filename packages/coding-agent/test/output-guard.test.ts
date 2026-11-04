@@ -58,3 +58,53 @@ process.stderr.write(JSON.stringify(writes));`);
 	expect(result.status).toBe(0);
 	expect(JSON.parse(result.stderr)).toEqual(["first", "first", "second", ""]);
 });
+
+it("gives a registered owner the failure of a fire-and-forget write, then stops waiting on or writing to stdout", () => {
+	const result = run(`let attempts = 0;
+process.stdout.write = (_text, callback) => {
+  attempts++;
+  callback(Object.assign(new Error("closed"), { code: "EPIPE" }));
+  return false;
+};
+const { writeRawStdout, onRawStdoutFailure, waitForRawStdoutBackpressure, flushRawStdout } = await import(${JSON.stringify(guard)});
+const failures = [];
+onRawStdoutFailure((error) => failures.push(error.code));
+writeRawStdout("reply");
+await waitForRawStdoutBackpressure();
+await flushRawStdout();
+await new Promise((resolve) => setTimeout(resolve, 20));
+process.stderr.write(JSON.stringify({ failures, attempts }));`);
+	expect(result.error).toBeUndefined();
+	expect(result.status).toBe(0);
+	expect(JSON.parse(result.stderr)).toEqual({ failures: ["EPIPE"], attempts: 1 });
+});
+
+it("gives a registered owner the stream's error event, which would otherwise crash the process", () => {
+	const result = run(`const { onRawStdoutFailure, flushRawStdout } = await import(${JSON.stringify(guard)});
+const failures = [];
+onRawStdoutFailure((error) => failures.push(error.message));
+process.stdout.emit("error", new Error("write EPIPE"));
+await flushRawStdout();
+process.stderr.write(JSON.stringify(failures));`);
+	expect(result.error).toBeUndefined();
+	expect(result.status).toBe(0);
+	expect(JSON.parse(result.stderr)).toEqual(["write EPIPE"]);
+});
+
+it("reports whether a write is on its way", () => {
+	const result = run(`let finish;
+process.stdout.write = (_text, callback) => {
+  finish = callback;
+  return false;
+};
+const { writeRawStdout, isRawStdoutWritePending } = await import(${JSON.stringify(guard)});
+const before = isRawStdoutWritePending();
+writeRawStdout("reply");
+const during = isRawStdoutWritePending();
+await new Promise((resolve) => setTimeout(resolve, 5));
+finish();
+await new Promise((resolve) => setTimeout(resolve, 5));
+process.stderr.write(JSON.stringify({ before, during, after: isRawStdoutWritePending() }));`);
+	expect(result.status).toBe(0);
+	expect(JSON.parse(result.stderr)).toEqual({ before: false, during: true, after: false });
+});

@@ -11,6 +11,7 @@ import type { ExtensionUIContext } from "../src/core/features/types.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import { getEditorTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 export const PENDING = Symbol("pending");
@@ -40,7 +41,7 @@ export function createSlotHost() {
 		extensionSelector: undefined,
 		extensionInput: undefined,
 		extensionEditor: undefined,
-		activeSelectorToken: undefined,
+		uiStore: createUiStore(),
 		activeSelectorDispose: undefined,
 		toggleToolOutputExpansion: vi.fn(),
 		// What `resetExtensionUI` touches besides the editor slot.

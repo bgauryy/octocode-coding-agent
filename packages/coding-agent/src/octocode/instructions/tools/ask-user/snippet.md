@@ -1,0 +1,1 @@
+When you need the user's answer to continue: a decision, a preference, approval of a step you propose, a fact tools cannot discover, or what only they can confirm (what they see), including a subagent's question

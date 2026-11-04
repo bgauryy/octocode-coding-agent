@@ -83,7 +83,7 @@ export function retryAfterMsFromError(error: unknown): number | undefined {
 
 function getRetryDelayMs(error: ProviderError, retryIndex: number, maxRetryDelayMs: number | undefined): number {
 	const serverDelayMs = parseRetryAfterMs(error.headers);
-	if (serverDelayMs !== undefined) return validateRetryDelayMs(serverDelayMs, maxRetryDelayMs, error.message);
+	if (serverDelayMs !== undefined) return validateRetryDelayMs(serverDelayMs, maxRetryDelayMs, error.message, error);
 
 	const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
 	return exponentialDelay * (1 - Math.random() * 0.25);

@@ -5,8 +5,10 @@
 
 const ENABLED = process.env.OCTOCODE_TIMING === "1";
 interface TimingNamespace {
-	timings: Array<{ label: string; ms: number }>;
+	/** `cpuMs`: user and system CPU this process spent in the phase. */
+	timings: Array<{ label: string; ms: number; cpuMs: number }>;
 	lastTime: number;
+	lastCpu: NodeJS.CpuUsage;
 }
 
 type TimingLabel = "main" | "extensions";
@@ -15,7 +17,7 @@ const timingNamespaces = new Map<TimingLabel, TimingNamespace>();
 
 export function resetTimings(namespace: TimingLabel = "main"): void {
 	if (!ENABLED) return;
-	timingNamespaces.set(namespace, { timings: [], lastTime: Date.now() });
+	timingNamespaces.set(namespace, { timings: [], lastTime: Date.now(), lastCpu: process.cpuUsage() });
 }
 
 export function time(label: string, namespace: TimingLabel = "main"): void {
@@ -27,8 +29,14 @@ export function time(label: string, namespace: TimingLabel = "main"): void {
 	}
 
 	const timingNamespace = timingNamespaces.get(namespace)!;
-	timingNamespace.timings.push({ label, ms: now - timingNamespace.lastTime });
+	const cpu = process.cpuUsage(timingNamespace.lastCpu);
+	timingNamespace.timings.push({
+		label,
+		ms: now - timingNamespace.lastTime,
+		cpuMs: Math.round((cpu.user + cpu.system) / 1000),
+	});
 	timingNamespace.lastTime = now;
+	timingNamespace.lastCpu = process.cpuUsage();
 }
 
 function printTimingGroup(title: string, timings: TimingNamespace["timings"]): void {
@@ -36,9 +44,10 @@ function printTimingGroup(title: string, timings: TimingNamespace["timings"]): v
 	if (printableTimings.length === 0) return;
 	console.error(`\n--- ${title} ---`);
 	for (const t of printableTimings) {
-		console.error(`  ${t.label}: ${t.ms}ms`);
+		console.error(`  ${t.label}: ${t.ms}ms (cpu ${t.cpuMs}ms)`);
 	}
-	console.error(`  TOTAL: ${printableTimings.reduce((a, b) => a + b.ms, 0)}ms`);
+	const total = (key: "ms" | "cpuMs") => printableTimings.reduce((sum, timing) => sum + timing[key], 0);
+	console.error(`  TOTAL: ${total("ms")}ms (cpu ${total("cpuMs")}ms)`);
 	console.error(`${"-".repeat(title.length + 8)}\n`);
 }
 

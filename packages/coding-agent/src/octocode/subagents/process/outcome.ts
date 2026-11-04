@@ -22,7 +22,11 @@ export const EXIT_GRACE_MS = 1_000;
 export const WATCHDOG: WatchdogLimits = { idleMs: 10 * 60_000, busyMs: 15 * 60_000 };
 
 /** The error of a child that exited cleanly without a final answer: a no-op run is a failure, not a finished task. */
-export const NO_ANSWER = "Subagent ended without a final answer (it exited cleanly with no text)";
+const NO_ANSWER = "Subagent ended without a final answer (it exited cleanly with no text)";
+
+/** {@link NO_ANSWER}, with the last error the child reported: a run the loop guard ended, say, gets no turn to explain itself. */
+export const noAnswerError = (lastError: string | undefined): string =>
+	lastError ? `${NO_ANSWER}. Its last error: ${lastError}` : NO_ANSWER;
 
 /** Why a child ended without a usable answer: its exit code, or the signal that killed it. */
 export function exitReason(code: number | null, signal: NodeJS.Signals | null): string {

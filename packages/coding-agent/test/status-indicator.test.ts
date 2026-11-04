@@ -39,7 +39,7 @@ describe("status indicators", () => {
 			return lines;
 		};
 		const [, detail] = at(1000);
-		expect(stripAnsi(detail)).toMatch(/^ \S Writing the summary \(\d+s · esc to interrupt\)$/);
+		expect(stripAnsi(detail)).toMatch(/^ \S Writing the summary \(\d+s · esc interrupt\)$/);
 		expect(stripAnsi(detail)).not.toContain("Main");
 		expect(at(1000)[1]).not.toBe(at(1600)[1]);
 		indicator.dispose();
@@ -55,12 +55,10 @@ describe("status indicators", () => {
 		setRunClock(1_000_000 - 62_000);
 		const indicator = new WorkingStatusIndicator(tui, `Running subagent ${"goal ".repeat(40)}`);
 		try {
-			expect(stripAnsi(indicator.render(120)[1])).toMatch(
-				/^ \S Running subagent goal .*… \(1m02s · esc to interrupt\)$/,
-			);
+			expect(stripAnsi(indicator.render(120)[1])).toMatch(/^ \S Running subagent goal .*… \(1m02s · esc interrupt\)$/);
 			// Narrow: the interrupt hint goes first, then the detail shrinks; the time stays last.
 			expect(stripAnsi(indicator.render(32)[1])).toMatch(/\(1m02s\)$/);
-			expect(stripAnsi(indicator.render(60)[1])).toMatch(/\(1m02s · esc to interrupt\)$/);
+			expect(stripAnsi(indicator.render(60)[1])).toMatch(/\(1m02s · esc interrupt\)$/);
 			for (const width of [10, 20, 32, 60, 120])
 				expect(visibleWidth(indicator.render(width)[1])).toBeLessThanOrEqual(width);
 			vi.advanceTimersByTime(3_000);

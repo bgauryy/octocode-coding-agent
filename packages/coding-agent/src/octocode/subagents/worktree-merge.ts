@@ -1,6 +1,5 @@
-import path from "node:path";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { git, gitQuiet, NO_HOOKS, rejectTrackedWorkspaceState } from "../shared/git.ts";
+import { gitQuiet } from "../shared/git.ts";
+import { heldChanges, mergeRef } from "../worktrees/merge.ts";
 import { ID_PATTERN, LEGACY_REF_PREFIX, REF_PREFIX, repoRoot } from "./worktree-base.ts";
 
 /** The agent's saved ref under the current path, else the legacy one, else undefined. */
@@ -22,35 +21,10 @@ export async function mergeAgent(
 	const repo = repoRoot(cwd);
 	const ref = await savedRef(repo, agentId);
 	if (!ref) return { ok: false, text: `No isolated changes for ${agentId} (${REF_PREFIX}${agentId} does not exist).` };
-	if (await gitQuiet(repo, ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"])) {
-		return {
-			ok: false,
-			text: `A merge is already in progress. Finish or abort it before merging ${ref}; your resolution and the agent ref are kept.`,
-		};
-	}
-	try {
-		await rejectTrackedWorkspaceState(repo, ref);
-		await git(repo, [...NO_HOOKS, "merge", "--no-ff", "--no-edit", ref]);
-	} catch (error) {
-		const conflicts = (await gitQuiet(repo, ["diff", "--name-only", "--diff-filter=U"])) ?? "";
-		if (await gitQuiet(repo, ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"])) {
-			if ((await gitQuiet(repo, ["merge", "--abort"])) === undefined) {
-				return {
-					ok: false,
-					text: `Merging ${ref} failed and could not be aborted. The merge is still in progress; inspect git status before continuing. ${ref} is kept.\n${errorMessage(error)}`,
-				};
-			}
-		}
-		if (conflicts)
-			return {
-				ok: false,
-				text: `Merging ${ref} conflicts in:\n${conflicts}\nThe merge was aborted and the tree is unchanged; ${ref} is kept.`,
-			};
-		return { ok: false, text: `Merging ${ref} failed: ${errorMessage(error)}` };
-	}
+	const merged = await mergeRef(repo, ref);
+	if (!merged.ok) return merged;
 	await gitQuiet(repo, ["update-ref", "-d", ref]);
-	const into = (await gitQuiet(repo, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "HEAD";
-	return { ok: true, ref, into, text: `Merged ${ref} into ${into}.` };
+	return { ok: true, ref, into: merged.into, text: `Merged ${ref} into ${merged.into}.` };
 }
 
 /**
@@ -65,12 +39,7 @@ export async function reservedChanges(
 	if (!ID_PATTERN.test(agentId)) return [];
 	const repo = repoRoot(cwd);
 	const ref = await savedRef(repo, agentId);
-	if (!ref) return [];
-	const changed = (await gitQuiet(repo, ["diff", "--name-only", "--no-renames", `HEAD...${ref}`])) ?? "";
-	return changed
-		.split("\n")
-		.filter(Boolean)
-		.flatMap((file) => reservation(path.join(repo, file), file) ?? []);
+	return ref ? heldChanges(repo, ref, reservation) : [];
 }
 
 /** Agent ids of isolated results not merged yet, under the current ref path or the legacy one. */

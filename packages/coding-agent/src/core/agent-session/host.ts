@@ -14,6 +14,7 @@ import type { PromptTemplate } from "../prompt-templates.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionManager, SessionNameSource } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
+import { createRunOutcome, type RunOutcome } from "./run-outcome.ts";
 import type { AgentSessionEvent, ModelMutationOptions, PromptOptions } from "./types.ts";
 
 export type AbortReason = "interrupted" | "replacement" | "shutdown" | "internal";
@@ -35,11 +36,18 @@ export interface SessionRunState {
 	/** Responses cut off at the output limit that the session recovered by compacting and retrying. */
 	lengthRecoveries: number;
 	lastAssistantMessage: AssistantMessage | undefined;
+	/** How the current or latest run ended so far; replaced when a run starts, and when it settles. */
+	outcome: RunOutcome;
+	/** Whether any run has started, so `lastRunOutcome` does not report one that never happened. */
+	hasRun: boolean;
 	turnIndex: number;
 	isBeforeSettle: boolean;
-	abortDuringBeforeSettle: boolean;
+	/** Fires when the session is aborted while `agent_before_settle` handlers run: the agent's own signal is gone by then. */
+	beforeSettleAbort: AbortController;
 	isEmittingAgentSettled: boolean;
 	readonly deferredSettledActions: Array<() => Promise<void>>;
+	/** What an extension started as a run settled (a compaction it asked for): `settled()` waits for it, a headless run with it. */
+	readonly settledWork: Set<Promise<void>>;
 }
 
 export function createRunState(): SessionRunState {
@@ -53,11 +61,14 @@ export function createRunState(): SessionRunState {
 		overflowRecoveryAttempted: false,
 		lengthRecoveries: 0,
 		lastAssistantMessage: undefined,
+		outcome: createRunOutcome(),
+		hasRun: false,
 		turnIndex: 0,
 		isBeforeSettle: false,
-		abortDuringBeforeSettle: false,
+		beforeSettleAbort: new AbortController(),
 		isEmittingAgentSettled: false,
 		deferredSettledActions: [],
+		settledWork: new Set(),
 	};
 }
 
@@ -91,7 +102,7 @@ export interface SessionPublic {
 	prompt(text: string, options?: PromptOptions): Promise<void>;
 	sendCustomMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },
 	): Promise<void>;
 	sendUserMessage(
 		content: string | (TextContent | ImageContent)[],

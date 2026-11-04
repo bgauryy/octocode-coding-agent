@@ -25,6 +25,7 @@ export function externalRows(data: unknown): string[] {
 	const instances = asRecords(found.instances).map((entry) =>
 		row(
 			`${GLYPH.pending} octocode ${cell(entry.id, 64)}`,
+			cell(entry.name, 64),
 			entry.pid === undefined ? "" : `pid ${cell(entry.pid, 12)}`,
 			cell(entry.cwd),
 		),
@@ -41,7 +42,7 @@ export function externalRows(data: unknown): string[] {
 	return [
 		...(connections.length ? ["Connected external agents", ...connections] : []),
 		...(instances.length
-			? ["Available Octocode instances (/agents external connect octocode <id>)", ...instances]
+			? ["Available Octocode instances (/agents external connect octocode <id or name>)", ...instances]
 			: []),
 		...(installed.length
 			? [

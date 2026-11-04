@@ -11,6 +11,8 @@ export interface SettingsState {
 	projectSettings: Settings;
 	/** Global and project settings merged, with overrides. */
 	settings: Settings;
+	/** Overrides applied as durable: part of `settings` after every save and reload, and never written to a file. */
+	durableOverrides: Settings;
 	cacheOverrides: CachePreferences;
 	projectTrusted: boolean;
 	globalSettingsLoadError: Error | null; // Track if global settings file had parse errors

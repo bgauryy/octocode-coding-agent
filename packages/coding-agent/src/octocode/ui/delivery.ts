@@ -116,8 +116,9 @@ export class Delivery {
 			dropped.push(entry);
 		}
 		this.paint();
-		// Outside the TUI nothing clears the queue: an aborted run leaves the messages there for the next one.
-		if (dropped.length === 0 || ctx.mode !== "tui") return;
+		// Whatever cleared the queue (Esc in the TUI, `clear_queue` over RPC or the application port), these are verifiably
+		// no longer in it: without the re-append a report waits for shutdown and handed mail blocks the inbox.
+		if (dropped.length === 0) return;
 		let kept = 0;
 		const failures: string[] = [];
 		for (const { message, accepted } of dropped) {

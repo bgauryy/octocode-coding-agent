@@ -4,11 +4,13 @@ import { Container, Text, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { SessionEntry } from "../../../src/core/session-manager.ts";
 import type { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
-import { handleEvent } from "../../../src/modes/interactive/interactive-mode/agent-events.ts";
+import type { ApplicationService } from "../../../src/core/application/index.ts";
+import { applicationRenderer } from "../../../src/modes/interactive/interactive-mode/application-events.ts";
 import { renderSessionEntries } from "../../../src/modes/interactive/interactive-mode/session-render.ts";
 import { initTheme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
+import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
 
 const TOOL_CALL_ID = "tool-4167";
 const TOOL_NAME = "slow_tool";
@@ -41,7 +43,7 @@ type RenderSessionContextThis = {
 	};
 	sessionManager: { getCwd(): string; getEntries(): SessionEntry[] };
 	session: { retryAttempt: number; modelRegistry: { find(provider: string, modelId: string): undefined } };
-	toolOutputExpanded: boolean;
+	uiStore: UiStore;
 	isInitialized: boolean;
 	updateEditorBorderColor(): void;
 	getRegisteredToolDefinition(toolName: string): undefined;
@@ -64,7 +66,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		},
 		sessionManager: { getCwd: () => process.cwd(), getEntries: () => [] },
 		session: { retryAttempt: 0, modelRegistry: { find: () => undefined } },
-		toolOutputExpanded: false,
+		uiStore: createUiStore(),
 		isInitialized: true,
 		updateEditorBorderColor: vi.fn(),
 		getRegisteredToolDefinition: (_toolName: string) => undefined,
@@ -130,20 +132,21 @@ describe("InteractiveMode.renderSessionEntries", () => {
 		initTheme("dark");
 	});
 
-	test("keeps unresolved rendered tool calls registered for live completion events", async () => {
+	test("keeps unresolved rendered tool calls registered for live completion events", () => {
 		const fakeThis = createFakeInteractiveModeThis();
 
 		renderSessionEntries(createFakeHost(fakeThis), createSessionEntries([createAssistantToolCallMessage()]));
 
 		expect(fakeThis.pendingTools.has(TOOL_CALL_ID)).toBe(true);
 
-		await handleEvent(createFakeHost(fakeThis), {
-			type: "tool_execution_end",
+		const render = applicationRenderer(createFakeHost(fakeThis), {} as ApplicationService);
+		render({
+			type: "tool.completed",
 			toolCallId: TOOL_CALL_ID,
 			toolName: TOOL_NAME,
-			result: { content: [{ type: "text", text: "FINAL_RESULT" }], details: undefined },
-			isError: false,
-		});
+			order: { sequence: 1 },
+			text: "FINAL_RESULT",
+		} as unknown as Parameters<typeof render>[0]);
 
 		expect(fakeThis.pendingTools.has(TOOL_CALL_ID)).toBe(false);
 		expect(renderChat(fakeThis.chatContainer)).toContain("FINAL_RESULT");

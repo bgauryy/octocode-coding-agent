@@ -26,7 +26,7 @@ export function noteSavedRef(backlog: Backlog, item: string, ref: string): void 
 		current.ref,
 		{
 			links: mergeLinks(current.links, [refLink(backlog, ref)]),
-			note: `The isolated change is saved on ${ref}, not merged yet. Merge it with \`/agents merge ${id}\`.`,
+			note: `The isolated change is saved on ${ref}, not merged yet. Merge it with \`agent\` type \`coordinate\`, action \`merge\`, id \`${id}\` (the user: \`/agents merge ${id}\`).`,
 		},
 		backlog.actor,
 	);

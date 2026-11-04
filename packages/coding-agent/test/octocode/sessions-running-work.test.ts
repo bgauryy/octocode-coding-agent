@@ -66,6 +66,15 @@ async function compacted(entries: unknown[], team: TeamNotes | undefined, compac
 }
 
 describe("running work note after a compaction", () => {
+	it("names the latest request after Octocode's summary only when that summary went to a file", async () => {
+		const inline = await compacted([request], undefined, { details: own });
+		expect(inline.join("\n")).not.toContain("Latest user request");
+		const archived = await compacted([request], undefined, {
+			details: { ...own, checkpointArchive: { path: "/s.md", summary: "whole" } },
+		});
+		expect(archived.join("\n")).toContain('Latest user request: "Ship the thing"');
+	});
+
 	it("names the paths this agent reserved and the questions still waiting for its reply", async () => {
 		const team: TeamNotes = {
 			reservations: () => ["src/a.ts", "docs/"],

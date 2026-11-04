@@ -5,6 +5,7 @@ import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { Thought, thoughtGist } from "../shared/thought.ts";
 import { addUsage, contentText, emptyUsage, finiteNumber, toolHint } from "../shared/util.ts";
+import { JOB_TYPE } from "../shared/messages.ts";
 import { imagesOf } from "./screenshots.ts";
 import { jobNotice } from "./report.ts";
 import { type ChildNotices, NoticeLog, NOTICES_INLINE, NOTICES_INLINE_CHARS } from "./notices.ts";
@@ -65,6 +66,8 @@ export interface ChildProgress {
 	requests?: number;
 	/** Its first model reply started (sent once per run), so the provider has written the prompt cache for its prefix. */
 	responding?: boolean;
+	/** It edited a file after its last passing `bash verify` run (`false` once a later run passed). */
+	editedAfterVerify?: boolean;
 }
 
 /**
@@ -98,6 +101,8 @@ export interface ChildState {
 	notices: ChildNotices;
 	/** The run's distinct notices, the source of the saved log; `notices.kept` shares its first entries. */
 	noticeLog: NoticeLog;
+	/** Its last `bash verify` run passed and covers its edits so far (`current`), or it has edited since (`stale`). */
+	verification?: "current" | "stale";
 }
 
 export function newChildState(): ChildState {
@@ -248,6 +253,26 @@ function noteNotice(state: ChildState, event: Record<string, unknown>): boolean 
 	return true;
 }
 
+/** A finished tool call moves the run's verification state: a passing `bash verify` run covers the edits so far, and a later edit leaves it behind. */
+function noteVerification(
+	state: ChildState,
+	event: Record<string, unknown>,
+	progress: (update: { editedAfterVerify: boolean }) => void,
+): void {
+	if (event.isError === true) return;
+	if (event.toolName === "file") {
+		if (state.verification !== "current") return;
+		state.verification = "stale";
+		progress({ editedAfterVerify: true });
+		return;
+	}
+	const details = isRecord(event.result) ? event.result.details : undefined;
+	const receipt = isRecord(details) ? details.verification : undefined;
+	if (!isRecord(receipt) || receipt.state !== "finished" || receipt.exitCode !== 0 || receipt.stale === true) return;
+	if (state.verification === "stale") progress({ editedAfterVerify: false });
+	state.verification = "current";
+}
+
 /**
  * Applies one parsed event of the child to `state` and returns what the lifecycle does about it, in order. `now` is the
  * clock for the busy deadline. Nothing here touches the process, the report or the parent's row.
@@ -332,10 +357,13 @@ export function reduceEvent(
 		const result = event.result;
 		if (event.isError === true && isRecord(result) && contentText(result.content).startsWith(NEEDS_APPROVAL))
 			progress({ denied: true });
+		noteVerification(state, event, progress);
 	}
 	if (type !== "message_end" || !isRecord(event.message)) return effects;
 	const message = event.message;
 	if (message.role !== "assistant") {
+		// A background `bash verify` job reports when it ends, as a message rather than a tool result.
+		if (message.customType === JOB_TYPE) noteVerification(state, { result: { details: message.details } }, progress);
 		if (message.role === "toolResult" && isRecord(message.usage)) {
 			const id = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
 			if (id === undefined || !state.toolUsageIds.has(id)) {

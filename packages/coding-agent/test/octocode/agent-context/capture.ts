@@ -17,6 +17,7 @@ import { createTestSession } from "../../helpers/session.ts";
 import { trustFolder } from "../helpers.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import {
+	adoptSkillResourceSnapshot,
 	captureSkillResourceSnapshot,
 	readSkillResourceSnapshot,
 	type SkillResourceSnapshot,
@@ -31,7 +32,7 @@ import { bundledSkillDirs } from "../../../src/octocode/skills.ts";
 import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.ts";
 import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
-import { taskSkillPlan, taskSkillText } from "../../../src/octocode/subagents/task-skills.ts";
+import { taskSkillPlan, taskSkillText, withRoleSkills } from "../../../src/octocode/subagents/task-skills.ts";
 import { childTaskInput } from "../../../src/octocode/subagents/task-text.ts";
 
 export const PACKAGE_DIR = fileURLToPath(new URL("../../..", import.meta.url)).replace(/\/$/, "");
@@ -52,7 +53,7 @@ export interface CapturedTool {
 
 /** The first model request one agent receives, with machine-specific values replaced by fixed ones. */
 export interface AgentContext {
-	/** The folder name under `rendered/`. */
+	/** The folder name under `.octocode/tmp/agent-prompts/`. */
 	name: string;
 	kind: "main" | "child";
 	/** The bundled role a child runs; none for the main session and the generic child. */
@@ -84,7 +85,7 @@ export function fixture(): Fixture {
 	const home = dir("home");
 	const agentDir = dir("agent");
 	const octocodeHome = dir("octocode-home");
-	const scratch = path.join(cwd, ".octa", "code", "temp", "agents", "child-example");
+	const scratch = path.join(cwd, ".octocode", "code", "temp", "agents", "child-example");
 	fs.mkdirSync(scratch, { recursive: true });
 	fs.writeFileSync(path.join(cwd, "AGENTS.md"), PROJECT_INSTRUCTIONS);
 	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {} }));
@@ -122,6 +123,8 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		// A headless session denies every ask: the user exported workspace.
 		OCTOCODE_PERMISSION: "workspace",
 		OCTOCODE_MODELS_DEV: "0",
+		// The default follows the machine, and the rendered tool descriptions must not.
+		OCTOCODE_MAX_SUBAGENTS: "6",
 	};
 }
 
@@ -236,7 +239,8 @@ function normalizer(fx: Fixture) {
 		return result
 			.replace(/^Platform: .*$/gm, "Platform: <platform> <arch>")
 			.replace(/^Shell: .*$/gm, "Shell: <shell>")
-			.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>");
+			.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>")
+			.replace(/^Process name: .*$/gm, "Process name: <process name>");
 	};
 }
 
@@ -342,12 +346,20 @@ export async function captureChild(
 			skillsInTask: skillPlan.inTask,
 			permission: { mode: "workspace", grants: [] },
 		};
-		const rolePromptFile = profile?.prompt ? writeRolePrompt(profile.prompt, fx.octocodeHome) : undefined;
+		// A role's skills name their files in its prompt; where the research package is installed is the machine's.
+		for (const skill of adoptSkillResourceSnapshot(snapshot).skills) {
+			const dir = path.dirname(skill.baseDir);
+			if (!dir.startsWith(PACKAGE_DIR) && !fx.replacements.some(([from]) => from === dir))
+				fx.replacements.unshift([dir, "<octocode skills>"]);
+		}
+		const rolePrompt = withRoleSkills(profile, skillPlan.roleSkills, snapshot)?.prompt;
+		const rolePromptFile = rolePrompt ? writeRolePrompt(rolePrompt, fx.octocodeHome) : undefined;
 		const env = subagentProcessEnv(profile, baseEnv(fx), identity, undefined, rolePromptFile, snapshotFile);
 		const skillText = skillPlan.inTask ? taskSkillText(snapshot, skillPlan.inline) : "";
 		const task = withIdentity(
 			childTaskInput(parent.task, { referenced: "", browserMode: profile?.headless, skillText }),
-			identity,
+			// A real start always names the run mode (`subagents/spawn.ts`); these show the background one.
+			{ ...identity, background: true },
 		);
 		const parsed = parseArgs(
 			buildAgentArgs(profile, undefined, { dir: path.join(fx.scratch, "session"), id: identity.id }, []),

@@ -1,7 +1,8 @@
 import type { ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
 import { openFile } from "../shared/open.ts";
 import type { SessionAttach } from "./attach-register.ts";
-import { ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOptions } from "./launcher.ts";
+import { LAUNCH_CODE_ROUTE, LAUNCH_DOOR_PREFIX } from "./launch-code.ts";
+import { daemonRequest, ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOptions } from "./launcher.ts";
 import { webDaemonEnabled } from "./paths.ts";
 
 /**
@@ -23,9 +24,18 @@ export async function attachedDaemon(
 	return { ...daemon, sessionId: endpoint.sessionId };
 }
 
+/** A one-time code for the page (`launch-code.ts`), or undefined from a daemon that does not answer with one. */
+async function launchCode(daemon: LaunchedDaemon): Promise<string | undefined> {
+	const answer = await daemonRequest(daemon, LAUNCH_CODE_ROUTE, { method: "POST" });
+	const code = answer?.status === 200 ? (answer.json() as { code?: unknown }).code : undefined;
+	return typeof code === "string" ? code : undefined;
+}
+
 /**
  * `/web` with `OCTOCODE_WEB_DAEMON=1`: makes sure this session accepts the daemon, starts or reuses the daemon,
- * and opens the page on this session. The URL fragment carries the launch token and the requested view. Returns false when the flag is off. Throws when
+ * and opens the page on this session. The URL carries a one-time code and the requested view, never the launch token,
+ * since it goes through a process argument; a daemon that cannot issue a code gets the token in the fragment, as an older
+ * one needs. Returns false when the flag is off. Throws when
  * the daemon cannot be reached or this session cannot attach, so the caller falls back to the per-session server.
  */
 export function daemonOpener(
@@ -36,9 +46,11 @@ export function daemonOpener(
 		// A page opened before the daemon can reach this session would show an error: use the per-session server instead.
 		const daemon = await attachedDaemon(attach, ctx, options);
 		if (!daemon) return false;
-		const url = new URL(daemon.origin + "/");
+		const code = await launchCode(daemon);
+		const url = new URL(daemon.origin + (code ? `${LAUNCH_DOOR_PREFIX}${code}` : "/"));
 		url.searchParams.set("s", daemon.sessionId);
-		url.hash = new URLSearchParams({ access: daemon.token, view }).toString();
+		if (code) url.searchParams.set("view", view);
+		else url.hash = new URLSearchParams({ access: daemon.token, view }).toString();
 		await (options.open ?? openFile)(url.href);
 		return true;
 	};

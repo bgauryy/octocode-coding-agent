@@ -1,10 +1,11 @@
 import { resolveRetention } from "../../config/retention.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
+import { SYSTEM_PROMPT_SECTIONS } from "../../core/system-prompt-spec.ts";
 
 /**
  * Octocode guidance, added to Octocode's structured system prompt as the `octocode` sections (Octocode wraps each section
- * in tags and records only changed sections). The prose lives in `policy/*.md` (see `README.md` beside this file); this
- * file derives the flags once and renders the files.
+ * in tags and records only changed sections). `sections/index.md` lists them and `sections/<name>.md` composes each
+ * from its parts (see `README.md` beside this file); this file derives the flags once and renders those templates.
  * Octocode already lists the active tools with their guidelines, AGENTS.md context and skills, so the policy only adds
  * judgment and routing; per-tool usage lives in each tool's description and guidelines. Octocode's base prompt already
  * sets the identity; the skills section owns when to load a skill; a child's task owns its report contract (`report.ts`).
@@ -13,7 +14,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
  * share a stable prefix.
  */
 interface PromptInputs {
-	/** Whether the research MCP server's tools are reachable: declared or discoverable. The prompt then leaves research to the server's own text. */
+	/** Whether the research MCP server's tools are declared. The research section then routes code search to it. */
 	octocode: boolean;
 	/** Subagent profile names and one-line descriptions. */
 	profiles: Array<{ name: string; description: string }>;
@@ -23,12 +24,18 @@ interface PromptInputs {
 	canDelegate: boolean;
 	/** Whether the current request exposes the agent tool. */
 	canUseAgent?: boolean;
+	/** Whether that tool declares its `external` type. */
+	canExternal?: boolean;
 	/** Profile-level read-only role of a subagent (the main session never is one), enforced separately by the permission layer. */
 	readOnly?: boolean;
 	/** Whether a file-writing tool is active (default true): a read-only agent may still save permitted reports and evidence. */
 	canSave?: boolean;
 	/** Whether `bash` is active; a read-only agent's commands must then be read-only. */
 	canShell?: boolean;
+	/** Whether the research server's file reader is declared (default true): the research section names it only then. */
+	canReadLocal?: boolean;
+	/** Whether the tool that asks the user is declared (default true). */
+	canAsk?: boolean;
 	/** Whether the current request exposes the web lookup tool. */
 	canWeb?: boolean;
 	/** Whether MCP tools are available; their tools can write too. */
@@ -57,9 +64,12 @@ function policyFlags(input: PromptInputs) {
 		shell,
 		web,
 		mcp: input.canMcp !== false,
+		localReader: input.canReadLocal !== false,
+		askUser: input.canAsk !== false,
 		browserControl: input.browserControl === true,
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,
+		externalAgent: input.canExternal === true,
 		// Combinations a template reads by name.
 		gitState: !main && shell,
 		// The scratch sweep's own setting.
@@ -68,28 +78,19 @@ function policyFlags(input: PromptInputs) {
 }
 
 export function octocodePromptSections(input: PromptInputs): Record<string, string> {
-	const flags = policyFlags(input);
-	const render = (name: string, extra: Record<string, string> = {}) =>
-		renderInstruction(`policy/${name}.md`, { ...flags, ...extra });
-	const browserProfiles = (input.browserProfiles ?? []).map((name) => `\`${name}\``).join(", ");
-	const profiles = input.profiles
-		.map((profile) => `  - ${profile.name}${profile.description ? `: ${profile.description}` : ""}`)
-		.join("\n");
-	// The main session without the agent tool has no delegation section at all.
-	const delegation = !flags.main
-		? render("subagent")
-		: flags.agentTool
-			? render("delegation", { browserProfiles, profiles })
-			: "";
-	// A read-only subagent gets one compact core in `octocode_work` instead of the work, delegation and safety sections,
-	// which restate each other for it (an empty section is removed from the prompt).
-	return {
-		octocode_work: render(flags.readOnly ? "readonly" : "work"),
-		octocode_research: render("research"),
-		octocode_delegation: flags.readOnly ? "" : delegation,
-		octocode_safety: flags.readOnly ? "" : render("safety"),
-		octocode_communication: render("communication"),
+	const values = {
+		...policyFlags(input),
+		browserProfiles: (input.browserProfiles ?? []).map((name) => `\`${name}\``).join(", "),
+		profiles: input.profiles
+			.map((profile) => `  - ${profile.name}${profile.description ? `: ${profile.description}` : ""}`)
+			.join("\n"),
 	};
+	return Object.fromEntries(
+		SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map(({ name }) => [
+			name,
+			renderInstruction(`sections/${name}.md`, values),
+		]),
+	);
 }
 
 /** Complete policy text for SDK consumers and prompt inspection. */

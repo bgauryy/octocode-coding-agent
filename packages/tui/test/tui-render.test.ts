@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -218,12 +218,10 @@ function overrideEnv(names: readonly string[], value: string): () => void {
 	};
 }
 
-describe("TUI crash dump without configured log directory", () => {
-	it("writes the crash dump to the OS temp directory instead of a home-directory default", async () => {
-		// The TUI falls back to os.tmpdir() when no log directory is configured, so
-		// isolate the test by pointing the temp directory at a fresh directory rather
-		// than sharing the real one with concurrent test runs. os.tmpdir() reads
-		// TMPDIR on POSIX and TEMP/TMP on Windows, so override all three.
+describe("TUI over-wide row without configured log directory", () => {
+	it("clips the row and writes no crash dump", async () => {
+		// Isolate the temp directory so a stray dump would show up here and not in a shared one.
+		// os.tmpdir() reads TMPDIR on POSIX and TEMP/TMP on Windows, so override all three.
 		const crashDir = mkdtempSync(join(tmpdir(), "octocode-tui-crash-"));
 		const crashLogPath = join(crashDir, "octocode-tui-crash.log");
 		const restoreTmpdirEnv = overrideEnv(["TMPDIR", "TEMP", "TMP"], crashDir);
@@ -236,17 +234,10 @@ describe("TUI crash dump without configured log directory", () => {
 			tui.start();
 			await terminal.waitForRender();
 
-			// Width overflow is detected in the differential render path
+			// The differential render path clips instead of throwing
 			component.lines = ["ok", "x".repeat(60)];
-			assert.throws(
-				() => tui.renderNow(),
-				(error: unknown) => {
-					assert.ok(error instanceof Error);
-					assert.ok(error.message.includes(crashLogPath), `error message should reference ${crashLogPath}`);
-					return true;
-				},
-			);
-			assert.match(readFileSync(crashLogPath, "utf-8"), /Terminal width: 40/);
+			assert.doesNotThrow(() => tui.renderNow());
+			assert.ok(!existsSync(crashLogPath));
 		} finally {
 			restoreTmpdirEnv();
 			rmSync(crashDir, { recursive: true, force: true });

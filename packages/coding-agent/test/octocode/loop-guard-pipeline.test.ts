@@ -82,6 +82,9 @@ it.each(["invalid", "unknown"])("settles a real session after repeated %s calls"
 		const results = harness.session.messages.filter((message) => message.role === "toolResult");
 		expect(results).toHaveLength(LOOP_HALT_AT + 1);
 		expect(getMessageText(results.at(-1)!)).toContain("Loop guard: refused");
+		// What print mode's exit code and RPC's outcome read.
+		expect(harness.session.lastRunOutcome?.status).not.toBe("completed");
+		expect(harness.session.lastRunOutcome?.errorMessage).toBe("Stopped by the loop guard.");
 	} finally {
 		harness.cleanup();
 	}

@@ -27,8 +27,8 @@ const SHELL_HINT = "; to save quoted material, write it as data with the `file` 
 
 /**
  * A CaMeL-inspired provenance tripwire: tool outputs are tagged by where they came from, and a later call
- * whose arguments repeat them is flagged. `untrusted` output (web, browser, MCP, network commands) reaching a
- * consequential argument (a shell command, file content, an MCP call, a memory) and `private` output (reads
+ * whose arguments repeat them is flagged. `untrusted` output (web, browser, MCP, network commands, a subagent's report) reaching a
+ * consequential argument (a shell command, file content, an MCP call, a memory, a subagent's task) and `private` output (reads
  * outside the workspace, secret-looking lines) reaching an egress argument (a URL, a network command) are hits.
  * Workspace reads, by Octocode's local readers and searches as by the legacy `read` and `grep`, are trusted.
  *
@@ -221,6 +221,12 @@ class Provenance {
 			return { kind: "untrusted", label: `web ${str(input.url) ?? `search "${str(input.query) ?? ""}"`}` };
 		if (toolName === "externalAgent" && input.action === "prompt")
 			return { kind: "untrusted", label: `externalAgent ${str(input.id) ?? ""}`.trim() };
+		// A child reads web pages and repositories of its own, and its index dies with its process: what it reports here is
+		// untrusted however it was worded, or text from a page would come back clean through a subagent.
+		if (toolName === "agent") {
+			const child = isRecord(event.details) ? str(event.details.id) : undefined;
+			return { kind: "untrusted", label: `agent ${child ?? str(input.profile) ?? ""}`.trim() };
+		}
 		// The native readers and searches, classified as `read` and `grep` were: a batch reaching any path outside the
 		// workspace is private, a batch whose every query names a workspace path is trusted. Every path a query names counts
 		// (`path` and an LSP `workspaceRoot`). A cursor page has the origin of the page that returned its cursor; a query
@@ -269,12 +275,14 @@ class Provenance {
 
 	/**
 	 * Arguments that act: shell commands, file paths, the content of files that run or configure later sessions (or lie
-	 * outside the workspace), MCP calls, memory notes. Content written into an ordinary workspace file is data.
+	 * outside the workspace), MCP calls, memory notes, a subagent's task. Content written into an ordinary workspace file is data.
 	 */
 	private consequential(toolName: string, input: Record<string, unknown>, cwd: string): string[] {
 		if (SHELL_TOOLS.has(toolName)) return [str(input.command) ?? ""];
 		if (toolName === "externalAgent")
 			return input.action === "connect" || input.action === "prompt" ? leaves(input) : [];
+		// A task is an instruction to an agent with tools of its own.
+		if (toolName === "agent") return leaves(input);
 		if (toolName === "file" || toolName === "edit" || toolName === "write") {
 			if (toolName === "file" && typeof input.patch === "string") return leaves(input);
 			const changes = toolName === "file" ? (Array.isArray(input.queries) ? input.queries : []) : [input];

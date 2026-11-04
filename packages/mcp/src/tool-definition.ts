@@ -49,7 +49,7 @@ export interface McpToolDefinitionOptions {
 	 * model reads the tool's description and schema (a typed signature, or the JSON Schema in plain form) in its server's block of the system prompt; calls are validated against the
 	 * server's own input schema, and a failed validation shows `signature()`.
 	 */
-	compact?: { signature: () => string | undefined; summary?: string; indexed?: () => boolean };
+	compact?: { signature: () => string | undefined; summary?: string };
 }
 
 export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpToolDefinition<TSchema, McpToolDetails> {
@@ -80,10 +80,8 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 			? {
 					validationHint: ({ envelope }) => {
 						const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
+						if (shape) return shape;
 						const block = compact?.signature();
-						// An indexed tool's contract is not in the prompt, so the shape alone would leave the fields unknown.
-						if (shape)
-							return block && compact?.indexed?.() ? `${shape}\n\nExpected signature (TypeScript):\n${block}` : shape;
 						const cap = queriesCap(tool.inputSchema);
 						const hints = [
 							cap === undefined

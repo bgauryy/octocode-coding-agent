@@ -1,13 +1,12 @@
 import { Container, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
-import {
-	toggleThinkingBlockVisibility,
-	updateThinkingBlockVisibility,
-} from "../../../src/modes/interactive/interactive-mode/view-state.ts";
+import { toggleThinkingBlockVisibility } from "../../../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
+import { bindViewState } from "../../../src/modes/interactive/state/bind-view.ts";
+import { createUiStore } from "../../../src/modes/interactive/state/store.ts";
 
 function renderChat(container: Container): string {
 	return stripAnsi(container.render(120).join("\n"));
@@ -35,18 +34,17 @@ describe("thinking visibility while a bash tool is running (#8611)", () => {
 		chatContainer.addChild(component);
 
 		const fakeThis = {
-			hideThinkingBlock: false,
+			uiStore: createUiStore(),
 			settingsManager: { setHideThinkingBlock: vi.fn() },
 			chatContainer,
 			ui,
-			updateThinkingBlockVisibility() {
-				updateThinkingBlockVisibility(createFakeHost(fakeThis));
-			},
 			footerDataProvider: { setExtensionStatus: vi.fn() },
 		};
 
 		expect(renderChat(chatContainer)).toContain("first");
-		toggleThinkingBlockVisibility(createFakeHost(fakeThis));
+		const host = createFakeHost(fakeThis);
+		bindViewState(host);
+		toggleThinkingBlockVisibility(host);
 
 		expect(fakeThis.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
 		expect(fakeThis.footerDataProvider.setExtensionStatus).toHaveBeenCalledWith("notice", "Thinking blocks: hidden");

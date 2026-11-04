@@ -728,6 +728,37 @@ describe("tool row motion", () => {
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
+	it("spins only the newest running row: an older one, maybe above the viewport, is redrawn once and stays still", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(10_000);
+		const older = row({ executionStarted: true });
+		const newer = row({ executionStarted: true });
+		toolHeader(theme, older, "Bash", "sleep 10");
+		toolHeader(theme, newer, "Bash", "seq 1 60");
+		// The handover redraws the older row, after the newer row's pass.
+		await Promise.resolve();
+		const handover = older.invalidate.mock.calls.length;
+		expect(handover).toBeGreaterThanOrEqual(1);
+		const still = rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0];
+		const spinning = rendered(toolHeader(theme, newer, "Bash", "seq 1 60"))[0];
+		vi.advanceTimersByTime(MOTION.spinnerMs * 13);
+		// Each older frame changed a line above the viewport and made the renderer redraw the whole scrollback.
+		expect(older.invalidate).toHaveBeenCalledTimes(handover);
+		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).toBe(still);
+		expect(newer.invalidate.mock.calls.length).toBeGreaterThanOrEqual(10);
+		expect(rendered(toolHeader(theme, newer, "Bash", "seq 1 60"))[0]).not.toBe(spinning);
+		// When the newer row finishes, the older one does not start spinning again.
+		const newerDone = { ...newer, isPartial: false, durationMs: 5 };
+		toolHeader(theme, newerDone, "Bash", "seq 1 60");
+		vi.advanceTimersByTime(MOTION.flashMs + MOTION.glowFrameMs);
+		await Promise.resolve();
+		toolHeader(theme, newerDone, "Bash", "seq 1 60");
+		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).toBe(still);
+		expect(older.invalidate).toHaveBeenCalledTimes(handover);
+		// Nothing moves on screen, so nothing asks for frames.
+		expect(animationClock.isRunning()).toBe(false);
+	});
+
 	it("breathes a row that waits for its checks or approval, then spins when its run begins", () => {
 		vi.useFakeTimers();
 		const context = row({ executionStarted: true, toolCallId: "call-breathe" });

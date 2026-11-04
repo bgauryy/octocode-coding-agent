@@ -85,10 +85,10 @@ See [Running Octocode inside tmux](docs/tmux.md) for what each option unlocks, l
 
 ## Session API
 
-Enable the local API from the repository root:
+Every session is reachable by other processes of the same user, over an owner-only Unix socket. Start one from the repository root:
 
 ```sh
-OCTOCODE_API=1 yarn start
+yarn start
 ```
 
 In another terminal:

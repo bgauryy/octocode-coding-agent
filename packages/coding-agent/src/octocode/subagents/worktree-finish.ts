@@ -85,7 +85,7 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 			WORKSPACE_STATE_PATHSPEC,
 		])
 	)
-		throw new Error("A worktree commit includes private workspace state under .octa/code");
+		throw new Error("A worktree commit includes private workspace state under .octocode/code");
 	await rejectNestedRepositories(worktree.repo, worktree.snapshot ?? base, head);
 	const delta = worktree.snapshot
 		? await workerDeltaCommit(worktree.repo, base, worktree.snapshot, head, worktree.agentId)
@@ -108,5 +108,5 @@ async function removeWorktree(worktree: Pick<Worktree, "repo" | "path">): Promis
 export function isolationReport(agentId: string, result: WorktreeResult | { error: string }): string {
 	if ("error" in result) return `\n\nIsolated worktree for ${agentId} could not be saved: ${result.error}`;
 	if (!result.ref) return `\n\nIsolated run ${agentId} changed no files.`;
-	return `\n\nIsolated changes are on ${result.ref}, not in this tree:\n${result.stat}\nMerge with \`/agents merge ${result.ref.slice(REF_PREFIX.length)}\` or \`git merge --no-ff ${result.ref}\`.`;
+	return `\n\nIsolated changes are on ${result.ref}, not in this tree:\n${result.stat}\nMerge with \`agent\` type \`coordinate\`, action \`merge\`, subagent \`${result.ref.slice(REF_PREFIX.length)}\` (the user: \`/agents merge ${result.ref.slice(REF_PREFIX.length)}\`), not \`git merge\`: it checks reservations, removes the ref and notes the merge on the item.`;
 }

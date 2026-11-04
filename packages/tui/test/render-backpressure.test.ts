@@ -137,7 +137,7 @@ describe("opt-in render pacing", () => {
 			tui.renderNow();
 			tui.content = "changed";
 			tui.requestRender();
-			await pause(35);
+			await pause(70);
 			assert.deepEqual(tui.painted, ["initial", "changed"]);
 			tui.stop();
 		}

@@ -50,6 +50,58 @@ const command = JSON.parse(line); reply(command, {argv:process.argv.slice(2)});
 		});
 	});
 
+	it("reports a listener's exception as its own failure and still tells later listeners", async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const instance = client(`output({type:"agent_settled", aborted:false});
+process.stdin.resume();`);
+		const later = vi.fn();
+		instance.onEvent(() => {
+			throw new Error("listener bug");
+		});
+		instance.onEvent(later);
+		await instance.start();
+		await vi.waitFor(() => expect(later).toHaveBeenCalledOnce());
+		expect(error).toHaveBeenCalledWith(
+			"RPC event listener failed",
+			expect.objectContaining({ message: "listener bug" }),
+		);
+	});
+
+	it("skips a line that is not JSON without reporting it", async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const instance = client(`process.stdout.write("not json\\n");
+output({type:"agent_settled", aborted:false});
+process.stdin.resume();`);
+		const seen = vi.fn();
+		instance.onEvent(seen);
+		await instance.start();
+		await vi.waitFor(() => expect(seen).toHaveBeenCalledOnce());
+		expect(error).not.toHaveBeenCalled();
+	});
+
+	it("surfaces a failure with no id, to its listener and in a command's timeout", async () => {
+		const parse = {
+			type: "response",
+			command: "parse",
+			success: false,
+			error: "Failed to parse command: bad line",
+		};
+		const entry = fixture(`createInterface({input:process.stdin}).on("line", () => output(${JSON.stringify(parse)}));`);
+		const onProtocolError = vi.fn();
+		const instance = new RpcClient({
+			invocation: { command: process.execPath, args: [entry] },
+			onProtocolError,
+		});
+		clients.push(instance);
+		await instance.start();
+		const connection = (instance as unknown as { connection: { send: (c: object, t: number) => Promise<unknown> } })
+			.connection;
+		await expect(connection.send({ type: "get_state" }, 200)).rejects.toThrow(
+			"Last protocol error: Failed to parse command: bad line",
+		);
+		expect(onProtocolError).toHaveBeenCalledWith("Failed to parse command: bad line");
+	});
+
 	it("reports child death once, rejects requests and idle waiters, and reports it to late subscribers", async () => {
 		const instance = client(`process.stdin.once("data", () => process.exit(43)); process.stdin.resume();`);
 		const closed = vi.fn();

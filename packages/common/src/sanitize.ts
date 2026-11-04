@@ -113,7 +113,13 @@ export function storedText(text: string | undefined, max?: number): string {
 	return max === undefined ? stored : [...stored].slice(0, max).join("");
 }
 
-const SECRET_ASSIGNMENT_NAME = "(?:password|passwd|secret|api[_-]?key|token)";
+/** The credential word of an assignment; `secret` also takes its usual tails (`AWS_SECRET_ACCESS_KEY`, `CLIENT_SECRET_KEY`). */
+const SECRET_ASSIGNMENT_NAME = "(?:password|passwd|secret(?:[_-](?:access[_-])?key)?|api[_-]?key|token)";
+/**
+ * Where that word may start: `\b` never holds after `_`, so `GH_TOKEN=…` and `DB_PASSWORD=…` went unseen. The closing
+ * quote of a JSON key may sit before the separator (`{"api_key":"…"}`).
+ */
+const SECRET_ASSIGNMENT = `(?<![A-Za-z0-9])${SECRET_ASSIGNMENT_NAME}["']?\\s*`;
 const PRIVATE_KEY_BLOCK = /-----BEGIN ([A-Z ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/;
 const PRIVATE_KEY_BLOCKS = new RegExp(PRIVATE_KEY_BLOCK.source, "g");
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
@@ -127,11 +133,13 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 	[/\bAIza[0-9A-Za-z_-]{35}/, "a Google API key"],
 	[/\bnpm_[A-Za-z0-9]{36}/, "an npm token"],
 	[/\bglpat-[A-Za-z0-9_-]{20,}/, "a GitLab token"],
+	[/\bgsk_[A-Za-z0-9]{20,}/, "a Groq API key"],
+	[/\bhf_[A-Za-z0-9]{20,}/, "a Hugging Face token"],
 	// `scheme://user:password@host`; `${VAR}` or `<placeholder>` passwords are templates, not secrets.
 	[/\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/${}<>]{3,}@/i, "a password in a URL"],
 	// `password = s3cretValue`: the value must hold a digit and no code punctuation, so `token = getToken()` passes.
 	[
-		new RegExp(`\\b${SECRET_ASSIGNMENT_NAME}\\s*[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]*\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
+		new RegExp(`${SECRET_ASSIGNMENT}[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]*\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
 		"a password or key assignment",
 	],
 	[/\bBearer\s+[A-Za-z0-9._~+/-]{20,}/, "a bearer token"],
@@ -144,7 +152,7 @@ const SECRETS = SECRET_PATTERNS.map(([pattern, what]) => ({
 	all: new RegExp(pattern.source, `${pattern.flags}g`),
 }));
 
-const SECRET_LINE_CONTINUATION = new RegExp(`\\b(?:${SECRET_ASSIGNMENT_NAME}\\s*(?:[:=]\\s*)?|Bearer\\s*)$`, "i");
+const SECRET_LINE_CONTINUATION = new RegExp(`(?:${SECRET_ASSIGNMENT}(?:[:=]\\s*)?|\\bBearer\\s*)$`, "i");
 
 /** Outside a PEM block, only assignments and Bearer credentials can continue across a newline. */
 export function secretContinuesAfterLine(text: string): boolean {

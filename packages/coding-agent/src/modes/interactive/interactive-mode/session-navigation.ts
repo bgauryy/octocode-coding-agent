@@ -5,10 +5,11 @@
 
 import path from "node:path";
 import { Spacer } from "@octocodeai/octocode-tui";
+import { disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { ExtensionCommandContext } from "../../../core/features/index.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
-import { SessionManager } from "../../../core/session-manager.ts";
+import { hasTornTail, SessionManager } from "../../../core/session-manager.ts";
 import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
@@ -27,6 +28,7 @@ export function showTreeNavigationResult(
 	>,
 	editorText: string | undefined,
 ): void {
+	disposeTranscript(host.chatContainer);
 	host.chatContainer.clear();
 	host.renderInitialMessages();
 	if (editorText && !host.editor.getText().trim()) {
@@ -34,6 +36,12 @@ export function showTreeNavigationResult(
 	}
 	host.showStatus("Navigated to selected point");
 	void host.flushCompactionQueue({ willRetry: false });
+}
+
+/** Puts `text` before the unsent draft (blank-line separated, as queued messages return to the editor); an empty draft leaves just `text`. */
+function prependToEditorDraft(host: Pick<InteractiveModeHost, "editor">, text: string | undefined): void {
+	const draft = host.editor.getText();
+	host.editor.setText([text, draft].filter((part) => part?.trim()).join("\n\n"));
 }
 
 /** Interactive-mode members used by the session navigation selectors. */
@@ -90,7 +98,7 @@ export function showUserMessageSelector(host: SessionNavigationHost): void {
 						return;
 					}
 
-					host.editor.setText(result.selectedText ?? "");
+					prependToEditorDraft(host, result.selectedText);
 					host.showStatus("Forked to new session");
 				} catch (error: unknown) {
 					host.showError(errorMessage(error));
@@ -116,11 +124,11 @@ export async function handleCloneCommand(host: SessionNavigationHost): Promise<v
 	try {
 		const result = await host.runtimeHost.fork(leafId, { position: "at" });
 		if (result.cancelled) {
-			host.ui.requestRender();
+			host.showStatus("Clone cancelled.");
 			return;
 		}
 
-		host.editor.setText("");
+		// A clone carries no message text; the unsent draft stays as it is.
 		host.showStatus("Cloned to new session");
 	} catch (error: unknown) {
 		host.showError(errorMessage(error));
@@ -310,6 +318,31 @@ export function showSessionSelector(host: SessionNavigationHost): void {
 	});
 }
 
+/**
+ * A session opened with part of a record at its end can be read but not written, and that tail stays refused because
+ * nothing proves who wrote it. The way out is a fork, which copies the complete records and leaves the file as it is.
+ */
+export async function offerForkOfTornSession(
+	host: Pick<
+		InteractiveModeHost,
+		"handleResumeSession" | "sessionManager" | "showError" | "showExtensionConfirm" | "showWarning"
+	>,
+	file: string | undefined,
+): Promise<void> {
+	if (!file || !hasTornTail(file)) return;
+	const fork = await host.showExtensionConfirm(
+		"Incomplete final record",
+		`The last record of this session was cut off, so nothing more can be saved to it: ${file}\nFork it to continue? The fork copies the complete records and this file stays as it is.`,
+	);
+	if (!fork) return host.showWarning("This session stays read-only: nothing you do in it can be saved.");
+	try {
+		const forked = SessionManager.forkFrom(file, host.sessionManager.getCwd(), host.sessionManager.getSessionDir());
+		await host.handleResumeSession(forked.getSessionFile()!);
+	} catch (error: unknown) {
+		host.showError(`Could not fork the session: ${errorMessage(error)}`);
+	}
+}
+
 export async function handleResumeSession(
 	host: SessionNavigationHost,
 	sessionPath: string,
@@ -343,7 +376,9 @@ export async function handleResumeSession(
 	// The session picker drops this promise, so the retry in a chosen folder fails the same way as the first attempt.
 	try {
 		try {
-			return await resume();
+			const result = await resume();
+			if (!result.cancelled) await offerForkOfTornSession(host, sessionPath);
+			return result;
 		} catch (error: unknown) {
 			if (!(error instanceof MissingSessionCwdError)) throw error;
 			const selectedCwd = await host.promptForMissingSessionCwd(error);

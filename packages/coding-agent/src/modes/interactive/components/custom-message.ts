@@ -104,7 +104,9 @@ export class CustomMessageComponent extends Container {
 		// Default rendering: label + content
 		const label = theme.fg(
 			"customMessageLabel",
-			`\x1b[1m[${sanitizeTerminalText(this.message.customType)}]${this.rendererFailed ? " Renderer failed; showing message." : ""}\x1b[22m`,
+			theme.bold(
+				`[${sanitizeTerminalText(this.message.customType)}]${this.rendererFailed ? " Renderer failed; showing message." : ""}`,
+			),
 		);
 		this.box.addChild(new Text(label, 0, 0));
 		this.box.addChild(new Spacer(1));

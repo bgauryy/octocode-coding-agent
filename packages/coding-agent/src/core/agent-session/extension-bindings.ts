@@ -22,6 +22,7 @@ import { loadedSkillDirectories } from "../skills.ts";
 import type { SlashCommandInfo } from "../slash-commands.ts";
 import { isSyntheticPath } from "../source-info.ts";
 import type { AbortReason, SessionInternals } from "./host.ts";
+import { recordRunFailure } from "./run-outcome.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
@@ -31,7 +32,10 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 export interface ExtensionBindingsHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
 	readonly tools: SessionToolLoadout;
 	readonly models: SessionModelControl;
-	readonly inputs: Pick<SessionInputQueue, "hasWaitingCustomMessages" | "isCustomMessageQueued">;
+	readonly inputs: Pick<
+		SessionInputQueue,
+		"hasWaitingCustomMessages" | "isCustomMessageQueued" | "replaceQueuedCustomMessage"
+	>;
 	readonly defaultToolModifiers: readonly string[];
 	recordAbortReason(reason: AbortReason): void;
 	executeNestedToolCall(
@@ -225,6 +229,7 @@ export class SessionExtensionBindings {
 					if (entry) this.host.emit({ type: "entry_appended", entry });
 				},
 				getActiveTools: () => session.getActiveToolNames(),
+				getHiddenDeclarations: () => [...tools.hiddenDeclarations],
 				getAllTools: () => session.getAllTools(),
 				getSettings: () => session.settingsManager.getSettings(),
 				setActiveTools: (toolNames) => session.setActiveToolsByName(toolNames),
@@ -254,7 +259,7 @@ export class SessionExtensionBindings {
 				getExplicitToolNames: () => tools.explicitToolNames(this.host.defaultToolModifiers),
 				isIdle: () => session.isIdle,
 				isProjectTrusted: () => session.settingsManager.isProjectTrusted(),
-				getSignal: () => session.agent.signal,
+				getSignal: () => session.agent.signal ?? (run.isBeforeSettle ? run.beforeSettleAbort.signal : undefined),
 				getTurnId: () => run.logicalTurnId,
 				abort: (reason = "interrupted") => {
 					this.host.recordAbortReason(reason);
@@ -265,14 +270,18 @@ export class SessionExtensionBindings {
 					}
 					void session.abort(reason);
 				},
+				failRun: (reason) => {
+					if (run.active) recordRunFailure(run.outcome, reason);
+				},
 				hasPendingMessages: () => session.pendingMessageCount > 0 || this.host.inputs.hasWaitingCustomMessages,
 				isMessageQueued: (details) => this.host.inputs.isCustomMessageQueued(details),
+				replaceQueuedMessage: (details, content) => this.host.inputs.replaceQueuedCustomMessage(details, content),
 				shutdown: () => {
 					this._shutdownHandler?.();
 				},
 				getContextUsage: () => session.getContextUsage(),
 				compact: (options) => {
-					void (async () => {
+					const work = (async () => {
 						try {
 							const result = await session.compact({ customInstructions: options?.customInstructions });
 							options?.onComplete?.(result);
@@ -280,7 +289,8 @@ export class SessionExtensionBindings {
 							const err = error instanceof Error ? error : new Error(String(error));
 							options?.onError?.(err);
 						}
-					})();
+					})().finally(() => run.settledWork.delete(work));
+					run.settledWork.add(work);
 				},
 				getSystemPrompt: () => session.systemPrompt,
 				getSystemPromptOptions: () => tools.baseSystemPromptOptions,

@@ -38,4 +38,19 @@ describe("/backlog item actions record the user as the actor", () => {
 		expect(updates.length).toBeGreaterThanOrEqual(2);
 		for (const event of updates) expect(event.actor).toMatchObject({ kind: "human" });
 	});
+
+	it("asks for the reason and the goal when `do` meets a fresh item, as `ongoing` does", async () => {
+		const t = setup();
+		await t.command.handler("add write the docs", t.rpc([]));
+		const ctx = t.rpc([], ["Readers need it", "Docs build clean"]);
+		await t.command.handler("do B1", ctx);
+		expect(t.store.get("B1")).toMatchObject({ state: "ongoing", why: "Readers need it", goal: "Docs build clean" });
+	});
+
+	it("leaves the item todo when the user declines the questions", async () => {
+		const t = setup();
+		await t.command.handler("add write the docs", t.rpc([]));
+		await t.command.handler("do B1", t.rpc([], [undefined]));
+		expect(t.store.get("B1")).toMatchObject({ state: "todo" });
+	});
 });

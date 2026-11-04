@@ -611,7 +611,7 @@ describe("registerHooks", () => {
 		const { api, fire } = fakeHost();
 		const on = registerHooks(api, {}, home);
 		await fire("session_start", { reason: "startup" }, context(cwd));
-		expect(on.summary()).toBe("on, 1 commands");
+		expect(on.summary()).toBe("on, 1 hook");
 		expect(on.report(cwd)).toContain("[source octocode; runtime octocode]");
 		expect(on.report(cwd)).toMatch(/Loaded \(1\):\n {2}PreToolUse \[Bash\] echo pre \(.*hooks\.json\)/);
 

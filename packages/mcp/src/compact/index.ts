@@ -3,9 +3,14 @@ export { selectTools, toolBlock } from "./file.ts";
 export { catalogHash, COMPACT_GENERATOR_VERSION, functionNames, renderServer, toolHash } from "./render.ts";
 export { parseOverrides } from "./overrides.ts";
 export { parsePresetOverrides, presetOverridesFor, toPresetOverrides } from "./preset-overrides.ts";
-export type { PresetOverrides } from "./preset-overrides.ts";
 export { acceptStale, presetStatus, type StalePresetEntry } from "./preset-status.ts";
-export { carryOverrides, catalogHashes, mergeOverrides, resolveServerFile, unoptimizedTools } from "./resolve.ts";
+export { describedOverrides, mergeOverrides, resolveServerFile, unoptimizedTools } from "./resolve.ts";
 export { schemaToTs } from "./schema-to-ts.ts";
 export { generatedDir, readGenerated, serverGeneratedDir, writeGenerated } from "./store.ts";
-export type { CompactServerInput, CompactToolInput, DescriptionOverrides, GeneratedMeta } from "./types.ts";
+export type {
+	CompactServerInput,
+	CompactToolInput,
+	DescriptionOverrides,
+	GeneratedMeta,
+	PresetOverrides,
+} from "./types.ts";

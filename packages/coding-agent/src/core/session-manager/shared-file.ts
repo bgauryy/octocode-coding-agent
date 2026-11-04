@@ -1,6 +1,7 @@
 import { closeSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import lockfile from "proper-lockfile";
+import { APP_NAME } from "../../config.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { jsonlLines } from "../../../../common/src/jsonl.ts";
 import { generateId } from "./entries.ts";
@@ -11,6 +12,11 @@ import type { SessionEntry } from "./types.ts";
 // Another octocode process can continue the same session file. Every write runs under a short lock on the file,
 // and foreign records appended since this state's last write are merged into memory first. A file that shrank or
 // ends in a partial record is never written to.
+
+/** The way out of a session file that cannot be written: a fork copies its complete records and leaves it byte-identical. */
+export function forkHint(file: string): string {
+	return `Run \`${APP_NAME} --fork ${file}\` to continue in a copy of its complete records; this file stays as it is.`;
+}
 
 /** Longest a write waits for another process's lock; the holder keeps it for a few milliseconds. */
 const LOCK_WAIT_MS = 3000;
@@ -75,7 +81,8 @@ function readForeignEntries(file: string, known: number, to: number): SessionEnt
 		closeSync(fd);
 	}
 	if (bytes[bytes.length - 1] !== 10) {
-		throw new Error("Session has an incomplete final record written by another process; recover the transcript.");
+		// Who wrote it is unknown here: another process, or an earlier one of this session that stopped mid-append.
+		throw new Error(`Session has an incomplete final record. ${forkHint(file)}`);
 	}
 	const start = known === 0 ? 0 : bytes.indexOf(10) + 1;
 	const entries: SessionEntry[] = [];
@@ -83,15 +90,15 @@ function readForeignEntries(file: string, known: number, to: number): SessionEnt
 	// process's entry from this state and then from the file.
 	for (const line of jsonlLines(bytes.subarray(start).toString("utf8"))) {
 		if (!line.ok) {
-			throw new Error("Session has a malformed record written by another process; recover the transcript.");
+			throw new Error(`Session has a malformed record written by another process. ${forkHint(file)}`);
 		}
 		const record = line.value as { type?: unknown; id?: unknown } | null;
 		if (typeof record !== "object" || record === null || typeof record.type !== "string") {
-			throw new Error("Session has an unrecognized record written by another process; recover the transcript.");
+			throw new Error(`Session has an unrecognized record written by another process. ${forkHint(file)}`);
 		}
 		if (record.type === "session") continue;
 		if (typeof record.id !== "string") {
-			throw new Error("Session has a record without an id written by another process; recover the transcript.");
+			throw new Error(`Session has a record without an id written by another process. ${forkHint(file)}`);
 		}
 		entries.push(record as SessionEntry);
 	}
@@ -100,10 +107,10 @@ function readForeignEntries(file: string, known: number, to: number): SessionEnt
 
 /**
  * Bring this state level with the file, which the caller has locked. Records another process appended are added
- * to `fileEntries` (before `pending`, matching file order) and to the indexes, never to `leafId`. When `pending` has
- * the id of a foreign record it gets a fresh id. Throws when the file shrank or the new bytes are not whole records.
+ * to `fileEntries` (before `pending`, matching file order) and to the indexes, never to `leafId`. A `pending` entry with
+ * the id of a foreign record gets a fresh id. Throws when the file shrank or the new bytes are not whole records.
  */
-export function mergeForeignEntries(state: SessionState, file: string, pending?: SessionEntry): void {
+export function mergeForeignEntries(state: SessionState, file: string, pending: readonly SessionEntry[] = []): void {
 	const size = statSync(file).size;
 	const known = state.fileSize;
 	if (known === undefined) {
@@ -114,22 +121,24 @@ export function mergeForeignEntries(state: SessionState, file: string, pending?:
 	if (size < known) {
 		throw new Error(`Session file shrank from ${known} to ${size} bytes; another process rewrote it.`);
 	}
-	const pendingIndex = pending ? state.fileEntries.lastIndexOf(pending) : -1;
-	if (pending) state.byId.delete(pending.id);
+	const pendingIndex = pending.length > 0 ? state.fileEntries.lastIndexOf(pending[0]) : -1;
+	for (const entry of pending) state.byId.delete(entry.id);
 	// Records this state already holds (read by the load, or re-read after another process rewrote the file) are skipped.
 	const foreign = readForeignEntries(file, known, size).filter((entry) => !state.byId.has(entry.id));
 	for (const entry of foreign) indexSessionEntry(entry, state.byId, state.labelsById, state.labelTimestampsById);
 	state.fileEntries.splice(pendingIndex === -1 ? state.fileEntries.length : pendingIndex, 0, ...foreign);
-	if (pending) {
-		if (state.byId.has(pending.id)) reassignEntryId(state, pending);
-		state.byId.set(pending.id, pending);
+	for (const entry of pending) {
+		if (state.byId.has(entry.id)) reassignEntryId(state, entry, pending);
+		state.byId.set(entry.id, entry);
 	}
 	state.fileSize = size;
 }
 
-function reassignEntryId(state: SessionState, entry: SessionEntry): void {
+function reassignEntryId(state: SessionState, entry: SessionEntry, pending: readonly SessionEntry[]): void {
 	const oldId = entry.id;
 	entry.id = generateId(state.byId);
 	if (entry.type === "compaction" && entry.firstKeptEntryId === oldId) entry.firstKeptEntryId = entry.id;
 	if (state.leafId === oldId) state.leafId = entry.id;
+	// A held entry can be the parent of the next one in the same write.
+	for (const child of pending) if (child.parentId === oldId) child.parentId = entry.id;
 }

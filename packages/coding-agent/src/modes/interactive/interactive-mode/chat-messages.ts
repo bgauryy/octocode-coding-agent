@@ -3,7 +3,7 @@
  */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
-import { Spacer } from "@octocodeai/octocode-tui";
+import { type Component, Spacer } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import type { TruncationResult } from "../../../core/tools/truncate.ts";
@@ -24,12 +24,11 @@ type ChatMessagesHost = Pick<
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "hiddenThinkingLabel"
-	| "hideThinkingBlock"
+	| "uiStore"
 	| "outputPad"
 	| "session"
 	| "settingsManager"
 	| "streamingComponent"
-	| "toolOutputExpanded"
 	| "ui"
 >;
 
@@ -39,11 +38,19 @@ export function addCustomEntryToChat(host: ChatMessagesHost, entry: Extract<Sess
 		return;
 	}
 	const component = new CustomEntryComponent(entry, renderer, host.outputPad);
-	component.setExpanded(host.toolOutputExpanded);
+	component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 	if (!component.hasContent()) {
 		return;
 	}
 
+	addAboveStreaming(host, component);
+}
+
+/**
+ * Add a row that is not part of the assistant message streaming right now (an extension entry, a background job
+ * result) above it, so the message stays whole instead of the row landing inside its text.
+ */
+function addAboveStreaming(host: ChatMessagesHost, component: Component): void {
 	if (host.streamingComponent) {
 		const streamingIndex = host.chatContainer.children.indexOf(host.streamingComponent);
 		if (streamingIndex >= 0) {
@@ -51,7 +58,6 @@ export function addCustomEntryToChat(host: ChatMessagesHost, entry: Extract<Sess
 			return;
 		}
 	}
-
 	host.chatContainer.addChild(component);
 }
 
@@ -90,8 +96,8 @@ export function addMessageToChat(
 					host.getMarkdownThemeWithSettings(),
 					host.outputPad,
 				);
-				component.setExpanded(host.toolOutputExpanded);
-				host.chatContainer.addChild(component);
+				component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+				addAboveStreaming(host, component);
 			}
 			break;
 		}
@@ -102,14 +108,14 @@ export function addMessageToChat(
 				host.getMarkdownThemeWithSettings(),
 				host.outputPad,
 			);
-			component.setExpanded(host.toolOutputExpanded);
+			component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 			host.chatContainer.addChild(component);
 			break;
 		}
 		case "branchSummary": {
 			host.chatContainer.addChild(new Spacer(1));
 			const component = new BranchSummaryMessageComponent(message, host.getMarkdownThemeWithSettings(), host.outputPad);
-			component.setExpanded(host.toolOutputExpanded);
+			component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 			host.chatContainer.addChild(component);
 			break;
 		}
@@ -123,7 +129,7 @@ export function addMessageToChat(
 			const port = getApplicationPort(host.session);
 			const assistantComponent = new AssistantMessageComponent(
 				undefined,
-				host.hideThinkingBlock,
+				host.uiStore.getState().view.hideThinking,
 				host.getMarkdownThemeWithSettings(),
 				host.hiddenThinkingLabel,
 				host.outputPad,

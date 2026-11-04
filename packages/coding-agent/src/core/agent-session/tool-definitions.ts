@@ -73,7 +73,10 @@ export function buildToolDefinitionRegistry(
 			definition: tool.definition,
 			sourceInfo:
 				tool.sourceInfo.owner === "native"
-					? createSyntheticSourceInfo(`${BUILTIN_PATH_PREFIX}${tool.definition.name}`, { source: "builtin" })
+					? createSyntheticSourceInfo(`${BUILTIN_PATH_PREFIX}${tool.definition.name}`, {
+							source: "builtin",
+							owner: "native",
+						})
 					: tool.sourceInfo,
 		});
 	}

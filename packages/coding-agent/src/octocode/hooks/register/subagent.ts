@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor } from "../config/calls.ts";
@@ -104,7 +105,14 @@ export function registerSubagentHooks(
 							message.details.subagentStartKeys.includes(key),
 					);
 			if (!present) {
-				contexts.push(capContext(`Context from ${protocol} SubagentStart hooks:\n${verdict.context}`));
+				contexts.push(
+					capContext(
+						renderInstruction("notices/hooks/context.md", {
+							source: `${protocol} SubagentStart`,
+							text: verdict.context,
+						}),
+					),
+				);
 				contextKeys.push(key);
 			}
 		}

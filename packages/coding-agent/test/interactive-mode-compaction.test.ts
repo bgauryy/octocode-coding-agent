@@ -7,7 +7,6 @@ import {
 	flushCompactionQueue,
 	queueInteractiveMessage,
 	restoreQueuedMessagesToEditor,
-	updatePendingMessagesDisplay,
 } from "../src/modes/interactive/interactive-mode/message-queue.ts";
 import {
 	addCompactionCostNotice,
@@ -15,7 +14,7 @@ import {
 } from "../src/modes/interactive/interactive-mode/session-render.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { createFakeHost, heldStore, renderPendingMessages } from "./interactive-mode-host.ts";
 
 /** Accepts the partial events these tests send. */
 const handleEvent = agentEvents.handleEvent as (host: object, event: object) => Promise<void>;
@@ -143,7 +142,7 @@ describe("InteractiveMode compaction events", () => {
 			autoCompactionLoader: undefined,
 			defaultEditor: {},
 			statusContainer: { clear: vi.fn() },
-			chatContainer: { clear: vi.fn() },
+			chatContainer: { clear: vi.fn(), children: [] },
 			sessionManager: { buildContextEntries: vi.fn().mockReturnValue([latestCompaction, previousCompaction]) },
 			renderSessionEntries: vi.fn(),
 			addMessageToChat: vi.fn(),
@@ -218,7 +217,6 @@ describe("InteractiveMode compaction events", () => {
 		const abort = vi.fn(async () => {});
 		const ui = {
 			clearAllQueues: () => ({ steering: [], followUp: [] }),
-			updatePendingMessagesDisplay: vi.fn(),
 			session: { abort },
 		};
 		restoreQueuedMessagesToEditor(createFakeHost(ui), { abort: true });
@@ -228,7 +226,7 @@ describe("InteractiveMode compaction events", () => {
 
 	test("preserves steering behavior when flushing into an active agent run", async () => {
 		const fakeThis = {
-			compactionQueuedMessages: [{ text: "change direction", mode: "steer" as const }],
+			uiStore: heldStore([{ text: "change direction", mode: "steer" as const }]),
 			session: {
 				clearQueue: vi.fn(),
 				prompt: vi.fn().mockResolvedValue(undefined),
@@ -236,7 +234,6 @@ describe("InteractiveMode compaction events", () => {
 				followUp: vi.fn().mockResolvedValue(undefined),
 			},
 			isExtensionCommand: vi.fn().mockReturnValue(false),
-			updatePendingMessagesDisplay: vi.fn(),
 			showError: vi.fn(),
 		};
 
@@ -247,7 +244,7 @@ describe("InteractiveMode compaction events", () => {
 			attachImagePaths: true,
 			preflightResult: expect.any(Function),
 		});
-		expect(fakeThis.compactionQueuedMessages).toEqual([]);
+		expect(fakeThis.uiStore.getState().queue.compaction).toEqual([]);
 		expect(fakeThis.showError).not.toHaveBeenCalled();
 	});
 });
@@ -255,26 +252,25 @@ describe("InteractiveMode compaction events", () => {
 describe("queued message recovery", () => {
 	const flush = (ui: any, willRetry = false) => flushCompactionQueue(createFakeHost(ui), { willRetry });
 	const fixture = () => ({
-		compactionQueuedMessages: [
+		uiStore: heldStore([
 			{ text: "first", mode: "steer" },
 			{ text: "second", mode: "followUp" },
-		],
+		]),
 		session: { clearQueue: vi.fn(), prompt: vi.fn().mockResolvedValue(undefined), steer: vi.fn(), followUp: vi.fn() },
 		isExtensionCommand: () => false,
-		updatePendingMessagesDisplay: vi.fn(),
 		showError: vi.fn(),
 	});
 
 	test("restores only unaccepted messages and preserves newer input on a partial failure", async () => {
 		const ui = fixture();
 		ui.session.followUp.mockImplementation(async () => {
-			ui.compactionQueuedMessages.push({ text: "newer", mode: "steer" });
+			ui.uiStore.getState().holdMessage({ text: "newer", mode: "steer" });
 			throw new Error("input failed");
 		});
 		await flush(ui, true);
 		expect(ui.session.steer).toHaveBeenCalledWith("first", undefined, { attachImagePaths: true });
 		expect(ui.session.clearQueue).not.toHaveBeenCalled();
-		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["second", "newer"]);
+		expect(ui.uiStore.getState().queue.compaction.map((entry) => entry.text)).toEqual(["second", "newer"]);
 	});
 
 	test("does not enqueue later messages before the first prompt passes preflight", async () => {
@@ -283,7 +279,7 @@ describe("queued message recovery", () => {
 		await flush(ui);
 		expect(ui.session.followUp).not.toHaveBeenCalled();
 		expect(ui.session.clearQueue).not.toHaveBeenCalled();
-		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["first", "second"]);
+		expect(ui.uiStore.getState().queue.compaction.map((entry) => entry.text)).toEqual(["first", "second"]);
 	});
 
 	test("does not replay accepted input when the running prompt fails later", async () => {
@@ -298,7 +294,7 @@ describe("queued message recovery", () => {
 		await flush(ui);
 		fail(new Error("provider failed"));
 		await Promise.resolve();
-		expect(ui.compactionQueuedMessages).toEqual([]);
+		expect(ui.uiStore.getState().queue.compaction).toEqual([]);
 		expect(ui.session.clearQueue).not.toHaveBeenCalled();
 		expect(ui.showError).toHaveBeenCalledWith("provider failed");
 	});
@@ -309,18 +305,21 @@ describe("queued message recovery", () => {
 		await flush(ui);
 		expect(ui.session.prompt).toHaveBeenCalledTimes(2);
 		expect(ui.session.followUp).not.toHaveBeenCalled();
-		expect(ui.compactionQueuedMessages).toEqual([]);
+		expect(ui.uiStore.getState().queue.compaction).toEqual([]);
 	});
 
 	test("bounds previews and distinguishes next-turn messages from follow-ups", () => {
 		initTheme("dark");
 		const ui = {
 			pendingMessagesContainer: new Container(),
-			getAllQueuedMessages: () => ({ steering: ["first\nsecond line", "two"], followUp: ["three", "four", "five"] }),
 			getAppKeyDisplay: () => "alt+up",
-			session: { isCompacting: true },
 		};
-		updatePendingMessagesDisplay(createFakeHost(ui));
+		renderPendingMessages(createFakeHost(ui), {
+			steering: ["first\nsecond line", "two"],
+			followUp: ["three", "four", "five"],
+			compacting: true,
+			carried: 0,
+		});
 		const lines = ui.pendingMessagesContainer.render(100);
 		const output = stripAnsi(lines.join("\n"));
 		expect(output).toContain("5 queued · 2 next turn · 3 after run");
@@ -348,7 +347,6 @@ test("restores rejected queued input alongside a newer draft", async () => {
 			},
 		},
 		showError: vi.fn(),
-		updatePendingMessagesDisplay: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
 	await queueInteractiveMessage(createFakeHost(ui), "original", "steer");
@@ -374,7 +372,6 @@ test("does not restore a queued prompt after acceptance if the run later fails",
 			},
 		},
 		showError: vi.fn(),
-		updatePendingMessagesDisplay: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
 	await queueInteractiveMessage(createFakeHost(ui), "original", "followUp");

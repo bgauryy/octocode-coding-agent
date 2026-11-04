@@ -43,7 +43,8 @@ const ALLOWED: Record<string, string[]> = {
 	"mcp-host": ["shared", "skill", "trust", "web"],
 	llama: ["shared"],
 	api: ["shared"],
-	external: ["shared", "api"],
+	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
+	external: ["shared", "api", "worktrees"],
 	ask: ["shared"],
 	files: ["shared", "permission"],
 	team: ["shared"],
@@ -69,6 +70,10 @@ const ALLOWED: Record<string, string[]> = {
 	permission: ["shared", "plan"],
 	skill: ["shared"],
 	"context-optimization": ["shared"],
+	// `/optimize`: its helper call is the small-tier route `subagents/` owns.
+	"prompt-optimization": ["shared", "subagents"],
+	// `/processes`, process titles and memory samples: process helpers from `shared`, agent-id variables from `team`.
+	processes: ["shared", "team"],
 	"native-skills": [],
 	"terminal-launch": [],
 	worktrees: ["shared", "terminal-launch", "trust"],
@@ -151,7 +156,7 @@ describe("source layout", () => {
 
 	it("names the .octocode folder only in shared/home.ts", () => {
 		// Every path under `~/.octocode` or `<repo root>/.octocode` goes through src/shared/home.ts, so one module decides
-		// where things live. Prose that mentions `.octa/code/temp/` (prompts, tool descriptions) is fine; path segments are not.
+		// where things live. Prose that mentions `.octocode/code/temp/` (prompts, tool descriptions) is fine; path segments are not.
 		const owners = new Set(["shared/home.ts"]);
 		const segment = /(['"`])\.octocode\1|homedir\(\)\s*,\s*(['"`])\.octocode/;
 		const hits = files
@@ -205,6 +210,40 @@ describe("source layout", () => {
 				.map((file) => path.relative(packagesDir, file));
 		});
 		expect(offenders).toEqual([]);
+	});
+
+	// Ratchets on two known debts. Each limit is the count measured on 2026-11-04 plus a small margin for work landing the
+	// same day. When a count falls, lower its limit with it; raising one needs a reason in the commit. Nothing here asks for
+	// a refactor: `core` depending on `octocode` shrinks through ports, as `packages/acp` and `packages/mcp` show, and the
+	// interactive mode's shared host through narrow per-collaborator hosts, as `core/agent-session` shows.
+	it("does not grow the imports from core into octocode (measured 22)", () => {
+		const srcRoot = path.join(packageRoot, "src");
+		const edges = walk(path.join(srcRoot, "core")).flatMap((file) =>
+			[
+				...fs
+					.readFileSync(file, "utf8")
+					.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)(['"])(\.{1,2}\/[^'"]+)\1/g),
+			]
+				.map((match) => path.resolve(path.dirname(file), match[2]))
+				.filter((target) => target.startsWith(sourceRoot + path.sep)),
+		);
+		expect(edges.length).toBeGreaterThan(0);
+		expect(
+			edges.length,
+			"src/core gained an import from src/octocode; pass the dependency through a port",
+		).toBeLessThanOrEqual(25);
+	});
+
+	it("does not grow the uses of the interactive mode's shared host (measured 2,178)", () => {
+		const uses = walk(path.join(packageRoot, "src", "modes", "interactive", "interactive-mode")).reduce(
+			(count, file) => count + (fs.readFileSync(file, "utf8").match(/\bhost\./g)?.length ?? 0),
+			0,
+		);
+		expect(uses).toBeGreaterThan(0);
+		expect(
+			uses,
+			"interactive-mode gained uses of its shared host; give the collaborator a narrow host",
+		).toBeLessThanOrEqual(2_200);
 	});
 
 	it("locates its package root at any depth", () => {

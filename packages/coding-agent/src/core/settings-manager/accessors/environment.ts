@@ -77,11 +77,26 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 		return this.settings.externalAgents === true;
 	}
 
+	getSessionApi(): boolean {
+		return this.settings.sessionApi !== false;
+	}
+
 	getBashOutputMaxBytes(): number {
 		const bytes = this.settings.bashOutputMaxBytes;
 		return typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 1024
 			? Math.floor(bytes)
 			: SETTINGS_DEFAULTS.bashOutputMaxBytes;
+	}
+
+	getBashInheritProviderKeys(): boolean {
+		return this.settings.bash?.inheritProviderKeys === true;
+	}
+
+	getBashSpillMaxBytes(): number {
+		const bytes = this.settings.bash?.spillMaxBytes;
+		return typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 0
+			? Math.floor(bytes)
+			: SETTINGS_DEFAULTS.bash.spillMaxBytes;
 	}
 
 	getNpmCommand(): string[] | undefined {

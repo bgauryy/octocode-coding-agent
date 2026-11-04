@@ -32,7 +32,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `instructionCacheRetention` | `"none" \| "short" \| "long"` | `"long"` | Instruction cache retention, limited by endpoint capabilities. Long writes can cost more. |
 | `retry` | object |  | Automatic retry of transient model failures. |
 | `retry.enabled` | boolean | `true` | `false` turns off all retries. |
-| `retry.maxRetries` | number | `3` | Retry attempts after a transient failure. Rate-limit errors have their own minimum. |
+| `retry.maxRetries` | number | `3` | Retry attempts after a transient failure. Rate limits and capacity or transport failures have their own minimum. |
 | `retry.baseDelayMs` | number | `2000` | Exponential backoff base delay in milliseconds: 2s, 4s, 8s. |
 | `retry.maxAgentDelayMs` | number | `60000` | Longest wait before one retry, in milliseconds. |
 | `retry.provider` | object |  | Retries inside the provider SDK, separate from the session retries above. |
@@ -56,7 +56,6 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `branchSummary.reserveTokens` | number | `16384` | Tokens reserved for the prompt and LLM response. |
 | `branchSummary.skipPrompt` | boolean | `false` | When true, skips the "Summarize branch?" prompt and defaults to no summary. |
 | `mcpPresentation` | `"compact" \| "json"` | `"compact"` | How the cached system prompt describes MCP tools: every enabled server's instructions and each enabled tool's description and schema, in one block per server. "compact" writes them as a generated TypeScript file (a tool it cannot express faithfully is described in plain form); "json" describes every tool in plain form, as the server sent it. Provider declarations are thin either way: a one-line trigger and the top-level field types, with calls validated against the server's own JSON Schema. |
-| `mcpContractTiers` | `"auto" \| "off"` | `"auto"` | Where a declared MCP tool's contract (description and schemas) lives. "auto" keeps the tools this workspace uses in the cached `mcps` block and names the rest on one line, read on demand with the `mcp` tool; the split comes from usage frozen per workspace, agent profile and day, so it does not change within a session or a day. "off" describes every tool in full. A server's `contract` and `toolContract` settings in mcp.json override it. |
 | `defaultTools` | `string[]` |  | Initial tool selection. Plain names replace the inherited selection; +name and -name entries add or remove tools. |
 | `doubleEscapeAction` | `"fork" \| "tree" \| "none"` | `"tree"` | Action for double-escape with an empty editor. |
 | `treeFilterMode` | `"default" \| "no-tools" \| "user-only" \| "labeled-only" \| "all"` | `"default"` | Default filter when opening /tree. |
@@ -64,6 +63,10 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `retention` | object |  | How long cleanup keeps data; one global policy for every project, so a project settings file cannot set it. |
 | `retention.days` | integer | `30` | Days Octocode keeps output, bash logs, subagent scratch, session data, `&lt;workspace>/.octocode/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it. |
 | `retention.sessionDays` | integer | `90` | Days a session transcript (JSONL, in a workspace or the legacy per-folder directories) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it. |
+| `subagents` | object |  | Limits on the subagents a session starts, and how they are checked on. |
+| `subagents.maxChildren` | integer |  | Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running. |
+| `subagents.maxCost` | number |  | US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running. |
+| `subagents.checkInSeconds` | number | `300` | Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off. |
 
 ## Shell and packages
 
@@ -73,6 +76,9 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `shellCommandPrefix` | string |  | Prefix prepended to every bash command, for example to enable shell aliases. |
 | `bashBackgroundAfterSeconds` | number | `90` | Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it. |
 | `bashOutputMaxBytes` | number | `20000` | Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens. Output of the user's own `!` commands follows the same limit. |
+| `bash` | object |  |  |
+| `bash.inheritProviderKeys` | boolean | `false` | Keep provider API keys (`OPENAI_API_KEY`, `HF_TOKEN`…) in the environment of bash commands. Off by default: a command's output reaches the model, and a build script or an injected command can read its environment. `GH_TOKEN` and other tool tokens are not provider keys and stay either way. A nested `octocode` still signs in through `auth.json`. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. |
+| `bash.spillMaxBytes` | integer | `1073741824` | Most bytes the saved full output of one foreground bash command holds (commands the agent runs and the user's own `!` commands). Past it the file keeps the first half and the end of the output around a marker, and the result's header says how much was dropped, so a command stuck in a loop cannot fill the disk. What reaches the model below the cap does not change. 0 lifts the cap. |
 | `npmCommand` | `string[]` |  | Command used for npm package lookup and installation, in argv form such as ["mise", "exec", "node@20", "--", "npm"]. |
 
 ## Telemetry and identity
@@ -159,6 +165,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `providerModels` | object |  | Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. |
 | `contextBudget` | `integer \| "full"` | `300000` | Working context per session in tokens, capped at 90% of the model's capacity; "full" uses the whole capacity. /context overrides it for one session. |
 | `externalAgents` | boolean | `false` | Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. |
+| `sessionApi` | boolean | `true` | Start the local session API on an owner-only Unix socket, so other processes of this user can find and message a running session. On by default; on Windows, which has no such socket here, it starts only with `/api on` or `OCTOCODE_API_HTTP`. Read from the global settings file; a project file cannot change it. `/api on` and `/api off` override it for the running process. Takes effect for new sessions. |
 | `research` | object |  | Research tool settings. |
 | `research.allowedPaths` | `string[]` |  | Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn. |
 | `toggles` | object |  | Plugin and hook switches by ID, as `/harness` writes them: `plugin:&lt;path>`, `hooks:&lt;host>`, `hooks:&lt;host>:&lt;source>` or `hook:&lt;id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository. |
@@ -168,6 +175,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `remote.autoStart` | `"off" \| "view" \| "control"` | `"off"` | Publish a link of that access ("view" or "control") when a session starts and print it. A project settings file can set "off" but never turn it on; the global value stands. |
 | `sessions` | object |  |  |
 | `sessions.autoTitle` | boolean | `true` | Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title. |
+| `optimizePrompts` | boolean | `false` | Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it. |
 | `queueMode` | `"all" \| "one-at-a-time"` |  | Legacy setting migrated to steeringMode. |
 | `websockets` | boolean |  | Legacy setting migrated to transport. |
 

@@ -157,6 +157,7 @@ export class PermissionTrail {
 			...(reasons.length > 0 ? { reasons } : {}),
 			what: auditLines(request.what),
 			...(request.purpose ? { purpose: auditLine(request.purpose) } : {}),
+			...(request.reasonDerived ? { reasonDerived: true } : {}),
 			allowed: verdict.allowed,
 			via: verdict.via,
 			// Gate-made parts (a replaced input, applied updates) or a hook's denial message: each part clipped, as `what` is.

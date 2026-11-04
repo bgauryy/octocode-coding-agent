@@ -339,7 +339,9 @@ it("declares the mcp tool to a real child, so it can restart its own servers", a
 		expect(declared).toContain("mcp");
 		// The child adopted the parent's skills, so it can load one by name.
 		expect(declared).toContain("skill");
-		expect(JSON.stringify(f.requests[0].messages)).toContain("Use the skill tool with a skill's name to load it");
+		expect(JSON.stringify(f.requests[0].messages)).toContain(
+			"Use the skill tool, one call per name, to load every skill",
+		);
 	} finally {
 		await f.close();
 	}
@@ -418,7 +420,7 @@ it.each([[["review-kit:review"]], [[]]])(
 			const child = JSON.stringify(f.requests[0]);
 			// Explicit skills ride in the task; with none, no catalog is listed anywhere (the declared skill tool's own
 			// description still names the <available_skills> block).
-			if (skills.length === 0) expect(child).not.toContain("to load it when the task matches its description");
+			if (skills.length === 0) expect(child).not.toContain("to load every skill whose description matches the task");
 			for (const name of ["model-only", "review-kit:review", "collision", "argument-kit:arguments", "aliased"])
 				if (skills.includes(name)) expect(child).toContain(`<name>${name}</name>`);
 				else expect(child).not.toContain(`<name>${name}</name>`);

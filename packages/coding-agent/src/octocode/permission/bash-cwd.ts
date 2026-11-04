@@ -32,12 +32,34 @@ const COMMAND_RUNNERS = new Set(["builtin", "command"]);
 
 /**
  * Whether `operand` of `cd` / `pushd` names the same directory for the shell and for a path check: `.` or a path that
- * starts with `/` or `./`, with no `..` component. A bare name is looked up in `CDPATH` first, so it can lead anywhere;
+ * starts with `/`, `./` or `~` (the home folder, as `~/x`), with no `..` component. A bare name is looked up in `CDPATH` first, so it can lead anywhere;
  * `..` is resolved by the shell on the spelling (`cd link/..` is the link's parent) but by a path check on the real
  * directories (the link target's parent), so a `..` can lead out of what the check sees. Both are left unfollowed.
  */
 export const followableCdTarget = (operand: string): boolean =>
-	(operand === "." || operand.startsWith("/") || operand.startsWith("./")) && !operand.split("/").includes("..");
+	(operand === "." ||
+		operand === "~" ||
+		operand.startsWith("/") ||
+		operand.startsWith("./") ||
+		operand.startsWith("~/")) &&
+	!operand.split("/").includes("..");
+
+/**
+ * The command with each plain `cd name` spelled `cd ./name`, for a write-target check alone. `followableCdTarget` leaves a
+ * bare name unfollowed because `CDPATH` may send it elsewhere; with none set, it names the same folder, and following it is
+ * what shows where the write after it (`cd packages/x && t > ../../log`) lands. A `..` target, a variable, `cd -`, a `||`
+ * and a loop stay unfollowed (the parse then calls the write uncertain).
+ */
+export function followingBareCd(command: string, env: NodeJS.ProcessEnv = process.env): string {
+	if (env.CDPATH || command.includes("CDPATH")) return command;
+	return command.replace(/(^|&&|;|\n|\()(\s*)cd\s+(?=[A-Za-z0-9_])/g, "$1$2cd ./");
+}
+
+/** A word spelled from the home directory by the variable (`$HOME/x`, `"${HOME}/x"`), as the `~` path a check expands; undefined for anything else. */
+const homeVariable = (text: string): string | undefined => {
+	const match = /^\$(?:HOME|\{HOME\})(\/[^$`*?[\\'{}]*)?$/.exec(text.replaceAll('"', ""));
+	return match ? `~${match[1] ?? ""}` : undefined;
+};
 
 const capped = (dirs: string[]): Dirs => {
 	const all = [...new Set(dirs)];
@@ -95,7 +117,8 @@ export function directoryStates(root: Node, word: (node: Node) => string | undef
 		if (call === undefined || !["cd", "pushd"].includes(call.name)) return undefined;
 		if (node.namedChildren.some((child) => child?.type === "variable_assignment")) return undefined;
 		const { operands } = call;
-		const value = operands.length === 1 && operands[0] ? word(operands[0]) : undefined;
+		const value =
+			operands.length === 1 && operands[0] ? (word(operands[0]) ?? homeVariable(operands[0].text)) : undefined;
 		return value !== undefined && followableCdTarget(value) ? value : undefined;
 	};
 

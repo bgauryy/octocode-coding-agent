@@ -253,6 +253,23 @@ export class AnsiCodeTracker {
 		return this.bgColor ? `\x1b[${this.bgColor}m` : "";
 	}
 
+	/** Sequences that turn off exactly the attributes still active, leaving every other style untouched. */
+	getCloseCodes(): string {
+		const codes: string[] = [];
+		if (this.bold || this.dim) codes.push("22");
+		if (this.italic) codes.push("23");
+		if (this.underline) codes.push("24");
+		if (this.blink) codes.push("25");
+		if (this.inverse) codes.push("27");
+		if (this.hidden) codes.push("28");
+		if (this.strikethrough) codes.push("29");
+		if (this.fgColor) codes.push("39");
+		if (this.bgColor) codes.push("49");
+		let result = codes.length > 0 ? `\x1b[${codes.join(";")}m` : "";
+		if (this.activeHyperlink) result += formatOsc8Close(this.activeHyperlink.terminator);
+		return result;
+	}
+
 	hasActiveCodes(): boolean {
 		return (
 			this.bold ||
@@ -299,6 +316,16 @@ export function updateTrackerFromText(text: string, tracker: AnsiCodeTracker): v
 		}
 		i = text.indexOf("\x1b", i);
 	}
+}
+
+/**
+ * The sequence that closes whatever styles `text` leaves open (a clipped slice, say), and nothing else. Unlike a full
+ * reset (`\x1b[0m`) it keeps the styles the text was never given, such as the background of a surrounding row.
+ */
+export function closeOpenStyles(text: string): string {
+	const tracker = new AnsiCodeTracker();
+	updateTrackerFromText(text, tracker);
+	return tracker.getCloseCodes();
 }
 
 /** Return only the background color active at the end of an ANSI-styled string. */

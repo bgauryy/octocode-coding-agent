@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 import { inlineSummaryTokens } from "../../src/core/compaction/checkpoint.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { splitSummary } from "../../src/core/compaction/summary-view.ts";
-import { summarizerView, userMessagesSection, writeSummary } from "../../src/octocode/compaction/summary.ts";
+import {
+	summarizerView,
+	USER_MESSAGE_CHARS,
+	userMessagesSection,
+	writeSummary,
+} from "../../src/octocode/compaction/summary.ts";
 
 describe("lossless compaction references", () => {
 	it("preserves a whole inherited message when a smaller budget requires a reference", () => {
@@ -47,6 +52,146 @@ describe("lossless compaction references", () => {
 		expect(back.messages[0]).toContain("/d/u.txt");
 		expect(back.messages.slice(1)).toEqual(["second ask", latest]);
 		expect(section).not.toContain(pasted);
+	});
+	it("gives only an oversized message its own pointer, in its own position, with budget free", () => {
+		const prohibition = "Never touch packages/db. Budget: 3 children.";
+		const paste = `LOG ${"x".repeat(6_358)}`;
+		const saved: string[] = [];
+		const save = (text: string) => {
+			saved.push(text);
+			return `/d/${saved.length}.txt`;
+		};
+		const section = userMessagesSection(
+			[],
+			0,
+			[prohibition, paste, "fix it"],
+			{ total: 60_000, perMessage: 6_000 },
+			undefined,
+			save,
+		);
+		const back = splitSummary(`## Goal\nx${section}`);
+		expect(back.messages).toHaveLength(3);
+		expect(back.messages[0]).toBe(prohibition);
+		expect(back.messages[1]).toContain("/d/1.txt");
+		expect(back.messages[2]).toBe("fix it");
+		expect(saved).toEqual([paste]);
+		// Carried on, the pointer stays one short message and nothing is saved again.
+		const next = userMessagesSection(
+			back.messages,
+			back.omitted,
+			["and this"],
+			{ total: 60_000, perMessage: 6_000 },
+			undefined,
+			save,
+		);
+		expect(splitSummary(`## Goal\nx${next}`).messages).toEqual([...back.messages, "and this"]);
+		expect(saved).toHaveLength(1);
+	});
+	it("evicts oldest first only when the total is over, keeping the pointers and the newest that fit", () => {
+		const paste = `LOG ${"x".repeat(5_000)}`;
+		const older = Array.from({ length: 4 }, (_, i) => `older ${i} ${"o".repeat(200)}`);
+		const saved: string[] = [];
+		const section = userMessagesSection(
+			[],
+			0,
+			[...older, "recent", paste, "latest"],
+			{ total: 700, perMessage: 250 },
+			undefined,
+			(text) => {
+				saved.push(text);
+				return `/d/${saved.length}.txt`;
+			},
+		);
+		const back = splitSummary(`## Goal\nx${section}`);
+		expect(section.length).toBeLessThanOrEqual(700);
+		// The complete collection is on file, behind one reference at the front.
+		expect(back.messages[0]).toContain("/d/2.txt");
+		for (const message of [...older, "recent", paste, "latest"]) expect(saved[1]).toContain(message);
+		expect(back.messages.slice(-3, -2)).toEqual(["recent"]);
+		expect(back.messages.at(-2)).toContain("/d/1.txt");
+		expect(back.messages.at(-1)).toBe("latest");
+		expect(section).not.toContain("older 0");
+	});
+	it("evicts a child's task last, and moves it to a pointer only when it cannot fit", () => {
+		const task = `Task ${"t".repeat(290)}`;
+		const mail = Array.from({ length: 6 }, (_, i) => `mail ${i} ${"m".repeat(190)}`);
+		const budget = { total: 1_000, perMessage: 300, keepOldest: true };
+		const save = () => "/d/u.txt";
+		const section = (messages: string[], omitted = 0) =>
+			splitSummary(`## Goal\nx${userMessagesSection([], omitted, messages, budget, undefined, save)}`).messages;
+		const back = section([task, ...mail]);
+		expect(back[0]).toBe(task);
+		expect(back[1]).toContain("/d/u.txt");
+		expect(back.at(-1)).toBe(mail.at(-1));
+		expect(back.join("\n")).not.toContain("mail 0");
+		expect(section([`Task ${"t".repeat(2_000)}`])).toEqual([expect.stringContaining("/d/u.txt")]);
+		// Without a task of its own to protect, the oldest goes first, as in a main session.
+		expect(
+			splitSummary(
+				`## Goal\nx${userMessagesSection([], 0, [task, ...mail], { total: 1_000, perMessage: 300 }, undefined, save)}`,
+			).messages[0],
+		).toContain("/d/u.txt");
+		// Older messages already dropped: what is first now is not known to be the task.
+		expect(section([task, ...mail], 2)[0]).toContain("/d/u.txt");
+	});
+	it("keeps a subagent's task inline past a user's per-message limit, with its parent's mail beside it", async () => {
+		const task = `Migrate the parser.\n${"Step: check the module and record what it does.\n".repeat(150)}`.trim();
+		expect(task.length).toBeGreaterThan(USER_MESSAGE_CHARS);
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compaction-child-"));
+		const summarize = async (parentId?: string) => {
+			const api = {
+				getThinkingLevel: () => "off",
+				getActiveTools: () => [],
+				getSettings: () => ({}),
+				appendEntry: () => {},
+				createUsageRecorder: () => () => {},
+			};
+			const event = {
+				signal: new AbortController().signal,
+				preparation: {
+					firstKeptEntryId: "kept",
+					tokensBefore: 10,
+					isSplitTurn: false,
+					messagesToSummarize: [
+						{ role: "user", content: [{ type: "text", text: task }] },
+						{ role: "user", content: [{ type: "text", text: "Go on." }] },
+					],
+					turnPrefixMessages: [],
+					fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+					settings: { reserveTokens: 20_000 },
+				},
+				branchEntries: [],
+			};
+			const ctx = {
+				model: { provider: "p", id: "m", api: "anthropic-messages", maxTokens: 30_000, contextWindow: 200_000 },
+				modelRegistry: {
+					getCachePolicy: () => ({ options: {} }),
+					streamSimple: () => ({
+						result: async () => ({
+							role: "assistant",
+							content: [{ type: "text", text: "## Goal\nwork" }],
+							stopReason: "stop",
+							usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+							timestamp: 1,
+						}),
+					}),
+				},
+				sessionManager: {
+					getSessionId: () => "s",
+					getSessionFile: () => path.join(dir, "session.jsonl"),
+					getBranch: () => [],
+					buildSessionProjection: () => ({ entries: [], messages: [] }),
+				},
+				hasUI: false,
+			};
+			const out = await writeSummary(api as never, event as never, ctx as never, undefined, undefined, parentId);
+			return splitSummary(out!.compaction!.summary).messages;
+		};
+		expect(await summarize("main-1")).toEqual([task, "Go on."]);
+		// The same text from a user is over the limit: its own pointer, and the next message stays.
+		const main = await summarize();
+		expect(main[0]).toContain("Complete text saved at");
+		expect(main[1]).toBe("Go on.");
 	});
 	it("saves the full tool result before using a pointer in the standalone summarizer", () => {
 		const original = "FULL START " + "x".repeat(10000) + " FULL END";

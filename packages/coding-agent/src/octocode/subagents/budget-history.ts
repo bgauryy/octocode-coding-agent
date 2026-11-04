@@ -3,11 +3,10 @@ import { createInterface } from "node:readline";
 import { parseSessionEntryLine } from "../../core/session-manager/entries.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyUsage } from "../shared/util.ts";
-import { budgetOutcome, hardLimit, maxRequests } from "./budget.ts";
+import { type BudgetChild, budgetOutcome, hardLimit, maxRequests } from "./budget.ts";
 import type { AgentProfile } from "./profiles.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import { childSessionFile } from "./process/session.ts";
-import type { ResultContract } from "./result-schema.ts";
 
 /** Read the actual session arguments: an inherited child's transcript can live outside this parent's scratch folder. */
 function option(args: string[], name: string): string | undefined {
@@ -40,21 +39,26 @@ async function savedRequests(args: string[], signal?: AbortSignal): Promise<numb
 	return requests;
 }
 
-/** Same child ID/transcript means the same budget across messages, explicit resume, parked reopen and parent forks. */
+/**
+ * Same child ID/transcript means the same count across messages, explicit resume, parked reopen and parent forks. A resume
+ * is its parent's grant (`RequestBudget`), so only one no parent decided (`peerResumed`, a relayed peer's message) can
+ * find the child with nothing left: that one runs nothing.
+ */
 export async function requestBudgetHistory(
 	args: string[],
 	profile: AgentProfile | undefined,
-	contract: ResultContract | undefined,
+	child: BudgetChild & { peerResumed?: boolean },
 	signal?: AbortSignal,
 ): Promise<{ requests: number; limit: number; exhausted?: SubagentOutcome }> {
 	const limit = maxRequests(profile);
 	const requests = limit > 0 ? await savedRequests(args, signal) : 0;
 	if (signal?.aborted) throw new Error("Subagent cancelled");
+	const hard = hardLimit(limit);
 	return {
 		requests,
 		limit,
-		...(limit > 0 && requests >= hardLimit(limit)
-			? { exhausted: budgetOutcome(requests, limit, "", emptyUsage(), contract) }
+		...(limit > 0 && child.peerResumed && requests >= hard
+			? { exhausted: budgetOutcome(requests, { soft: limit, hard, allowance: hard }, child, "", emptyUsage()) }
 			: {}),
 	};
 }

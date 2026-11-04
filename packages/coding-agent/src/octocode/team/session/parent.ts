@@ -1,6 +1,7 @@
 import { onSecond } from "../../shared/clock.ts";
-import { parentGone, sameProcess } from "../../shared/process.ts";
+import { parentGone, sameProcess, terminateSelf } from "../../shared/process.ts";
 import { PARENT_PID_ENV } from "../store/env.ts";
+import type { ProcessIdentity } from "../store/members.ts";
 
 /** Every this many parent checks (one a second, on the shared clock) the start time is compared too: a reused pid is noticed within that many seconds, and the event loop is not stalled by a `ps` every second. */
 const PARENT_START_EVERY = 15;
@@ -17,6 +18,24 @@ export function parentProcessGone(value: string, compareStart = true): boolean {
 	if (parentGone(parentPid)) return true;
 	// The start time costs a synchronous `ps`, so a caller that polls compares it only now and then (`compareStart`).
 	return compareStart && process.ppid !== parentPid && started.length > 0 && !sameProcess(parentPid, started.join(" "));
+}
+
+/** The process `OCTOCODE_PARENT_PID` names (`<pid> <start time>`), or undefined when `env` names none. */
+export function namedParent(env: NodeJS.ProcessEnv): ProcessIdentity | undefined {
+	const [pid = "", ...started] = (env[PARENT_PID_ENV] ?? "").trim().split(" ");
+	const parentPid = Number(pid);
+	if (!Number.isInteger(parentPid) || parentPid <= 0) return undefined;
+	return { pid: parentPid, ...(started.length > 0 ? { started: started.join(" ") } : {}) };
+}
+
+/** The parent is gone: where a signal ends the process outright (Windows) nothing runs after it, so the row and reservations go now, not when a peer's sweep finds the pid dead. */
+export function endWithParent(leave: () => void): void {
+	try {
+		leave();
+	} catch {
+		/* locked database: the sweep reaps the row */
+	}
+	terminateSelf();
 }
 
 /**

@@ -1,7 +1,7 @@
 /** Automatic retry of failed agent responses, and the retry callbacks summaries share. */
 
 import type { AgentEvent } from "@octocodeai/octocode-agent-core";
-import { retryDelayMs } from "@octocodeai/octocode-ai";
+import { mayRetry, retryBudget, retryDelayFor } from "@octocodeai/octocode-ai";
 import {
 	type AssistantMessage,
 	isContextOverflow,
@@ -13,50 +13,7 @@ import { createAbortError, sleepUnlessAborted } from "@octocodeai/octocode-ai/ut
 import type { SessionInternals } from "./host.ts";
 import type { AgentSessionEvent } from "./types.ts";
 
-/** A provider quota or rate limit: every session on the same key shares it, so identical backoffs collide again. */
-const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests/i;
-
-/** A rate-limited response gets at least this many retries, because a token bucket refills while the session waits. */
-export const RATE_LIMIT_MIN_RETRIES = 6;
-/** Total time one session spends waiting on rate-limit retries before it reports the failure. */
-export const RATE_LIMIT_WINDOW_MS = 180_000;
-/** Spread added on top of a provider-requested delay, so sessions given the same `retry-after` do not return together. */
-const RETRY_AFTER_SPREAD_MS = 1000;
-
-/** Whether provider error text reports a rate limit or quota throttle (not a billing or quota exhaustion). */
-export function isRateLimitedText(text: string): boolean {
-	return RATE_LIMITED.test(text);
-}
-
-function isRateLimitedError(message: AssistantMessage): boolean {
-	return isRateLimitedText(message.errorMessage ?? "");
-}
-
-/** Retries allowed for this failure: the configured budget, raised for rate limits unless retries are off. */
-function retryBudget(maxRetries: number, message: AssistantMessage): number {
-	if (maxRetries <= 0 || !isRateLimitedError(message)) return maxRetries;
-	return Math.max(maxRetries, RATE_LIMIT_MIN_RETRIES);
-}
-
-/**
- * Delay before the next attempt. A rate-limited attempt waits up to half again the backoff, so parallel subagents
- * that hit one quota together spread their retries, and never less than the provider's `retry-after`. The result is
- * capped by `maxAgentDelayMs`. Other errors keep the exact exponential backoff.
- */
-function retryDelayFor(
-	backoffMs: number,
-	message: AssistantMessage,
-	maxAgentDelayMs: number | undefined,
-	random: () => number = Math.random,
-): number {
-	if (!isRateLimitedError(message)) return backoffMs;
-	const cap = maxAgentDelayMs === undefined ? Number.POSITIVE_INFINITY : Math.max(backoffMs, maxAgentDelayMs);
-	const spread = Math.round(backoffMs + (backoffMs / 2) * random());
-	const requested = message.retryAfterMs;
-	const providerDelay =
-		requested !== undefined && requested > 0 ? requested + Math.round(RETRY_AFTER_SPREAD_MS * random()) : 0;
-	return Math.min(Math.max(spread, providerDelay), cap);
-}
+export { isRateLimitedText, RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS } from "@octocodeai/octocode-ai";
 
 export interface RetryHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	modelForMessage(message: AssistantMessage): Model<any> | undefined;
@@ -99,8 +56,8 @@ export class SessionRetry {
 	private _abortController: AbortController | undefined = undefined;
 	/** Current retry attempt (0 if not retrying) */
 	attempt = 0;
-	/** Milliseconds spent waiting on rate-limit retries since the last success, failure or cancellation. */
-	private _rateLimitWaitedMs = 0;
+	/** When the failure that started this run of retries happened; cleared by a success, a final failure or a cancellation. */
+	private _firstFailureAt: number | undefined = undefined;
 
 	private readonly host: RetryHost;
 
@@ -133,8 +90,7 @@ export class SessionRetry {
 			const message = event.messages[i];
 			if (message.role === "assistant") {
 				return (
-					this.attempt < retryBudget(settings.maxRetries, message) &&
-					!this.rateLimitWindowSpent(message) &&
+					mayRetry(this.attempt + 1, settings.maxRetries, message.errorMessage ?? "", this.sinceFirstFailureMs()) &&
 					this.isRetryableError(message)
 				);
 			}
@@ -142,14 +98,14 @@ export class SessionRetry {
 		return false;
 	}
 
-	/** Whether a rate-limited failure has already used up the time window for waiting. */
-	private rateLimitWindowSpent(message: AssistantMessage): boolean {
-		return isRateLimitedError(message) && this._rateLimitWaitedMs >= RATE_LIMIT_WINDOW_MS;
+	/** Wall-clock time since the first failure, so a request that stalls before failing spends the window as a sleep does. */
+	private sinceFirstFailureMs(): number {
+		return this._firstFailureAt === undefined ? 0 : Date.now() - this._firstFailureAt;
 	}
 
 	private resetAttempts(): void {
 		this.attempt = 0;
-		this._rateLimitWaitedMs = 0;
+		this._firstFailureAt = undefined;
 	}
 
 	/** Reset the retry counter on a response that did not fail. */
@@ -196,23 +152,22 @@ export class SessionRetry {
 		}
 
 		this.attempt++;
+		const errorText = message.errorMessage ?? "";
+		const elapsedMs = this.sinceFirstFailureMs();
 
-		if (this.attempt > retryBudget(settings.maxRetries, message) || this.rateLimitWindowSpent(message)) {
+		if (!mayRetry(this.attempt, settings.maxRetries, errorText, elapsedMs)) {
 			// Preserve the completed attempt count so post-run handling can emit the final failure.
 			this.attempt--;
 			return false;
 		}
 
-		let delayMs = retryDelayFor(retryDelayMs(settings, this.attempt), message, settings.maxAgentDelayMs);
-		if (isRateLimitedError(message)) {
-			delayMs = Math.min(delayMs, RATE_LIMIT_WINDOW_MS - this._rateLimitWaitedMs);
-			this._rateLimitWaitedMs += delayMs;
-		}
+		this._firstFailureAt ??= Date.now();
+		const delayMs = retryDelayFor(settings, this.attempt, message, elapsedMs);
 
 		this.host.emit({
 			type: "auto_retry_start",
 			attempt: this.attempt,
-			maxAttempts: retryBudget(settings.maxRetries, message),
+			maxAttempts: retryBudget(settings.maxRetries, errorText),
 			delayMs,
 			errorMessage: message.errorMessage || "Unknown error",
 		});

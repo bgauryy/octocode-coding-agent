@@ -10,6 +10,8 @@ import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-i
 import type { CustomMessage } from "../messages.ts";
 import type { SessionInternals } from "./host.ts";
 import type { PendingUserInput, QueuedInput, ReleasedQueuedInput } from "./types.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { recordRunWarning, type RunOutcome } from "./run-outcome.ts";
 
 interface QueuedEntry {
 	id: string;
@@ -303,6 +305,16 @@ export class SessionInputQueue {
 		return false;
 	}
 
+	/** Rewrites a custom message sent with this exact `details` object while it waits; false once it was read. */
+	replaceQueuedCustomMessage(details: object, content: string): boolean {
+		this._pruneQueuedCustomMessages();
+		const message = [...this._queuedCustomMessages, ...this._pendingCustomMessages].find(
+			(waiting) => waiting.details === details,
+		);
+		if (message) message.content = content;
+		return message !== undefined;
+	}
+
 	private _pruneQueuedCustomMessages(): void {
 		for (const message of this._queuedCustomMessages)
 			if (!this.host.session.agent.hasQueuedMessage(message)) this._queuedCustomMessages.delete(message);
@@ -331,13 +343,31 @@ export class SessionInputQueue {
 	 * Append custom messages queued while the agent was running.
 	 * Called once the current turn's tool results are in agent state and session history.
 	 */
+	/**
+	 * Flushes during a run: a message that cannot be written yet stays queued for the next write and is reported, because
+	 * the run itself is fine and a lock another process holds for a moment must not end it.
+	 */
+	flushDuringRun(outcome: RunOutcome): void {
+		try {
+			this.flushPendingCustomMessages();
+		} catch (error) {
+			recordRunWarning(outcome, errorMessage(error));
+		}
+	}
+
 	flushPendingCustomMessages(): void {
 		if (this._pendingCustomMessages.length === 0) return;
 
 		const pending = this._pendingCustomMessages;
 		this._pendingCustomMessages = [];
-		for (const appMessage of pending) {
-			this.appendCustomMessage(appMessage);
+		for (const [index, appMessage] of pending.entries()) {
+			try {
+				this.appendCustomMessage(appMessage);
+			} catch (error) {
+				// Keep what was not written (a failed append changes nothing), so the next flush can still deliver it.
+				this._pendingCustomMessages = [...pending.slice(index), ...this._pendingCustomMessages];
+				throw error;
+			}
 		}
 	}
 }

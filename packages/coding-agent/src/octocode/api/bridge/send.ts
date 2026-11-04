@@ -1,17 +1,18 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../../shared/fence.ts";
+import { fenceUntrusted, headerText } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
 import { capChars } from "../../shared/util.ts";
 import type { EventLog } from "../events.ts";
-import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS } from "../protocol.ts";
-import type { SendReceipt, SendReceipts } from "../receipts.ts";
+import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS, WAITING_FOR_USER } from "../protocol.ts";
+import { preparationExpired, type SendReceipt, type SendReceipts } from "../receipts.ts";
+import { admission, callerFrom, externalFacts, externalFooter, externalHeader } from "./caller.ts";
 import type { AgentDirectory, ApiOperations } from "./contracts.ts";
 
 /** Senders a client may not claim: the user, the team's own API sender, and (checked per call) any live agent. */
-const RESERVED_SENDERS = new Set([USER_SENDER, EXTERNAL_SENDER]);
+const RESERVED_SENDERS = new Set([USER_SENDER, `the ${USER_SENDER}`, EXTERNAL_SENDER]);
 
 /** What `message.send` needs of the API it runs in; `OctocodeApi` passes its own state and checks. */
 interface SendHost {
@@ -28,6 +29,8 @@ interface SendHost {
 	nextId(): string;
 	/** Records an API-started turn in the session. */
 	audit(data: Record<string, unknown>): void;
+	/** Which listener took this call. */
+	transport?: "socket" | "http";
 }
 
 /** The sender name a client gave, on one line; a name that would pass for the user, the team or a live agent is refused. */
@@ -50,6 +53,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	const originalSessionId = ctx.sessionManager.getSessionId();
 	host.guardSession(params, ctx);
 	const from = sender(host, params);
+	const caller = callerFrom(params);
 	const raw = stringParam(params, "text")!;
 	const whole = visibleControls(raw);
 	const mode = params.mode ?? "auto";
@@ -59,9 +63,14 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		throw new RpcError(ERR.invalidParams, "requireIdle must be a boolean");
 	const requireIdle = params.requireIdle === true;
 	const wait = params.wait === true;
+	if (params.replyRequired !== undefined && typeof params.replyRequired !== "boolean")
+		throw new RpcError(ERR.invalidParams, "replyRequired must be a boolean");
+	const replyRequired = params.replyRequired === true;
 	const timeout = numberParam(params, "timeoutMs", WAIT_MS) ?? WAIT_MS.default;
 	const key = stringParam(params, "key", { optional: true, max: MESSAGE_KEY_MAX });
-	const fingerprint = sha256(JSON.stringify({ raw, from, mode, requireIdle }));
+	const fingerprint = sha256(
+		JSON.stringify({ raw, from, mode, requireIdle, ...(replyRequired ? { replyRequired } : {}) }),
+	);
 	const prior = key ? host.receipts.get(key) : undefined;
 	if (prior) {
 		if (prior.fingerprint !== fingerprint)
@@ -78,7 +87,6 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	if (requireIdle && busy)
 		throw new RpcError(ERR.unavailable, "The session is busy; nothing was sent", { execution: "not-sent" });
 	host.receipts.assertRoom(key);
-	let text: string;
 	const id = host.nextId();
 	const deliverAs = mode === "followUp" ? "followUp" : "steer";
 	const at = Date.now();
@@ -94,79 +102,122 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	};
 	const deadline = Date.now() + timeout;
 	const preparingTimer = setTimeout(
-		() => host.receipts.cancelPreparation(receipt, "Message preparation timed out; nothing was sent"),
+		() => host.receipts.cancelPreparation(receipt, preparationExpired(receipt)),
 		timeout,
 	);
 	preparingTimer.unref();
-	let dispatched = false;
-	try {
-		if (host.operations.messageSend)
-			await Promise.race([host.operations.messageSend(message, ctx, receipt.controller.signal), receipt.settlement]);
-		guardPreparedSend(host, params, ctx, originalSessionId, key, receipt);
-		const given = host.agents.deliverable(whole, from);
-		if (typeof given !== "string") throw new RpcError(ERR.unavailable, given.error);
-		text = given;
-		clearTimeout(preparingTimer);
-		host.receipts.accept(receipt, waiter, key !== undefined || wait);
-		dispatched = true;
-		const settlementVersion = host.receipts.settlementVersion;
-		const sending = host.api.sendMessage(
-			{
-				customType: EXTERNAL_MESSAGE_TYPE,
-				content: fenceUntrusted(messageHeader(apiClientLabel(from), at), text),
-				display: true,
-				details: { id, from, at, message },
-			},
-			{ triggerTurn: true, deliverAs },
-		);
-		// sendMessage may encompass the whole turn, so non-waiting callers cannot await it. An asynchronous rejection
-		// still invalidates an unsettled handoff, and the keyed receipt must prevent an unsafe second dispatch.
-		void Promise.resolve(sending).catch((error: unknown) => {
-			if (receipt.phase !== "accepted" || host.receipts.settlementVersion !== settlementVersion) return;
-			// A replaced/stopped session has forgotten this receipt; never record its late failure in the new session.
-			let current: ExtensionContext;
-			try {
-				current = host.session();
-			} catch {
-				return;
-			}
-			if (
-				current !== ctx ||
-				current.sessionManager.getSessionId() !== originalSessionId ||
-				(key && host.receipts.get(key) !== receipt)
-			)
-				return;
-			const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
-				execution: "uncertain",
-				...accepted,
-			});
-			host.receipts.fail(receipt, waiter, key, failure, true);
-			try {
-				host.audit({ method: "message.send.failed", id, from, execution: "uncertain" });
-				host.log.publish("external.message", { id, from, execution: "uncertain", status: "failed" });
-			} catch {
-				// Audit/streaming is best effort after the receipt has been rejected.
-			}
-		});
-		receipt.resolveReady();
-	} catch (error) {
-		clearTimeout(preparingTimer);
-		const execution = dispatched ? "uncertain" : "not-sent";
-		const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
-			execution,
-			...(dispatched ? accepted : {}),
-		});
-		host.receipts.fail(receipt, waiter, key, failure, dispatched);
-		throw failure;
-	}
-	host.audit({ method: "message.send", id, from, mode: deliverAs, queued: accepted.queued, chars: whole.length });
-	host.log.publish("external.message", {
-		id,
-		from,
-		text: redactSecrets(capChars(text, 2_000)),
-		queued: accepted.queued,
+	const external = externalFacts(from, caller, host.transport, wait, replyRequired);
+	let announceAsking!: () => void;
+	const asking = new Promise<void>((resolve) => {
+		announceAsking = resolve;
 	});
-	if (!wait) return accepted;
+	const delivery = (async (): Promise<void> => {
+		let text = "";
+		let outcome: "not-sent" | "refused" | "dispatched" = "not-sent";
+		try {
+			if (host.operations.messageSend)
+				await Promise.race([host.operations.messageSend(message, ctx, receipt.controller.signal), receipt.settlement]);
+			if (host.operations.admit) {
+				outcome = "refused";
+				const onAsk = () => {
+					receipt.waitingForUser = true;
+					if (!key) host.receipts.adopt(receipt, id);
+					host.log.publish("external.message", { id, from, caller, status: "waiting-for-user" });
+					announceAsking();
+				};
+				await Promise.race([
+					host.operations.admit(admission(external, whole), ctx, receipt.controller.signal, onAsk),
+					receipt.settlement,
+				]);
+				outcome = "not-sent";
+			}
+			guardPreparedSend(host, params, ctx, originalSessionId, key, receipt);
+			const given = host.agents.deliverable(whole, from);
+			if (typeof given !== "string") throw new RpcError(ERR.unavailable, given.error);
+			text = given;
+			clearTimeout(preparingTimer);
+			if (receipt.waitingForUser) accepted.queued = !ctx.isIdle() || ctx.hasPendingMessages() ? deliverAs : "turn";
+			host.receipts.accept(receipt, waiter, key !== undefined || wait);
+			outcome = "dispatched";
+			const settlementVersion = host.receipts.settlementVersion;
+			const sending = host.api.sendMessage(
+				{
+					customType: EXTERNAL_MESSAGE_TYPE,
+					content: fenceUntrusted(externalHeader(external, at), text, { footer: externalFooter(external) }),
+					display: true,
+					details: { id, from, at, message, external },
+				},
+				{ triggerTurn: true, deliverAs },
+			);
+			// sendMessage may encompass the whole turn, so non-waiting callers cannot await it. An asynchronous rejection
+			// still invalidates an unsettled handoff, and the keyed receipt must prevent an unsafe second dispatch.
+			void Promise.resolve(sending).catch((error: unknown) => {
+				if (receipt.phase !== "accepted" || host.receipts.settlementVersion !== settlementVersion) return;
+				// A replaced/stopped session has forgotten this receipt; never record its late failure in the new session.
+				let current: ExtensionContext;
+				try {
+					current = host.session();
+				} catch {
+					return;
+				}
+				if (
+					current !== ctx ||
+					current.sessionManager.getSessionId() !== originalSessionId ||
+					(key && host.receipts.get(key) !== receipt)
+				)
+					return;
+				const failure = new RpcError(
+					ERR.unavailable,
+					`The session could not take the message: ${errorMessage(error)}`,
+					{ execution: "uncertain", ...accepted },
+				);
+				host.receipts.fail(receipt, waiter, key, failure, "dispatched");
+				try {
+					host.audit({ method: "message.send.failed", id, from, execution: "uncertain" });
+					host.log.publish("external.message", { id, from, execution: "uncertain", status: "failed" });
+				} catch {
+					// Audit/streaming is best effort after the receipt has been rejected.
+				}
+			});
+			receipt.resolveReady();
+		} catch (error) {
+			clearTimeout(preparingTimer);
+			const dispatched = outcome === "dispatched";
+			const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
+				execution: dispatched ? "uncertain" : "not-sent",
+				...(dispatched ? accepted : {}),
+			});
+			host.receipts.fail(receipt, waiter, key, failure, outcome);
+			if (outcome === "refused") host.log.publish("external.message", { id, from, caller, status: "refused" });
+			throw failure;
+		}
+		host.audit({
+			method: "message.send",
+			id,
+			from,
+			caller,
+			mode: deliverAs,
+			queued: accepted.queued,
+			chars: whole.length,
+		});
+		host.log.publish("external.message", {
+			id,
+			from,
+			caller,
+			transport: host.transport,
+			text: redactSecrets(capChars(text, 2_000)),
+			queued: accepted.queued,
+		});
+	})();
+	if (!wait) {
+		// A caller that does not wait hears at once that the user decides; a retry with its key gets the outcome.
+		if (await Promise.race([delivery.then(() => false), asking.then(() => true)])) {
+			delivery.catch(() => undefined);
+			return { ...accepted, queued: WAITING_FOR_USER, key: key ?? id };
+		}
+		return accepted;
+	}
+	await delivery;
 	try {
 		return { ...accepted, ...(await host.receipts.wait(receipt, Math.max(1, deadline - Date.now()))) };
 	} finally {

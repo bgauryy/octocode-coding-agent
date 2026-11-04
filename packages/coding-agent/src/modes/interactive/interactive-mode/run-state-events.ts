@@ -4,6 +4,7 @@
  */
 
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
+import { disposeComponent, disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage } from "../../../core/messages.ts";
 import {
@@ -45,11 +46,10 @@ export type RunStateEventsHost = Pick<
 export async function handleRunStateEvent(host: RunStateEventsHost, event: AgentSessionEvent): Promise<void> {
 	switch (event.type) {
 		case "agent_end":
-			if (host.settingsManager.getShowTerminalProgress()) {
-				host.ui.terminal.setProgress(false);
-			}
-			host.clearStatusIndicator("working");
+			// The run may go on (retry, continue, compaction resume): the working indicator and terminal progress follow
+			// the run, like the footer and the queue, and clear at `agent_settled`.
 			if (host.streamingComponent) {
+				disposeComponent(host.streamingComponent);
 				host.chatContainer.removeChild(host.streamingComponent);
 				host.streamingComponent = undefined;
 				host.streamingMessage = undefined;
@@ -60,6 +60,14 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			break;
 
 		case "agent_settled":
+			// A new run that already started keeps the indicator its own `turn_start` shows.
+			if (!host.session.isStreaming) {
+				if (host.settingsManager.getShowTerminalProgress()) {
+					host.ui.terminal.setProgress(false);
+				}
+				host.clearStatusIndicator("working");
+				host.ui.requestRender();
+			}
 			await host.checkShutdownRequested();
 			break;
 
@@ -92,16 +100,14 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			host.clearStatusIndicator("compaction");
 			try {
 				if (event.aborted) {
-					if (event.reason === "manual") {
-						host.showError("Compaction cancelled");
-					} else {
-						host.showStatus("Auto-compaction cancelled");
-					}
+					// Cancelling is the user's own action, a status like every other cancel, never an error.
+					host.showStatus(event.reason === "manual" ? "Compaction cancelled" : "Auto-compaction cancelled");
 				} else if (event.result) {
 					const entries = host.sessionManager.buildContextEntries();
 					if (entries[0]?.type !== "compaction") {
 						throw new Error("Completed compaction is missing from the session context");
 					}
+					disposeTranscript(host.chatContainer);
 					host.chatContainer.clear();
 					// The latest compaction is prepended for model context; append it below at its chronological position.
 					host.renderSessionEntries(entries.slice(1));

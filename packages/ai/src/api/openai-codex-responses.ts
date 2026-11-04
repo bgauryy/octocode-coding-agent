@@ -253,7 +253,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						const delayMs =
 							retryAfterDelayMs === undefined
 								? BASE_DELAY_MS * 2 ** attempt
-								: validateRetryDelayMs(retryAfterDelayMs, options?.maxRetryDelayMs);
+								: validateRetryDelayMs(retryAfterDelayMs, options?.maxRetryDelayMs, undefined, response);
 
 						await sleepUnlessAborted(delayMs, options?.signal, createAbortError);
 						continue;

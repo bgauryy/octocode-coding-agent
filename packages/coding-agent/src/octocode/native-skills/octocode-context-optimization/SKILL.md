@@ -57,12 +57,12 @@ When a tool cannot be described without guessing, keep its source description: a
 
 ### When a server changes
 
-| Change                         | What the product does                                                        | What to do                                                             |
-| ------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Some tools changed             | Keeps the overrides of unchanged tools; changed tools use the source wording | Rewrite the tools `list` reports as stale, check, apply                |
-| Instructions changed           | Drops the server override, keeps tool overrides                              | Rewrite the server instructions, check, apply                          |
-| Octocode updated its generator | Re-renders with the stored overrides and checks them again                   | Nothing, unless a session falls back to the plain file; then run check |
-| New server                     | Renders the plain file and tells the user once                               | Run the steps above                                                    |
+| Change                         | What the product does                                                     | What to do                                                             |
+| ------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Some tools changed             | Keeps overrides whose source text is unchanged; others use source wording | Rewrite the tools `list` reports as stale, check, apply                |
+| Instructions changed           | Drops the server override, keeps tool overrides                           | Rewrite the server instructions, check, apply                          |
+| Octocode updated its generator | Re-renders with the stored overrides and checks them again                | Nothing, unless a session falls back to the plain file; then run check |
+| New server                     | Renders the plain file and tells the user once                            | Run the steps above                                                    |
 
 ## Resources
 

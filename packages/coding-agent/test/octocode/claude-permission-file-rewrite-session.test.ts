@@ -119,7 +119,7 @@ for (const kind of ["write", "edit"] as const) {
 						: {
 								type: "edit",
 								path: target,
-								edits: [{ oldText: "BEFORE", newText: "ORIGINAL" }],
+								edits: [{ oldText: "ABSENT", newText: "ORIGINAL" }],
 								reason: "Edit acceptance",
 							},
 				],
@@ -288,7 +288,12 @@ it("empty Write replacement without a source ask retains original path and conte
 		await f.close();
 	}
 });
-it("Edit replacement to an unread target preserves both existing files", async () => {
+// The rewritten target was never read: an edit whose old_string matches it exactly is allowed (the match shows the content
+// is known) and only the target changes; one that does not match is refused as unread and nothing changes.
+it.each([
+	["matches", "BEFORE"],
+	["does not match", "ABSENT"],
+])("Edit replacement to an unread target whose old_string %s", async (kind, oldString) => {
 	const f = await fixture("claude", { fileReadTool: true });
 	try {
 		const original = path.join(f.cwd, "original.txt"),
@@ -300,7 +305,7 @@ it("Edit replacement to an unread target preserves both existing files", async (
 			f,
 			decision({
 				file_path: target,
-				old_string: "BEFORE",
+				old_string: oldString,
 				new_string: "REWRITTEN",
 			}),
 		);
@@ -315,9 +320,11 @@ it("Edit replacement to an unread target preserves both existing files", async (
 			],
 		});
 		expect(fs.readFileSync(original, "utf8")).toBe("BEFORE");
-		expect(fs.readFileSync(target, "utf8")).toBe("BEFORE");
+		expect(fs.readFileSync(target, "utf8")).toBe(kind === "matches" ? "REWRITTEN" : "BEFORE");
 		expect(f.inputs()).toHaveLength(1);
-		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
+		const result = f.session.messages.findLast((m) => m.role === "toolResult");
+		expect(result).toMatchObject({ isError: kind !== "matches" });
+		if (kind !== "matches") expect(JSON.stringify(result)).toMatch(/was not read in this session/);
 	} finally {
 		await f.close();
 	}

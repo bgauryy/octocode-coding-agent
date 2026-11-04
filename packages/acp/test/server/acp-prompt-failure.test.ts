@@ -7,6 +7,33 @@ function commandError(message: string): Error {
 }
 
 describe("ACP prompt failures", () => {
+	it("reports missing credentials as ACP's typed auth-required error and keeps the session usable", async () => {
+		const h = harness();
+		await h.initialize();
+		const { sessionId } = await h.newSession();
+		const worker = h.workers[0];
+		worker.prompt.mockRejectedValueOnce(
+			Object.assign(commandError("No API key found for the selected model."), { authRequired: true }),
+		);
+		await expect(h.prompt(sessionId, "hello")).rejects.toMatchObject({
+			code: -32000,
+			message: expect.stringContaining("No API key found"),
+		});
+		expect(worker.stop).not.toHaveBeenCalled();
+		const next = h.prompt(sessionId, "hello");
+		await expect.poll(() => worker.prompt.mock.calls.length).toBe(2);
+		worker.finish("signed in");
+		await expect(next).resolves.toMatchObject({ stopReason: "end_turn" });
+	});
+
+	it("keeps any other refusal generic", async () => {
+		const h = harness();
+		await h.initialize();
+		const { sessionId } = await h.newSession();
+		h.workers[0].prompt.mockRejectedValueOnce(commandError("refused"));
+		await expect(h.prompt(sessionId, "hello")).rejects.toMatchObject({ code: -32603 });
+	});
+
 	it("fails only a prompt the live worker rejects and keeps the session usable", async () => {
 		const h = harness();
 		await h.initialize();

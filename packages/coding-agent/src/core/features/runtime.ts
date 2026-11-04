@@ -26,6 +26,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		getSessionName: notInitialized,
 		setLabel: notInitialized,
 		getActiveTools: notInitialized,
+		getHiddenDeclarations: notInitialized,
 		getAllTools: notInitialized,
 		getSettings: notInitialized,
 		setActiveTools: notInitialized,

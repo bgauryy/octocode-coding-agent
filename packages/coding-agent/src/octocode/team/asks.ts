@@ -1,3 +1,4 @@
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { formatDuration } from "../shared/format.ts";
 
 /**
@@ -15,7 +16,7 @@ export interface Ask {
 		/** The reply's message number. */
 		id: number;
 		at: number;
-		/** The agent that answered (the parent). */
+		/** Who answered: the parent, or the user with `/agents tell`. */
 		by: string;
 		/** The parent ran `askUser` after the question arrived and finished before it answered: the answer may be the user's. */
 		afterAskUser?: true;
@@ -48,6 +49,20 @@ export function asksLabel(asks: readonly Ask[] | undefined): string {
 export function asksNote(asks: readonly Ask[] | undefined): string {
 	const label = asksLabel(asks);
 	return label ? `Asks to its parent: ${label}.` : "";
+}
+
+/** Each child of `parent` among `members` with its questions to `parent` since it joined: what `coordinate list` shows a parent. */
+export function childAsks(
+	members: readonly Pick<Member, "id" | "parentId" | "joinedAt">[],
+	parent: string | undefined,
+	read: (child: string, parent: string, since: number) => Ask[],
+): Map<string, Ask[]> {
+	if (!parent) return new Map();
+	return new Map(
+		members.flatMap((member) =>
+			member.parentId === parent ? [[member.id, read(member.id, parent, member.joinedAt)] as const] : [],
+		),
+	);
 }
 
 /** How long a finished `askUser` window is kept: the message history it is read against is kept a day. */

@@ -115,7 +115,7 @@ describe("TuiAltScreen", () => {
 		terminal.sendInput("\x1b[<64;1;1M");
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.isFollowingEnd, false);
-		assert.strictEqual(terminal.getViewport()[3], "line 7  ↓ Jump to end         ");
+		assert.strictEqual(terminal.getViewport()[3]?.trimEnd(), "line 7  ↓ Jump to end");
 		assert.strictEqual(terminal.getViewport()[4]?.trimEnd(), "editor");
 
 		// Pressing next to the label starts a selection instead of jumping.
@@ -157,20 +157,20 @@ describe("TuiAltScreen", () => {
 			assert.strictEqual(transcript.isScrollbarVisible, true);
 			assert.strictEqual(transcript.isFollowingEnd, false);
 			const scrollTop = transcript.scrollTop;
-			const visibleColumn = terminal.getViewport()[5].indexOf(label);
+			const visibleColumn = terminal.getViewport()[5].indexOf(label.trimEnd());
 
 			// Leaving the track lets the auto-hide timer expire without changing the content.
 			terminal.sendInput("\x1b[<35;79;1M");
 			await terminal.waitForRender();
 			assert.strictEqual(transcript.isScrollbarVisible, false);
 			assert.strictEqual(transcript.scrollTop, scrollTop);
-			const hiddenColumn = terminal.getViewport()[5].indexOf(label);
+			const hiddenColumn = terminal.getViewport()[5].indexOf(label.trimEnd());
 
 			terminal.sendInput("\x1b[<35;80;1M");
 			await terminal.waitForRender();
 			assert.strictEqual(transcript.isScrollbarVisible, true);
 			assert.strictEqual(transcript.scrollTop, scrollTop);
-			const revealedColumn = terminal.getViewport()[5].indexOf(label);
+			const revealedColumn = terminal.getViewport()[5].indexOf(label.trimEnd());
 
 			assert.deepStrictEqual([visibleColumn, hiddenColumn, revealedColumn], [24, 24, 24]);
 		} finally {

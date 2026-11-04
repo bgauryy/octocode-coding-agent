@@ -116,6 +116,19 @@ describe("AgentSession.getSessionStats", () => {
 		}
 	});
 
+	it("counts entries whose stream ended before the provider's final count", async () => {
+		const { session, sessionManager } = await createSession();
+		try {
+			sessionManager.appendMessage(createAssistantMessage("whole", 100, 1));
+			expect(session.getSessionStats().lowerBoundEntries).toBe(0);
+			const dropped = createAssistantMessage("dropped", 100, 2);
+			sessionManager.appendMessage({ ...dropped, usage: { ...dropped.usage, lowerBound: true }, stopReason: "error" });
+			expect(session.getSessionStats().lowerBoundEntries).toBe(1);
+		} finally {
+			session.dispose();
+		}
+	});
+
 	it("counts responses whose thinking budget was reduced, ignoring legacy and uncut ones", async () => {
 		const { session, sessionManager } = await createSession();
 		try {

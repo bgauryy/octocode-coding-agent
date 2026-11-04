@@ -148,6 +148,7 @@ describe("context optimization", () => {
 			expect(await main.prompt(skills)).toEqual(["Global source", "Local source", "H"]);
 			expect(main.notices).toHaveLength(1);
 			expect(main.notices[0]).toContain("2 new or changed skill descriptions are not optimized");
+			expect(main.notices[0]).toContain("The octocode-context-optimization skill rewrites them");
 			expect(Object.keys(readSkillsStore(userDir).skills)).toEqual(["global"]);
 			expect(Object.keys(readSkillsStore(projectDir).skills)).toEqual(["local"]);
 

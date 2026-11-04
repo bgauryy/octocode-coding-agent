@@ -43,10 +43,15 @@ export function spawnProcessSync(
  * the grace timer is re-armed on every chunk, so an actively writing descendant keeps
  * us reading, while a quiet inherited handle (e.g. a Windows daemonized descendant
  * that never lets `close` fire) still releases us after the grace elapses.
+ *
+ * `giveUp` is for a caller whose deadline or abort has passed. A writer that left the process
+ * group survives the caller's kill and could re-arm that timer forever, so once `giveUp` fires
+ * and the child has exited, the wait ends at most one grace later, whatever still arrives.
  */
-export function waitForChildProcess(child: ChildProcess): Promise<number | null> {
+export function waitForChildProcess(child: ChildProcess, giveUp?: AbortSignal): Promise<number | null> {
 	return new Promise((resolve, reject) => {
 		let settled = false;
+		let lastGrace: NodeJS.Timeout | undefined;
 		let exited = false;
 		let exitCode: number | null = null;
 		let postExitTimer: NodeJS.Timeout | undefined;
@@ -58,6 +63,8 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
 				clearTimeout(postExitTimer);
 				postExitTimer = undefined;
 			}
+			if (lastGrace) clearTimeout(lastGrace);
+			giveUp?.removeEventListener("abort", onGiveUp);
 			child.removeListener("error", onError);
 			child.removeListener("exit", onExit);
 			child.removeListener("close", onClose);
@@ -86,6 +93,14 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
 		const armIdleTimer = () => {
 			if (postExitTimer) clearTimeout(postExitTimer);
 			postExitTimer = setTimeout(() => finalize(exitCode), EXIT_STDIO_GRACE_MS);
+		};
+
+		const armLastGrace = () => {
+			lastGrace ??= setTimeout(() => finalize(exitCode), EXIT_STDIO_GRACE_MS);
+		};
+
+		const onGiveUp = () => {
+			if (exited && !settled) armLastGrace();
 		};
 
 		const onData = () => {
@@ -117,6 +132,7 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
 			maybeFinalizeAfterExit();
 			if (!settled) {
 				armIdleTimer();
+				if (giveUp?.aborted) armLastGrace();
 			}
 		};
 
@@ -131,5 +147,7 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
 		child.once("error", onError);
 		child.once("exit", onExit);
 		child.once("close", onClose);
+		giveUp?.addEventListener("abort", onGiveUp, { once: true });
+		if (giveUp?.aborted) onGiveUp();
 	});
 }

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EventLog } from "../../src/octocode/api/events.ts";
-import { removeSocket, socketPath } from "../../src/octocode/api/registry.ts";
+import { newInstanceId, removeSocket, socketPath } from "../../src/octocode/api/registry.ts";
 import { ApiServer } from "../../src/octocode/api/server.ts";
 import { tmp } from "./helpers.ts";
 
@@ -16,6 +16,13 @@ const serve = () => {
 	servers.push(server);
 	return server;
 };
+
+describe("api instance ids", () => {
+	it("are Octocode's own and unique", () => {
+		expect(newInstanceId()).toMatch(/^oc-[0-9a-f]{6}$/);
+		expect(newInstanceId()).not.toBe(newInstanceId());
+	});
+});
 
 describe.runIf(posix)("api socket permissions", () => {
 	it("makes the socket owner-only from the bind, whatever the umask, and restores the umask", async () => {

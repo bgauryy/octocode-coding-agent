@@ -63,40 +63,40 @@ describe("policy flags each agent derives from its profile and servers", () => {
 		const browser = await sections({ isSubagent: true, role: "browser", readOnly: true }, browserTools, [
 			server("browser", "connecting"),
 		]);
-		expect(browser.octocode_work).toContain(BROWSER_RULE);
-		expect(browser.octocode_work).not.toContain(MCP_RULE);
-		expect(browser.octocode_work).not.toContain("Call only read-only MCP tools");
+		expect(browser.work).toContain(BROWSER_RULE);
+		expect(browser.work).not.toContain(MCP_RULE);
+		expect(browser.work).not.toContain("Call only read-only MCP tools");
 		// Fixed by the profile: the same text once the server has connected.
 		const connected = await sections({ isSubagent: true, role: "browser", readOnly: true }, browserTools, [
 			server("browser", "connected"),
 		]);
-		expect(connected.octocode_work).toBe(browser.octocode_work);
+		expect(connected.work).toBe(browser.work);
 
 		const researcher = await sections(
 			{ isSubagent: true, role: "researcher", readOnly: true },
 			["bash", "file", "mcp", "mcp__octocode__localSearch"],
 			[server("octocode", "connected"), server("browser", "unselected")],
 		);
-		expect(researcher.octocode_work).toContain(MCP_RULE);
-		expect(researcher.octocode_work).not.toContain(BROWSER_RULE);
+		expect(researcher.work).toContain(MCP_RULE);
+		expect(researcher.work).not.toContain(BROWSER_RULE);
 
 		// Browser tools without a declared `browser.control` keep the generic rule: the runtime would ask for control.
 		const inspector = await sections({ isSubagent: true, role: "inspector", readOnly: true }, browserTools, [
 			server("browser", "connected"),
 		]);
-		expect(inspector.octocode_work).toContain(MCP_RULE);
-		expect(inspector.octocode_work).not.toContain(BROWSER_RULE);
+		expect(inspector.work).toContain(MCP_RULE);
+		expect(inspector.work).not.toContain(BROWSER_RULE);
 	});
 
 	it("gives the native research fallback while the research server is unselected, not while it connects (T16)", async () => {
 		const natives = ["bash", "file", "mcp"];
 		const unselected = await sections({ isSubagent: true }, natives, [server("octocode", "unselected")]);
-		expect(unselected.octocode_research).toContain("Search with bash (`rg`, `fd`)");
+		expect(unselected.research).toContain("Search with bash (`rg`, `fd`)");
 		const connecting = await sections({ isSubagent: true }, natives, [server("octocode", "connecting")]);
-		expect(connecting.octocode_research).not.toContain("Search with bash");
+		expect(connecting.research).not.toContain("Search with bash");
 		// Same as a disabled server: an agent that cannot reach the server is told how to research without it.
 		const disabled = await sections({ isSubagent: true }, natives, [server("octocode", "disabled", false)]);
-		expect(unselected.octocode_research).toBe(disabled.octocode_research);
+		expect(unselected.research).toBe(disabled.research);
 	});
 });
 

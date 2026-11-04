@@ -49,8 +49,11 @@ describe("linger front matter", () => {
 		const { prompt } = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		for (const part of ["DOM rules first", "CAPTCHA, MFA or a paywall", "page map", "Follow-ups"])
 			expect(prompt).toContain(part);
-		// The browser and research servers explain their own tools: the role names none of them.
-		expect(prompt).not.toMatch(/mcp__|clasify|localSearch|`open`|`cleanup`/);
+		// The servers explain their own tools; the role says only how to search and judge saved captures.
+		expect(prompt).not.toMatch(/mcp__|clasify|`open`|`cleanup`/);
+		expect(prompt).toContain("with your local search and read tools, including hidden and ignored files");
+		expect(prompt).toContain("use the research server's classifying tool when it is listed, not paging");
+		expect(prompt).not.toContain("9300");
 	});
 });
 

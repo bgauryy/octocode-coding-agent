@@ -1,39 +1,22 @@
 /**
- * Description overrides a preset ships for its server. Each override is keyed on the upstream text it replaces: the
- * server instructions by their hash, a tool's description and trigger by the hash of its description, and each field
- * by the hash of its description at a stable dotted path. A server release that rewrites some texts therefore
- * drops only the overrides of those texts; every other override still applies, and a stale one fails open to the
- * server's own text (`presetStatus` names it).
+ * The one form overrides are kept in, shipped with a preset or stored for a server (`GeneratedMeta.authored`), and the
+ * one rule for when they apply. Each override is keyed on the upstream text it replaces: the server instructions by
+ * their hash, a tool's description and trigger by the hash of its description, and each field by the hash of its
+ * description at a stable dotted path. A server release that rewrites some texts therefore drops only the overrides of
+ * those texts; every other override still applies, and a stale one fails open to the server's own text (`presetStatus`
+ * names it).
  */
 
 import { instructionsHash } from "./render.ts";
 import { fieldUpstreamTexts, toolDescriptionTexts, upstreamHash } from "./upstream.ts";
-import type { CompactServerInput, DescriptionOverrides } from "./types.ts";
+import type {
+	CompactServerInput,
+	DescriptionOverrides,
+	PresetOverrides,
+	PresetToolOverrides,
+	UpstreamHashes,
+} from "./types.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-
-/** One hash, or the hashes a text had in the catalogs the override was written for (a server varies a field by configuration). */
-export type UpstreamHashes = string | string[];
-
-interface PresetFieldOverride {
-	/** {@link upstreamHash} of the description(s) the field has upstream at its path. */
-	upstream: UpstreamHashes;
-	text: string;
-}
-
-export interface PresetToolOverrides {
-	/** {@link upstreamHash} of the tool's description, which `description` and `trigger` were written for. */
-	descriptionHash?: UpstreamHashes;
-	description?: string;
-	trigger?: string;
-	/** By dotted field path (`queries.path`, `output.results.path`). */
-	fields?: Record<string, PresetFieldOverride>;
-}
-
-export interface PresetOverrides {
-	/** The server text, for the instructions with this {@link instructionsHash}. */
-	server?: { instructionsHash: string; text: string };
-	tools?: Record<string, PresetToolOverrides>;
-}
 
 export const hashList = (hashes: UpstreamHashes): string[] => (Array.isArray(hashes) ? hashes : [hashes]);
 
@@ -125,7 +108,7 @@ export function presetOverridesFor(
 	return Object.keys(overrides).length ? overrides : undefined;
 }
 
-/** Overrides written for `input`, in the form a preset ships them (`octocode mcp compact preset`). */
+/** Overrides written for `input`, in the form they are kept (`octocode mcp compact preset`, `apply`). */
 export function toPresetOverrides(overrides: DescriptionOverrides, input: CompactServerInput): PresetOverrides {
 	const tools: Record<string, PresetToolOverrides> = {};
 	for (const tool of [...input.tools].sort((a, b) => a.name.localeCompare(b.name))) {

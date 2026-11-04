@@ -12,7 +12,8 @@ import { handleFollowUp } from "../src/modes/interactive/interactive-mode/messag
 import { handleResumeSession } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
 import { getMarkdownTheme, initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { createFakeHost, heldStore } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const sessions: AgentSession[] = [];
 
@@ -106,12 +107,13 @@ describe("interactive streaming and input races", () => {
 			getMarkdownTransformers: () => [],
 			getMarkdownThemeWithSettings: getMarkdownTheme,
 			hiddenThinkingLabel: "Thinking…",
-			hideThinkingBlock: false,
 			outputPad: 1,
 			pendingTools: new Map(),
 			entriesRenderedByRebuild: new Set<string>(),
 			streamingComponent: undefined,
-			toolOutputExpanded: false,
+			uiStore: createUiStore(),
+			pendingMessagesContainer: new Container(),
+			getAppKeyDisplay: () => "alt+up",
 			ui: { requestRender() {} },
 			settingsManager: {
 				getShowImages: () => true,
@@ -121,7 +123,6 @@ describe("interactive streaming and input races", () => {
 			sessionManager: { getCwd: () => "/tmp", buildContextEntries: () => [] },
 			getRegisteredToolDefinition: (): ReturnType<InteractiveModeHost["getRegisteredToolDefinition"]> => undefined,
 			programStatus: { handleEvent() {} },
-			updatePendingMessagesDisplay() {},
 			maybeShowThinkingDropNotice() {},
 			maybeShowCacheMissNotice() {},
 			maybeShowInstallChangeWarning() {},
@@ -183,7 +184,7 @@ describe("interactive streaming and input races", () => {
 				throw new Error("The session was replaced");
 			}),
 		});
-		const host = createFakeHost({ session, editor, showError, compactionQueuedMessages: [] });
+		const host = createFakeHost({ session, editor, showError, uiStore: heldStore() });
 
 		await expect(handleFollowUp(host)).resolves.toBeUndefined();
 

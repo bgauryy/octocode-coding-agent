@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildSystemPromptSections } from "../../src/core/system-prompt.ts";
 import { defaultToolNames } from "../../src/core/native-tools.ts";
@@ -46,6 +47,19 @@ describe("native tools and the system prompt", () => {
 		for (const tool of tools) expect(section, `<tools> lists ${tool.name}`).toContain(`\n- ${tool.name}: `);
 	});
 
+	it("names the tool in rules that would otherwise lose it, so saving a memory is findable from the rules", async () => {
+		const tools = (await nativeTools()) as Array<Registered & { promptGuidelines?: string[] }>;
+		const of = (name: string) => tools.find((tool) => tool.name === name);
+		expect(of("archive")?.promptGuidelines?.[0]).toMatch(/^Save a memory \(`archive`\) when/);
+		expect(of("backlog")?.promptGuidelines?.[0]).toMatch(/^Claim the `backlog` item/);
+	});
+
+	it("asks for handoff notes before a handoff, not before a compaction the agent cannot time", () => {
+		const policy = readFileSync(new URL("../../src/octocode/instructions/policy/research.md", import.meta.url), "utf8");
+		expect(policy).toContain("Before a handoff, write what the receiver needs");
+		expect(policy).not.toMatch(/before a[^.\n]*compaction/i);
+	});
+
 	it("declares bash by default and points its line at the search and read tools", async () => {
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
@@ -58,7 +72,7 @@ describe("native tools and the system prompt", () => {
 		expect(tools.find((tool) => tool.name === "ollama")).toBeUndefined();
 		// The bash line says where search and reads go, so the habit of `rg`/`cat` in bash has a counter-rule in every session.
 		expect(tools.find((tool) => tool.name === "bash")?.promptSnippet).toMatch(
-			/search and read code with the declared search and read tools/,
+			/When search and read tools are declared, use them for code instead/,
 		);
 		const names = defaultToolNames([
 			{

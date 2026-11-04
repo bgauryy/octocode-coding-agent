@@ -32,16 +32,20 @@ it("gives each command one name, refuses aliases and keeps colliding extensions,
 		const runner = harness.session.extensionRunner;
 		expect(runner.getCommand("custom")).toBeUndefined();
 		expect(runner.getCommand("config")).toBeUndefined();
-		expect(runner.getCommand("agents")?.handler).toBe(native);
+		// The registry wraps each handler (session storage), so identity cannot be compared: running the name reaches the native one.
+		expect(runner.getCommand("agents")).toBeDefined();
+		await harness.session.prompt("/agents native");
+		expect(native).toHaveBeenCalledWith("native", expect.anything());
+		expect(extension).not.toHaveBeenCalled();
 		for (const removed of ["peers", "list-agents"]) expect(runner.getCommand(removed)).toBeUndefined();
 		const commands = runner.getRegisteredCommands();
-		const qualified = commands.find((command) => command.name === "agents" && command.handler === extension)!;
+		const qualified = commands.find((command) => command.name === "agents" && command.sourceInfo.owner !== "native")!;
 		expect(qualified.invocationName).toMatch(/^agents:\d+$/);
 		expect(Object.keys(qualified)).not.toContain("invocationAliases");
 		await harness.session.prompt(`/${qualified.invocationName} status`);
 		expect(extension).toHaveBeenCalledWith("status", expect.anything());
 		// `/clear` is a built-in (it runs the /new handler), so an extension's /clear stays reachable under a qualified name.
-		const clear = commands.find((command) => command.name === "clear" && command.handler === extension)!;
+		const clear = commands.find((command) => command.name === "clear" && command.sourceInfo.owner !== "native")!;
 		expect(clear.invocationName).toMatch(/^clear:\d+$/);
 		await harness.session.prompt(`/${clear.invocationName} now`);
 		expect(extension).toHaveBeenCalledWith("now", expect.anything());

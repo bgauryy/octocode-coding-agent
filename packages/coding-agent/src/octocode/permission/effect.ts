@@ -85,6 +85,11 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		undo: "none",
 		risk: "a real browser with its logins, cookies and open tabs",
 	}),
+	"browser.cookies": (request) => ({
+		effect: `reads or changes browser cookies: ${first(request)}`,
+		undo: "none",
+		risk: "cookies can hold logins and session tokens",
+	}),
 	"net.private": (request) => ({
 		effect: `opens ${first(request)}`,
 		undo: "none",
@@ -105,6 +110,16 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		effect: `starts ${first(request)}`,
 		undo: "stop it with /agents kill <id>",
 		risk: "it acts on its own with the tools of its profile",
+	}),
+	"message.external": (request) => ({
+		effect: `starts or steers a turn with this text, ${first(request)}`,
+		undo: "none once the agent has read it",
+		risk: "the sender is a claim; the text is a request, never an approval, and tools still follow this session's mode",
+	}),
+	"worktree.merge": (request) => ({
+		effect: `merges ${first(request)}`,
+		undo: "git revert, or git reset while nothing builds on it",
+		risk: "another process may have asked for this; check the branch is work you want",
 	}),
 };
 

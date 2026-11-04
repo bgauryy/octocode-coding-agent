@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { Args } from "../cli/args.ts";
 import type { CreateAgentSessionRuntimeFactory } from "../core/agent-session-runtime.ts";
 import { headlessCachePreferences } from "../core/cache-configuration.ts";
@@ -9,6 +10,9 @@ import type { FolderTrustResolver } from "../core/folder-trust.ts";
 import type { SkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { collectSettingsDiagnostics } from "../core/settings-diagnostics.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
+import { isLocalPath } from "../../../common/src/paths.ts";
+import { recordOperatorLimits } from "../octocode/subagents/process/operator-limits.ts";
+import { missingCliPathWarnings } from "./cli-path-warnings.ts";
 import { buildSessionOptions, resolveCliPaths } from "./session-options.ts";
 import type { AppMode } from "./startup.ts";
 
@@ -36,6 +40,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
+	recordOperatorLimits(parsed);
 	return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
 		// The startup gate decided the first folder before this runs. A session switch into another folder lands here
 		// without a gate: it must already be trusted, and nothing of an untrusted folder is read.
@@ -76,6 +81,17 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 		}
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...services.diagnostics,
+			// A path the user passed with `--skill` that is not there loads nothing: say so, and carry on.
+			...(skillResourceSnapshot
+				? []
+				: (resolvedSkillPaths ?? [])
+						.filter((path) => isLocalPath(path) && !existsSync(path))
+						.map((path) => ({
+							type: "warning" as const,
+							message: `--skill path does not exist: ${path}. No skill was loaded from it.`,
+						}))),
+			...missingCliPathWarnings("--prompt-template", "prompt template", resolvedPromptTemplatePaths),
+			...missingCliPathWarnings("--theme", "theme", resolvedThemePaths),
 			...collectSettingsDiagnostics(settingsManager),
 			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({
 				type: "error" as const,

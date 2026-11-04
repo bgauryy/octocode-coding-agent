@@ -149,6 +149,41 @@ describe("AgentSession compaction characterization", () => {
 		expect(seen).toEqual(["Keep  exact\nfocus", undefined]);
 	});
 
+	it("reports the automatic compaction limit once per trip, and lets an attempt through after a long interval", async () => {
+		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
+		harnesses.push(harness);
+		seedCompactableSession(harness);
+		const internals = harness.session as unknown as SessionWithCompactionInternals & {
+			_runDefaultCompaction: () => Promise<unknown>;
+		};
+		const summarize = vi.spyOn(internals, "_runDefaultCompaction").mockRejectedValue(new Error("provider unavailable"));
+		const notices = () =>
+			harness
+				.eventsOfType("compaction_end")
+				.filter((event) => event.errorMessage?.includes("three consecutive failures"));
+		const start = Date.now();
+		vi.useFakeTimers({ now: start, toFake: ["Date"] });
+		try {
+			for (let i = 0; i < 6; i++) await internals._runAutoCompaction("threshold", false);
+			expect(summarize).toHaveBeenCalledTimes(3);
+			expect(notices()).toHaveLength(1);
+			// An overflow is failing right now, so it hears why it is not recovered each time.
+			await internals._runAutoCompaction("overflow", true);
+			expect(notices()).toHaveLength(2);
+
+			vi.setSystemTime(start + 2 * 60 * 60 * 1000);
+			await internals._runAutoCompaction("threshold", false);
+			expect(summarize).toHaveBeenCalledTimes(4);
+			// That attempt failed too, so the limit trips again at once and is reported once more.
+			await internals._runAutoCompaction("threshold", false);
+			await internals._runAutoCompaction("threshold", false);
+			expect(summarize).toHaveBeenCalledTimes(4);
+			expect(notices()).toHaveLength(3);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("stops automatic compaction after three failures and permits manual recovery", async () => {
 		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
 		harnesses.push(harness);

@@ -4,6 +4,7 @@ import type { ExtensionAPI, UserBashEvent, UserBashEventResult } from "../../../
 import { setupEditorSubmitHandler } from "../../../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { runRpcMode } from "../../../src/modes/rpc/rpc-mode.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
 
 const rpcIo = vi.hoisted(() => ({
@@ -13,6 +14,8 @@ const rpcIo = vi.hoisted(() => ({
 
 vi.mock("../../../src/core/output-guard.js", () => ({
 	flushRawStdout: vi.fn(async () => {}),
+	isRawStdoutWritePending: vi.fn(() => false),
+	onRawStdoutFailure: vi.fn(() => () => {}),
 	takeOverStdout: vi.fn(),
 	waitForRawStdoutBackpressure: vi.fn(async () => {}),
 	writeRawStdout: (line: string) => {
@@ -122,9 +125,8 @@ type InteractiveBashContext = {
 	chatContainer: { addChild(component: unknown): void };
 	pendingMessagesContainer: { addChild(component: unknown): void };
 	pendingBashComponents: unknown[];
-	isBashMode: boolean;
+	uiStore: UiStore;
 	showError(message: string): void;
-	updateEditorBorderColor(): void;
 };
 
 const localResult = {
@@ -238,9 +240,8 @@ describe("Interactive user_bash failure handling (#9068)", () => {
 			chatContainer: { addChild: vi.fn() },
 			pendingMessagesContainer: { addChild: vi.fn() },
 			pendingBashComponents: [],
-			isBashMode: true,
+			uiStore: createUiStore({ editor: { bashMode: true } }),
 			showError: vi.fn(),
-			updateEditorBorderColor: vi.fn(),
 		};
 		setupEditorSubmitHandler(createFakeHost(context));
 

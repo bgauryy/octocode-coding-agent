@@ -1,3 +1,4 @@
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
 /**
  * Provider login dialogs: OAuth, API key and ambient credentials, the prompts and selections a login asks for, and
  * what happens after a provider is authenticated.
@@ -199,7 +200,7 @@ function notifyAuthDialog(dialog: LoginDialogComponent, event: AuthEvent): void 
 		dialog.showAuth(event.url, event.instructions);
 	} else if (event.type === "device_code") {
 		dialog.showDeviceCode(event);
-		dialog.showWaiting("Waiting for authentication...");
+		dialog.showWaiting(`Waiting for authentication${ELLIPSIS}`);
 	} else if (event.type === "info") {
 		dialog.showInfo(event.message, event.links);
 	} else {

@@ -373,13 +373,84 @@ describe("Permission.check", () => {
 });
 
 describe("Permission modes over a session", () => {
-	it("re-applies the start mode and clears grants on every session start", async () => {
+	it("clears grants on every session start, and takes the stricter of the current and the exported start mode", async () => {
 		const { permission, ctx } = setup({ trusted: false, selects: ["Allow `npm test` for this session"] });
 		await permission.check(ctx, shell());
-		permission.setMode("workspace", ctx);
+		expect(permission.grants()).not.toEqual([]);
 		permission.start(ctx);
 		expect(permission.mode).toBe("manual");
 		expect(permission.grants()).toEqual([]);
+		// Exported `manual` bounds a wider choice, and says so.
+		permission.setMode("workspace", ctx);
+		permission.start(ctx);
+		expect(permission.mode).toBe("manual");
+		expect(ctx.ui.notes.map((note) => note.message).join("\n")).toMatch(
+			/Permission mode is manual again: OCTOCODE_PERMISSION bounds .* \/permissions workspace widens this one/,
+		);
+	});
+
+	it("does not flip the default: the first start is the start mode, `full` with nothing exported", () => {
+		const { permission } = setup({ env: {} });
+		expect(permission.mode).toBe("full");
+	});
+
+	it("with nothing exported keeps a chosen mode over a later start, narrow or full, and notices nothing", () => {
+		const { permission, ctx } = setup({ env: {} });
+		permission.setMode("manual", ctx);
+		permission.start(ctx);
+		expect(permission.mode).toBe("manual");
+		permission.setMode("full", ctx);
+		permission.start(ctx);
+		expect(permission.mode).toBe("full");
+		expect(ctx.ui.notes.map((note) => note.message).join("\n")).not.toMatch(/again/);
+	});
+
+	it("with `full` exported keeps a narrower choice, which is the stricter one", () => {
+		const { permission, ctx } = setup({ env: { [PERMISSION_ENV]: "full" } });
+		permission.setMode("workspace", ctx);
+		permission.start(ctx);
+		expect(permission.mode).toBe("workspace");
+	});
+
+	/** `/new`, `/resume`, `/fork` and `/reload` run the feature again on the same process environment: a new `Permission`. */
+	function replaced(env: NodeJS.ProcessEnv, reason: "startup" | "reload" | "new" | "resume" | "fork") {
+		const fake = fakeHost();
+		const stderr: string[] = [];
+		const permission = new Permission({ api: fake.api, env, isSubagent: false, stderr: (text) => stderr.push(text) });
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: true, ui: { selects: [], inputs: [] } });
+		permission.start(ctx, reason);
+		return { permission, ctx, stderr };
+	}
+
+	it.each(["new", "resume", "fork", "reload"] as const)(
+		"carries the chosen mode into the runtime `/%s` builds",
+		(reason) => {
+			const env: NodeJS.ProcessEnv = {};
+			const first = replaced(env, "startup");
+			expect(first.permission.mode).toBe("full");
+			first.permission.setMode("manual", first.ctx);
+			expect(replaced(env, reason).permission.mode).toBe("manual");
+			// `/permissions full` is a choice too, and it stays.
+			const next = replaced(env, reason);
+			next.permission.setMode("full", next.ctx);
+			expect(replaced(env, reason).permission.mode).toBe("full");
+		},
+	);
+
+	it("reverts a wider choice in the next runtime when the start mode is exported, with a notice", () => {
+		const env: NodeJS.ProcessEnv = { [PERMISSION_ENV]: "workspace" };
+		const first = replaced(env, "startup");
+		first.permission.setMode("full", first.ctx);
+		const next = replaced(env, "new");
+		expect(next.permission.mode).toBe("workspace");
+		expect(next.ctx.ui.notes.map((note) => note.message).join("\n")).toMatch(/is workspace again/);
+	});
+
+	it("a process's first start takes the start mode, whatever an earlier harness left in another environment", () => {
+		const left: NodeJS.ProcessEnv = {};
+		replaced(left, "startup").permission.setMode("manual", fakeCtx({ cwd: tmp(), hasUI: false }));
+		expect(replaced({}, "new").permission.mode).toBe("full");
+		expect(replaced(left, "startup").permission.mode).toBe("full");
 	});
 
 	it("switches to full anywhere, and warns once about an invalid OCTOCODE_PERMISSION (which starts in manual)", () => {

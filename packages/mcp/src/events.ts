@@ -42,18 +42,11 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 			.filter((name) => active.has(name) && state.definitions.get(name)?.exposure === "direct")
 			.map((name) => state.toolOwners.get(name)?.split("\0")[1] ?? name);
 		const connectionState = server.connection?.isStopped ? "stopped" : (server.connection?.state ?? "connecting");
-		const registered = new Map(
-			[...(state.serverTools.get(server.entry.name) ?? [])].map((name) => [
-				state.toolOwners.get(name)?.split("\0")[1] ?? name,
-				name,
-			]),
-		);
 		const described = state.presentation.describe(
 			server.entry.name,
 			declared,
 			server.connection?.instructions,
 			connectionState === "connected",
-			(tool, chars) => state.contractTier(server.entry, tool, registered.get(tool) ?? tool, chars),
 		);
 		const undeclared = [...described.tools].filter((tool) => !declared.includes(tool));
 		return [
@@ -107,7 +100,6 @@ export function registerSessionEvents(state: McpExtensionState): void {
 
 	api.on("session_start", (_event, ctx) => {
 		state.presentation.reset();
-		state.contractUsage = undefined;
 		const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
 		state.configErrors = loaded.errors;
 		state.projectConfig = loaded.projectConfig;
@@ -308,7 +300,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		await Promise.all([
 			...state.backgroundActions,
 			...closing.map((connection) => connection.close()),
-			...(state.options.presets ?? []).map((preset) => preset.dispose?.()),
+			...(state.options.presets ?? []).map((preset) => preset.dispose?.(state.sessionCwd)),
 		]);
 	});
 }

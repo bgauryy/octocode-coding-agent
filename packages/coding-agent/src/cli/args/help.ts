@@ -23,6 +23,8 @@ export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 ${chalk.bold("Usage:")}
   ${APP_NAME} [options] [--] [@files...] [messages...]
 
+Inside a session, ${chalk.bold("/help")} lists the slash commands.
+
 ${chalk.bold("Commands:")}
   ${APP_NAME} install <source> [-l]     Install a package (skills, prompts, themes) and add it to settings
   ${APP_NAME} remove <source> [-l]      Remove a package from settings
@@ -32,6 +34,8 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
   ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
   ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
+  ${APP_NAME} trust <list|add|remove>   Show, grant or revoke folder trust
+  ${APP_NAME} remote <list|link|stop>   List sessions the web daemon reaches; publish or stop a remote link
   ${APP_NAME} context <command>         Show and store the skill descriptions agents read
   ${APP_NAME} marketplace <command>     Add, list, update or remove plugin marketplaces (path, owner/repo, git URL)
   ${APP_NAME} plugin <command>          Install, update or remove plugins from a marketplace (plugin@marketplace)
@@ -166,13 +170,20 @@ ${chalk.bold("Built-in Tool Names:")}
   bash       - Execute commands (type: bash or powershell)
   file       - Guarded file edits, writes and deletions
   backlog    - Track tasks and progress
+  steps      - Track the steps of the backlog item you hold
   archive    - Recall history and lifecycle events; store and retrieve workspace memories
   web        - Search and fetch public web content
-  browser    - Inspect and interact with browser pages
   agent      - Task, external-agent, coordination and message modes
   askUser    - Ask structured questions
+  skill      - Load a listed skill's instructions
+  compact    - Ask for the conversation to be summarized (main session)
+  models     - Show the session model, providers and the models a task can run on (main session)
+  mcp        - Inspect, stop or restart MCP servers
 
 Tool availability follows session mode and selection. Enabled MCP servers provide
 additional tools; mcp manages servers.
+
+--exclude-tools and --no-mcp also bind subagents. --tools is this session's allowlist
+only: a subagent keeps the tools of its profile.
 `);
 }

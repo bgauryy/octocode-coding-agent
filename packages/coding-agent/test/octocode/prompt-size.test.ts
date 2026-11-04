@@ -6,6 +6,11 @@ import { reportContractSentences } from "../../src/octocode/instructions/report.
 import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { SYSTEM_PROMPT_SECTIONS } from "../../src/core/system-prompt-spec.ts";
+
+const POLICY_SECTIONS = new Set(
+	SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map(({ name }) => name),
+);
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
@@ -40,7 +45,7 @@ interface Size {
 	total: number;
 	prompt: number;
 	perTool: Record<string, number>;
-	/** The `octocode_*` policy sections, joined. */
+	/** The policy sections, joined. */
 	policy: string;
 }
 
@@ -95,7 +100,7 @@ async function promptSize(options: {
 			description.length + JSON.stringify(parameters).length + (promptGuidelines ?? []).join("").length;
 	}
 	const policy = Object.entries(sections)
-		.filter(([name]) => name.startsWith("octocode_"))
+		.filter(([name]) => POLICY_SECTIONS.has(name))
 		.map(([, text]) => text)
 		.join("\n\n");
 	const prompt = policy.length;
@@ -125,7 +130,10 @@ async function promptSize(options: {
 // This makes future growth in either the existing tools or the new entity contract fail independently.
 // 1_500 (2026-10-31, measured 1_451 main, 1_254 subagent; was 3_000 against 1_660 and 1_463): the entity fields lost the
 // link and completion property inventories (their descriptions name them) and `type` no longer lists the old `task`.
-const BACKLOG_ENTITIES_CEILING = 1_500;
+// 2_250 (2026-11-04, measured 2_176 main, 2_104 subagent; B28, user-approved): the inventories return as closed, typed
+// schemas (strict-eligible). With the shapes only in prose, nested completion calls were closed at the wrong depth and
+// guessed path forms (archive errors 2026-11-03..04); the link target stays a plain string, other resources a flat field.
+const BACKLOG_ENTITIES_CEILING = 2_250;
 // Delegation guidance on parallel work, shared contracts, named skills and report acceptance (+~400 measured characters).
 // Children save far more: their skill descriptions and the Octocode docs block are dropped (outside this fake host).
 // 20_900 (B15, measured 20_701): commit 5630993 already measured 20_570; +37 for the bash read fallback that replaced the
@@ -209,7 +217,16 @@ const BACKLOG_ENTITIES_CEILING = 1_500;
 // 33_300 (2026-11-03, measured 32_833 without entity fields; B472, user-requested): cost-aware model routing, the 5W2H
 // brief, dependency-graph scheduling with RACI ownership, problem reduction, PDCA/OODA/5 Whys and the BLUF/SBAR formats
 // (rendered main policy +1_357: work +478, delegation +751, communication +128), trimmed before measuring.
-const MAIN_CEILING = 33_300;
+// 33_950 (2026-11-04, measured 33_830 without entity fields, 33_289 at the previous commit; B6, user-approved): the restored
+// research rule (+541 in the policy: Octocode MCP first, `localFetch` for reads, fallback when a tool fails). Tool sizes
+// are unchanged.
+// 34_450 (2026-11-04, measured 34_363 without entity fields; user-approved plan in RFC_CONTEXT_EFFICIENCY.md): the `task`
+// `paths` field and its delegation sentence, the batch limit and example in the localFetch and localSearch triggers, and
+// the sensitive-task rule on the `model` field. The `mcps` block shrank by about 8,000 chars after the override refresh,
+// which this count does not include.
+// 36_400 (2026-11-04, measured 36_322; user-requested): titled sections in the work and delegation policy, active management
+// of children, bringing the user in early, separating backlog work and answering a budget request (+1,370 in the policy).
+const MAIN_CEILING = 36_400;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -254,7 +271,10 @@ const MAIN_CEILING = 33_300;
 // run-mode approvals, untrusted command output, plus the round-2 review restorations (request limit, coverage).
 // 22_200 (2026-11-03, measured 21_915 without entity fields; B472, user-requested): the same problem-reduction,
 // PDCA/OODA and 5 Whys lines (work +478) and the child's outcome-first line (communication +81).
-const SPECIALIST_CEILING = 22_200;
+// 22_640 (2026-11-04, measured 22_515 without entity fields, 21_974 at the previous commit; B6, user-approved): the same
+// +541 research rule; tool sizes are unchanged.
+// 23_000 (2026-11-04, measured 22_926; user-requested): titled sections and how a child reaches its parent.
+const SPECIALIST_CEILING = 23_000;
 
 describe("prompt size", () => {
 	it("main session", async () => {

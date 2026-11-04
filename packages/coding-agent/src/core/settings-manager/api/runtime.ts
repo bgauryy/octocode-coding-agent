@@ -31,6 +31,8 @@ export interface RuntimeSettingsApi {
 	getCachePreferences(): CachePreferences;
 	setCachePreference(field: keyof CachePreferences, value: NonNullable<CachePreferences[typeof field]>): void;
 	setCacheWarmingMode(mode: CacheWarmingMode): void;
+	/** Turn the rewrite of each submitted prompt on or off, in the global settings. */
+	setOptimizePrompts(enabled: boolean): void;
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number };
 	getWebSocketConnectTimeoutMs(): number | undefined;
 }

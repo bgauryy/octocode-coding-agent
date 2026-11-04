@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
@@ -155,7 +156,11 @@ async function tinyRequest(
 		const reply = await registry
 			.streamSimple(
 				model,
-				{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
+				{
+					messages: [
+						{ role: "user", content: renderInstruction("workflows/credential-check.md"), timestamp: Date.now() },
+					],
+				},
 				// Session-routed providers refuse a request without a session: OpenCode requires `x-opencode-session`.
 				{ maxTokens: 64, signal, sessionId: `credential-check-${randomUUID()}` },
 			)

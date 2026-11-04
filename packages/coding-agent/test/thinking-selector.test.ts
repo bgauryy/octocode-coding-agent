@@ -46,7 +46,7 @@ describe("thinking selector", () => {
 			saveDefault,
 		);
 
-		expect(stripAnsi(selector.render(80).join("\n"))).toContain("ctrl+r to set as default");
+		expect(stripAnsi(selector.render(80).join("\n"))).toContain("ctrl+r set as default");
 		selector.handleInput("\x13");
 		expect(saveDefault).not.toHaveBeenCalled();
 		selector.handleInput("\x12");

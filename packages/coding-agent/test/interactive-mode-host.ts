@@ -3,8 +3,42 @@
  * fake gets every module-backed method, except the ones the test defines on it.
  */
 
+import { createStore } from "zustand/vanilla";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
 import { interactiveModeMethodImplementations } from "../src/modes/interactive/interactive-mode/host-methods.ts";
+import type { CompactionQueuedMessage } from "../src/modes/interactive/interactive-mode/types.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
+
+export { bindQueueState, renderPendingMessages } from "../src/modes/interactive/state/bind-queue.ts";
+
+/** A stand-in for the application service's state source, fed from a fake session's queues by `sync`. */
+export function fakeQueueService(session: {
+	getSteeringMessages(): string[];
+	getFollowUpMessages(): string[];
+	isCompacting?: boolean;
+}) {
+	const store = createStore<{ steering: string[]; followUp: string[]; status: "idle" | "compacting" }>()(() => ({
+		steering: [],
+		followUp: [],
+		status: "idle",
+	}));
+	const source = {
+		getState: () => store.getState() as never,
+		subscribe: (l: () => void) => store.subscribe(() => l()),
+	};
+	const sync = () =>
+		store.setState({
+			steering: session.getSteeringMessages(),
+			followUp: session.getFollowUpMessages(),
+			status: session.isCompacting ? "compacting" : "idle",
+		});
+	return { source, sync };
+}
+
+/** A UI store whose queue slice already holds `compaction` messages. */
+export function heldStore(compaction: CompactionQueuedMessage[] = []) {
+	return createUiStore({ queue: { compaction } });
+}
 
 /** Adds the missing host methods to `fake` and returns it typed as a host. */
 export function createFakeHost<T extends object>(fake: T): T & InteractiveModeHost {

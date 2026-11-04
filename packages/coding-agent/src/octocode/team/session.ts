@@ -2,9 +2,9 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { peerDbPath, peerRegistryDir } from "../shared/home.ts";
 import { interactive } from "../shared/interactive.ts";
-import { terminateSelf } from "../shared/process.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import type { Ask } from "./asks.ts";
+import { checkInConfig } from "./check-in.ts";
 import { Delivery } from "./delivery.ts";
 import type { EditLog } from "./edits.ts";
 import { HeldLeases } from "./held.ts";
@@ -14,14 +14,16 @@ import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
 import { PeerLeases } from "./peer-leases.ts";
 import { Relays } from "./relay.ts";
 import { Activity, HEARTBEAT_MS } from "./session/activity.ts";
+import { ChildLeases } from "./session/child-leases.ts";
 import { TeamDatabase } from "./session/database.ts";
 import { claimName } from "./session/membership.ts";
 import { SessionTeamName } from "./session/rejoin.ts";
-import { watchParentProcess } from "./session/parent.ts";
+import { endWithParent, watchParentProcess } from "./session/parent.ts";
 import { lockPaths, type ReservationHost, reservationText, unlockPaths } from "./session/reservations.ts";
 import * as refs from "./session/references.ts";
 import { type MessageHook, type Resumer, type SendResult, sendMessage } from "./session/send.ts";
 import { Vouches } from "./session/vouches.ts";
+import { WaitingApprovals } from "./session/approvals.ts";
 import { TeamTicker, type TeamView } from "./ticker.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -42,6 +44,8 @@ export class Team {
 		maxAgeMs: HEARTBEAT_MS,
 	});
 	private readonly held = new HeldLeases();
+	/** What this agent reserves for the children it starts (`paths` on a task). */
+	readonly childLeases = new ChildLeases(() => this.reservationHost());
 	/** The agents-communication package's path leases (read-only), opened on the first guarded write. */
 	private peers: PeerLeases | undefined;
 	private readonly mail: Mail;
@@ -52,11 +56,13 @@ export class Team {
 	private stopParentWatch: (() => void) | undefined;
 	/** Subagents this session started that have finished: id → where their report went, for a later message to them. */
 	private readonly finished = new Map<string, string>();
-	/** Resumes a finished subagent that still lingers (set by the subagents domain); its receipt, else undefined. */
-	setResumer(resume: Resumer): void {
+	/** Resumes a finished subagent that still lingers, and says which subagents have yet to report (set by the subagents domain); its receipt, else undefined. */
+	setResumer(resume: Resumer, reporting?: (id: string) => boolean): void {
 		this.resumer = resume;
+		this.reporting = reporting;
 	}
 	private resumer: Resumer | undefined;
+	private reporting: ((id: string) => boolean) | undefined;
 	private messageHook: MessageHook | undefined;
 	setMessageHook(hook: MessageHook): void {
 		this.messageHook = hook;
@@ -87,6 +93,7 @@ export class Team {
 			held: this.held,
 			mail: this.mail,
 			route: () => modelRoute(this.ctx?.model, api.getThinkingLevel()),
+			renewChildren: (db, now) => this.childLeases.renew(db, now),
 		});
 		this.delivery = new Delivery(
 			{
@@ -96,15 +103,15 @@ export class Team {
 				headless: () => this.headless(),
 				heartbeat: (db) => this.activity.heartbeat(db),
 				relays: (db) => this.relays.take(db),
+				reporting: (id) => this.reporting?.(id) === true,
+				checkIn: () => checkInConfig(api.getSettings().subagents, this.env),
 			},
 			this.mail,
 		);
 	}
 	private readonly vouches = new Vouches();
-	/**
-	 * Registers the secret this session gave subagent `id` (the secret in its `PERMISSION_NONCE_FILE_ENV` file), so `/agents tell` can sign for it and
-	 * the child can tell the user's message from a forged one. Returns what ends it, when the child is gone.
-	 */
+	readonly approvals = new WaitingApprovals();
+	/** Registers the secret given to subagent `id` (its `PERMISSION_NONCE_FILE_ENV` file), so the user's messages to it are signed; returns what ends that. */
 	vouch(id: string, secret: string): () => void {
 		return this.vouches.vouch(id, secret);
 	}
@@ -144,13 +151,7 @@ export class Team {
 		this.stopParentWatch ??= watchParentProcess(this.env, () => {
 			this.stopParentWatch?.();
 			this.stopParentWatch = undefined;
-			// Where a signal ends the process outright (Windows) nothing runs after it: the row and reservations go now, not when a peer's sweep finds the pid dead.
-			try {
-				this.leave();
-			} catch {
-				/* locked database: the sweep reaps the row */
-			}
-			terminateSelf();
+			endWithParent(() => this.leave());
 		});
 	}
 
@@ -202,6 +203,7 @@ export class Team {
 	/** Leave and let go of the database (session end; the process connection stays open for the next session). */
 	stop(): void {
 		try {
+			this.childLeases.stop();
 			this.leave();
 		} finally {
 			this.stopParentWatch?.();
@@ -213,6 +215,7 @@ export class Team {
 			this.relays.reset();
 			this.finished.clear();
 			this.vouches.clear();
+			this.approvals.clear();
 			this.ctx = undefined;
 		}
 	}
@@ -234,13 +237,18 @@ export class Team {
 
 	/** Live agents and the latest messages between them, from one read. */
 	snapshot(): TeamView {
-		return this.database.snapshot();
+		return this.approvals.overlay(this.database.snapshot());
 	}
 
 	/**
-	 * The questions `child` sent its `parent` since `since`, with their answers. None when the database cannot be read:
-	 * this is a measurement, so it never fails the run it describes.
+	 * Subagent `id` began or stopped waiting for the user's answer to a dialog. Its own process owns its row and cannot see
+	 * the dialog, so the parent, who shows it, overlays the line on what it lists (`session/approvals.ts`).
 	 */
+	awaitingApproval(id: string, waiting: boolean): void {
+		this.approvals.set(id, waiting);
+	}
+
+	/** The questions `child` sent its `parent` since `since`, with their answers; none when the database cannot be read (a measurement never fails its run). */
 	asks(child: string, parent: string, since: number): Ask[] {
 		return this.database.asks(child, parent, since);
 	}
@@ -249,6 +257,9 @@ export class Team {
 	openQuestions(): OpenQuestion[] {
 		return this.database.openQuestions();
 	}
+
+	/** Closes this session's open questions to `child`: its report answered them (`references.ts`). */
+	closeQuestionsTo = (child: string): void => refs.closeQuestionsTo(this.sendHost(), child);
 
 	/** Queue a message for the agents `to` resolves to; returns who got it and the message id, or an error text. */
 	async send(
@@ -281,9 +292,11 @@ export class Team {
 			store: () => this.database.store(),
 			parentId: () => this.parentId,
 			finished: this.finished,
+			reporting: (id) => this.reporting?.(id) === true,
 			resumer: () => this.resumer,
 			messageHook: () => this.messageHook,
 			signed: (id, recipient, text) => this.vouches.signed(id, recipient, text),
+			signedByParent: (message) => this.vouches.signedByParent(message),
 			started: (id) => this.finished.has(id) || this.vouches.has(id),
 			mail: this.mail,
 		};
@@ -307,6 +320,7 @@ export class Team {
 			me: () => this.me,
 			join: () => this.join(),
 			cwd: () => this.ctx?.cwd,
+			chosenId: () => this.env[AGENT_ID_ENV],
 			store: () => this.database.store(),
 			existing: () => this.database.existing(),
 			held: this.held,
@@ -338,10 +352,7 @@ export class Team {
 
 	// Activity the parent and the user see: state, current tool, tokens.
 	onAgentStart(): void {
-		this.activity.update((me) => {
-			me.status = "working";
-			return undefined;
-		}, true);
+		this.activity.started();
 	}
 
 	/** Delivers held interrupts first; a headless child then leaves because its parent closes its input. */
@@ -353,10 +364,7 @@ export class Team {
 			return;
 		}
 		// The activity line was cleared by src/ui/activity.ts, which owns it.
-		this.activity.update((me) => {
-			me.status = "idle";
-			return undefined;
-		}, true);
+		this.activity.idle();
 	}
 
 	/** A subagent (no person to talk to, whatever its mode): once its run is over it gets no further turn. */
@@ -364,9 +372,9 @@ export class Team {
 		return Boolean(this.env[AGENT_ID_ENV] && this.ctx && !interactive(this.ctx, envFlag(this.env, SUBAGENT_ENV)));
 	}
 
-	/** Hands waiting mail to Octocode: every second from the ticker, and at the end of a turn that ran tools (`tools.ts`). */
-	deliverMail(): void {
-		this.delivery.deliver(this.database.current);
+	/** Hands waiting mail to Octocode: every second from the ticker, and at the end of a turn that ran tools (`tools.ts`, `stepEnded`). */
+	deliverMail(stepEnded = false): void {
+		this.delivery.deliver(this.database.current, stepEnded);
 	}
 
 	/** Octocode is about to call the model with `messages`: team mail among them is now delivered. */
@@ -374,21 +382,12 @@ export class Team {
 		this.delivery.seen(this.database.current, messages);
 	}
 
-	/** A top-level tool call started (parallel calls each count; calls a tool makes itself do not). */
 	onToolStart(): void {
-		this.activity.update((me) => {
-			me.toolCalls += 1;
-			return undefined;
-		});
+		this.activity.toolStarted();
 	}
 
-	/** What the agent does now (the line src/ui/activity.ts describes), or undefined between steps and when idle. */
 	setActivity(line: string | undefined): void {
-		this.activity.update((me) => {
-			if (line) me.activity = storedText(line, LINE_MAX);
-			else delete me.activity;
-			return undefined;
-		});
+		this.activity.setLine(line);
 	}
 
 	readonly setModel = (route: string | undefined): void => this.activity.setModel(route);

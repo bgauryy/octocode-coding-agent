@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { CompactionEntry, SessionEntry } from "../../core/session-manager.ts";
 import { CheckpointPersistenceError } from "../../core/compaction/index.ts";
@@ -35,9 +36,6 @@ export function persistenceFailure(
 	if (ctx.hasUI) notify(ctx.ui, error.message, "error");
 	return { cancel: true, failure: error.message };
 }
-
-const CONTINUITY_INTRO =
-	"[After compaction]\nOctocode's own summary failed, so the summary above is Octocode's default one; what code appends to a summary follows here.";
 
 interface UserMessages {
 	messages: string[];
@@ -140,7 +138,7 @@ export class FallbackContinuity {
 			void api.sendMessage(
 				{
 					customType: CONTINUITY_TYPE,
-					content: `${CONTINUITY_INTRO}${pending.text}`,
+					content: `${renderInstruction("notices/compaction/default-summary.md")}${pending.text}`,
 					display: false,
 					details: { compactionId: entry.id },
 				},

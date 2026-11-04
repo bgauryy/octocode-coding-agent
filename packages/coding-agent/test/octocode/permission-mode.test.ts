@@ -28,16 +28,20 @@ const MATRIX: Record<ActionClass, [string, string, string]> = {
 	web: ["ask", "allow", "allow"],
 	browser: ["ask", "allow", "allow"],
 	"browser.control": ["ask", "ask", "allow"],
+	"browser.cookies": ["ask", "ask", "ask"],
 	"net.private": ["ask", "ask", "allow"],
 	"upload.outside": ["ask", "ask", "allow"],
 	"mcp.write": ["ask", "allow", "allow"],
 	"mcp.destructive": ["ask", "ask", "allow"],
 	"agent.spawn": ["ask", "allow", "allow"],
+	"message.external": ["ask", "ask", "allow"],
+	"worktree.merge": ["ask", "ask", "ask"],
 };
 
 /** Reasons tighten an action. They are not action classes: manual, workspace, full. */
 const REASONS: Record<AskReason, [string, string, string]> = {
 	"source.ask": ["ask", "ask", "ask"],
+	"memory.wide": ["ask", "ask", "ask"],
 	"shell.target": ["ask", "ask", "allow"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],

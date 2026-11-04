@@ -63,7 +63,7 @@ describe("inbound ACP protocol", () => {
 		await h.initialize();
 		const refused = await h.newSession().catch((error: unknown) => error);
 		expect(refused).toMatchObject({
-			code: -32002,
+			code: -31000,
 			message: expect.stringContaining("Folder is not trusted"),
 			data: { command: expect.stringContaining("octocode trust add") },
 		});

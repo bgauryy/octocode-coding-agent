@@ -8,7 +8,8 @@ import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts"
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
-import { TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { nonceFile } from "./nonce-file.ts";
 import * as importedModule4 from "../../src/octocode/files/tool.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
@@ -448,12 +449,17 @@ describe("Team", () => {
 			main.start(ctx);
 			expect(main.members()).toEqual([]);
 			const parent = main.join("coordinating");
-			const child = new Team(fakeHost(childLog), {
+			// A real child reads the secret its parent gave it, which is what makes `from` the parent's word.
+			const childEnv: NodeJS.ProcessEnv = {
 				...env,
 				OCTOCODE_AGENT_ID: "researcher-1234",
 				OCTOCODE_PARENT_ID: parent.id,
 				OCTOCODE_AGENT_GOAL: "Find X",
-			});
+				[PERMISSION_NONCE_FILE_ENV]: nonceFile("child-secret"),
+			};
+			takeNonce(childEnv);
+			main.vouch("researcher-1234", "child-secret");
+			const child = new Team(fakeHost(childLog), childEnv);
 			child.start(ctx);
 			child.onToolStart();
 			child.setActivity("Running localSearch foo");

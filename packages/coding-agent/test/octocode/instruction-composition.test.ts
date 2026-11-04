@@ -84,9 +84,9 @@ it("updates the named policy section when selected research tools change", async
 	expect(diffSystemPromptSections(first, unchanged)).toBeUndefined();
 	const removed = await render(["read"]);
 	// With the research server's tools selected the section leaves research to the server; without them it names the fallback.
-	expect(first.octocode_research).not.toContain("no lookup tool is available");
-	expect(removed.octocode_research).toContain("no lookup tool is available");
-	expect(diffSystemPromptSections(first, removed)).toHaveProperty("octocode_research", removed.octocode_research);
+	expect(first.research).not.toContain("no lookup tool is available");
+	expect(removed.research).toContain("no lookup tool is available");
+	expect(diffSystemPromptSections(first, removed)).toHaveProperty("research", removed.research);
 	expect(removed.preamble).toBe(first.preamble);
 });
 

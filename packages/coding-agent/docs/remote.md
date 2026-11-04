@@ -43,14 +43,15 @@ access level and publish end-to-end sealed frames through it. The link is the re
 `#`; the room name at the relay is a hash of the key, so the relay never learns the key and forwards bytes it cannot
 read or reuse (see [wire format](#relay-wire-format-version-1)). The daemon adds its own token when it performs a
 device's request against its loopback server, so a device never holds a daemon token and the loopback rules (host,
-origin, view-only writes, scopes) apply unchanged. The relay server and the page that speaks this protocol arrive with
-the next step of the [remote RFC](../../../.octocode/octocode-rfc-generator/2026-10-29-remote-sessions/RFC.md); until
-then `relay` links can be issued and are tested against a relay fixture, but there is no public page to open them with.
+origin, view-only writes, scopes) apply unchanged. The relay server and the page that speaks this protocol are still to
+come; until then `relay` links can be issued and are tested against a relay fixture, but there is no public page to open them with.
 
 `remote.relayUrl` may carry a path prefix: `wss://host/octo` is dialed at `wss://host/octo/v1/rooms/<room>/host`, and its
 page link is `https://host/octo/`. A query string is dropped from both.
 
-A relay is a transport you trust to be up, not one you trust with content. Expose a relay only behind TLS or a private
+A relay is a transport you trust to be up, not one you trust with content. The party serving the page is different: a
+page served from that origin can read the key after `#` and so gains the control the link grants, so you must trust
+whoever serves it. Expose a relay only behind TLS or a private
 network. Use `wss://` for any device but this one: a `ws://` relay's page link is `http://`, and browsers expose
 WebCrypto only in a secure context (`https://` or localhost), so such a page cannot open a frame.
 

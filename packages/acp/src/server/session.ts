@@ -8,6 +8,7 @@ import {
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
+import { advertiseCommands } from "./commands.ts";
 import { AcpEventProjector, type CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
 import { AcpStartup } from "./startup.ts";
@@ -120,6 +121,8 @@ export class AcpSession {
 		await startup.validate(state.sessionId);
 		if (this.dead) throw RequestError.internalError(undefined, "Agent process closed during startup.");
 		this.starting = false;
+		// A round trip to the worker, so it follows the response that names this session.
+		void advertiseCommands(this.worker, (update) => this.enqueue(update));
 		return this.id;
 	}
 
@@ -163,7 +166,13 @@ export class AcpSession {
 					// RpcClient sets `execution` (possibly undefined) only on a `success: false` response, so a live worker
 					// refused this prompt (e.g. an interactive-only command): fail that prompt, keep the session.
 					if (!this.isClosed() && error instanceof Error && "execution" in error)
-						return this.reject(turn, error.message);
+						return this.reject(
+							turn,
+							// A client can route missing credentials to sign-in; any other refusal it can only report.
+							"authRequired" in error && error.authRequired === true
+								? RequestError.authRequired(undefined, error.message)
+								: RequestError.internalError(undefined, error.message),
+						);
 					// Anything else (lost response, timeout) leaves execution uncertain: stop the worker without a replay.
 					void this.close().catch(reportFailure("ACP session cleanup failed"));
 					this.fail("Agent rejected or failed the prompt; it was not replayed.");
@@ -174,14 +183,14 @@ export class AcpSession {
 	}
 
 	/** Fails one turn after its queued updates flush; the session and worker stay usable. */
-	private reject(turn: Turn, message: string): void {
+	private reject(turn: Turn, failure: RequestError): void {
 		if (turn.ending) return;
 		turn.ending = true;
 		turn.controller.abort();
 		const finish = () => {
 			if (this.active === turn) this.active = undefined;
 			if (this.observed === turn) this.observed = undefined;
-			turn.reject(RequestError.internalError(undefined, message));
+			turn.reject(failure);
 		};
 		void this.output.then(finish, finish);
 	}

@@ -47,6 +47,10 @@ export function modeSummary(mode: PermissionMode): string {
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits and profile permissions also ask.`;
 }
 
+/** What a session start says when the exported start mode bounds the wider mode the user chose before it. */
+export const revertedNotice = (mode: PermissionMode, chosen: PermissionMode): string =>
+	`Permission mode is ${mode} again: ${PERMISSION_ENV} bounds every session this process starts. /permissions ${chosen} widens this one.`;
+
 /** Reasons on this call that force an ask in the current mode. A reason only tightens. */
 export function forcingReasons(mode: PermissionMode, request: PermissionRequest): AskReason[] {
 	const seen = new Set<AskReason>();

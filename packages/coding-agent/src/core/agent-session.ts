@@ -74,6 +74,7 @@ export type {
 	QueuedInputDisposition,
 	ReleasedQueuedInput,
 } from "./agent-session/types.ts";
+export type { RunOutcome } from "./agent-session/run-outcome.ts";
 export type { SessionStats } from "./session-stats.ts";
 
 export class AgentSession extends AgentSessionControl implements AgentSessionApi {

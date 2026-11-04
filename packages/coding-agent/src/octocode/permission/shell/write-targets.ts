@@ -1,11 +1,32 @@
+import os from "node:os";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RELATIVE_AFTER_CD } from "../bash-cwd.ts";
 import type { BashFileTarget } from "../bash-types.ts";
-import { DYNAMIC_TARGET, shellPath, shellTargetPath } from "../file-access.ts";
-import { canonicalPath } from "../../shared/home/repo.ts";
+import { DYNAMIC_TARGET, homeSpelling, shellPath, shellTargetPath, stateFolderRefusal } from "../file-access.ts";
+import { octocodeHome } from "../../shared/home.ts";
+import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
 import { shellMutation } from "./mutation.ts";
 
 type ShellTarget = BashFileTarget & { allowed: boolean };
+
+/**
+ * The first word of `command` (an operand, or the value a variable is set to) in Octocode's state folder, for a write the
+ * parse could not place: `H=~/.octocode; echo x > $H/a` is unresolved, but what it is reaching for is on the line.
+ */
+function stateFolderWord(command: string, cwd: string): string | undefined {
+	// By its text, not the parse: a variable set on its own (`H=…; …`) belongs to no command.
+	const words = command.split(/[\s;&|()<>=`'"]+/).map((word) => homeSpelling(word) ?? word);
+	const state = canonicalPath(octocodeHome());
+	const home = canonicalPath(os.homedir());
+	for (const word of words) {
+		if (!/[\\/]/.test(word)) continue;
+		const place = canonicalPath(shellPath(cwd, word));
+		if (stateFolderRefusal(place, word, "Bash", cwd)) return word;
+		// A folder on the way to it (`~/.octocode`), though not the home folder, which holds everything.
+		if (place !== home && isWithin(place, home) && isWithin(state, place)) return state;
+	}
+	return undefined;
+}
 
 /**
  * Every place a `bash` call writes by its parse (`shellMutation`: redirects, `tee`, `cp`/`mv`/`touch` operands,
@@ -31,7 +52,12 @@ export function commandWriteTargets(
 		}),
 	);
 	const targets: ShellTarget[] = [];
-	for (const file of [...effect.writes, ...effect.areas]) {
+	// `sqlite3` holds a database open for writing with nothing else to show for it: `trusted_folders` lives in the agent's own.
+	const databases = effect.databases.filter(
+		(file) => stateFolderRefusal(canonicalPath(shellPath(cwd, file)), file, "Bash", cwd) !== undefined,
+	);
+	const named = effect.uncertain ? stateFolderWord(input.command, cwd) : undefined;
+	for (const file of [...effect.writes, ...effect.areas, ...databases, ...(named === undefined ? [] : [named])]) {
 		if (seen.has(key(file))) continue;
 		seen.add(key(file));
 		targets.push({ kind: "write", raw: file, path: file, position: 0, allowed: false });

@@ -77,6 +77,8 @@ const label = shimmerText("Working", {
 });
 ```
 
+`getTerminalColorMode()` returns `"none"` when `NO_COLOR` is non-empty or `TERM=dumb`, otherwise `"truecolor"` or `"256color"`. In `"none"` mode `foregroundAnsi`, `backgroundAnsi` and `styleText` write no color sequence, and `shimmerText` returns its text unchanged; bold, dim, italic, underline and inverse still apply. A `ScrollView` without `scrollbarTrackStyle` and `scrollbarThumbStyle` draws a faint track and a plain thumb, so the host chooses any scrollbar color.
+
 ## Alternate-screen viewport layouts
 
 `TuiAltScreen` can render an explicit terminal-height layout. `VStack` and `HStack` allocate constrained regions, while `ScrollView` owns scrolling for one region. These semantics are intentionally unavailable on `TuiMainScreen`, where the terminal owns scrollback.

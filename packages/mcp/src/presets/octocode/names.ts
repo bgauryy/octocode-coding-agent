@@ -29,6 +29,16 @@ export const OCTOCODE_TOOL_PREFIX = `${mcpNamespace(OCTOCODE_SERVER)}__`;
 export const isOctocodeTool = (name: string): boolean => name.startsWith(OCTOCODE_TOOL_PREFIX);
 
 /**
+ * The first Octocode line of the policy's `research.md`. The base prompt leaves its own bash search rule out while a
+ * session's sections carry it, so only one of the two shows, whether or not the server's tools are declared yet.
+ */
+const OCTOCODE_SEARCH_RULE = `Use Octocode MCP (\`${OCTOCODE_TOOL_PREFIX}*\`) to check code before you rely on it`;
+
+/** Whether these prompt sections route code search to Octocode MCP. */
+export const routesSearchToOctocode = (sections: Record<string, string | undefined>): boolean =>
+	sections.research?.includes(OCTOCODE_SEARCH_RULE) === true;
+
+/**
  * Local research names in the current server and the supported legacy catalog, including binary inspection.
  */
 export const LOCAL_RESEARCH_TOOLS = [...OCTOCODE_DIRECT_TOOLS, "localBinaryInspect"].map(

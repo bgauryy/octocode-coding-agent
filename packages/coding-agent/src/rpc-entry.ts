@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-import { APP_NAME } from "./config.ts";
 import { configureHttpDispatcher } from "./core/http-dispatcher.ts";
+import { initialTitle, setProcessTitle } from "./octocode/processes/title.ts";
 import { dropForeignChildEnv } from "./octocode/subagents/process/child-env.ts";
 import { main } from "./main.ts";
 
-process.title = `${APP_NAME}-rpc`;
 // An Octocode a subagent's command started is a top-level session, not that subagent.
 dropForeignChildEnv();
+// `octocode-rpc-<id>` once the session exists, or the subagent's own `octocode-<role>-<agent id>`.
+setProcessTitle(initialTitle(process.env, "rpc"));
 process.env.OCTOCODE_CODING_AGENT = "true";
 process.env.AI_AGENT = "octocode";
 process.emitWarning = () => {};

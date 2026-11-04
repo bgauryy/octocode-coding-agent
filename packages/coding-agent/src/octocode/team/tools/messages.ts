@@ -1,12 +1,14 @@
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import { Box, Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { formatClock } from "../../shared/format.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock, toolHeader } from "../../shared/render.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
 import type { MailDetails } from "../model.ts";
 import type { Team } from "../session.ts";
+import { PARENT_WAITS_ENV } from "../store/env.ts";
 import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
 import { clip, plural } from "../../shared/render/text.ts";
 import { timedTool, timingOf } from "../../shared/render/rows.ts";
@@ -82,11 +84,55 @@ async function forwardResult(
 	});
 }
 
+/** Other running Octocode sessions, as a top-level session reaches them; a subagent has none of this. */
+export interface PeerRoute {
+	addresses(to: string): boolean;
+	send(
+		to: string,
+		text: string,
+		options: { replyRequired?: boolean },
+		ctx: ExtensionContext,
+		signal?: AbortSignal,
+	): Promise<{ text: string; details: Record<string, unknown> }>;
+	/** The other sessions, for `coordinate list`. */
+	list(cwd: string): Promise<string>;
+}
+
+/** A message to a session another process runs: what only team mail has is refused, not ignored. */
+async function sendToPeer(
+	peers: PeerRoute,
+	params: {
+		to: string;
+		message?: string;
+		forward?: number;
+		replyTo?: number;
+		interrupt?: boolean;
+		replyRequired?: boolean;
+	},
+	ctx: ExtensionContext,
+	signal?: AbortSignal,
+) {
+	if (params.forward !== undefined || params.replyTo !== undefined || params.interrupt)
+		throw new Error(
+			`${params.to} is another process: forward, replyTo and interrupt reach teammates only. Nothing was sent; send your text with message.`,
+		);
+	if (params.message === undefined) throw new Error("Give message.");
+	const { text, details } = await peers.send(
+		params.to,
+		params.message,
+		params.replyRequired ? { replyRequired: true } : {},
+		ctx,
+		signal,
+	);
+	return textResult(text, details);
+}
+
 /** The `sendMessage` tool. */
 export function registerSendMessageTool(
 	api: ExtensionAPI,
 	team: Team,
 	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
+	peers?: PeerRoute,
 ): void {
 	registerTool(
 		timedTool({
@@ -94,14 +140,11 @@ export function registerSendMessageTool(
 			label: "Send message",
 			description:
 				"Queue steering, questions or evidence to teammates; unread departures are reported. Messages resume only reachable non-isolated background children (yours, or siblings via your parent).",
-			promptGuidelines: [
-				"Send self-contained blockers, decisions or evidence that change the next step. Skip acknowledgements and completion pings; reports arrive automatically.",
-			],
+			promptGuidelines: renderInstruction("tools/send-message/guidelines.md").split("\n"),
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
-						description:
-							'Agent id, role or "parent"; use an exact id across parent trees. "all" reaches only your tree; omit with replyTo to answer its sender.',
+						description: `Agent id, role or "parent"; use an exact id across parent trees. "all" reaches only your tree; omit with replyTo to answer its sender.${peers ? ' Also another Octocode process by its name, or "coordinator" from a linked worktree: the session in the main checkout; if there is none or several, nothing is sent.' : ""}`,
 					}),
 				),
 				message: Type.Optional(Type.String()),
@@ -133,8 +176,16 @@ export function registerSendMessageTool(
 					}),
 				),
 			}),
-			async execute(_id, params, signal) {
+			async execute(_id, params, signal, _onUpdate, ctx) {
 				signal?.throwIfAborted();
+				// A teammate keeps its name: only a `to` no live agent answers to can be another process.
+				const to = params.to;
+				if (
+					to !== undefined &&
+					peers?.addresses(to) &&
+					!team.members().some((each) => each.id === to || each.role === to)
+				)
+					return sendToPeer(peers, { ...params, to }, ctx, signal);
 				const me = team.join();
 				if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);
 				if (params.message === undefined) throw new Error("Give message, or forward with a message number.");
@@ -153,6 +204,11 @@ export function registerSendMessageTool(
 					...(result.departed?.length ? { departed: result.departed } : {}),
 				};
 				if (result.resumed) return textResult(result.resumed, details);
+				// A foreground child's parent is inside this child's `agent` call: nothing it sends is read before its report.
+				const waits =
+					process.env[PARENT_WAITS_ENV] === "1" && team.parentId !== undefined && result.sent.includes(team.parentId)
+						? ` ${renderInstruction("notices/mail/parent-waits.md")}`
+						: "";
 				if (result.relayed)
 					return textResult(
 						`${result.sent.join(", ")} is not running: message #${result.id} goes through your parent ${result.relayed}, which resumes it with the message if it can. If not, you get a notice saying why.`,
@@ -188,7 +244,7 @@ export function registerSendMessageTool(
 						]
 							.filter(Boolean)
 							.map((part) => ` ${part}`)
-							.join("")}`,
+							.join("")}${waits}`,
 						details,
 					);
 				const fates = [
@@ -211,7 +267,9 @@ export function registerSendMessageTool(
 				return textResult(
 					[`Queued message #${result.id} for ${recipients} as an FYI (no reply requested).`, fates]
 						.filter(Boolean)
-						.join(" ") + departed,
+						.join(" ") +
+						departed +
+						waits,
 					details,
 				);
 			},

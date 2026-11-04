@@ -1,5 +1,5 @@
 /**
- * `yarn workspace @octocodeai/octocode-mcp run generate:compact [--accept <label>]... [--accept-all] [--check]`
+ * `yarn workspace @octocodeai/octocode-mcp run generate:compact [--preset <octocode|browser>] [--accept <label>]... [--accept-all] [--check]`
  *
  * Reads the catalogs the linked `octocode-mcp` server and the installed browser server send now (with an empty home,
  * as the drift tests read them), compares them with the preset overrides in `src/presets/*\/compact-overrides.json`
@@ -10,7 +10,8 @@
  * with the text before and after, from the previous fixtures) and exits 1 while any remain. Read each: when the
  * override is still true, name it with `--accept <label>` (or `--accept-all`) to re-point its hash; when the upstream
  * meaning changed, edit its `text` in the JSON, then accept it. An override whose tool or field is gone is dropped.
- * `--check` changes no file.
+ * `--check` changes no file. `--preset` limits the run to one preset's overrides (and, for octocode, its fixtures): labels
+ * such as `server` exist in both.
  */
 
 import fs from "node:fs";
@@ -86,18 +87,20 @@ const TARGETS: Target[] = [
 	},
 ];
 
-function parseArgs(argv: string[]): { accept: Set<string>; acceptAll: boolean; check: boolean } {
+function parseArgs(argv: string[]): { accept: Set<string>; acceptAll: boolean; check: boolean; preset?: string } {
 	const accept = new Set<string>();
 	let acceptAll = false;
 	let check = false;
+	let preset: string | undefined;
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index];
 		if (arg === "--accept-all") acceptAll = true;
 		else if (arg === "--check") check = true;
 		else if (arg === "--accept" && argv[index + 1]) accept.add(argv[++index]);
+		else if (arg === "--preset" && TARGETS.some((target) => target.name === argv[index + 1])) preset = argv[++index];
 		else throw new Error(`unknown argument ${arg}; see the header of scripts/generate-compact.ts`);
 	}
-	return { accept, acceptAll, check };
+	return { accept, acceptAll, check, preset };
 }
 
 const clip = (text: string, length = 240) => (text.length > length ? `${text.slice(0, length)}…` : text);
@@ -178,7 +181,8 @@ async function run(target: Target, options: ReturnType<typeof parseArgs>): Promi
 
 const options = parseArgs(process.argv.slice(2));
 let remaining = 0;
-for (const target of TARGETS) remaining += await run(target, options);
+for (const target of TARGETS)
+	if (!options.preset || target.name === options.preset) remaining += await run(target, options);
 if (remaining) {
 	console.log(`\n${remaining} override${remaining === 1 ? "" : "s"} still stale; they fall back to the server's text.`);
 	process.exitCode = 1;

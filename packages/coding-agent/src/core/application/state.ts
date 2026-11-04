@@ -31,6 +31,13 @@ export interface ApplicationRuntimeState {
 
 export type ApplicationStateStore = StoreApi<ApplicationRuntimeState>;
 
+/** Read-only view of the state store; structurally a `StateSource` of the terminal UI library. */
+export interface ApplicationStateSource {
+	getState(): ApplicationRuntimeState;
+	/** Calls `listener` after each change; returns the unsubscribe function. */
+	subscribe(listener: () => void): () => void;
+}
+
 export function initialApplicationState(sessionId: string): ApplicationRuntimeState {
 	return {
 		revision: 0,

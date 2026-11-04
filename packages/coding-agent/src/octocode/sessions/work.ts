@@ -106,6 +106,35 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 	return [...started].filter(([key]) => !reported.has(key)).map(([, work]) => work);
 }
 
+/** Characters kept of an unanswered call's arguments in the resume brief. */
+const CALL_CHARS = 200;
+
+/**
+ * The tool calls of the latest assistant message on `entries` that have no recorded result, each as `name(arguments)`.
+ * Read when a session is resumed: the process ended (a crash, a kill, a failed save) while they ran or before their
+ * results were saved, so they may have done their work. Stops at a later user message, which means they were already
+ * dealt with, and an errored or aborted reply never reaches the model, so its calls do not count.
+ */
+export function unansweredCalls(entries: readonly unknown[]): string[] {
+	const answered = new Set<unknown>();
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		const message = isRecord(entry) && entry.type === "message" && isRecord(entry.message) ? entry.message : undefined;
+		if (!message) continue;
+		if (message.role === "user") return [];
+		if (message.role === "toolResult") answered.add(message.toolCallId);
+		if (message.role !== "assistant") continue;
+		if (message.stopReason === "error" || message.stopReason === "aborted" || !Array.isArray(message.content))
+			return [];
+		return message.content.flatMap((part) =>
+			isRecord(part) && part.type === "toolCall" && !answered.has(part.id)
+				? [`${String(part.name)}(${shownLine(JSON.stringify(part.arguments ?? {}), CALL_CHARS)})`]
+				: [],
+		);
+	}
+	return [];
+}
+
 /**
  * One item per line part: what runs and why, then where its output is: `bash-3 (`yarn test`, why "…", log ~/…/bash-3-….log)`,
  * `general-ab12 (goal "…", why "…", transcript folder ~/…)` or, without a goal, `(task "…")`. A log that is gone (the

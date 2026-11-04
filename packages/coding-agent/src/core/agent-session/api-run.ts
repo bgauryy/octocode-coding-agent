@@ -66,6 +66,8 @@ export interface AgentSessionPromptingApi {
 		options?: {
 			triggerTurn?: boolean;
 			deliverAs?: "steer" | "followUp" | "nextTurn";
+			/** With `followUp`: drain together with the neighbouring follow-ups that set it too, so several reports cost one turn. */
+			together?: boolean;
 		},
 	): Promise<void>;
 
@@ -97,6 +99,9 @@ export interface AgentSessionPromptingApi {
 
 	/** Whether a custom message sent with this exact `details` object (identity, not equality) still waits in the agent's queue. */
 	isCustomMessageQueued(details: object): boolean;
+
+	/** Rewrites a custom message sent with this exact `details` object while it waits; false once it was read. */
+	replaceQueuedCustomMessage(details: object, content: string): boolean;
 
 	/** Get pending steering messages (read-only) */
 	getSteeringMessages(): readonly string[];
@@ -138,6 +143,9 @@ export interface AgentSessionPromptingApi {
 	abort(reason?: "interrupted" | "replacement" | "shutdown" | "internal"): Promise<void>;
 
 	waitForIdle(): Promise<void>;
+
+	/** Resolves once the run and what it left behind are done: a compaction an extension asked for as it settled and the turn resuming from it. */
+	settled(): Promise<void>;
 }
 
 /** Compaction, auto-retry and bash execution of `AgentSession`. */

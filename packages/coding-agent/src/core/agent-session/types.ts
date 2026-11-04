@@ -20,6 +20,7 @@ import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionEntry, SessionManager, SessionNameSource } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { SourceInfo } from "../source-info.ts";
+import type { RunOutcome } from "./run-outcome.ts";
 
 /** Tool execution events of calls a tool made through `ctx.executeTool()` carry `parentToolCallId`. */
 type WithParentToolCallId<E> = E extends {
@@ -36,7 +37,7 @@ export type AgentSessionEvent =
 			messages: AgentMessage[];
 			willRetry: boolean;
 	  }
-	| { type: "agent_settled"; aborted: boolean }
+	| { type: "agent_settled"; aborted: boolean; outcome?: RunOutcome }
 	| { type: "session_dispatch"; active: boolean; dispatchId: string }
 	| {
 			type: "queue_update";
@@ -182,8 +183,8 @@ export interface PromptOptions {
 	 * Set by the terminal and /web for text the user typed; command lines are not scanned. Default: false.
 	 */
 	attachImagePaths?: boolean;
-	/** Internal hook used by RPC mode to observe how an accepted prompt was dispatched. Not called if the prompt is rejected. */
-	preflightResult?: (disposition: PromptDisposition) => void;
+	/** Internal hook used by RPC mode to observe how an accepted prompt was dispatched, and why a command it ran failed. Not called if the prompt is rejected. */
+	preflightResult?: (disposition: PromptDisposition, commandFailure?: string) => void;
 }
 
 /** Options for model/thinking mutations. */

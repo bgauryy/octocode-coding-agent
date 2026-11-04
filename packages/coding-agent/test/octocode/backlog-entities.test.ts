@@ -176,7 +176,24 @@ describe("backlog composition", () => {
 				{ state: "done", completion: { ...result(), files: [{ path: "../secret", role: "changed" }] } },
 				actor,
 			),
-		).toThrow(/relative/);
+		).toThrow("`../secret` is outside the repository; give a repository-relative path.");
+		expect(() =>
+			store.update(
+				item.ref,
+				{
+					state: "done",
+					completion: {
+						...result("abs"),
+						files: [
+							{ path: "src/ok.ts", role: "changed" },
+							{ path: "/etc/passwd", role: "changed" },
+							{ path: "a/../../b", role: "reviewed" },
+						],
+					},
+				},
+				actor,
+			),
+		).toThrow("`/etc/passwd` is absolute; `a/../../b` is outside the repository; give a repository-relative path.");
 	});
 	it("allows explicitly unverified human completion with no files", () => {
 		const item = add("Decision");

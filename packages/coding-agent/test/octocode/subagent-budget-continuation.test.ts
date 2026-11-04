@@ -54,12 +54,13 @@ describe("the task budget through native continuation routes", () => {
 			try {
 				await reopened.emit("session_start", {}, reopened.ctx);
 				expect(reopened.team.join().id).not.toBe(parent);
-				expect(await reopened.team.send(id, "budget loop 40 stop-at 1", { replyRequired: false })).toHaveProperty(
+				// Four saved replies, past the soft limit of 3: the message is a grant, so this run stops at 4 + 5.
+				expect(await reopened.team.send(id, "budget loop 40 stop-at 5", { replyRequired: false })).toHaveProperty(
 					"resumed",
 				);
 				await reopened.control.settle();
-				expect(reopened.sent.at(-1)?.message.content).toContain("5 requests; limit 3");
-				expect(reopened.sent.at(-1)?.message.details).toMatchObject({ id, requests: 1 });
+				expect(reopened.sent.at(-1)?.message.content).toContain("9 requests; limit 7");
+				expect(reopened.sent.at(-1)?.message.details).toMatchObject({ id, requests: 5 });
 			} finally {
 				await reopened.control.stopAll();
 				reopened.team.stop();
@@ -99,9 +100,11 @@ describe("the task budget through native continuation routes", () => {
 			Object.assign(fork.ctx.sessionManager, { getEntries: () => entries, getSessionId: () => "forked-budget-parent" });
 			try {
 				await fork.emit("session_start", { reason: "fork" }, fork.ctx);
-				const resumed = await fork.run({ goal: "continue accounting", task: "budget loop 40 stop-at 2", resume: id });
-				expect(resumed.content[0].text).toContain("5 requests; limit 3");
-				expect(resumed.details).toMatchObject({ id, requests: 2 });
+				// Three saved replies, at the soft limit of 3: the resume counts them and gives a new allowance from there.
+				const resumed = await fork.run({ goal: "continue accounting", task: "budget loop 40 stop-at 5", resume: id });
+				expect(resumed.content[0].text).toContain("8 requests; limit 6");
+				expect(resumed.content[0].text).toContain(`\`resume: ${id}\``);
+				expect(resumed.details).toMatchObject({ id, requests: 5 });
 			} finally {
 				await fork.control.stopAll();
 				fork.team.stop();
@@ -109,6 +112,43 @@ describe("the task budget through native continuation routes", () => {
 		} finally {
 			await first.control.stopAll();
 			first.team.stop();
+		}
+	});
+
+	it("counts a relayed peer's message as no grant, while the parent's own message or forward of one is", async () => {
+		const parent = setup();
+		/** What `team/relay.ts` and a forward call: the parent's process asks, with the stored message. */
+		const resume = (id: string, message: Record<string, unknown>) =>
+			(parent.team as unknown as { resumer: (...args: unknown[]) => Promise<string | undefined> }).resumer(
+				id,
+				"budget loop 40",
+				parent.team.join().id,
+				undefined,
+				{ message: { id: 1, to: id, text: "budget loop 40 stop-at 5", at: Date.now(), ...message } },
+			);
+		try {
+			const started = await parent.run({ task: "budget loop 40 stop-at 5", background: true });
+			const id = started.details.id;
+			await parent.control.settle();
+			expect(parent.sent.at(-1)?.message.content).toContain("5 requests; limit 3");
+			// A peer's message: at the hard limit it runs nothing, and the report says how to continue.
+			expect(await resume(id, { from: "a-peer" })).toContain("Resumed");
+			await parent.control.settle();
+			const relayed = parent.sent.at(-1)?.message;
+			expect(relayed?.content).toContain("5 requests; limit 3");
+			expect(relayed?.content).toContain(`\`resume: ${id}\``);
+			// No requests in this run: the details carry no count for it.
+			expect(relayed?.details.id).toBe(id);
+			expect(relayed?.details.requests ?? 0).toBe(0);
+			// The parent forwarding that message decided it: a whole allowance from the five saved replies.
+			expect(await resume(id, { from: "a-peer", forwardedBy: parent.team.join().id })).toContain("Resumed");
+			await parent.control.settle();
+			const forwarded = parent.sent.at(-1)?.message;
+			expect(forwarded?.content).toContain("10 requests; limit 8");
+			expect(forwarded?.details).toMatchObject({ id, requests: 5 });
+		} finally {
+			await parent.control.stopAll();
+			parent.team.stop();
 		}
 	});
 

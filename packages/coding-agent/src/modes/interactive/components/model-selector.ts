@@ -4,6 +4,7 @@ import {
 	type Focusable,
 	fuzzyFilter,
 	getKeybindings,
+	GLYPH,
 	Input,
 	Spacer,
 	Text,
@@ -14,7 +15,7 @@ import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, keyText } from "./keybinding-hints.ts";
+import { hintLine, keyHint, keyText } from "./keybinding-hints.ts";
 import {
 	type DefaultModelReference,
 	isDefaultModel,
@@ -126,15 +127,15 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.addChild(this.listContainer);
 
 		this.addChild(new Spacer(1));
-
-		// Hint
 		if (this.onSelectAsDefaultCallback) {
 			this.addChild(
 				new Text(
-					theme.fg(
-						"dim",
-						`  ${keyText("tui.select.confirm")} to select · ${keyText("app.models.save")} to set as default · ${keyText("tui.select.cancel")} to cancel`,
-					),
+					"  " +
+						hintLine([
+							[keyText("tui.select.confirm"), "select"],
+							[keyText("app.models.save"), "set as default"],
+							[keyText("tui.select.cancel"), "cancel"],
+						]),
 					0,
 					0,
 				),
@@ -300,7 +301,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const isDefault = this.isDefaultModel(item.model);
 			const defaultBadge = isDefault ? theme.fg("muted", " · default") : "";
 
-			const cursor = isSelected ? theme.fg("accent", "→ ") : "  ";
+			const cursor = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
 			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
 			const modelText = isSelected ? theme.fg("accent", item.id) : item.id;
 			const providerBadge = theme.fg("muted", `[${item.provider}]`);

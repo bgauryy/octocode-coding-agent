@@ -1,3 +1,4 @@
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import "../../../octocode/mcp-host/core-install.ts";
 /**
  * `/github`: GitHub sign-in for Octocode research, through the native CLI's `octocode auth` device flow.
@@ -77,12 +78,12 @@ export async function handleGithubCommand(
 async function login(host: GithubCommandHost, run: RunGithubAuth): Promise<void> {
 	const dialog = new LoginDialogComponent(host.ui, "github", () => {}, "GitHub");
 	showInEditorSlot(host, dialog);
-	dialog.showProgress("Requesting a device code...");
+	dialog.showProgress(`Requesting a device code${ELLIPSIS}`);
 	const options: GithubAuthOptions = {
 		signal: dialog.signal,
 		onDeviceCode: (code) => {
 			dialog.showDeviceCode(code);
-			dialog.showWaiting("Waiting for authentication...");
+			dialog.showWaiting(`Waiting for authentication${ELLIPSIS}`);
 		},
 	};
 	host.programStatus.setBlocked("login", { kind: "auth", message: "Log in to GitHub" });

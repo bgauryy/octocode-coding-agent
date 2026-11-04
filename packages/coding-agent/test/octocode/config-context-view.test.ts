@@ -26,7 +26,6 @@ beforeEach(() => {
 	resetPiNoticeForTests();
 	vi.stubEnv("OCTOCODE_OFFLINE", "1");
 	vi.stubEnv("OCTOCODE_MCP", "0");
-	vi.stubEnv("OCTOCODE_API", "0");
 });
 afterEach(() => box.cleanup());
 

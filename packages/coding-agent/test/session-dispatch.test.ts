@@ -49,7 +49,13 @@ it("correlates nested extension sends through asynchronous preflight while prese
 		release.resolve();
 		await vi.waitFor(() =>
 			expect(responses).toEqual([
-				{ id: "request", type: "response", command: "prompt", success: true, data: { disposition: "handled" } },
+				{
+					id: "request",
+					type: "response",
+					command: "prompt",
+					success: true,
+					data: { disposition: "handled", outcome: expect.objectContaining({ status: "completed" }) },
+				},
 			]),
 		);
 		expect(getAssistantTexts(h)).toEqual(["nested answer"]);

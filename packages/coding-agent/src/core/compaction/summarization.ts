@@ -2,6 +2,7 @@
  * LLM summarization calls shared by compaction and branch summaries.
  */
 
+import { renderInstruction } from "../prompt-template.ts";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
@@ -22,24 +23,17 @@ import type {
 import { completeSimple, isContextOverflow } from "@octocodeai/octocode-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT, serializeConversation } from "./utils.ts";
-import { SUMMARY_CHECKPOINT_FORMAT, TLDR_HEADING } from "./summary-format.ts";
+import { inlineSummaryTokens, summaryTargetTokens } from "./checkpoint.ts";
+import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "./summary-format.ts";
 
-const SUMMARIZATION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+const SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/summarize.md", {
+	format: SUMMARY_CHECKPOINT_FORMAT,
+});
 
-${SUMMARY_CHECKPOINT_FORMAT}`;
-
-const UPDATE_SUMMARIZATION_INSTRUCTIONS = `Update the existing structured summary with new information. RULES:
-- PRESERVE all existing information from the previous summary
-- ADD new progress, decisions, errors and context from the new messages
-- UPDATE the Progress section: move items from "In Progress" to "Done" when completed
-- REWRITE "Where We Stopped" and "${TLDR_HEADING}" for the new messages only
-- Newer messages win where they contradict, resolve or supersede the previous summary; what is no longer relevant may be removed
-
-${SUMMARY_CHECKPOINT_FORMAT}`;
-
-const UPDATE_SUMMARIZATION_PROMPT = `The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
-
-${UPDATE_SUMMARIZATION_INSTRUCTIONS}`;
+const UPDATE_SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/summarize-update.md", {
+	format: SUMMARY_CHECKPOINT_FORMAT,
+	tldrHeading: TLDR_HEADING,
+});
 
 /**
  * Returns an error message when a summarization response cannot safely be persisted.
@@ -160,10 +154,7 @@ async function completeWithOverflowTrim(
 	for (let trims = 0; ; trims++) {
 		const dropped = messages.length - remaining.length;
 		// The summary must not claim to cover what it never saw.
-		const note =
-			dropped > 0
-				? `\n\nNote: the ${dropped} oldest messages of this conversation did not fit this request and are not shown above. Summarize only what is shown, and say that earlier history was left out.`
-				: "";
+		const note = dropped > 0 ? `\n\n${renderInstruction("workflows/compaction/dropped-messages.md", { dropped })}` : "";
 		const response = await completeSummarization(
 			model,
 			buildSummarizationContext(`${buildPrompt(remaining)}${note}`),
@@ -184,8 +175,8 @@ async function completeWithOverflowTrim(
 export async function generateSummaryWithUsage(
 	currentMessages: AgentMessage[],
 	model: Model<any>,
-	// Unused. Kept for existing callers; summaries use the model's output limit (#9512).
-	_reserveTokens: number | undefined,
+	// Sets only the size an update is asked to stay under; the output limit stays the model's (#9512).
+	reserveTokens: number | undefined,
 	apiKey: string | undefined,
 	headers?: Record<string, string>,
 	signal?: AbortSignal,
@@ -201,6 +192,9 @@ export async function generateSummaryWithUsage(
 ): Promise<{ text: string; usage: Usage }> {
 	// Use update prompt if we have a previous summary, otherwise initial prompt
 	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
+	const sizeTarget =
+		previousSummary && reserveTokens ? summarySizeTarget(summaryTargetTokens(inlineSummaryTokens(reserveTokens))) : "";
+	if (sizeTarget) basePrompt = `${basePrompt}\n\n${sizeTarget}`;
 	if (customInstructions) {
 		basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
 	}
@@ -239,20 +233,7 @@ export async function generateSummaryWithUsage(
 	return { text: textContent, usage: response.usage };
 }
 
-const TURN_PREFIX_SUMMARIZATION_PROMPT = `The messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.
-
-Create a concise checkpoint of the user's request and the progress shown above. This checkpoint will be placed before the later messages so the conversation can continue with the necessary context.
-
-## Original Request
-[What did the user ask for?]
-
-## Progress So Far
-- [Key decisions and work completed in these messages]
-
-## Context Needed to Continue
-- [Information from these messages needed to understand the later work]
-
-Only summarize information explicitly present above. Do not infer or recreate later messages.`;
+const TURN_PREFIX_SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/turn-prefix.md");
 
 /**
  * Generate a summary for a turn prefix (when splitting a turn).

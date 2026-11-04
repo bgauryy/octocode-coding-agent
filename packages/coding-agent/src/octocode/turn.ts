@@ -3,6 +3,7 @@ import type { Skill } from "../core/skills.ts";
 import { currentEnvironment } from "../core/system-prompt.ts";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
+import { LOCAL_READER_TOOL } from "./files/read-hint.ts";
 import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
@@ -20,6 +21,10 @@ export function registerTurnSetup(
 	options: {
 		isSubagent: boolean;
 		profiles: () => Map<string, AgentProfile>;
+		/** The name other processes reach this session by, while its API serves. */
+		processName?: () => string | undefined;
+		/** Whether the `agent` tool declares its `external` type here. */
+		canExternal?: () => boolean;
 	},
 ): { reset(): void } {
 	let prompt: Record<string, string> | undefined;
@@ -31,7 +36,11 @@ export function registerTurnSetup(
 	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 
-	api.on("before_agent_start", async (event) => {
+	/** Whether a person can answer `askUser`; read once, so the cached prompt never changes during a session. */
+	let hasUI: boolean | undefined;
+
+	api.on("before_agent_start", async (event, ctx) => {
+		hasUI ??= ctx.hasUI;
 		const selected = event.systemPromptOptions.selectedTools ?? api.getActiveTools();
 		const servers = getMcpSessionStatus(api.events);
 		const server = servers.find((server) => server.name === OCTOCODE_SERVER);
@@ -64,11 +73,15 @@ export function registerTurnSetup(
 					: [],
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
+			canExternal: selected.includes("agent") && options.canExternal?.() === true,
 			readOnly,
 			// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 			canSave: selected.includes(FILE_TOOL),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
+			// What the selection allows, never what has connected: a server coming up must not change these bytes.
+			canReadLocal: typeof api.selectsTools !== "function" || api.selectsTools(LOCAL_READER_TOOL, true),
+			canAsk: selected.includes("askUser") && hasUI,
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: canReachMcp(selected),
 			browserControl,
@@ -86,7 +99,7 @@ export function registerTurnSetup(
 		Object.assign(event.systemPromptOptions.sections, prompt);
 		if (role !== undefined) event.systemPromptOptions.sections.role = role;
 		// Checked at every prompt: a new day changes only this section.
-		event.systemPromptOptions.environment = currentEnvironment();
+		event.systemPromptOptions.environment = currentEnvironment(new Date(), process.env, options.processName?.());
 		if (promptRoots) {
 			// An isolated child's prompt names the main checkout, so siblings share the cached prefix. Tools and
 			// permissions keep the real worktree cwd; the task text names it.

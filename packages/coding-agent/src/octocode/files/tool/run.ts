@@ -224,7 +224,14 @@ export async function runQuery(
 		const effective = query.type === "edit" && data ? resolveAnchoredEdits(query, data, guard, file) : query;
 		const lost =
 			!prepared && changed && data
-				? lostAnchor(query.path, effective.edits ?? [], data.toString("utf8"), guard.reader, inspection.by)
+				? lostAnchor(
+						query.path,
+						effective.edits ?? [],
+						data.toString("utf8"),
+						guard.reader,
+						inspection.by,
+						inspection.unread === true,
+					)
 				: undefined;
 		if (lost) throw new Error(lost);
 		const copied = copiedElision(effective, data?.toString("utf8") ?? "");
@@ -343,7 +350,7 @@ export async function workspaceRefusal(
 	approvedTarget?: string,
 ): Promise<string | undefined> {
 	const real = canonicalPath(file);
-	const home = stateFolderRefusal(real, query.path, "the file tool");
+	const home = stateFolderRefusal(real, query.path, "the file tool", ctx.cwd);
 	if (home) {
 		permission.refused([`${query.type} ${real}`], home, "file");
 		return home;

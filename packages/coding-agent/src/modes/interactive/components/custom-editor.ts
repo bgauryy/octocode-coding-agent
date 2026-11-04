@@ -1,4 +1,11 @@
-import { Editor, type EditorOptions, type EditorTheme, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	Editor,
+	type EditorOptions,
+	type EditorTheme,
+	splitDoubleEscape,
+	type TUI,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
 import type { StatusIndicator } from "./status-indicator.ts";
 
@@ -88,6 +95,12 @@ export class CustomEditor extends Editor {
 	}
 
 	handleInput(data: string): void {
+		// Two Escapes that arrived in one read are two key presses, not Ctrl+Alt+[ (aborts and double-Esc need them).
+		const presses = splitDoubleEscape(data);
+		if (presses.length > 1) {
+			for (const press of presses) this.handleInput(press);
+			return;
+		}
 		// Check extension-registered shortcuts first
 		if (this.onExtensionShortcut?.(data)) {
 			return;

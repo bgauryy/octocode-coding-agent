@@ -1,0 +1,1 @@
+{{#if waiting}}The caller is waiting: when this run ends, your final answer goes back to it, so just answer. {{/if}}{{#if replyRequired}}It asks for an answer. {{/if}}{{#if replyTo}}To message it, use `agent` type `message` with `to` {{replyTo}}. {{/if}}Answer only what it asks; do not reply to an acknowledgment.

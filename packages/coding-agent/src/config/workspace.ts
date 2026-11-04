@@ -7,7 +7,7 @@ import { syncDirectorySync } from "../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { getFileStamp, isUnderPath } from "../../../common/src/paths.ts";
 
-export const WORKSPACE_STATE = path.join(".octa", "code");
+export const WORKSPACE_STATE = path.join(".octocode", "code");
 const ID = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/;
 
 /** Workspace data follows the nearest declaration. A checkout boundary starts a new workspace. */
@@ -40,7 +40,7 @@ function statePath(root: string, subpath: string, create: boolean): string {
 			stat = fs.lstatSync(dir);
 		}
 		if (stat && !stat.isDirectory()) throw new Error(`Workspace state requires a real directory: ${dir}`);
-		if (create && stat && dir !== path.join(root, ".octa") && stat.mode & 0o077 && process.platform !== "win32")
+		if (create && stat && dir !== path.join(root, ".octocode") && stat.mode & 0o077 && process.platform !== "win32")
 			fs.chmodSync(dir, 0o700);
 	}
 	return dir;

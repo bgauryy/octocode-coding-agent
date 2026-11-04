@@ -5,22 +5,19 @@
  * and provides a transformer to convert them to LLM-compatible messages.
  */
 
+import { renderInstruction } from "./prompt-template.ts";
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, Message, TextContent } from "@octocodeai/octocode-ai";
 import { compactionSummaryText } from "./compaction/summary-view.ts";
 
-const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
-
-<summary>
-`;
+const compactionSummaryPrefix = (): string =>
+	`${renderInstruction("notices/compaction/summary-preface.md")}\n\n<summary>\n`;
 
 const COMPACTION_SUMMARY_SUFFIX = `
 </summary>`;
 
-const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch that this conversation came back from:
-
-<summary>
-`;
+const branchSummaryPrefix = (): string =>
+	`${renderInstruction("notices/compaction/branch-summary-preface.md")}\n\n<summary>\n`;
 
 const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
@@ -37,7 +34,7 @@ export interface BashExecutionMessage {
 	fullOutputPath?: string;
 	/** The first line of the result (exit, time, size, what was trimmed); absent from older sessions and extension results. */
 	header?: string;
-	/** Full display output captured from this process's trusted executor spill; never added to model context. */
+	/** Full display output, as older sessions recorded it; now a view reads `fullOutputPath`. Never added to model context. */
 	fullOutput?: string;
 	/** Explicit recovery information when complete display output could not be retained. */
 	fullOutputUnavailable?: string;
@@ -186,14 +183,14 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				case "branchSummary":
 					return {
 						role: "user",
-						content: [{ type: "text" as const, text: BRANCH_SUMMARY_PREFIX + m.summary + BRANCH_SUMMARY_SUFFIX }],
+						content: [{ type: "text" as const, text: branchSummaryPrefix() + m.summary + BRANCH_SUMMARY_SUFFIX }],
 						timestamp: m.timestamp,
 					};
 				case "compactionSummary":
 					return {
 						role: "user",
 						content: [
-							{ type: "text" as const, text: COMPACTION_SUMMARY_PREFIX + m.summary + COMPACTION_SUMMARY_SUFFIX },
+							{ type: "text" as const, text: compactionSummaryPrefix() + m.summary + COMPACTION_SUMMARY_SUFFIX },
 						],
 						timestamp: m.timestamp,
 					};

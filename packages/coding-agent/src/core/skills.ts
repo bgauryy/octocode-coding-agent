@@ -1,3 +1,4 @@
+import { renderInstruction } from "./prompt-template.ts";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
@@ -43,20 +44,6 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
 }
 
 /**
- * Characters the skill catalog may take (XML entries and overflow names): about 1% of a
- * 200k-token window, the share Claude Code gives its skill listing. Past it, descriptions are dropped from the last
- * skills first, then the last skills are named without an entry.
- */
-const SKILLS_PROMPT_BUDGET_CHARS = 8_000;
-/** Characters of one description in the prompt: the Agent Skills limit, which the loader only warns about. */
-const SKILL_PROMPT_DESCRIPTION_CHARS = 1024;
-
-export interface FormatSkillsOptions {
-	/** Characters for catalog entries and overflow names; fixed instructions are separate. Defaults to {@link SKILLS_PROMPT_BUDGET_CHARS}. */
-	budgetChars?: number;
-}
-
-/**
  * Format skills for inclusion in a system prompt.
  * Uses XML format per Agent Skills standard.
  * See: https://agentskills.io/integrate-skills
@@ -65,15 +52,14 @@ export interface FormatSkillsOptions {
  * (they can only be invoked explicitly via /skill:name commands).
  *
  * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
- * returns its directory, so its entries omit `<location>` paths; `indirect` names none, for a reader that is reachable only through another tool. The entries fit `options.budgetChars` (see {@link SKILLS_PROMPT_BUDGET_CHARS}).
+ * returns its directory, so its entries omit `<location>` paths; `indirect` names none, for a reader that is reachable only through another tool.
  *
  * Entries are grouped by {@link skillCategory} in `<core_skills>`, `<octocode_skills>` and `<external_skills>`, in that
- * order, so external skills are the first to lose descriptions when the catalog does not fit.
+ * order. Every visible skill is listed with its full description.
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
 	fileReadTool: "bash" | "indirect" | "octocode" | "skill" = "bash",
-	options: FormatSkillsOptions = {},
 ): string {
 	const visibleSkills = sortByCategory(
 		skills.filter((s) => !s.disableModelInvocation),
@@ -84,41 +70,21 @@ export function formatSkillsForPrompt(
 		return "";
 	}
 
-	// Loaded skills always have descriptions; skills an SDK caller supplies without any are listed by name, for tasks that name them.
-	const when = visibleSkills.every((s) => !s.description)
-		? "when your task names the skill"
-		: "when the task matches its description";
 	const categories = visibleSkills.map(skillCategory);
 	const groups = SKILL_CATEGORIES.filter((category) => categories.includes(category));
-	// The group tags are part of the catalog, so the entries get what is left of the budget.
-	const tags = groups.reduce((sum, category) => sum + 2 * groupTag(category).length + 4, 0);
-	const budget = Math.max(0, (options.budgetChars ?? SKILLS_PROMPT_BUDGET_CHARS) - tags);
-	let fitted = fitSkillEntries(visibleSkills, budget, fileReadTool !== "skill");
-	// Reserve a bounded share for names outside the XML list; appending every omitted name bypasses the catalog budget.
-	const overflowBudget = fitted.unlisted.length ? Math.min(512, Math.max(0, Math.floor(budget / 4))) : 0;
-	if (overflowBudget) fitted = fitSkillEntries(visibleSkills, budget - overflowBudget, fileReadTool !== "skill");
-	const { entries, undescribed, unlisted } = fitted;
-	const overflowNames = fitOverflowNames(unlisted, overflowBudget);
-	// One intro line, the load instruction: each entry's description already says what its skill is for.
-	const load =
-		fileReadTool === "skill"
-			? `Use the skill tool with a skill's name to load it ${when}.`
-			: fileReadTool === "bash"
-				? `Use bash to load a skill's file ${when}.`
-				: `Load a skill's file ${when}.`;
+	const withLocation = fileReadTool !== "skill";
+	const entries = visibleSkills.map((skill) => skillEntry(skill, withLocation));
+	// One intro line, the load instruction: each entry's description already says what its skill is for. The skill tool's
+	// description says how to resolve a loaded skill's relative paths, so only the other readers get that line.
+	const intro = renderInstruction("system/skills-intro.md", {
+		skillTool: fileReadTool === "skill",
+		bash: fileReadTool === "bash",
+		indirect: fileReadTool === "indirect" || fileReadTool === "octocode",
+		// Loaded skills always have descriptions; skills an SDK caller supplies without any are listed by name, for tasks that name them.
+		named: visibleSkills.every((s) => !s.description),
+	});
 	const lines = [
-		`\n\n${load}`,
-		// The skill tool's description says how to resolve a loaded skill's relative paths.
-		...(fileReadTool === "skill"
-			? []
-			: [
-					"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
-				]),
-		...(undescribed > 0
-			? [
-					`To fit the prompt, ${undescribed} skill${undescribed === 1 ? " is" : "s are"} listed without a description; load one when its name fits the task.`,
-				]
-			: []),
+		`\n\n${intro}`,
 		"",
 		"<available_skills>",
 		...groups.flatMap((category) => {
@@ -126,11 +92,6 @@ export function formatSkillsForPrompt(
 			return listed.length ? [`<${groupTag(category)}>`, ...listed, `</${groupTag(category)}>`] : [];
 		}),
 		"</available_skills>",
-		...(unlisted.length > 0
-			? [
-					`${unlisted.length} skills are outside the XML list (load by name only when the user asks for one)${overflowNames ? `: ${overflowNames}` : "."}`,
-				]
-			: []),
 	];
 
 	return lines.join("\n");
@@ -140,66 +101,16 @@ function groupTag(category: SkillCategory): string {
 	return `${category}_skills`;
 }
 
-function skillEntry(skill: Skill, withDescription: boolean, withLocation: boolean): string {
+function skillEntry(skill: Skill, withLocation: boolean): string {
 	const description = skill.description?.trim();
-	const shown =
-		description && description.length > SKILL_PROMPT_DESCRIPTION_CHARS
-			? `${description.slice(0, SKILL_PROMPT_DESCRIPTION_CHARS - 1).trimEnd()}…`
-			: description;
 	// One line per skill: its name and its description as written (plus the file path when a file reader loads it).
 	return [
 		"  <skill>",
 		`<name>${escapeXml(skill.name)}</name>`,
-		...(withDescription && shown ? [`<description>${escapeXml(shown)}</description>`] : []),
+		...(description ? [`<description>${escapeXml(description)}</description>`] : []),
 		...(withLocation ? [`<location>${escapeXml(skill.filePath)}</location>`] : []),
 		"</skill>",
 	].join("");
-}
-
-/** Entries within `budget` characters: descriptions go first from the last skills, then the last skills' entries. */
-function fitSkillEntries(
-	skills: readonly Skill[],
-	budget: number,
-	withLocation: boolean,
-): { entries: string[]; undescribed: number; unlisted: string[] } {
-	const full = skills.map((skill) => skillEntry(skill, true, withLocation));
-	const bare = skills.map((skill) => skillEntry(skill, false, withLocation));
-	const entries = [...full];
-	let size = entries.reduce((sum, entry) => sum + entry.length + 1, 0);
-	let undescribed = 0;
-	for (let index = skills.length - 1; index >= 0 && size > budget; index--) {
-		if (full[index] === bare[index]) continue;
-		size -= full[index].length - bare[index].length;
-		entries[index] = bare[index];
-		undescribed++;
-	}
-	const unlisted: string[] = [];
-	while (entries.length > 0 && size > budget) {
-		const index = entries.length - 1;
-		size -= entries[index].length + 1;
-		if (entries[index] !== full[index]) undescribed--;
-		entries.pop();
-		unlisted.unshift(skills[index].name);
-	}
-	return { entries, undescribed, unlisted };
-}
-
-/** Representative omitted names and a remainder count, all within the reserved part of the catalog budget. */
-function fitOverflowNames(names: readonly string[], budget: number): string {
-	const shown: string[] = [];
-	let used = 0;
-	for (const name of names) {
-		const escaped = escapeXml(name);
-		const remaining = names.length - shown.length - 1;
-		const suffix = remaining ? `; ${remaining} more` : "";
-		const size = used + (shown.length ? 2 : 0) + escaped.length;
-		if (size + suffix.length > budget) break;
-		shown.push(escaped);
-		used = size;
-	}
-	const remaining = names.length - shown.length;
-	const result = shown.join(", ") + (remaining ? `${shown.length ? "; " : ""}${remaining} more` : "");
-	return result.length <= budget ? result : "";
 }
 
 function escapeXml(str: string): string {

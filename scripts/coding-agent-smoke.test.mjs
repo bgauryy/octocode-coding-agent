@@ -58,7 +58,6 @@ function createFixture(t, { importUndeclared = false } = {}) {
 				".": { types: "./dist/types/index.d.ts", import: "./dist/bundle/index.js" },
 				"./mcp": "./dist/bundle/mcp.js",
 				"./mcp/oauth": "./dist/bundle/mcp-oauth.js",
-				"./mcp/testing": "./dist/bundle/mcp-testing.js",
 			},
 			files: ["dist"],
 			bin: { octocode: "dist/bundle/cli.js", "octocode-api": "dist/bundle/octocode-api.js" },
@@ -74,7 +73,6 @@ export function main() {}
 			"dist/types/index.d.ts": "export {};\n",
 			"dist/bundle/mcp.js": "export class McpClient {}\nexport class StdioTransport {}\n",
 			"dist/bundle/mcp-oauth.js": "export class McpOAuthProvider {}\n",
-			"dist/bundle/mcp-testing.js": "export function createInMemoryTransportPair() {}\n",
 			"dist/bundle/cli.js": 'console.log("1.0.0");\n',
 			"dist/bundle/octocode-api.js": 'console.log("octocode-api list");\n',
 			"dist/octocode/native-skills/octocode-context-optimization/SKILL.md":

@@ -1,4 +1,4 @@
-import { Container, hyperlink, Text, type TUI } from "@octocodeai/octocode-tui";
+import { Container, hyperlink, SEPARATOR, Text, type TUI } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { theme } from "../../../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
@@ -20,12 +20,12 @@ export class AuthUrlComponent extends Container {
 		this.addChild(new Text(theme.fg("accent", hyperlink(url, url)), 1, 0));
 		this.hint = new Text("", 1, 0);
 		this.addChild(this.hint);
-		this.setHint(keyHint("app.message.copy", "to copy"));
+		this.setHint(keyHint("app.message.copy", "copy"));
 	}
 
 	private setHint(suffix: string): void {
 		const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
-		this.hint.setText(`${theme.fg("dim", hyperlink(clickHint, this.url))} ${theme.fg("dim", "•")} ${suffix}`);
+		this.hint.setText(`${theme.fg("dim", hyperlink(clickHint, this.url))}${theme.fg("dim", SEPARATOR)}${suffix}`);
 		this.tui.requestRender();
 	}
 

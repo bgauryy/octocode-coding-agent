@@ -347,7 +347,7 @@ describe("skills", () => {
 
 			// One intro line, the load instruction. Octocode ships no `read` tool; bash is the default loader.
 			expect(introText.trim().split("\n")[0]).toBe(
-				"Use bash to load a skill's file when the task matches its description.",
+				"Use bash to load the file of every skill whose description matches the task; several can apply.",
 			);
 		});
 
@@ -470,7 +470,7 @@ describe("skills", () => {
 			expect(result).toBe("");
 		});
 
-		describe("budget", () => {
+		describe("full catalog", () => {
 			const many = (count: number, description = "d".repeat(200)) =>
 				Array.from({ length: count }, (_, index) =>
 					createTestSkill({
@@ -480,46 +480,18 @@ describe("skills", () => {
 						baseDir: `/s/skill-${index}`,
 					}),
 				);
-			const entries = (text: string) =>
-				text.slice(text.indexOf("<available_skills>"), text.indexOf("</available_skills>"));
 
-			it("lists everything unchanged within the budget", () => {
-				const result = formatSkillsForPrompt(many(5), "bash");
-				expect((result.match(/<description>/g) ?? []).length).toBe(5);
-				expect(result).not.toContain("to fit the prompt");
+			it("lists every skill with its full description, however many", () => {
+				const result = formatSkillsForPrompt(many(500, "d".repeat(2000)), "bash");
+				expect((result.match(/<description>/g) ?? []).length).toBe(500);
+				expect(result).toContain("<name>skill-499</name>");
+				expect(result).toContain(`<description>${"d".repeat(2000)}</description>`);
+				expect(result).not.toMatch(/outside the XML list|without a description|…/);
 			});
 
-			it("drops descriptions from the last skills first and says so", () => {
-				const result = formatSkillsForPrompt(many(10), "bash", { budgetChars: 2000 });
-				expect(entries(result).length).toBeLessThanOrEqual(2000 + "<available_skills>".length);
-				expect(result).toContain("<name>skill-9</name>");
-				expect(result).toMatch(/<name>skill-0<\/name><description>/);
-				expect(result).toMatch(/<name>skill-9<\/name><location>/);
-				expect(result).toMatch(/To fit the prompt, \d+ skills are listed without a description/);
-			});
-
-			it("bounds overflow names and reports how many remain when bare entries do not fit", () => {
-				const result = formatSkillsForPrompt(many(100), "bash", { budgetChars: 1000 });
-				expect(result).toContain("<name>skill-0</name>");
-				expect(result).toMatch(/\d+ skills are outside the XML list .*skill-\d+.*; \d+ more$/);
-				expect(result).not.toContain("skill-99");
-				const overflow = result.split("asks for one): ")[1] ?? "";
-				expect(entries(result).length - "<available_skills>".length + overflow.length).toBeLessThanOrEqual(1000);
-			});
-
-			it("keeps a very large catalog bounded instead of appending every omitted name", () => {
-				const result = formatSkillsForPrompt(many(10_000), "skill");
-				expect(result.length).toBeLessThan(9000);
-				expect(result).toContain("skills are outside the XML list");
-				expect(result).toMatch(/\d+ more$/);
-				expect(result).not.toContain("skill-9999");
-			});
-
-			it("cuts a description over the Agent Skills limit", () => {
-				const result = formatSkillsForPrompt(many(1, "x".repeat(3000)), "bash");
-				const description = /<description>(.*)<\/description>/.exec(result)?.[1] ?? "";
-				expect(description.length).toBe(1024);
-				expect(description.endsWith("…")).toBe(true);
+			it("says several skills can apply", () => {
+				expect(formatSkillsForPrompt(many(2), "skill")).toContain("every skill whose description matches the task");
+				expect(formatSkillsForPrompt(many(2), "skill")).toContain("several can apply");
 			});
 		});
 	});

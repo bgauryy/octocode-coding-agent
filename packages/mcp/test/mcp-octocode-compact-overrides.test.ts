@@ -34,6 +34,21 @@ describe("Octocode preset compact overrides", () => {
 		}
 	});
 
+	it.each(["localFetch", "localSearch"])("state the query cap and a valid batch in the %s trigger", (name) => {
+		const inputSchema = catalog.tools.find((tool) => tool.name === name)?.inputSchema as
+			| { properties?: { queries?: { maxItems: number; items: { required?: string[] } } } }
+			| undefined;
+		const queries = inputSchema?.properties?.queries as { maxItems: number; items: { required?: string[] } };
+		const trigger = overrides?.triggers?.[name] ?? "";
+		expect(trigger).toContain(`up to ${queries.maxItems} `);
+		const example = JSON.parse(/\{"queries":.*\}/.exec(trigger)?.[0] ?? "{}") as {
+			queries: Record<string, unknown>[];
+		};
+		expect(example.queries.length).toBeGreaterThan(1);
+		expect(example.queries.length).toBeLessThanOrEqual(queries.maxItems);
+		for (const row of example.queries) for (const key of queries.items.required ?? []) expect(row).toHaveProperty(key);
+	});
+
 	it("drop only the entries of a tool that changed", () => {
 		const [first, ...rest] = catalog.tools;
 		const changed = { ...catalog, tools: [{ ...first, description: `${first.description} Changed.` }, ...rest] };

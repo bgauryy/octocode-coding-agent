@@ -14,4 +14,6 @@ export const STATUS = {
 	backlog: "octocode-backlog",
 	/** A hook command running, with its elapsed time. */
 	hooks: "octocode-hooks",
+	/** Waiting to try again a turn that a report or message started and a provider error ended. */
+	wakeRetry: "octocode-wake-retry",
 } as const;

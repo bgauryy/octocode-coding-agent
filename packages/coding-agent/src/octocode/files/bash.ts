@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
@@ -11,8 +12,10 @@ import { toolHeader } from "../shared/render.ts";
 import { STATUS } from "../shared/status.ts";
 import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
-import { foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
+import { createReadHint, LOCAL_READER_TOOL } from "./read-hint.ts";
+import { BASH_ABORT_GRACE_MS, foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
 import { foregroundPlan } from "./bash/auto.ts";
+import { LONG_COMMAND_AFTER_SECONDS, sleepHint } from "./bash/long-commands.ts";
 import { hostQuirkHint } from "./bash/host-hints.ts";
 import { type BashDetails, renderBashResult, renderJobMessage } from "./render.ts";
 import {
@@ -70,6 +73,7 @@ export function registerBashTool(
 ): BashJobs {
 	// Octocode's bash, for its output schema; each call builds its own with that call's settings and process handling.
 	const builtin = createBashToolDefinition(process.cwd());
+	const readHint = createReadHint(() => api.getActiveTools?.().includes(LOCAL_READER_TOOL) ?? false);
 	let current: ExtensionContext | undefined;
 	// Set from session_shutdown: a job that ends meanwhile reports without waking anyone.
 	let closing = false;
@@ -107,7 +111,7 @@ export function registerBashTool(
 					display: true,
 					details: jobDetails(job, wake),
 				},
-				{ triggerTurn: wake, deliverAs: "followUp" },
+				{ triggerTurn: wake, deliverAs: "followUp", together: true },
 			);
 			if (sending && typeof sending.then === "function") void Promise.resolve(sending).catch(deliveryFailed);
 		} catch {
@@ -119,10 +123,15 @@ export function registerBashTool(
 		// Reported at session_shutdown already, while the session could still record it.
 		if (reportedAtShutdown.has(job)) return;
 		if (job.verification) job.verification = finishVerification(job.verification, exit, job);
-		// A user's stop, and any job of a subagent, start no turn: a child's own job must not wake it before or after its final
-		// answer (a queued follow-up would run one more model turn per job). A job that ends mid-run is read at the next step; one
-		// that ends after the answer is recorded, and the parent's report gets its line.
-		report(job, exit, !closing && job.stopped !== "user" && !envFlag(process.env, SUBAGENT_ENV));
+		// A user's stop, a stop at run end, and any job of a subagent start no turn: a child's own job must not wake it before or
+		// after its final answer (a queued follow-up would run one more model turn per job), and a headless run's last job must
+		// not replace the answer with a reply to its being stopped. A job that ends mid-run is read at the next step; one that
+		// ends after the answer is recorded, and the parent's report gets its line.
+		report(
+			job,
+			exit,
+			!closing && job.stopped !== "user" && job.stopped !== "run end" && !envFlag(process.env, SUBAGENT_ENV),
+		);
 	};
 
 	api.on("session_start", async (event, ctx) => {
@@ -166,12 +175,13 @@ export function registerBashTool(
 		timedTool({
 			name: "bash",
 			label: "bash",
+			abortGraceMs: BASH_ABORT_GRACE_MS,
 			description:
 				"Run a command in the working directory. Foreground calls return combined output. " +
-				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or on a user message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
-			// User request (2026-11-03): name the platform CLIs worth reaching for, and keep code research on the research tools.
-			promptSnippet:
-				"Run builds, tests, git, formatters and the platform's CLIs: move, copy and unpack files (mv, cp, tar, unzip), inspect binaries (file, strings), transform streams (sed, awk, jq); search and read code with the declared search and read tools, locally and on GitHub or package registries; cut long output with flags and pipes (tail, head, grep -c, sort); change file contents with `file`",
+				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
+			// What the shell is for, then the work other tools own: code research goes to the declared search and read tools,
+			// content changes to `file` (checkpointed for /rewind). `sed` stays out of the list so it does not read as an editor.
+			promptSnippet: renderInstruction("tools/bash/snippet.md"),
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined
@@ -183,10 +193,7 @@ export function registerBashTool(
 					}
 				: {}),
 			// A pipe such as `cmd | tail` exits with the last command's status, so a failing build would read as passing.
-			promptGuidelines: [
-				...(builtin.promptGuidelines ?? []),
-				"Trimmed output is saved in full: read that file by line range instead of rerunning, or pass a smaller maxOutputTokens. Put `set -o pipefail;` before an explicit pipe so a failing command is not hidden by the last command's status.",
-			],
+			promptGuidelines: [...(builtin.promptGuidelines ?? []), renderInstruction("tools/bash/guidelines.md")],
 			parameters: Type.Object({
 				type: Type.Optional(
 					StringEnum(["bash", "powershell"] as const, {
@@ -302,7 +309,13 @@ export function registerBashTool(
 					const stray = group === undefined ? undefined : strayNote(group);
 					const quirk = raw.details?.exitCode ? hostQuirkHint(contentText(raw.content), params.command) : undefined;
 					const notices = [stray, clamped ? `(${CLAMP_NOTE})` : undefined, quirk].filter((note) => note !== undefined);
-					const notes = notices.join("\n\n");
+					// For the model only, so it stays out of `notices`, which the terminal shows.
+					const hint =
+						settings.type === "bash" && !raw.details?.exitCode
+							? readHint(params.command, ctx.cwd, sessionId)
+							: undefined;
+					const waitHint = settings.type === "bash" ? sleepHint(params.command) : undefined;
+					const notes = [...notices, ...(hint ? [hint] : []), ...(waitHint ? [waitHint] : [])].join("\n\n");
 					const result = notes
 						? { ...raw, content: [{ type: "text" as const, text: `${contentText(raw.content)}\n\n${notes}` }] }
 						: raw;

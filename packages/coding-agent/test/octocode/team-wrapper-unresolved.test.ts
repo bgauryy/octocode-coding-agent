@@ -45,7 +45,7 @@ describe("reservation gate: a wrapper line with no resolvable command", () => {
 		[`timeout $T python3 -c "open('src/a.ts','w')"`, "timeout"],
 		[`timeout "$T" sh -c 'echo x > src/a.ts'`, "sh"],
 		["timeout $T cp b.ts src/a.ts", "timeout"],
-		[`watch -n1 "python3 -c 'open(1)'"`, "watch"],
+		[`watch -n1 "python3 -c 'open(\\"src/a.ts\\")'"`, "watch"],
 	])("refuses %j while a peer holds a reservation", async (command, name) => {
 		const db = path.join(tmp(), "team.sqlite");
 		const cwd = tmp();

@@ -1,4 +1,4 @@
-import type { TerminalColorMode } from "../colors.ts";
+import { isColorDisabled, type TerminalColorMode } from "../colors.ts";
 import {
 	detectMultiplexer,
 	hasTmuxSession,
@@ -199,7 +199,11 @@ export function kittyPlaceholderMode(): boolean {
 	return getCapabilities().kittyPlaceholders === true;
 }
 
-export function getTerminalColorMode(capabilities: TerminalCapabilities = getCapabilities()): TerminalColorMode {
+export function getTerminalColorMode(
+	capabilities: TerminalCapabilities = getCapabilities(),
+	env: Readonly<Record<string, string | undefined>> = process.env,
+): TerminalColorMode {
+	if (isColorDisabled(env)) return "none";
 	return capabilities.trueColor ? "truecolor" : "256color";
 }
 

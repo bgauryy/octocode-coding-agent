@@ -37,14 +37,13 @@ export function compositeTuiLine(
 	return visibleWidth(result) <= totalWidth ? result : sliceByColumn(result, 0, totalWidth, true);
 }
 
+/** Normalize one non-image line and end it with a style and hyperlink reset. */
+export function applyLineReset(line: string): string {
+	return isImageLine(line) ? line : normalizeTerminalOutput(line) + SEGMENT_RESET;
+}
+
 /** Normalize each non-image line and end it with a style and hyperlink reset, in place. */
 export function applyLineResets(lines: string[]): string[] {
-	const reset = SEGMENT_RESET;
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		if (!isImageLine(line)) {
-			lines[i] = normalizeTerminalOutput(line) + reset;
-		}
-	}
+	for (let i = 0; i < lines.length; i++) lines[i] = applyLineReset(lines[i]);
 	return lines;
 }

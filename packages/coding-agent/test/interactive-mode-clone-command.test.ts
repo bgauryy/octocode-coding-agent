@@ -37,7 +37,8 @@ describe("InteractiveMode /clone", () => {
 
 		expect(fork).toHaveBeenCalledWith("leaf-123", { position: "at" });
 		expect(renderCurrentSessionState).not.toHaveBeenCalled();
-		expect(setText).toHaveBeenCalledWith("");
+		// The unsent editor draft stays untouched.
+		expect(setText).not.toHaveBeenCalled();
 		expect(showStatus).toHaveBeenCalledWith("Cloned to new session");
 		expect(showError).not.toHaveBeenCalled();
 		expect(requestRender).not.toHaveBeenCalled();

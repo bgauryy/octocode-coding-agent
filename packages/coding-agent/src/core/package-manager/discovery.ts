@@ -109,7 +109,14 @@ export function collectSkillEntries(
 
 		const markdownHere = (mode === "octocode" && dir === root) || (mode === "agents" && dir !== root);
 		for (const entry of dirEntries) {
-			if (entry.isFile && markdownHere && entry.name.endsWith(".md") && !ig.ignores(entry.relPath)) {
+			if (
+				entry.isFile &&
+				markdownHere &&
+				entry.name.endsWith(".md") &&
+				// A README documents its folder; it is not a skill candidate.
+				entry.name.toLowerCase() !== "readme.md" &&
+				!ig.ignores(entry.relPath)
+			) {
 				entries.push(entry.fullPath);
 				continue;
 			}

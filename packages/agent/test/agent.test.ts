@@ -726,6 +726,23 @@ describe("Agent", () => {
 		expect(agent.state.messages).not.toContainEqual(message);
 	});
 
+	it("drains follow-ups marked together as one, in a queue that otherwise takes one at a time", () => {
+		const agent = new Agent({ streamFn: unusedStreamFunction });
+		const message = (content: string) => ({ role: "user" as const, content, timestamp: 1 });
+		const [first, second, own, third] = ["first", "second", "own", "third"].map(message);
+		agent.followUp(first, { together: true });
+		agent.followUp(second, { together: true });
+		agent.followUp(own);
+		agent.followUp(third, { together: true });
+		expect(agent.peekQueuedMessages()).toEqual([first, second]);
+		expect(agent.removeQueuedMessage(first)).toBe(true);
+		expect(agent.peekQueuedMessages()).toEqual([second]);
+		expect(agent.removeQueuedMessage(second)).toBe(true);
+		// A message without the mark keeps its own turn and its place.
+		expect(agent.peekQueuedMessages()).toEqual([own]);
+		expect(agent.removeQueuedMessage(own)).toBe(true);
+		expect(agent.peekQueuedMessages()).toEqual([third]);
+	});
 	it("should support follow-up message queue", async () => {
 		const agent = new Agent({ streamFn: unusedStreamFunction });
 

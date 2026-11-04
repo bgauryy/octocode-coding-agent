@@ -33,19 +33,17 @@ export function formatStatus(state: McpExtensionState): string {
 		const exposure = exposureOf(server.entry);
 		const connection = server.connection;
 		if (connection?.state === "needs-auth") return `${name}: needs sign-in, run /mcp login ${name} (${exposure})`;
-		const tools = connection?.state === "connected" ? `, ${connection.tools.length} tools` : "";
+		// The full error follows on its own lines.
 		const label = connection?.isStopped
 			? "stopped"
-			: !isEnabled(server)
-				? "disabled"
-				: connection?.state === "disconnected"
-					? "disconnected, reconnects on next call"
-					: (connection?.state ?? "starting");
+			: connection?.state === "disconnected" && isEnabled(server)
+				? "disconnected, reconnects on next call"
+				: describeState(server, false);
 		const error =
 			connection?.error && connection.state !== "connected"
 				? `\n    ${connection.error.split("\n").join("\n    ")}`
 				: "";
-		return `${name}: ${isEnabled(server) ? "enabled · " : ""}${label}${tools} (${exposure})${error}`;
+		return `${name}: ${isEnabled(server) ? "enabled · " : ""}${label} (${exposure})${error}`;
 	});
 	for (const error of configErrors) lines.push(`config error: ${error}`);
 	for (const line of overridden) lines.push(`overridden: ${line}`);

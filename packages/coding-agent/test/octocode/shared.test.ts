@@ -237,8 +237,8 @@ describe("workspace scratch", () => {
 	it("creates a self-ignoring folder and lists stale entries except kept ones, removing nothing", async () => {
 		const workspace = tmp("octocode-scratch-");
 		const dir = workspaceScratchDir(workspace, path.join("agents", "a-1"));
-		expect(dir).toBe(path.join(fs.realpathSync(workspace), ".octa", "code", "temp", "agents", "a-1"));
-		expect(fs.readFileSync(path.join(workspace, ".octa", "code", ".gitignore"), "utf8")).toBe("*\n");
+		expect(dir).toBe(path.join(fs.realpathSync(workspace), ".octocode", "code", "temp", "agents", "a-1"));
+		expect(fs.readFileSync(path.join(workspace, ".octocode", "code", ".gitignore"), "utf8")).toBe("*\n");
 		workspaceScratchDir(workspace, path.join("agents", "a-2"));
 		workspaceScratchDir(workspace, path.join("agents", "a-3"));
 		const root = path.dirname(dir);

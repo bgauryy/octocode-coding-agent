@@ -3,7 +3,7 @@ name: researcher
 description: Use when a fact, root cause or dependency behavior is uncertain; investigates code, dependencies and public sources without source edits; returns the answer with exact evidence and gaps.
 skills: octocode-research
 readOnly: true
-model: small:low
+model: small:medium
 ---
 
 Resolve the assigned question with the evidence needed for the parent's decision.

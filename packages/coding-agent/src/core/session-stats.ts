@@ -24,6 +24,8 @@ export interface SessionStats {
 		total: number;
 	};
 	cost: number;
+	/** Usage entries whose stream ended before the provider's final count, which makes `tokens` and `cost` lower bounds. */
+	lowerBoundEntries: number;
 	contextUsage?: ContextUsage;
 	cache: CacheMetrics;
 	/** Assistant responses whose thinking budget was reduced (or disabled) to fit the context. */
@@ -45,11 +47,13 @@ export function computeSessionStats(
 	let totalMessages = 0;
 	let toolCalls = 0;
 	let thinkingReduced = 0;
+	let lowerBoundEntries = 0;
 	const usageTotals = createUsageTotals();
 
 	for (const entry of sessionManager.getEntries()) {
 		const spend = entryUsage(entry);
 		if (spend) addUsageToTotals(usageTotals, spend.usage);
+		if (spend?.usage.lowerBound) lowerBoundEntries++;
 		if (entry.type !== "message") continue;
 		totalMessages++;
 		const message = entry.message;
@@ -85,6 +89,7 @@ export function computeSessionStats(
 			total: usageTotals.input + usageTotals.output + usageTotals.cacheRead + usageTotals.cacheWrite,
 		},
 		cost: usageTotals.cost,
+		lowerBoundEntries,
 		cache: computeCacheMetrics(sessionManager.getEntries()),
 		contextUsage: session.contextUsage,
 		thinkingReduced,

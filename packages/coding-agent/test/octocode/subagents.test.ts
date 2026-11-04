@@ -10,7 +10,7 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
-import { maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
+import { machineSubagents, maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
 import { FAILED_NEXT, failedNext } from "../../src/octocode/subagents/report-text.ts";
 import { assistantText } from "../../src/octocode/subagents/events.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
@@ -77,6 +77,26 @@ describe("subagent permissions", () => {
 		permission.setMode("workspace", ctx);
 		// A mode that allows the spawn passes no grant: the child inherits the mode itself.
 		expect(await askSpawn(permission, ctx, implementer, "Fix")).toEqual([]);
+	});
+
+	it("does not tell the user a read-only role may edit files, while keeping what it is granted", async () => {
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
+		const ctx = fakeCtx({ cwd: tmp(), ui: { selects: ["Allow once", "Allow once"] } });
+		permission.start(ctx);
+		const titles: string[] = [];
+		const select = ctx.ui.select;
+		ctx.ui.select = async (text: string, choices: string[]) => {
+			titles.push(text);
+			return select(text, choices);
+		};
+		const researcher = { name: "researcher", description: "", prompt: "", readOnly: true as const };
+		expect(await askSpawn(permission, ctx, researcher, "Read the parser")).toEqual(["file.workspace", "shell"]);
+		expect(titles[0]).toMatch(/researcher may run shell commands;/);
+		expect(titles[0]).not.toContain("edit files");
+		const reader = { ...researcher, name: "reader", excludeTools: "bash" };
+		await askSpawn(permission, ctx, reader, "Read the parser");
+		expect(titles[1]).toMatch(/reader may only read and research;/);
 	});
 });
 
@@ -330,17 +350,9 @@ describe("subagents", () => {
 		expect(profile.prompt).toContain("headless");
 		expect(profile.prompt).toContain("persistent");
 		expect(buildAgentArgs(profile, undefined, SESSION)).not.toContain("--no-mcp");
-		// Roles that rarely call the remote research tools or `clasify` leave their declarations out (the researcher keeps
-		// the whole catalog).
-		const remote = ["ghSearchHistory", "ghSearchRepo", "artifactSearch"].map((name) => `mcp__octocode__${name}`);
-		const history = "mcp__octocode__ghGetHistoryItem";
-		const clasify = "mcp__octocode__clasify";
-		for (const [name, excluded] of [
-			["researcher", undefined],
-			["reviewer", [...remote, clasify].join(",")],
-			["implementer", [...remote, history, clasify].join(",")],
-		] as const)
-			expect(profiles.get(name)?.excludeTools, name).toBe(excluded);
+		// Every Octocode tool stays declared for every bundled role: none excludes tools.
+		for (const name of ["researcher", "reviewer", "implementer"])
+			expect(profiles.get(name)?.excludeTools, name).toBeUndefined();
 	});
 
 	it("gives each bundled role the skills it names, so a child does not carry the whole catalog", () => {
@@ -387,21 +399,35 @@ describe("subagents", () => {
 		expect(profile.headless).toBe(true);
 	});
 
-	it("caps running subagents at OCTOCODE_MAX_SUBAGENTS, default 6", () => {
-		expect(maxSubagents({})).toBe(6);
+	it("caps running subagents at OCTOCODE_MAX_SUBAGENTS, default what the machine suits", () => {
+		expect(maxSubagents({}, 6)).toBe(6);
+		expect(maxSubagents({})).toBeGreaterThanOrEqual(1);
 		expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: "5" })).toBe(5);
+		// The setting wins, above the machine's default too.
+		expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: "12" }, 2)).toBe(12);
 		for (const bad of ["0", "-1", "2.5", "many", ""])
-			expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: bad }), bad).toBe(6);
+			expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: bad }, 3), bad).toBe(3);
 		const refusal = subagentLimitError(["a", "b", "c"], 3);
 		expect(refusal).toContain("3 subagents are already running (a, b, c)");
 		expect(refusal).toContain("OCTOCODE_MAX_SUBAGENTS");
 	});
 
-	it("runs six subagents at once by default and makes the seventh wait for a freed slot", async () => {
+	it("derives the default from the machine, never above 6", () => {
+		const GIB = 1024 ** 3;
+		expect(machineSubagents(16, 64 * GIB)).toBe(6);
+		expect(machineSubagents(8, 16 * GIB)).toBe(6);
+		expect(machineSubagents(4, 16 * GIB)).toBe(4);
+		expect(machineSubagents(16, 4 * GIB)).toBe(4);
+		expect(machineSubagents(2, 8 * GIB)).toBe(2);
+		expect(machineSubagents(1, 8 * GIB)).toBe(1);
+		expect(machineSubagents(8, GIB / 2)).toBe(1);
+	});
+
+	it("runs six subagents at once on a large machine and makes the seventh wait for a freed slot", async () => {
 		const saved = process.env.OCTOCODE_MAX_SUBAGENTS;
 		delete process.env.OCTOCODE_MAX_SUBAGENTS;
 		try {
-			const slots = new Slots();
+			const slots = new Slots(() => maxSubagents(process.env, machineSubagents(16, 64 * 1024 ** 3)));
 			for (let i = 0; i < 6; i++) expect(slots.tryTake(), `slot ${i + 1}`).toBe(true);
 			let seventh = false;
 			const waiting = slots.take(undefined).then(() => {

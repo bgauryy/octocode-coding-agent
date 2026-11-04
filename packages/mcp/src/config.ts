@@ -7,7 +7,7 @@
  * `description` keeps the replaced entry's (a built-in server's, say), since the prompt's purpose line comes from it.
  *
  * An entry without `command`, `url`, or `type` overrides only `enabled`, `defaultActive`, `exposure`,
- * `toolExposure`, `contract` and `toolContract` of an earlier server with the same namespace, for example to turn it off in one project:
+ * `toolExposure` of an earlier server with the same namespace, for example to turn it off in one project:
  * `{ "mcpServers": { "internal-tools": { "enabled": false } } }`. The rest of the global entry is kept,
  * including credentials the project could not set itself.
  *
@@ -50,7 +50,7 @@ export interface McpServerEntry {
 	 * `api.registerMcpServer()`. Changes to extension servers are not saved.
 	 */
 	scope?: "global" | "project" | "extension" | "default";
-	/** Latest `mcp.json` overriding this server's `enabled`, `defaultActive`, `exposure`, `toolExposure`, `contract` or `toolContract`. */
+	/** Latest `mcp.json` overriding this server's `enabled`, `defaultActive`, `exposure` or `toolExposure`. */
 	override?: string;
 	overrideScope?: "global" | "project";
 }
@@ -64,7 +64,7 @@ export interface LoadedMcpConfig {
 	projectConfig?: string;
 }
 
-const OVERRIDE_KEYS = ["enabled", "defaultActive", "exposure", "toolExposure", "contract", "toolContract"];
+const OVERRIDE_KEYS = ["enabled", "defaultActive", "exposure", "toolExposure"];
 
 /** Whether an entry overrides a server defined elsewhere instead of defining one. */
 function isMcpOverride(value: Record<string, unknown>): boolean {

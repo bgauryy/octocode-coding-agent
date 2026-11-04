@@ -3,6 +3,20 @@ import { reservationTargets, shellMutation, shellParserReady } from "../../src/o
 
 beforeAll(shellParserReady);
 
+/** What a command that changes nothing comes back as. */
+const NOTHING = {
+	writes: [],
+	directories: [],
+	areas: [],
+	opaque: [],
+	unread: [],
+	unreadAreas: [],
+	refMoves: [],
+	databases: [],
+	uncertain: false,
+	unparsed: false,
+};
+
 describe("shellMutation", () => {
 	it("names the paths a command writes, moves or removes", () => {
 		const writes = (command: string) => shellMutation(command).writes;
@@ -25,8 +39,8 @@ describe("shellMutation", () => {
 			return { writes, uncertain, afterDirectoryChange };
 		};
 		const known = (writes: string[]) => ({ writes, uncertain: false, afterDirectoryChange: undefined });
-		expect(effect("cd /repo && mkdir -p .octa/code/temp/agents/me")).toEqual(
-			known(["/repo/.octa/code/temp/agents/me"]),
+		expect(effect("cd /repo && mkdir -p .octocode/code/temp/agents/me")).toEqual(
+			known(["/repo/.octocode/code/temp/agents/me"]),
 		);
 		expect(effect("cd /repo/ && echo x > out.txt")).toEqual(known(["/repo/out.txt"]));
 		expect(effect("cd /repo && echo x | tee out.txt")).toEqual(known(["/repo/out.txt"]));
@@ -52,9 +66,7 @@ describe("shellMutation", () => {
 			"cd $DIR && touch f",
 			"cd - && touch f",
 			"cd && touch f",
-			// A bare name goes through CDPATH, so it can lead anywhere.
-			"cd sub && touch f",
-			"cd sub/deep && touch f",
+			// A bare name goes through CDPATH, so with one set it can lead anywhere.
 			"export CDPATH=/o; cd a && touch f",
 			// `..` is followed on the spelling by the shell and on the real directories by a path check (symlinks).
 			"cd .. && touch f",
@@ -62,7 +74,6 @@ describe("shellMutation", () => {
 			"cd ./l/.. && touch f",
 			"cd /repo/l/../x && touch f",
 			"cd ./l && cd ../../.. && touch f",
-			"cd ~/x && touch f",
 			"cd -P /repo && touch f",
 			"cd /repo || touch f",
 			"cd /repo && touch f || echo no",
@@ -87,7 +98,14 @@ describe("shellMutation", () => {
 			expect(effect.writes, command).toEqual([]);
 		}
 		expect(shellMutation("cd $DIR && touch f").afterDirectoryChange).toBe(true);
-		expect(shellMutation("cd sub && touch f").afterDirectoryChange).toBe(true);
+		// A home spelling names one place for the shell and for a path check, as an absolute path does.
+		for (const home of ["~/x", "$HOME/x", '"$HOME/x"', "${HOME}/x"]) {
+			expect(shellMutation(`cd ${home} && touch f`).writes, home).toEqual(["~/x/f"]);
+			expect(shellMutation(`cd ${home} && echo a > f`).writes, home).toEqual(["~/x/f"]);
+		}
+		expect(shellMutation("cd ~ && touch f").writes).toEqual(["~/f"]);
+		expect(shellMutation("cd ~/x/.. && touch f").uncertain).toBe(true);
+		expect(shellMutation("CDPATH=/o; cd sub && touch f").afterDirectoryChange).toBe(true);
 		// What runs before any directory change, and a script that never moves, keep their plain spelling.
 		expect(shellMutation("f() { touch g; }; f")).toMatchObject({ writes: ["g"], uncertain: false });
 		expect(shellMutation("echo $(touch f)")).toMatchObject({ writes: ["f"], uncertain: false });
@@ -123,14 +141,7 @@ describe("shellMutation", () => {
 		expect(shellMutation("sudo sh -c 'echo x > a.ts'").writes).toEqual(["a.ts"]);
 		expect(shellMutation("env $CMD a.ts").uncertain).toBe(true);
 		for (const command of ["env", "env FOO=1", "command -v rm", "sudo ls", "exec ls src", "time git status"])
-			expect(shellMutation(command), command).toEqual({
-				writes: [],
-				directories: [],
-				areas: [],
-				opaque: [],
-				uncertain: false,
-				unparsed: false,
-			});
+			expect(shellMutation(command), command).toEqual(NOTHING);
 	});
 
 	it("treats opaque writers as mutations: rsync, awk -i inplace, ed/ex, git config, npm pkg/config set", () => {
@@ -217,14 +228,7 @@ describe("shellMutation", () => {
 		expect(shellMutation("sed -i s/a/b/ a.ts").opaque).toEqual(["sed -i"]);
 		expect(shellMutation("echo x > $FILE").uncertain).toBe(true);
 		expect(shellMutation("echo x > $FILE").unparsed).toBe(false);
-		expect(shellMutation("git status")).toEqual({
-			writes: [],
-			directories: [],
-			areas: [],
-			opaque: [],
-			uncertain: false,
-			unparsed: false,
-		});
+		expect(shellMutation("git status")).toEqual(NOTHING);
 	});
 
 	it("sees nothing in reads, redirects to /dev/null and test runs", () => {
@@ -235,14 +239,7 @@ describe("shellMutation", () => {
 			"yarn test",
 			"git stash list",
 		])
-			expect(shellMutation(command), command).toEqual({
-				writes: [],
-				directories: [],
-				areas: [],
-				opaque: [],
-				uncertain: false,
-				unparsed: false,
-			});
+			expect(shellMutation(command), command).toEqual(NOTHING);
 	});
 });
 
@@ -252,7 +249,9 @@ describe("reservationTargets", () => {
 		expect(reservationTargets("echo x > $FILE; cat src/a.ts")).toEqual([]);
 		expect(reservationTargets("cd ./pkg && mv a.ts b.ts")).toEqual(["./pkg/a.ts", "./pkg/b.ts"]);
 		expect(reservationTargets("cd $DIR && mv a.ts b.ts")).toEqual([]);
-		expect(reservationTargets("cd pkg && mv a.ts b.ts")).toEqual([]);
+		// A bare name is followed when no CDPATH is set; with one set it is not.
+		expect(reservationTargets("cd pkg && mv a.ts b.ts")).toEqual(["./pkg/a.ts", "./pkg/b.ts"]);
+		expect(reservationTargets("CDPATH=/o; cd pkg && mv a.ts b.ts")).toEqual([]);
 	});
 
 	it("adds every literal word when the parse gave up, so a named path is still checked", () => {

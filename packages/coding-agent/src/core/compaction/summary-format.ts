@@ -1,3 +1,5 @@
+import { renderInstruction } from "../prompt-template.ts";
+
 /** The heading of a summary's closing label, and the line inside it that lists keywords (the archive index reads both). */
 export const TLDR_HEADING = "## TL;DR";
 /** The heading of a summary's first section: what the user is trying to accomplish. */
@@ -23,37 +25,16 @@ export function summarySection(summary: string, heading: string): string[] {
  * decided, what went wrong and where the work stopped. What code attaches after the summary (file lists, saved
  * results, the user's own messages, recovery pointers) is not asked for.
  */
-export const SUMMARY_CHECKPOINT_FORMAT = `Write these sections, in this order, with the headings as given:
+export const SUMMARY_CHECKPOINT_FORMAT = renderInstruction("workflows/compaction/checkpoint-format.md", {
+	goalHeading: GOAL_HEADING,
+	tldrHeading: TLDR_HEADING,
+	topicsLabel: TOPICS_LABEL,
+});
 
-${GOAL_HEADING}
-[What the user is trying to accomplish and why: the reason they gave or the problem it solves, left out when nothing shows it; several items when the session covers different tasks]
-
-## Constraints & Preferences
-- [Constraints, preferences or requirements the user stated, or "(none)"]
-
-## Progress
-### Done
-- [x] [Completed work]
-
-### In Progress
-- [ ] [Work under way]
-
-### Blocked
-- [What prevents progress, if anything]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale]
-
-## Errors & Fixes
-- [Each error or failed approach: the exact error text, its cause, and the fix, or "unresolved". The user's corrections of the approach belong here.]
-
-## Where We Stopped
-- [The work under way in the last messages, with its exact file paths, and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
-
-## Critical Context
-- [Data, examples or references needed to continue, or "(none)"]
-
-${TLDR_HEADING}
-One or two lines on what the summarized messages did, then a line "${TOPICS_LABEL} " with 3 to 8 comma-separated keywords. An index of the conversation's history uses it as this stretch's label.
-
-Keep each section concise. Keep file paths, symbols, commands, error strings, URLs and identifiers exact.`;
+/**
+ * The size target of an updated summary, said in the request and never in the cached system prompt. Empty without a
+ * target to give.
+ */
+export function summarySizeTarget(tokens: number): string {
+	return tokens > 0 ? renderInstruction("workflows/compaction/size-target.md", { tokens }) : "";
+}

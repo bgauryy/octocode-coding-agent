@@ -1,4 +1,3 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CallToolResult } from "../../client/index.ts";
 import { createMcpToolName } from "../../tool-names.ts";
@@ -12,6 +11,7 @@ import {
 import { hostKey, portOf } from "../../../../common/src/browser-network.ts";
 import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
 import { hostBrowser } from "../../host.ts";
+import { browserStateDir, recordBrowser, recordedProxyPort } from "./owned.ts";
 import { restrictWebRtc as restrictProfile } from "../../../../common/src/browser-webrtc.ts";
 import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
 import { BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
@@ -30,31 +30,14 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
  * opened it (a browser subagent's follow-up runs in a new process and `open` reuses the browser), so the proxy port each
  * Chrome was given is recorded beside the package's browser state; a later process that reuses that Chrome starts its
  * filter on the same port again (approvals start empty: fail closed). A Chrome that Octocode did not start behind the
- * filter keeps the settings it started with; `open` then says so.
+ * filter keeps the settings it started with; `open` then says so. The top session stops a headless Chrome it still owns
+ * when it shuts down (`./owned.ts`).
  */
 
 const PROXY_OPTIONS = new Set(["--proxyServer", "--proxyBypassList", "--proxyPacUrl"]);
 const DEFAULT_PORT = "9222";
 const BLOCKED_NOTES_MAX = 20;
-/** Where the package keeps the isolated profile of the Chrome on a port, under the workspace. */
-const stateDir = (cwd: string): string => join(cwd, ".octocode", "octocode-chrome-devtools", "tmp", "browser-state");
-const profileDir = (cwd: string, port: string): string => join(stateDir(cwd), `cdp-chrome-profile-${port}`);
-/** The proxy port Octocode gave the Chrome on CDP `port`, recorded when it started that Chrome. */
-const proxyRecord = (cwd: string, port: string): string => join(stateDir(cwd), `octocode-proxy-${port}.json`);
-
-function recordedProxyPort(cwd: string, port: string): number | undefined {
-	try {
-		const value = (JSON.parse(readFileSync(proxyRecord(cwd, port), "utf8")) as { proxyPort?: unknown }).proxyPort;
-		return typeof value === "number" && Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function recordProxyPort(cwd: string, port: string, proxyPort: number): void {
-	mkdirSync(stateDir(cwd), { recursive: true });
-	writeFileSync(proxyRecord(cwd, port), JSON.stringify({ proxyPort }), { mode: 0o600 });
-}
+const profileDir = (cwd: string, port: string): string => join(browserStateDir(cwd), `cdp-chrome-profile-${port}`);
 
 /** How an `open` relates to the filter: a new Chrome behind it, a reused one whose filter runs (or was restored), or one without it. */
 type OpenFilter = "started" | "filtered" | "restored" | "unfiltered";
@@ -72,8 +55,13 @@ export interface BrowserGuard {
 	 * Prepares one call to the browser server's tool `tool` (`open`, `run`, ...). Call it from the tool's `execute`: it
 	 * runs after the permission check allowed the call, and the private hosts among the call's own URLs that check asked
 	 * about become reachable to the pages it loads. Throws, and sends nothing, when the proxy cannot start.
+	 *
+	 * Calls are prepared one at a time, in the order they were made. The server runs requests in arrival order, and `open`
+	 * is slow to prepare (a port probe, the proxy start) while other calls are not, so parallel calls (`open`, then
+	 * `snapshot`) would otherwise arrive reversed. A call prepares after the one before it has been handed on (a macrotask
+	 * later, so that request is written first). A call that fails, or whose `signal` aborts while it waits, frees its place.
 	 */
-	call(tool: string, args: Record<string, unknown>, cwd: string): Promise<GuardedBrowserCall>;
+	call(tool: string, args: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<GuardedBrowserCall>;
 	/** Stops the proxy and forgets the approvals; safe when it never started and when called again. */
 	dispose(): Promise<void>;
 }
@@ -200,33 +188,30 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 		restrictProfile(profileDir(cwd, port));
 	}
 
+	/** Ends when the latest call has been handed on. */
+	let handedOn: Promise<void> = Promise.resolve();
+
 	return {
-		async call(tool, args, cwd) {
-			await approveOpened(tool, args);
-			if (tool !== "open") return { args, review: (result) => review(result) };
-			const listed = stringList(args.args);
-			if (listed === undefined) return { args, review: (result) => review(result) }; // The server rejects it.
-			const { rest, launcher } = typedAsArgs(args);
-			const given = [...launcher, ...listed];
-			const port = flagValue(given, "--port") ?? DEFAULT_PORT;
-			const isolated = !given.includes("--profile") && !given.includes("--dry-run");
-			// A reused Chrome ignores launch flags: restore the filter it was started behind instead.
-			const reuse = isolated && (await running(port)) ? await reuseFilter(cwd, port) : undefined;
-			// A reused browser already behind the filter ignores launch flags, and the package warns about them: send none.
-			if (reuse === "filtered" || reuse === "restored")
-				return { args: { ...rest, args: withoutProxyOptions(given) }, review: (result) => review(result, reuse) };
-			const listener = await start();
-			if (isolated && !reuse) {
-				await restrictWebRtc(cwd, port);
-				recordProxyPort(cwd, port, listener.port);
-			}
-			return {
-				args: {
-					...rest,
-					args: [...withoutProxyOptions(given), "--proxyServer", listener.url, "--proxyBypassList", PROXY_ALL_LOOPBACK],
-				},
-				review: (result) => review(result, reuse ?? "started"),
-			};
+		call(tool, args, cwd, signal) {
+			const before = handedOn;
+			let handOn!: () => void;
+			handedOn = new Promise<void>((resolve) => {
+				handOn = () => void setImmediate(resolve);
+			});
+			const turn = new Promise<void>((resolve, reject) => {
+				const cancelled = () => signal?.reason ?? new Error("The browser call was cancelled.");
+				if (signal?.aborted) return reject(cancelled());
+				const abort = () => reject(cancelled());
+				signal?.addEventListener("abort", abort, { once: true });
+				void before.then(() => {
+					signal?.removeEventListener("abort", abort);
+					resolve();
+				});
+			});
+			const prepared = turn.then(() => prepare(tool, args, cwd));
+			// A cancelled call keeps its place until the call before it is done, so the later ones stay in order.
+			void prepared.then(handOn, () => void before.then(handOn));
+			return prepared;
 		},
 		async dispose() {
 			const closing = [...listeners.values()];
@@ -236,6 +221,51 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 			await Promise.all(closing.map((listener) => listener.then((proxy) => proxy.close()).catch(() => undefined)));
 		},
 	};
+
+	async function prepare(tool: string, args: Record<string, unknown>, cwd: string): Promise<GuardedBrowserCall> {
+		await approveOpened(tool, args);
+		if (tool === "dev-check") await requireFilteredBrowser(cwd, args.port);
+		if (tool !== "open") return { args, review: (result) => review(result) };
+		const listed = stringList(args.args);
+		if (listed === undefined) return { args, review: (result) => review(result) }; // The server rejects it.
+		const { rest, launcher } = typedAsArgs(args);
+		const given = [...launcher, ...listed];
+		const port = flagValue(given, "--port") ?? DEFAULT_PORT;
+		const isolated = !given.includes("--profile") && !given.includes("--dry-run");
+		// A reused Chrome ignores launch flags: restore the filter it was started behind instead.
+		const reuse = isolated && (await running(port)) ? await reuseFilter(cwd, port) : undefined;
+		// A reused browser already behind the filter ignores launch flags, and the package warns about them: send none.
+		if (reuse === "filtered" || reuse === "restored") {
+			const proxyPort = recordedProxyPort(cwd, port);
+			if (proxyPort !== undefined) recordBrowser(cwd, port, proxyPort);
+			return { args: { ...rest, args: withoutProxyOptions(given) }, review: (result) => review(result, reuse) };
+		}
+		const listener = await start();
+		if (isolated && !reuse) {
+			await restrictWebRtc(cwd, port);
+			recordBrowser(cwd, port, listener.port);
+		}
+		return {
+			args: {
+				...rest,
+				args: [...withoutProxyOptions(given), "--proxyServer", listener.url, "--proxyBypassList", PROXY_ALL_LOOPBACK],
+			},
+			review: (result) => review(result, reuse ?? "started"),
+		};
+	}
+
+	/**
+	 * `dev-check` launches a Chrome of its own, without launcher flags, when none answers on its port: that Chrome would
+	 * not run behind the filter. It may only reuse a browser `open` started behind it.
+	 */
+	async function requireFilteredBrowser(cwd: string, requested: unknown): Promise<void> {
+		const port = typeof requested === "number" || typeof requested === "string" ? String(requested) : DEFAULT_PORT;
+		const filter = (await running(port)) ? await reuseFilter(cwd, port) : undefined;
+		if (filter === "filtered" || filter === "restored") return;
+		throw new Error(
+			`dev-check needs a browser Octocode opened on port ${port}: call open with port ${port} first, then dev-check reuses it behind Octocode's private-address filter.`,
+		);
+	}
 
 	function review(result: CallToolResult, filter?: OpenFilter): CallToolResult {
 		const notes: string[] = [];
@@ -282,4 +312,5 @@ export const guardBrowserCall = (
 	tool: string,
 	args: Record<string, unknown>,
 	cwd: string,
-): Promise<GuardedBrowserCall> => browserGuard().call(tool, args, cwd);
+	signal?: AbortSignal,
+): Promise<GuardedBrowserCall> => browserGuard().call(tool, args, cwd, signal);

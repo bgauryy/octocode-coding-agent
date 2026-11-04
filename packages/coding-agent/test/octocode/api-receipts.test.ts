@@ -34,15 +34,34 @@ describe("SendReceipts", () => {
 		const receipts = new SendReceipts();
 		const before = receipts.open("f", accepted("x1"), "k1", false);
 		const failure = new RpcError(ERR.unavailable, "nope", { execution: "not-sent" });
-		receipts.fail(before.receipt, before.waiter, "k1", failure, false);
+		receipts.fail(before.receipt, before.waiter, "k1", failure, "not-sent");
 		expect(receipts.get("k1")).toBeUndefined();
 		expect(receipts.activeKey).toBeUndefined();
 		await expect(before.receipt.ready).rejects.toBe(failure);
 
 		const after = receipts.open("f", accepted("x2"), "k2", false);
 		receipts.accept(after.receipt, after.waiter, true);
-		receipts.fail(after.receipt, after.waiter, "k2", failure, true);
+		receipts.fail(after.receipt, after.waiter, "k2", failure, "dispatched");
 		expect(receipts.get("k2")?.phase).toBe("uncertain");
+	});
+
+	it("keeps the receipt of a send the session refused, so its key repeats the refusal rather than asking again", async () => {
+		const receipts = new SendReceipts();
+		const { receipt, waiter } = receipts.open("f", accepted("x1"), "k1", false);
+		const failure = new RpcError(ERR.unavailable, "denied", { execution: "not-sent" });
+		receipts.fail(receipt, waiter, "k1", failure, "refused");
+		expect(receipts.get("k1")).toBe(receipt);
+		expect(receipts.activeKey).toBeUndefined();
+		await expect(receipts.get("k1")?.ready).rejects.toBe(failure);
+	});
+
+	it("a run settling does not void a send waiting for the user, and the sender's timeout says what it waited for", async () => {
+		const receipts = new SendReceipts();
+		const { receipt } = receipts.open("f", accepted("x1"), "k1", true);
+		receipt.waitingForUser = true;
+		receipts.settle({ text: "another run" });
+		expect(receipt.phase).toBe("preparing");
+		await expect(receipts.wait(receipt, 1)).rejects.toThrow("did not answer the permission dialog");
 	});
 
 	it("cancels a send still being prepared when the run settles, and says nothing was sent", async () => {

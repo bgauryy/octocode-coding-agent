@@ -1,5 +1,6 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { Mail } from "../../src/octocode/team/mail.ts";
 import { Relays } from "../../src/octocode/team/relay.ts";
 import { deadLetterText, messageText } from "../../src/octocode/team/routing.ts";
 import { readMessage, type ReferenceHost } from "../../src/octocode/team/session/references.ts";
@@ -40,9 +41,11 @@ function host(store: TeamStore, me: string, extra: Partial<ReferenceHost> = {}):
 		store: () => store,
 		parentId: () => self?.parentId,
 		finished: new Map(),
+		reporting: () => false,
 		resumer: () => undefined,
 		messageHook: () => undefined,
 		signed: () => undefined,
+		signedByParent: () => undefined,
 		mail: { createdForUser: () => undefined },
 		started: () => false,
 		...extra,
@@ -104,6 +107,104 @@ describe("message references (msg#N)", () => {
 			expect(store.refs.unansweredPeerAsks("a-1", "p-1")).toBe(1);
 			store.send("b-1", ["a-1"], "answer", { replyRequired: false, replyTo: id! });
 			expect(store.refs.unansweredPeerAsks("a-1", "p-1")).toBe(0);
+		} finally {
+			store.close();
+		}
+	});
+});
+
+describe("a child's report answers the questions put to it", () => {
+	const askAndRead = (store: TeamStore) => {
+		const { id } = store.send("p-1", ["a-1"], "which file?", { replyRequired: true });
+		store.ack("a-1", [id!]);
+		return id!;
+	};
+
+	it("stops the parent being told its question went unanswered when the child left after reporting", () => {
+		const store = team();
+		try {
+			askAndRead(store);
+			store.refs.closeQuestionsTo("p-1", "a-1");
+			store.remove("a-1");
+			expect(store.deadLetters("p-1")).toEqual([]);
+			expect(store.refs.openQuestions()).toEqual([]);
+		} finally {
+			store.close();
+		}
+	});
+
+	it("settles a dead letter the parent was not yet told of, and leaves other questions alone", () => {
+		const store = team();
+		try {
+			askAndRead(store);
+			const other = store.send("p-1", ["b-1"], "and you?", { replyRequired: true }).id!;
+			store.ack("b-1", [other]);
+			store.remove("a-1");
+			expect(store.deadLetters("p-1")).toHaveLength(1);
+			store.refs.closeQuestionsTo("p-1", "a-1");
+			expect(store.deadLetters("p-1")).toEqual([]);
+			expect(store.refs.openQuestions()).toMatchObject([{ recipient: "b-1", id: other }]);
+		} finally {
+			store.close();
+		}
+	});
+
+	it("holds the notice of a question the child read until its report is filed, so the report closes it first", () => {
+		const store = team();
+		const sent: string[] = [];
+		const mail = new Mail({
+			sendMessage: (message: { content: unknown }) => {
+				sent.push(String(message.content));
+			},
+		});
+		try {
+			askAndRead(store);
+			// The child left the team: its process is closing, and its report is not built yet.
+			store.remove("a-1");
+			let reporting = true;
+			mail.reportDeadLetters(store, "p-1", (id) => reporting && id === "a-1");
+			expect(sent).toEqual([]);
+			// The report arrived: it answered the question.
+			store.refs.closeQuestionsTo("p-1", "a-1");
+			reporting = false;
+			mail.reportDeadLetters(store, "p-1", (id) => reporting && id === "a-1");
+			expect(sent).toEqual([]);
+			expect(store.deadLetters("p-1")).toEqual([]);
+		} finally {
+			store.close();
+		}
+	});
+
+	it("still reports a read question when the run ended without a report, and an unread message at once", () => {
+		const store = team();
+		const sent: string[] = [];
+		const mail = new Mail({
+			sendMessage: (message: { content: unknown }) => {
+				sent.push(String(message.content));
+			},
+		});
+		try {
+			askAndRead(store);
+			store.send("p-1", ["a-1"], "never read", { replyRequired: false });
+			store.remove("a-1");
+			mail.reportDeadLetters(store, "p-1", (id) => id === "a-1");
+			expect(sent).toHaveLength(1);
+			expect(sent[0]).toContain("was not read");
+			expect(sent[0]).not.toContain("read but not answered");
+			mail.reportDeadLetters(store, "p-1", () => false);
+			expect(sent).toHaveLength(2);
+			expect(sent[1]).toContain("was read but not answered");
+		} finally {
+			store.close();
+		}
+	});
+
+	it("without the close, the child's leaving reports the question read but not answered (the old behavior)", () => {
+		const store = team();
+		try {
+			askAndRead(store);
+			store.remove("a-1");
+			expect(deadLetterText(store.deadLetters("p-1")[0])).toContain("was read but not answered");
 		} finally {
 			store.close();
 		}

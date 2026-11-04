@@ -28,6 +28,7 @@ import { applicationSnapshot } from "./snapshot.ts";
 import { lifecycleEvent } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
+import { readOnlyApplicationState } from "./service/state-source.ts";
 import { ApplicationActivities } from "./service/activities.ts";
 import { ApplicationDelivery, type ListenerErrorHandler, type NativeListener } from "./service/delivery.ts";
 import { ContextSource } from "./service/context-source.ts";
@@ -48,6 +49,7 @@ type Args<K extends Method> = ApplicationOperationArgs<ApplicationOperations, K>
 type Result<K extends Method> = ApplicationOperationResult<ApplicationOperations, K>;
 export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, ApplicationOperations> {
 	private readonly state = createApplicationState();
+	readonly stateSource = readOnlyApplicationState(this.state);
 	private readonly transcript = new ApplicationTranscript(this.state, () => this.session.sessionManager);
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
 	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());

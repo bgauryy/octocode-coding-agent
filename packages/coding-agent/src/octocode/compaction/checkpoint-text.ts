@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { CheckpointPersistenceError } from "../../core/compaction/checkpoint.ts";
 import { clipWithMarker } from "../../core/compaction/inline.ts";
 import { USER_HEADING } from "../../core/compaction/summary-view.ts";
@@ -17,7 +18,7 @@ type SaveText = (text: string) => string | undefined;
 
 /** The user's own messages kept after the summary, newest first, up to about 15k to 20k tokens in all, at 4 to 3 characters per token (their words are the one record the summary cannot rebuild)... */
 export const USER_MESSAGES_CHARS = 60_000;
-/** A larger message moves whole to a persisted checkpoint reference instead of being cut (inline when the session has no file: cut with a marker). */
+/** A larger message moves whole to its own persisted reference, in its own position, instead of being cut (inline when the session has no file: cut with a marker). */
 export const USER_MESSAGE_CHARS = 6_000;
 /** Longer tool results are saved whole and represented by a bounded reference for the standalone summarizer (inline: cut with a marker). */
 export const SUMMARIZER_RESULT_CHARS = 2_000;
@@ -35,15 +36,28 @@ function inertUserText(text: string): string {
 function savedReference(text: string, save: SaveText): string {
 	const file = save(text);
 	if (!file) throw new CheckpointPersistenceError("Cannot persist complete compaction content.");
-	return `[Complete text saved at ${file}; search it and read only relevant bounded line ranges for the original content.]`;
+	return renderInstruction("notices/compaction/text-saved.md", { file });
 }
 
-/** Keep whole messages, or a reference to their complete persisted text (inherited messages included) and the newest that fit whole; inline and cut when `save` is null. */
+/** What the section may hold: `total` for all of it, `perMessage` for one message. */
+interface UserMessagesBudget {
+	total: number;
+	perMessage: number;
+	/** The oldest message, a subagent's task, is the last to be evicted. */
+	keepOldest?: boolean;
+}
+
+/**
+ * Keep whole messages. Only a message over its limit moves out, as its own reference in its own position, so one long paste
+ * costs the others nothing. Only when the section is still over the total does the complete collection (inherited messages
+ * included) go to one file, whose reference replaces the oldest messages; the newest that fit stay after it. Inline and cut
+ * when `save` is null.
+ */
 export function userMessagesSection(
 	earlier: readonly string[],
 	omittedBefore: number,
 	added: readonly string[],
-	budget = { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS },
+	budget: UserMessagesBudget = { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS },
 	segment?: number,
 	save: SaveText | null = (text) => saveFullOutput(text, "checkpoint-user-messages"),
 ): string {
@@ -53,6 +67,7 @@ export function userMessagesSection(
 		const note = omitted > 0 ? `\nEarlier user messages not kept here: ${omitted}${where}.` : "";
 		return `\n\n${USER_HEADING}${note}\n${messages.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n")}`;
 	};
+	const pinned = budget.keepOldest === true && omittedBefore === 0 && all[0].length <= budget.perMessage ? 1 : 0;
 	const whole = render(all, omittedBefore);
 	if (whole.length <= budget.total && all.every((message) => message.length <= budget.perMessage)) return whole;
 	if (save === null) {
@@ -60,20 +75,24 @@ export function userMessagesSection(
 		const kept = all.map((message) => clipWithMarker(message, budget.perMessage));
 		let omitted = omittedBefore;
 		while (kept.length > 0 && render(kept, omitted, "").length > budget.total) {
-			kept.shift();
+			kept.splice(kept.length > pinned ? pinned : 0, 1);
 			omitted += 1;
 		}
 		return kept.length === 0 ? "" : render(kept, omitted, "");
 	}
+	const kept = all.map((message) => (message.length > budget.perMessage ? savedReference(message, save) : message));
+	const pointed = render(kept, omittedBefore);
+	if (pointed.length <= budget.total) return pointed;
 	const reference = savedReference(whole, save);
-	// The newest messages that fit whole also stay inline after the reference, so the latest request survives word for word.
+	const oldest =
+		render([...kept.slice(0, pinned), reference], omittedBefore).length <= budget.total ? kept.slice(0, pinned) : [];
+	// The newest messages that fit also stay inline after the reference, so the latest request survives word for word.
 	const newest: string[] = [];
-	for (const message of [...all].reverse()) {
-		if (message.length > budget.perMessage) break;
-		if (render([reference, message, ...newest], omittedBefore).length > budget.total) break;
+	for (const message of kept.slice(pinned).reverse()) {
+		if (render([...oldest, reference, message, ...newest], omittedBefore).length > budget.total) break;
 		newest.unshift(message);
 	}
-	const section = render([reference, ...newest], omittedBefore);
+	const section = render([...oldest, reference, ...newest], omittedBefore);
 	if (section.length > budget.total)
 		throw new CheckpointPersistenceError("The user-message budget cannot hold a complete-text reference.");
 	return section;

@@ -1,7 +1,8 @@
 import type { TSchema } from "typebox";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
-import { declaresReason, liftNestedReason, withoutReason, withReason } from "../shared/reason.ts";
+import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
@@ -33,22 +34,32 @@ const CORE_REASON_TOOLS = new Set([MCP_MANAGE_TOOL_NAME]);
 export const takesCallReason = (name: string): boolean => isNativeTool(name) || CORE_REASON_TOOLS.has(name);
 
 /**
- * A native tool as the model sees it: `reason` is required at the top level or copied there from a nested argument
- * before validation. The tool's `execute` never receives one added here, so strict argument checks such as the `agent`
- * envelope's still hold; a tool's own declared reason remains. `renderCall` keeps the whole call, so rows can show it.
+ * A native tool as the model sees it: `reason` is its first property and stays required, so the model sees it is
+ * expected. Before validation a missing or empty one is settled (`settleReason`): a nested value the model wrote is
+ * lifted, else it is derived from the arguments, so the call never fails for it. A nested `reason` the tool does not
+ * declare is removed from the arguments. The tool's `execute` never receives a top-level one added here, so strict
+ * argument checks such as the `agent` envelope's still hold; a tool's own declared reason remains. `renderCall` keeps
+ * the whole call, so rows can show it.
  */
 function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, S>): ToolDefinition<P, D, S> {
 	const ownReason = declaresReason(tool.parameters);
 	const parameters = withReason(tool.parameters);
-	// A tool with its own top-level reason can already have nested slots (notably `file`), so its schema may be
-	// unchanged even though its arguments still need the nested-reason preparation below.
+	// A tool with its own top-level reason (notably `file`) keeps its schema, but its arguments still need settling below.
 	if (parameters === tool.parameters && !ownReason) return tool;
+	const declared = tool.validationParameters ?? tool.parameters;
+	const stated = (value: unknown): boolean =>
+		isRecord(value) && typeof value.reason === "string" && value.reason.trim() !== "";
 	return {
 		...tool,
 		parameters,
 		prepareArguments: (args) => {
 			const prepared = tool.prepareArguments ? tool.prepareArguments(args) : args;
-			return liftNestedReason(prepared) as never;
+			const settled = settleReason(prepared, tool.name, declared);
+			// The tool's own per-item defaults (the `file` queries take the call's reason) must see a reason settled just now.
+			if (tool.prepareArguments && !stated(prepared) && stated(settled)) {
+				return settleReason(tool.prepareArguments(settled), tool.name, declared);
+			}
+			return settled as never;
 		},
 		execute: ownReason ? tool.execute : (id, params, ...rest) => tool.execute(id, withoutReason(params), ...rest),
 	};

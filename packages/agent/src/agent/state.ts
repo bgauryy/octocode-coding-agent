@@ -80,13 +80,16 @@ export function createMutableAgentState(initialState?: AgentInitialState): Mutab
 
 export class PendingMessageQueue {
 	private messages: AgentMessage[] = [];
+	/** Messages that drain with the next queued message in this set, whatever the mode. */
+	private readonly together = new WeakSet<AgentMessage>();
 	public mode: QueueMode;
 
 	constructor(mode: QueueMode) {
 		this.mode = mode;
 	}
 
-	enqueue(message: AgentMessage): void {
+	enqueue(message: AgentMessage, options?: { together?: boolean }): void {
+		if (options?.together) this.together.add(message);
 		this.messages.push(message);
 	}
 
@@ -97,7 +100,10 @@ export class PendingMessageQueue {
 	peek(): AgentMessage[] {
 		if (this.mode === "all") return this.messages.slice();
 		const first = this.messages[0];
-		return first ? [first] : [];
+		if (!first) return [];
+		if (!this.together.has(first)) return [first];
+		const end = this.messages.findIndex((message) => !this.together.has(message));
+		return end < 0 ? this.messages.slice() : this.messages.slice(0, end);
 	}
 
 	drain(): AgentMessage[] {

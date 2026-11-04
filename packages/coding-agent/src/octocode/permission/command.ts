@@ -20,7 +20,7 @@ import { modeSummary } from "./ask/text.ts";
 
 /** Audit entries `/permissions log` shows, newest last. */
 const LOG_ENTRIES = 50;
-const USAGE = `Usage: /permissions [${PERMISSION_MODES.join("|")}|plan [off]|grants [clear]|log]`;
+const USAGE = `Usage: /permissions [${PERMISSION_MODES.join("|")}|plan [off]|grants [clear [messages]]|log]`;
 const NOT_A_SANDBOX =
 	"Modes and reasons decide what Octocode asks about and records; they are not a sandbox (the OS user's rights stay as they are).";
 
@@ -88,9 +88,12 @@ export function registerPermissionCommand(
 
 	commands.add("permissions", {
 		description: "What Octocode asks before it acts",
-		argumentHint: "[manual|workspace|full|grants [clear]|log]",
+		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log]",
 		complete: (prefix) =>
-			wordCompletions([...PERMISSION_MODES, "grants", "grants clear", "log", "plan", "plan off"], prefix),
+			wordCompletions(
+				[...PERMISSION_MODES, "grants", "grants clear", "grants clear messages", "log", "plan", "plan off"],
+				prefix,
+			),
 		handler: async (args, ctx) => {
 			const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
 			const [word = "", rest] = words;
@@ -109,6 +112,8 @@ export function registerPermissionCommand(
 				permission.clearGrants();
 				return say(ctx, "Session grants cleared.");
 			}
+			if (word === "grants" && rest === "clear" && words[2] === "messages" && words.length === 3)
+				return say(ctx, `External-message grants removed: ${permission.clearMessageGrants()}.`);
 			if (word === "grants" && words.length === 1) {
 				const grants = permission.grants();
 				return say(

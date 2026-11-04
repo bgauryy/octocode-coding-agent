@@ -95,6 +95,7 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 				onClose: (listener) => client.onClose(listener),
 				onExtensionUIRequest: (listener) => client.onExtensionUIRequest(listener),
 				respondToExtensionUIRequest: (response) => client.respondToExtensionUIRequest(response),
+				getCommands: () => client.getCommands(),
 			};
 		},
 	});

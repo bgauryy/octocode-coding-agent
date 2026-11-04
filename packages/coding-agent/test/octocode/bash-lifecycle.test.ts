@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { setCurrentSession } from "../../src/config/runtime-paths.ts";
+import { runToolCall } from "@octocodeai/octocode-agent-core";
+import { createLocalBashOperations } from "../../src/core/tools/bash/local-operations.ts";
+import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { foregroundOperations } from "../../src/octocode/files/bash-run.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import {
@@ -104,7 +108,7 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		);
 		expect(report).toMatch(/before\nafter$/);
 		// Like any background job: reported as a follow-up that wakes an idle session, and gone from the job list.
-		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(sent[0].message.details.id).toBe("bash-1");
 		expect(fs.readFileSync(sent[0].message.details.log, "utf8")).toBe("before\nafter\n");
 		expect(jobs.jobs.size).toBe(0);
@@ -126,7 +130,7 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		expect(groupAlive(job.pid)).toBe(false);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message.content).toMatch(/bash-1 stopped \(session end\)[\s\S]*started/);
-		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
 	it("is stopped by /jobs kill, with SIGTERM first so it can clean up", async () => {
@@ -151,7 +155,7 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		await until(() => sent.length === 1);
 		expect(sent[0].message.content).toMatch(/bash-1 stopped \(user\)[\s\S]*ready\ncleaned-up/);
 		expect(groupAlive(job.pid)).toBe(false);
-		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
 	it("is stopped at the end of a headless run, since it has no timeout of its own", async () => {
@@ -223,7 +227,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 		await fire("session_shutdown", {}, ctx);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message.content).toMatch(/^\[exit 3 · [^\n]*\]\nBackground bash bash-1 failed with exit code 3/);
-		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
 	it("labels jobs a /reload stops and names them in the next session", async () => {
@@ -256,7 +260,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 				exited = true;
 			});
 			const record = recordFile(job.log);
-			expect(job.log).toContain(path.join(".octa", "code", "temp", "sessions", "job-owner", "bash"));
+			expect(job.log).toContain(path.join(".octocode", "code", "temp", "sessions", "job-owner", "bash"));
 			expect(path.dirname(path.dirname(record))).toBe(path.join(home, "agent", "job-owners"));
 			expect(JSON.parse(fs.readFileSync(record, "utf8"))).toMatchObject({
 				id: job.id,
@@ -535,4 +539,144 @@ describe.runIf(posix)("job log failures", () => {
 		expect(exit!.logStopped).toBeUndefined();
 		expect(jobReport(job, exit!)).not.toContain("log stopped");
 	});
+});
+
+/** Leaves the group and writes to the inherited output every 20 ms for 12 s, after the shell that started it exited. */
+const WRITER_OUTSIDE_THE_GROUP = `perl -e 'use POSIX; if(fork()){exit 0} POSIX::setsid(); $|=1; my $t=time; while(time-$t<12){print "x\\n"; select(undef,undef,undef,0.02)}' &
+echo shell-done`;
+
+describe.runIf(hasPerl)("a writer that left the group after the shell exited", () => {
+	it("cannot hold a foreground call past its deadline", async () => {
+		const startedAt = Date.now();
+		const seen: string[] = [];
+		await expect(
+			foregroundOperations({}, () => undefined).exec(WRITER_OUTSIDE_THE_GROUP, tmp(), {
+				onData: (chunk) => seen.push(chunk.toString()),
+				timeout: 1,
+			}),
+		).rejects.toThrow("timeout:1");
+		expect(Date.now() - startedAt).toBeLessThan(4_000);
+		expect(seen.join("")).toContain("shell-done");
+	}, 15_000);
+
+	it("gets the timeout result from the real tool, with what it printed", async () => {
+		const { tool, ctx } = setup();
+		const startedAt = Date.now();
+		const message = await tool
+			.execute("t1", { command: WRITER_OUTSIDE_THE_GROUP, timeout: 1, background: false }, undefined, undefined, ctx)
+			.then(
+				(result: { content: { text: string }[] }) => result.content[0].text,
+				(error: Error) => error.message,
+			);
+		expect(Date.now() - startedAt).toBeLessThan(4_000);
+		expect(message).toMatch(/^\[timed out after 1s/);
+		expect(message).toContain("shell-done");
+	}, 15_000);
+
+	it("cannot hold an aborted call", async () => {
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(), 300);
+		const startedAt = Date.now();
+		await expect(
+			foregroundOperations({}, () => undefined).exec(WRITER_OUTSIDE_THE_GROUP, tmp(), {
+				onData: () => undefined,
+				signal: controller.signal,
+			}),
+		).rejects.toThrow("aborted");
+		expect(Date.now() - startedAt).toBeLessThan(3_000);
+	}, 15_000);
+
+	it("cannot hold the local shell operations past their deadline", async () => {
+		const startedAt = Date.now();
+		await expect(
+			createLocalBashOperations().exec(WRITER_OUTSIDE_THE_GROUP, tmp(), { onData: () => undefined, timeout: 1 }),
+		).rejects.toThrow("timeout:1");
+		expect(Date.now() - startedAt).toBeLessThan(4_000);
+	}, 15_000);
+
+	it("keeps the reading open while it writes when nothing stopped the command", async () => {
+		const seen: string[] = [];
+		const controller = new AbortController();
+		const running = foregroundOperations({}, () => undefined).exec(WRITER_OUTSIDE_THE_GROUP, tmp(), {
+			onData: (chunk) => seen.push(chunk.toString()),
+			signal: controller.signal,
+		});
+		await new Promise((resolve) => setTimeout(resolve, 800));
+		const written = seen.length;
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		// Output after the shell's exit still arrives, past the 100 ms grace a quiet pipe gets.
+		expect(seen.length).toBeGreaterThan(written);
+		controller.abort();
+		await expect(running).rejects.toThrow("aborted");
+	}, 15_000);
+});
+
+describe.runIf(posix)("aborting a foreground command that cleans up on SIGTERM", () => {
+	const aborted = async (command: string) => {
+		const { tool, ctx } = setup();
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(), 400);
+		const outcome = await runToolCall(
+			{
+				type: "toolCall",
+				id: "t1",
+				name: "bash",
+				arguments: { command, timeout: 30, background: false, reason: "test" },
+			},
+			{
+				tools: [wrapToolDefinition(tool, () => ctx as never)],
+				assistantMessage: { role: "assistant", content: [] } as never,
+				context: { messages: [], tools: [] },
+				signal: controller.signal,
+			},
+		);
+		return (outcome.result.content[0] as { text: string }).text;
+	};
+
+	it("returns what it printed, its own cleanup output included, rather than the abandoned message", async () => {
+		const text = await aborted("trap 'sleep 0.2; echo cleaned-up; exit 0' TERM; echo partial-output; sleep 30 & wait");
+		expect(text).toMatch(/^\[aborted · /);
+		expect(text).toContain("partial-output");
+		expect(text).toContain("cleaned-up");
+		expect(text).not.toContain("may still be running");
+	}, 15_000);
+
+	it("still returns what it printed when the command ignores SIGTERM and needs SIGKILL", async () => {
+		const text = await aborted("trap '' TERM; echo partial-output; while :; do sleep 1; done");
+		expect(text).toMatch(/^\[aborted · /);
+		expect(text).toContain("partial-output");
+	}, 15_000);
+});
+
+describe.runIf(posix)("the saved output of a very chatty foreground command", () => {
+	const chatty = async (spillMaxBytes?: number) => {
+		const { api, tools } = fakeHost();
+		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () =>
+			spillMaxBytes === undefined ? {} : { spillMaxBytes },
+		);
+		const result = await tools
+			.get("bash")
+			.execute("t1", { command: "seq 1 200000" }, undefined, undefined, fakeCtx({ cwd: tmp() }));
+		return { text: result.content[0].text as string, path: result.details.fullOutputPath as string };
+	};
+
+	it("is capped at bash.spillMaxBytes with the header naming what was dropped, and the model's view is unchanged", async () => {
+		const free = await chatty();
+		const capped = await chatty(100_000);
+		const body = (text: string) => text.slice(text.indexOf("\n"));
+		expect(body(capped.text)).toBe(body(free.text));
+
+		expect(free.text.split("\n")[0]).toMatch(/· full output: /);
+		expect(fs.statSync(free.path).size).toBe(1_288_895);
+		const header = capped.text.split("\n")[0];
+		// The counts still describe the whole output.
+		expect(header).toMatch(
+			/· 200,000 lines · 1\.\d+ MB · trimmed: .* · saved output: .* \([\d.]+ [KM]B dropped from its middle by the bash\.spillMaxBytes cap, so later line numbers shift\)\]$/,
+		);
+		expect(header).toContain(capped.path);
+		const saved = fs.readFileSync(capped.path, "utf8");
+		expect(saved.length).toBeLessThan(100_300);
+		expect(saved.startsWith("1\n2\n3\n")).toBe(true);
+		expect(saved.endsWith("199999\n200000\n")).toBe(true);
+	}, 30_000);
 });

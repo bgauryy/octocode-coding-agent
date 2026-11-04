@@ -24,6 +24,8 @@ import * as viewState from "../src/modes/interactive/interactive-mode/view-state
 import { initTheme } from "../src/theme/theme.ts";
 import type { ToolStatus } from "../src/utils/tools-manager.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 function renderLastLine(container: Container, width = 120): string {
 	const last = container.children[container.children.length - 1];
@@ -248,7 +250,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		const chatChild = { setExpanded: vi.fn() };
 		const footerDataProvider = { setExtensionStatus: vi.fn() };
 		const fakeThis: any = {
-			toolOutputExpanded: false,
+			uiStore: createUiStore(),
 			customHeader: undefined,
 			builtInHeader: header,
 			loadedResourcesContainer: { children: [loadedResourcesChild] },
@@ -258,9 +260,11 @@ describe("InteractiveMode.setToolsExpanded", () => {
 			showStatus: vi.fn(),
 		};
 
-		viewState.setToolsExpanded(createFakeHost(fakeThis), true);
+		const host = createFakeHost(fakeThis);
+		bindViewState(host);
+		viewState.setToolsExpanded(host, true);
 
-		expect(fakeThis.toolOutputExpanded).toBe(true);
+		expect(fakeThis.uiStore.getState().view.toolsExpanded).toBe(true);
 		expect(header.setExpanded).toHaveBeenCalledWith(true);
 		expect(loadedResourcesChild.setExpanded).toHaveBeenCalledWith(true);
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
@@ -274,7 +278,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		try {
 			const statuses = new Map<string, string>();
 			const fakeThis: any = {
-				toolOutputExpanded: false,
+				uiStore: createUiStore(),
 				builtInHeader: undefined,
 				loadedResourcesContainer: { children: [] },
 				chatContainer: { children: [] },
@@ -285,6 +289,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 				ui: { requestRender: vi.fn() },
 			};
 			const host = createFakeHost(fakeThis);
+			bindViewState(host);
 
 			viewState.setToolsExpanded(host, true);
 			vi.advanceTimersByTime(1500);
@@ -385,6 +390,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 			editorContainer,
 			keybindings: {},
 			ui,
+			uiStore: createUiStore(),
 			disposeActiveSelector: vi.fn(),
 		};
 		const showExtensionCustom = <T>(
@@ -727,7 +733,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 	function createShowLoadedResourcesThis(options: {
 		quietStartup: QuietStartup;
 		verbose?: boolean;
-		toolOutputExpanded?: boolean;
+		toolsExpanded?: boolean;
 		cwd?: string;
 		contextFiles?: Array<{ path: string; content?: string }>;
 		systemPromptSource?: { path: string };
@@ -741,7 +747,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 	}) {
 		const fakeThis: any = {
 			options: { verbose: options.verbose ?? false },
-			toolOutputExpanded: options.toolOutputExpanded ?? false,
+			uiStore: createUiStore({ view: { toolsExpanded: options.toolsExpanded ?? false } }),
 			loadedResourcesContainer: new Container(),
 			ui: { requestRender: vi.fn() },
 			chatContainer: new Container(),
@@ -942,7 +948,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 	test("shows full resource listing when expanded", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			toolOutputExpanded: true,
+			toolsExpanded: true,
 			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "commit" }],
 		});
 
@@ -959,7 +965,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: true,
 			verbose: true,
-			toolOutputExpanded: false,
+			toolsExpanded: false,
 			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "commit" }],
 		});
 
@@ -972,7 +978,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(output).toMatch(/commit\s+\/tmp\/skill\/SKILL\.md/);
 	});
 
-	test("shows current MCP states after skills and repaints only that row when they change", () => {
+	test("lists MCP servers after skills without repainting for connection state, which the details show live", () => {
 		const events = createEventBus();
 		const server = {
 			name: "octocode",
@@ -993,23 +999,41 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const render = () => renderAll(fakeThis.loadedResourcesContainer);
 		const initial = render();
 		expect(initial.indexOf("Skills")).toBeLessThan(initial.indexOf("MCP "));
-		expect(initial).toContain("○ octocode connecting…");
+		expect(initial).toMatch(/^MCP\s+2\s+○ docs disabled · octocode/m);
 		expect(initial).toContain("○ docs disabled");
+		expect(initial).not.toContain("connecting");
+		// A connection state that moves on after the row scrolled off must not touch the row: the renderer would clear and
+		// redraw the whole scrollback for it.
 		setMcpSessionStatus(events, [
 			{ ...server, state: "connected", toolCount: 9 },
 			{ ...server, name: "docs", enabled: false },
 		]);
-		const connected = render();
-		expect(connected).toContain("● octocode connected (9 tools)");
-		expect(connected).not.toContain("connecting");
-		expect(connected.match(/^MCP\s+2/gm)).toHaveLength(1);
-		// Nothing was rebuilt: the same components, one frame asked for by the status change.
+		expect(render()).toBe(initial);
+		expect(fakeThis.ui.requestRender).not.toHaveBeenCalled();
 		expect(fakeThis.loadedResourcesContainer.children).toEqual(rows);
+		// Expanded (ctrl+o), the details read the current states.
+		for (const row of rows) (row as { setExpanded?: (expanded: boolean) => void }).setExpanded?.(true);
+		expect(render()).toContain("● octocode connected (9 tools)");
+		// A server appearing or a selection change is a change to the listing: the row repaints once.
+		setMcpSessionStatus(events, [
+			{ ...server, state: "connected", toolCount: 9 },
+			{ ...server, name: "docs", enabled: false },
+			{ ...server, name: "extra", state: "connected" },
+		]);
 		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
+		// A failure is news: it appears in the collapsed row, once.
+		for (const row of rows) (row as { setExpanded?: (expanded: boolean) => void }).setExpanded?.(false);
+		setMcpSessionStatus(events, [
+			{ ...server, state: "failed" },
+			{ ...server, name: "docs", enabled: false },
+			{ ...server, name: "extra", state: "connected" },
+		]);
+		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(2);
+		expect(render()).toMatch(/^MCP\s+3\s+.*✗ octocode failed/m);
 		// After the listing is disposed, status changes no longer reach it.
 		loadedResources.disposeLoadedResources(fakeThis.loadedResourcesContainer);
-		setMcpSessionStatus(events, [{ ...server, state: "failed" }]);
-		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
+		setMcpSessionStatus(events, [{ ...server, name: "other" }]);
+		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(2);
 	});
 
 	test("abbreviates extensions in compact listing", () => {
@@ -1429,7 +1453,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 	test("captures mixed extension layouts in expanded output", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			toolOutputExpanded: true,
+			toolsExpanded: true,
 			extensions: createExtensionFixtures(),
 			useRealScopeGroups: true,
 		});
@@ -1503,7 +1527,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const cwd = path.join(home, "Development", "octocodecode");
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			toolOutputExpanded: true,
+			toolsExpanded: true,
 			cwd,
 			contextFiles: [
 				{ path: path.join(home, ".octocode", "agent", "AGENTS.md") },
@@ -1527,7 +1551,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const collapsed = createShowLoadedResourcesThis({ quietStartup: false, contextFiles });
 		loadedResources.showLoadedResources(createFakeHost(collapsed), { force: true });
 		expect(renderAll(collapsed.loadedResourcesContainer)).toMatch(/\(.*to expand\)/);
-		const expanded = createShowLoadedResourcesThis({ quietStartup: false, contextFiles, toolOutputExpanded: true });
+		const expanded = createShowLoadedResourcesThis({ quietStartup: false, contextFiles, toolsExpanded: true });
 		loadedResources.showLoadedResources(createFakeHost(expanded), { force: true });
 		expect(renderAll(expanded.loadedResourcesContainer)).not.toContain("to expand");
 		// Toggling the transcript expansion updates the hint in place.
@@ -1670,7 +1694,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const osc = "\u001b]0;pwned\u0007";
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			toolOutputExpanded: true,
+			toolsExpanded: true,
 			useRealScopeGroups: true,
 			contextFiles: [{ path: `/tmp/project/${osc}AGENTS.md` }],
 			skills: [{ filePath: `/tmp/skills/${osc}one/SKILL.md`, name: "one" }],

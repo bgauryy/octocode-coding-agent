@@ -10,7 +10,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { listFolderGrants } from "../../src/octocode/trust/grants.ts";
 import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
 
-/** Real processes: ACP refuses an untrusted folder with -32002, and concurrent writers keep one live row per folder. */
+/** Real processes: ACP refuses an untrusted folder with its own error, and concurrent writers keep one live row per folder. */
 const resolver = fileURLToPath(new URL("../../scripts/source-resolver.ts", import.meta.url));
 const cli = fileURLToPath(new URL("../../src/cli.ts", import.meta.url));
 const grantsUrl = pathToFileURL(fileURLToPath(new URL("../../src/octocode/trust/grants.ts", import.meta.url))).href;
@@ -43,7 +43,7 @@ afterAll(() => {
 });
 
 describe("ACP in an untrusted folder", () => {
-	it("session/new and session/load fail with -32002 and name the trust command", async () => {
+	it("session/new fails with the trust error and its command; loading a session that does not exist is -32002", async () => {
 		const box = sandbox();
 		const child = spawn(process.execPath, ["--import", resolver, cli, "--mode", "acp"], {
 			cwd: box.project,
@@ -67,7 +67,7 @@ describe("ACP in an untrusted folder", () => {
 			const created = await failure(
 				connection.agent.request(methods.agent.session.new, { cwd: box.project, mcpServers: [] }),
 			);
-			expect(created?.code).toBe(-32002);
+			expect(created?.code).toBe(-31000);
 			expect(JSON.stringify(created)).toContain("octocode trust add");
 			const loaded = await failure(
 				connection.agent.request(methods.agent.session.load, {

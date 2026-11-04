@@ -14,7 +14,7 @@ import { agentDbPath } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
-import type { DeadLetter, Lease, LeaseRequest, Message, SendOptions } from "./model.ts";
+import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptions } from "./model.ts";
 import {
 	BUSY_MS,
 	INBOX_BATCH_SIZE,
@@ -177,10 +177,10 @@ export class TeamStore {
 	/**
 	 * Takes the name `member.id` in one write transaction. False when another running process holds it: the caller
 	 * draws another name. A row of this same process (a second join) is refreshed; one whose process is gone is
-	 * retired first (its unread mail becomes dead letters) and the name is taken over.
+	 * retired first (its unread mail becomes dead letters) and the name is taken over; one naming `from` (its parent) is taken over.
 	 */
-	join(member: Member): boolean {
-		return this.transaction(() => claimMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle));
+	join(member: Member, from?: ProcessIdentity): boolean {
+		return this.transaction(() => claimMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle, from));
 	}
 
 	/**
@@ -344,12 +344,16 @@ export class TeamStore {
 		return this.reap(owner, judged, now);
 	}
 
-	/** Reserve all requests atomically. Reject overlaps between the requests or with another agent's live lease. */
+	/**
+	 * Reserve all requests atomically. Reject overlaps between the requests or with another agent's live lease. `child`:
+	 * the row this process holds for `owner`, a subagent not running yet, written with its leases (`ChildLeases`).
+	 */
 	lock(
 		owner: string,
 		requests: LeaseRequest[],
 		now = Date.now(),
-	): { ok: true; leases: Lease[] } | { ok: false; conflicts: Array<{ path: string; heldBy: Lease }> } {
+		child?: Member,
+	): { ok: true; leases: Lease[] } | { ok: false; conflicts: LeaseConflict[] } {
 		if (requests.length === 0) throw new Error("Give at least one path.");
 		refuseOverlap(this.workspace, requests);
 		return this.transaction(() => {
@@ -359,6 +363,8 @@ export class TeamStore {
 				return heldBy ? [{ path: request.path, heldBy }] : [];
 			});
 			if (conflicts.length > 0) return { ok: false as const, conflicts };
+			if (child && !claimMember(this.db, this.team, this.memberWorkspace, child))
+				throw new Error(`The team name ${owner} is held by another running agent.`);
 			writeLeases(this.db, this.workspace, this.edits.workspaceId, owner, requests, now);
 			return { ok: true as const, leases: this.leases(now).filter((lease) => lease.owner === owner) };
 		});

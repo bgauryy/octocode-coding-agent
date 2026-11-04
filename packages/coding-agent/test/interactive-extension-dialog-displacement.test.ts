@@ -6,6 +6,7 @@ import { CustomEditor } from "../src/modes/interactive/components/custom-editor.
 import * as extensionDialogs from "../src/modes/interactive/interactive-mode/extension-dialogs.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const PENDING = Symbol("pending");
@@ -35,6 +36,7 @@ function createDialogHost() {
 		keybindings,
 		programStatus: { setBlocked },
 		settingsManager: { getExternalEditorCommand: () => undefined },
+		uiStore: createUiStore(),
 		extensionSelector: undefined,
 		extensionInput: undefined,
 		extensionEditor: undefined,

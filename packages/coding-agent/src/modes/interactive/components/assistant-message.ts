@@ -18,6 +18,7 @@ import { normalizeApplicationMessage } from "../../../core/application/normalize
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
+import { Osc133ZoneMarker } from "./osc133-zone.ts";
 import {
 	ContentAttachmentComponent,
 	contentText,
@@ -35,10 +36,6 @@ import {
 } from "./reasoning-label.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
 
-const OSC133_ZONE_START = "\x1b]133;A\x07";
-const OSC133_ZONE_END = "\x1b]133;B\x07";
-const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
-
 /** A live label that no render has drawn for this long belongs to a component that left the screen. */
 const STALE_FRAME_MS = 2_000;
 
@@ -54,6 +51,7 @@ export class AssistantMessageComponent extends Container {
 	private markdownTransformers: readonly MarkdownTransformer[];
 	private contentOptions: ContentOptions;
 	private lastMessage?: ApplicationMessage;
+	private readonly zone = new Osc133ZoneMarker();
 	private compatibilityAssets?: ApplicationAssets;
 	private readonly tools = new Map<string, ToolExecutionComponent>();
 	private readonly markdown = new Map<string, { component: Markdown; text: string }>();
@@ -186,13 +184,7 @@ export class AssistantMessageComponent extends Container {
 
 	override render(width: number): string[] {
 		const lines = super.render(width);
-		if (this.hasToolCalls || lines.length === 0) {
-			return lines;
-		}
-
-		lines[0] = OSC133_ZONE_START + lines[0];
-		lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
-		return lines;
+		return this.hasToolCalls ? lines : this.zone.mark(lines);
 	}
 
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {

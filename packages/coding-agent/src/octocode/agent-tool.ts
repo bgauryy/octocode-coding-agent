@@ -1,3 +1,4 @@
+import { renderInstruction } from "../core/prompt-template.ts";
 import { type JsonObject, StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
 import { Text } from "@octocodeai/octocode-tui";
 import { type TSchema, Type } from "typebox";
@@ -14,14 +15,6 @@ const MODES = {
 	sendMessage: "message",
 } as const;
 type Mode = (typeof MODES)[keyof typeof MODES];
-
-/** What each type is for, as the `<tools>` line names it; the types' guidelines say when each fits. */
-const TRIGGERS: Record<Mode, string> = {
-	task: "delegate bounded work (task)",
-	external: "reach an outside agent (external)",
-	coordinate: "reserve files others may edit (coordinate)",
-	message: "message a teammate (message)",
-};
 
 /** One line per type: its purpose and the rule that prevents a costly mistake; the field descriptions carry the rest. */
 const LINES: Record<Mode, string> = {
@@ -41,16 +34,19 @@ const LEAF_MESSAGE_LINE =
 /** Message fields only a session that can start children may use; a leaf omits them. */
 const STARTER_FIELDS = new Set(["interrupt"]);
 
+/** Fields two types share on purpose: the same value with the same meaning (files, or "dir/" for a tree). */
+const SHARED_FIELDS = new Set(["paths"]);
+
 type Schema = { properties?: Record<string, TSchema & { description?: string }> };
 
 /**
  * The flat fields of the registered modes: each mode argument under its public name (`AGENT_FIELD_RENAMES`), its
- * description marked with the one type it belongs to. A mode's own `reason` is the call's `reason`. Two modes declaring
- * the same public name fail registration, so a new collision is renamed rather than shared.
+ * description marked with the type it belongs to. A mode's own `reason` is the call's `reason`. Two modes declaring
+ * the same public name fail registration unless it is in `SHARED_FIELDS`, so a new collision is renamed rather than shared.
  */
 function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean) {
-	const owners = new Map<string, Mode>();
-	const properties: Record<string, unknown> = {};
+	const owners = new Map<string, Mode[]>();
+	const properties: Record<string, TSchema & { description: string }> = {};
 	for (const [type, tool] of entries) {
 		const publicName = Object.fromEntries(
 			Object.entries(AGENT_FIELD_RENAMES[type] ?? {}).map(([field, own]) => [own, field]),
@@ -59,11 +55,14 @@ function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean) {
 			if (own === "reason") continue;
 			const field = publicName[own] ?? own;
 			if (leaf && type === "message" && STARTER_FIELDS.has(field)) continue;
-			const other = owners.get(field);
-			if (other) throw new Error(`agent field ${field} is declared by ${other} and ${type}; rename one.`);
-			owners.set(field, type);
+			const others = owners.get(field) ?? [];
+			if (others.length > 0 && !SHARED_FIELDS.has(field))
+				throw new Error(`agent field ${field} is declared by ${others.join(", ")} and ${type}; rename one.`);
+			owners.set(field, [...others, type]);
 			const { description, ...rest } = schema;
-			properties[field] = { ...rest, description: description ? `${type}: ${description}` : `${type} only` };
+			const marked = description ? `${type}: ${description}` : `${type} only`;
+			const before = others.length > 0 ? `${properties[field]?.description} ` : "";
+			properties[field] = { ...rest, description: `${before}${marked}` };
 		}
 	}
 	return { owners, properties };
@@ -79,6 +78,8 @@ export function agentModes() {
 	};
 	return {
 		collect,
+		/** Whether this session registered `mode`: an `external` type is declared only when it can reach something. */
+		has: (mode: Mode) => modes.has(mode),
 		register(api: ExtensionAPI) {
 			const entries = [...modes];
 			const types = entries.map(([type]) => type);
@@ -86,7 +87,7 @@ export function agentModes() {
 			const leaf = !modes.has("task");
 			const { owners, properties } = flatFields(entries, leaf);
 			// Only the types this session registered: a subagent has no task or external.
-			const triggers = entries.map(([type]) => TRIGGERS[type]);
+			const triggers = entries.map(([type]) => renderInstruction(`tools/agent/trigger-${type}.md`));
 			api.registerTool({
 				name: "agent",
 				label: "Agent",
@@ -113,10 +114,10 @@ export function agentModes() {
 					if (!tool) throw new Error(`Unknown agent type ${type}; use ${types.join(", ")}.`);
 					if ("input" in fields)
 						throw new Error("agent fields go at the top level beside type; there is no input envelope.");
-					const foreign = Object.keys(fields).filter((field) => owners.get(field) !== type);
+					const foreign = Object.keys(fields).filter((field) => !owners.get(field)?.includes(type));
 					if (foreign.length > 0) {
 						const named = foreign.map((field) =>
-							owners.has(field) ? `${field} (only for ${owners.get(field)})` : field,
+							owners.has(field) ? `${field} (only for ${owners.get(field)?.join(", ")})` : field,
 						);
 						throw new Error(`agent type ${type} does not take ${named.join(", ")}.`);
 					}

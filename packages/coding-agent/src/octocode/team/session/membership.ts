@@ -4,6 +4,7 @@ import { newMember } from "../identity.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { type TeamStore } from "../store.ts";
 import { AGENT_ID_ENV } from "../store/env.ts";
+import { namedParent } from "./parent.ts";
 import type { SessionTeamName } from "./rejoin.ts";
 
 /** Names drawn in turn when other processes keep taking them. */
@@ -31,7 +32,8 @@ export function claimName(
 		// A running agent holding the recorded name keeps it: the next attempt draws a free one.
 		const wish = chosen ?? (attempt === 0 ? recorded?.preferred : undefined);
 		const member = newMember(env, ctx, wish ?? newName(lost), goal, Date.now());
-		if (db.join(member)) {
+		// A chosen name's row may be the one its parent holds for it with its reservations.
+		if (db.join(member, chosen ? namedParent(env) : undefined)) {
 			recorded?.joined(member.id);
 			return member;
 		}

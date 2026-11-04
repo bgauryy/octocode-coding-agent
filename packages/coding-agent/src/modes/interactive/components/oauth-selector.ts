@@ -4,12 +4,14 @@ import {
 	type Focusable,
 	fuzzyFilter,
 	getKeybindings,
+	GLYPH,
 	Input,
 	Spacer,
 	TruncatedText,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
+import { hintLine, keyText } from "./keybinding-hints.ts";
 
 export type AuthSelectorProvider = {
 	detail?: string;
@@ -134,6 +136,17 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		this.addChild(this.listContainer);
 
 		this.addChild(new Spacer(1));
+		this.addChild(
+			new TruncatedText(
+				hintLine([
+					["↑↓", "navigate"],
+					[keyText("tui.select.confirm"), mode === "logout" ? "remove" : "select"],
+					[keyText("tui.select.cancel"), "cancel"],
+				]),
+				1,
+				0,
+			),
+		);
 
 		// Add bottom border
 		this.addChild(new DynamicBorder());
@@ -157,7 +170,8 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 	private updateList(): void {
 		this.listContainer.clear();
 
-		const maxVisible = 8;
+		// One row fewer than before the key-hint line, so the dialog keeps its height.
+		const maxVisible = 7;
 		const startIndex = Math.max(
 			0,
 			Math.min(this.selectedIndex - Math.floor(maxVisible / 2), this.filteredProviders.length - maxVisible),
@@ -179,7 +193,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 					: "";
 			let line = "";
 			if (isSelected) {
-				const prefix = theme.fg("accent", "→ ");
+				const prefix = theme.fg("accent", `${GLYPH.cursor} `);
 				const text = theme.fg("accent", provider.name);
 				line = prefix + text + authTypeLabel + statusIndicator;
 			} else {

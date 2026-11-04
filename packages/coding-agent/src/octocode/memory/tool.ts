@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionContext } from "../../core/features/index.ts";
@@ -27,20 +28,9 @@ function memoryPrompt(subagent: boolean): {
 	const ops =
 		"search: topic keywords or regex query; get: full record by id; list: newest, memories pinned first" +
 		(subagent ? "" : "; set: add a memory (title required), or update one with id; delete: remove id");
-	/** Shared by every role, ending as each role acts on a wrong memory. */
-	const stale = "A memory may be stale: check a file, function or flag it names before relying on it, and";
 	return {
 		ops,
-		promptGuidelines: subagent
-			? [
-					`Memory is read-only here: put anything worth remembering in your report. ${stale} report one that proves wrong.`,
-				]
-			: [
-					"Save when the user corrects your approach, confirms a non-obvious one, or asks you to remember, and when a report proposes something to remember: the rule, why, and absolute dates. Search first and update a match.",
-					"Don't save what code, git history, AGENTS.md, skills or the backlog already hold, task progress, fix recipes or secrets, even when asked; save what was non-obvious instead.",
-					"Use scope global or pinned when the user asks, or states a standing preference about how you work (reporting, backlog, tools).",
-					`${stale} update or delete one that proves wrong.`,
-				],
+		promptGuidelines: renderInstruction("tools/archive/memory-guidelines.md", { subagent }).split("\n"),
 	};
 }
 
@@ -127,7 +117,7 @@ export function createMemoryActions(
 				const params = input as MemoryParams;
 				signal?.throwIfAborted();
 				const store = storeFor(ctx);
-				/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. */
+				/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. A save asks in every mode: `full` runs a `file.outside` change, and this text would steer every later session. */
 				const confirmWide = async (wide: boolean, title: string, what: string[], effect: string) => {
 					if (!wide) return;
 					const verdict = await options.permission.check(ctx, {
@@ -135,6 +125,7 @@ export function createMemoryActions(
 						title,
 						what,
 						reason: WIDE_REASON,
+						...(params.op === "set" ? { reasons: ["memory.wide" as const] } : {}),
 						effect,
 						undo: "/memory edits or deletes it",
 						risk: "text this session read could steer every later session",

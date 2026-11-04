@@ -1,3 +1,4 @@
+import "../../src/octocode/mcp-host/render-install.ts";
 import { renderMcpsSection } from "../../../mcp/src/section.ts";
 import { getCurrentSystemPrompt, getSystemMessageText, type SystemMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
@@ -41,7 +42,7 @@ describe("native prompt section updates", () => {
 			profiles: [{ name: "researcher", description: "Investigate with source evidence." }],
 		});
 		const patch = diffSystemPromptSections(before, after)!;
-		expect(Object.keys(patch)).toEqual(["octocode_delegation"]);
+		expect(Object.keys(patch)).toEqual(["delegation"]);
 		const first: SystemMessage = { role: "system", content: "", sections: before, timestamp: 0 };
 		const update: SystemMessage = { role: "system", content: "", sections: patch, timestamp: 1 };
 		expect(getCurrentSystemPrompt([first, update])).toBe(getSystemMessageText({ ...first, sections: after }));
@@ -66,8 +67,8 @@ describe("native prompt section updates", () => {
 		const text = "# Safety\nServer capability guidance.\n# Work and verification\nMore guidance.";
 		const current = sections(input, text);
 		for (const line of text.split("\n")) expect(current.mcps).toContain(line);
-		expect(current.octocode_safety).not.toContain("Server capability");
-		expect(current.octocode_work).not.toContain("More guidance");
+		expect(current.safety).not.toContain("Server capability");
+		expect(current.work).not.toContain("More guidance");
 	});
 
 	it.each([false, true])(
@@ -117,6 +118,6 @@ describe("native prompt section updates", () => {
 	it("does not instruct a session without messaging to contact another agent", () => {
 		const current = octocodePrompt({ ...input, canUseAgent: false });
 		expect(current).not.toContain("`agent`");
-		expect(current).not.toContain("# Delegation");
+		expect(current).not.toContain("## Manage running children");
 	});
 });

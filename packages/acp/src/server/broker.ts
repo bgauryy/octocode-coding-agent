@@ -9,13 +9,18 @@ import {
 	type McpServer,
 	type Stream,
 } from "@agentclientprotocol/sdk";
+import { redactSecrets } from "../../../common/src/sanitize.ts";
 import type { AcpBrokerHost } from "../host.ts";
 import { AcpSession, type AcpWorker } from "./session.ts";
-import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay } from "./history.ts";
+import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay, sessionNotFound } from "./history.ts";
 
 export type { AcpWorker } from "./session.ts";
-/** JSON-RPC server-error code for a session in a folder the user has not trusted. */
-const FOLDER_NOT_TRUSTED = -32002;
+/**
+ * The code for a session in a folder the user has not trusted. ACP's `-32002` means the resource does not exist, and it
+ * reserves -32768 to -32000 for JSON-RPC and itself; a client treats a code it does not know as a generic failure and
+ * shows the message.
+ */
+const FOLDER_NOT_TRUSTED = -31000;
 
 interface AcpBrokerOptions {
 	host: AcpBrokerHost;
@@ -95,11 +100,28 @@ export class AcpBroker {
 					this.options.sessionDir,
 				);
 			})
-			.onRequest(methods.agent.session.prompt, ({ params }) => this.get(params.sessionId).prompt(params.prompt))
-			.onNotification(methods.agent.session.cancel, ({ params }) => this.get(params.sessionId, true).cancel())
+			.onRequest(methods.agent.session.prompt, ({ params, signal }) => {
+				const session = this.get(params.sessionId);
+				const done = session.prompt(params.prompt);
+				// `$/cancel_request` on the prompt asks for what `session/cancel` asks for; the prompt then answers `cancelled`.
+				signal.addEventListener(
+					"abort",
+					() => {
+						void session.cancel().catch((error: unknown) => console.error("ACP cancellation failed", error));
+					},
+					{ once: true },
+				);
+				return done;
+			})
+			// A cancel can cross the close of its session on the wire, so an unknown session is not a failure.
+			.onNotification(methods.agent.session.cancel, async ({ params }) => {
+				this.ready();
+				await this.sessions.get(params.sessionId)?.cancel();
+			})
 			.onRequest(methods.agent.session.close, async ({ params }) => {
-				const session = this.get(params.sessionId, true);
-				await session.release();
+				this.ready();
+				// Closing a session that does not exist still succeeds.
+				await this.sessions.get(params.sessionId)?.release();
 				this.sessions.delete(params.sessionId);
 				return {};
 			});
@@ -118,11 +140,11 @@ export class AcpBroker {
 		if (!this.initialized || this.stopped)
 			throw RequestError.invalidRequest(undefined, "Initialize an open connection first.");
 	}
-	private get(id: string, control = false): AcpSession {
+	private get(id: string): AcpSession {
 		this.ready();
-		if (!control && this.restoring.has(id)) throw RequestError.invalidRequest(undefined, "Session is restoring.");
+		if (this.restoring.has(id)) throw RequestError.invalidRequest(undefined, "Session is restoring.");
 		const session = this.sessions.get(id);
-		if (!session) throw RequestError.resourceNotFound(id);
+		if (!session) throw sessionNotFound(id);
 		return session;
 	}
 	private async restoreSession(
@@ -212,7 +234,9 @@ export class AcpBroker {
 			}
 			if (counted) this.creating--;
 			if (error instanceof RequestError) throw error;
-			throw RequestError.internalError(undefined, "Could not start the Octocode session. See agent stderr.");
+			// The worker's own words say what to do: another process has this session open, a settings file is broken.
+			const reason = error instanceof Error ? `: ${redactSecrets(error.message)}` : ". See agent stderr.";
+			throw RequestError.internalError(undefined, `Could not start the Octocode session${reason}`);
 		}
 	}
 

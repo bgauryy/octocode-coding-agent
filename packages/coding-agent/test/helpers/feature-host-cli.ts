@@ -38,7 +38,6 @@ export function createSandbox(extraEnv: Record<string, string> = {}): Sandbox {
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MCP: "0",
-		OCTOCODE_API: "0",
 		OCTOCODE_MODELS_DEV: "0",
 		OCTOCODE_INTERNAL_ACP_WORKER: "0",
 		...extraEnv,

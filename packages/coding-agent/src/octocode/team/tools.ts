@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import path from "node:path";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
@@ -5,47 +6,47 @@ import type { ExtensionAPI, ExtensionContext, ToolCallEvent, ToolCallEventResult
 import { reservationPath, resolveToolPath } from "../shared/home.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
-import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
-import { EDIT_RETENTION_MINUTES, unjoinedAgent } from "./edits.ts";
+import { contentText, firstLine, optionalString, textResult } from "../shared/util.ts";
+import { childAsks } from "./asks.ts";
+import { EDIT_RETENTION_MINUTES } from "./edits.ts";
 import type { ShellParse } from "../shared/shell-commands.ts";
-import { CONFINE_FLAGS } from "./interpreter-confinement.ts";
 import { confineNode, registerConfinedNote } from "./node-confine.ts";
 import { lockAdvice } from "./lock-advice.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "./store/workspace.ts";
-import { checkGoal, modelRoute } from "./identity.ts";
-import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
+import { checkGoal } from "./identity.ts";
+import { describeChanges, describeConflicts, describeMembers, memberGoals, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
-import { teamNameToResume } from "./session/rejoin.ts";
-import { registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
+import { type ChildBudgets, grantRequests } from "./tools/grant.ts";
+import { INTERPRETER_HELD, NOT_CHECKED_HELD, POWERSHELL_HELD } from "./tools/held-text.ts";
+import { namedReservation } from "./tools/named-reservation.ts";
+import { registerTeamEvents } from "./tools/events.ts";
+import { type PeerRoute, registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
 import { registerRecordedSpend } from "./tools/spend.ts";
 
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
-const POWERSHELL_HELD =
-	"This PowerShell command was not run: the paths it writes cannot be checked against reservations, so while another agent holds one only read-only commands run. Use the file tool for edits.";
-const INTERPRETER_HELD = ({ name, cause }: { name: string; cause: string }): string =>
-	`This command runs ${name} on inline code, whose writes cannot be checked against reservations, so while another agent holds one only read-only commands run (${cause}). Instead: write the code to a script file under .octa/code/temp/ and run that file, or use the file tool for edits. ${
-		name === "node" || name === "nodejs"
-			? `To read with Node, put \`${CONFINE_FLAGS}\` before \`-e\`: Node then refuses writes and child processes.`
-			: "To read, use the read tools."
-	}`;
-/** A refused run that is no interpreter: a reader given a computed word, a wrapper hiding its command, arithmetic on an unknown value. */
-const NOT_CHECKED_HELD = ({ name, cause }: { name: string; cause: string }): string =>
-	`This command was not run: what it writes cannot be checked against reservations, so while another agent holds one it is refused${/^[\w.+-]+$/.test(name) ? ` (\`${name}\`)` : ""}. Why: ${cause}. Instead: write the command to a script file under .octa/code/temp/ and run that file, or use the file tool for edits.`;
 const DEFAULT_CHANGES_LIMIT = 20;
 
 type StopAgent = (id: string, by: string) => string | undefined;
+type MergeAgent = (id: string, ctx: ExtensionContext, signal?: AbortSignal) => Promise<{ ok: boolean; text: string }>;
+type MergeBranch = (
+	branch: string,
+	ctx: ExtensionContext,
+	signal?: AbortSignal,
+) => Promise<{ ok: boolean; text: string }>;
 
 /** Every field the `coordinate` schema accepts: a subagent's schema has no `id` or `goal` (`stop` and `join` are refused there before they are read). */
 interface CoordinateParams {
-	action: "list" | "join" | "leave" | "lock" | "unlock" | "stop" | "changes";
+	action: "list" | "join" | "leave" | "lock" | "unlock" | "stop" | "merge" | "grant" | "changes";
 	id?: string;
+	branch?: string;
 	goal?: string;
 	paths?: string[];
 	withinMinutes?: number;
 	limit?: number;
+	requests?: number;
 	reason?: string;
 }
 
@@ -60,6 +61,14 @@ export function registerCollab(
 	team: Team,
 	options: {
 		stopAgent?: StopAgent;
+		/** Lands an isolated child's saved ref (wired by `index.ts` from the subagents domain); unset in a subagent. */
+		mergeAgent?: MergeAgent;
+		/** Lands a linked worktree's branch in the main checkout (wired by `index.ts`); unset in a subagent. */
+		mergeBranch?: MergeBranch;
+		/** Other running Octocode sessions, for `message` and `coordinate list` (wired by `index.ts`); unset in a subagent, which reaches only its parent and teammates. */
+		peers?: PeerRoute;
+		/** The request budgets of the children this agent started (wired by `index.ts` from the subagents domain); unset in a subagent. */
+		budgets?: ChildBudgets;
 		beforeLeave?: (reason: string) => Promise<unknown>;
 		registerTool?: ExtensionAPI["registerTool"];
 		/** The paths a bash command writes, as far as a parse can name them (wired by `index.ts` from the permission layer). */
@@ -73,8 +82,8 @@ export function registerCollab(
 	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(api);
-	registerCoordinateTool(api, team, options.stopAgent, options.registerTool);
-	registerSendMessageTool(api, team, options.registerTool);
+	registerCoordinateTool(api, team, options);
+	registerSendMessageTool(api, team, options.registerTool, options.peers);
 	registerTeamEvents(api, team, options.beforeLeave, options.shellChanges);
 	registerRecordedSpend(api, team);
 	const markConfined = registerConfinedNote(api);
@@ -100,18 +109,22 @@ export function registerCollab(
 		// The same rule for inline interpreter code (`python3 -c`, `node -e`, a heredoc fed to `python -`): its writes are not named
 		// either, except for Node under `--permission`, whose runtime refuses them (`interpreterRefusal`); a `node` that lacks
 		// only those flags gets them (`confineNode`), and its result says so. Runs only while a reservation is held: the parse is then worth its cost.
+		// Inline code is held back only when its text names a reserved path (`namedReservation`): code that names none cannot reach one.
+		// A command that is no interpreter run but cannot be read either (a computed program, a wrapper) stays refused.
 		const held = command === undefined ? undefined : team.reservation(undefined, "");
 		if (command !== undefined && held && !options.shellReadOnly?.(command)) {
 			const parse = options.shellCommands;
 			const verdict = await confineNode(command, process.env, async (text) =>
 				parse ? ((await parse(text)) ?? null) : undefined,
 			);
-			if (verdict && "refusal" in verdict)
-				return {
-					block: true,
-					reason: `${(verdict.refusal.interpreter ? INTERPRETER_HELD : NOT_CHECKED_HELD)(verdict.refusal)} ${held}`,
-				};
-			if (verdict && isRecord(event.input)) {
+			if (verdict && "refusal" in verdict && !verdict.refusal.interpreter)
+				return { block: true, reason: `${NOT_CHECKED_HELD(verdict.refusal)} ${held}` };
+			const named = verdict
+				? namedReservation(command, ctx.cwd, (absolute, display) => team.reservation(absolute, display))
+				: undefined;
+			if (verdict && "refusal" in verdict && named)
+				return { block: true, reason: `${INTERPRETER_HELD(verdict.refusal)} ${named}` };
+			if (verdict && !("refusal" in verdict) && named && isRecord(event.input)) {
 				event.input.command = command = verdict.command;
 				markConfined(event.toolCallId);
 			}
@@ -132,35 +145,54 @@ export function registerCollab(
 function registerCoordinateTool(
 	api: ExtensionAPI,
 	team: Team,
-	stopAgent: StopAgent | undefined,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
+	{
+		stopAgent,
+		mergeAgent,
+		mergeBranch,
+		peers,
+		budgets,
+		registerTool = (tool) => api.registerTool(tool),
+	}: {
+		stopAgent?: StopAgent | undefined;
+		mergeAgent?: MergeAgent | undefined;
+		mergeBranch?: MergeBranch | undefined;
+		peers?: PeerRoute | undefined;
+		budgets?: ChildBudgets | undefined;
+		registerTool?: ExtensionAPI["registerTool"] | undefined;
+	},
 ): void {
 	// `stop` exists only for an agent that can start subagents, which is also the one that joins and leaves by hand: a
 	// subagent joins when it starts and leaves when its run ends (`Team.start`, `onAgentSettled`), and would only be refused `stop`.
 	const canStop = stopAgent !== undefined;
 	const actions = canStop
-		? (["list", "join", "leave", "lock", "unlock", "stop", "changes"] as const)
+		? (["list", "join", "leave", "lock", "unlock", "stop", "merge", "grant", "changes"] as const)
 		: (["list", "lock", "unlock", "changes"] as const);
 	registerTool(
 		timedTool({
 			name: "coordinate",
 			label: "Coordinate",
 			description:
-				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octa/code/temp/` scratch are per worktree.",
-			promptGuidelines: [
-				"Other agents may be editing this repository. Before overlapping edits, lock your paths with `agent` type `coordinate` (the call's `reason` tells others what you will change), then unlock when done. A check failing in a file you did not change: `changes` shows who did; resolve conflicts with the owner.",
-			],
+				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/code/temp/` scratch are per worktree.",
+			promptGuidelines: renderInstruction("tools/coordinate/guidelines.md").split("\n"),
 			parameters: Type.Object({
 				action: StringEnum(actions, {
 					description:
 						"list: live agents and held paths; " +
 						(canStop ? "join: register or update your goal; leave: unregister and release reservations; " : "") +
 						"lock: reserve paths, all or none; unlock: release paths, or all without paths; " +
-						(canStop ? "stop: kill a background subagent you started (id); " : "") +
+						(canStop
+							? "stop: kill a background subagent you started; merge: land an isolated subagent's saved work in this tree, or a linked worktree's branch in the main checkout (asks the user); grant: add requests to the limits of a running subagent you started, for this run only; "
+							: "") +
 						"changes: recent file changes by agents, newest first",
 				}),
 				...(canStop
-					? { id: Type.Optional(Type.String({ description: "stop: id of the background subagent to end" })) }
+					? {
+							id: Type.Optional(Type.String({ description: "stop, merge, grant: id of the subagent" })),
+							branch: Type.Optional(Type.String({ description: "merge: a linked worktree's branch, instead of id" })),
+							requests: Type.Optional(
+								Type.Integer({ description: "grant: model requests to add, a positive whole number" }),
+							),
+						}
 					: {}),
 				...(canStop
 					? { goal: Type.Optional(Type.String({ description: "join: your goal, in the form of a task goal" })) }
@@ -187,7 +219,7 @@ function registerCoordinateTool(
 				} else if (params.action === "lock") {
 					if (!params.paths?.length) throw new Error("lock needs paths.");
 					const result = team.lock(params.paths, storedText(params.reason, 200) || "editing");
-					if (!result.ok) throw new Error(describeConflicts(result.conflicts, now));
+					if (!result.ok) throw new Error(describeConflicts(result.conflicts, now, memberGoals(team.members())));
 					const total =
 						result.held > result.leases.length ? ` You now hold ${plural(result.held, "reservation")}.` : "";
 					const mine = team.snapshot().members.find((member) => member.id === team.id)?.locks ?? [];
@@ -208,6 +240,20 @@ function registerCoordinateTool(
 					const refused = stopAgent(id?.trim() ?? "", team.id ?? "the parent agent");
 					if (refused) throw new Error(refused);
 					return textResult(`Stopping ${id}: its process tree is killed and its report arrives as a message.`);
+				} else if (params.action === "merge" && params.branch !== undefined) {
+					if (!mergeBranch) throw new Error("Only the session in the main checkout can merge a worktree's branch.");
+					const result = await mergeBranch(params.branch.trim(), ctx, signal);
+					if (!result.ok) throw new Error(result.text);
+					return textResult(result.text);
+				} else if (params.action === "merge") {
+					if (!mergeAgent) throw new Error("Only the agent that started a subagent can merge its work.");
+					const id = params.id?.trim();
+					if (!id) throw new Error("merge needs the id of an isolated subagent.");
+					const result = await mergeAgent(id, ctx, signal);
+					if (!result.ok) throw new Error(result.text);
+					return textResult(result.text);
+				} else if (params.action === "grant") {
+					return grantRequests(team, budgets, params.id, params.requests, signal);
 				} else if (params.action === "changes") {
 					const requested = Math.max(1, Math.floor(params.withinMinutes ?? DEFAULT_CHANGES_WINDOW_MIN));
 					// Changes older than the retention are gone: search what is kept and say so (describeChanges).
@@ -239,18 +285,23 @@ function registerCoordinateTool(
 				const { members, error } = team.snapshot();
 				if (error) throw new Error(error);
 				const working = members.filter((member) => member.status === "working").length;
-				return textResult(describeMembers(members, team.id, now, undefined, team.openQuestions()), {
+				const asks = childAsks(members, team.id, (child, parent, since) => team.asks(child, parent, since));
+				const standing = (id: string) => budgets?.usage(id);
+				const agents = describeMembers(members, team.id, now, asks, team.openQuestions(), standing);
+				const others = peers ? `\n\n${await peers.list(ctx.cwd)}` : "";
+				return textResult(`${agents}${others}`, {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",
 				});
 			},
 			renderCall(args, theme, context) {
 				const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
 				const target = paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? "");
-				const { id, goal } = args as Partial<CoordinateParams>;
+				const { id, goal, requests } = args as Partial<CoordinateParams>;
 				const summary = [
 					/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
 					String(args.action ?? ""),
 					id === undefined ? "" : String(id),
+					requests === undefined ? "" : `+${String(requests)}`,
 					target,
 					goal ? `"${String(goal)}"` : "",
 					/* oxlint-enable typescript/no-unnecessary-type-conversion */
@@ -275,109 +326,4 @@ function registerCoordinateTool(
 			},
 		}),
 	);
-}
-
-function registerTeamEvents(
-	api: ExtensionAPI,
-	team: Team,
-	beforeLeave?: (reason: string) => Promise<unknown>,
-	shellChanges?: (command: string) => Promise<string[]>,
-): void {
-	api.on("session_start", async (event, ctx) =>
-		team.start(ctx, teamNameToResume(ctx.sessionManager.getBranch(), event.reason)),
-	);
-	api.on("session_shutdown", async (event) => {
-		try {
-			// The shutdown's reason (`reload`, `quit`…) names what stopped the subagents in their reports.
-			await beforeLeave?.(event.reason);
-		} finally {
-			team.stop();
-		}
-	});
-	api.on("agent_start", async () => team.onAgentStart());
-	api.on("agent_settled", async () => team.onAgentSettled());
-	// The loop reads queued steering right after `turn_end`: mail that arrived while the tools ran joins the next request
-	// instead of waiting for the tick. A final turn (no tools) is left to the tick, so waiting mail adds no model call.
-	api.on("turn_end", async (event) => {
-		if (event.toolResults.length > 0) team.deliverMail();
-		return undefined;
-	});
-	// Team mail is delivered when the model is called with it. Octocode emits `context` before every model call, whichever way
-	// a message entered the conversation (message_start reaches extensions only for steered and prompted messages).
-	api.on("context", async (event) => {
-		team.onContext(event.messages);
-		return undefined;
-	});
-	// Mail that reached the transcript and was then compacted away is carried by the summary: no later `context` event
-	// lists it, so it would stay unseen and hold back newer mail. Mail in the kept range is still seen by the next call.
-	api.on("session_compact", async (event, ctx) => {
-		const summarized: Array<{ role: "custom"; customType: string; details: unknown }> = [];
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.id === event.compactionEntry.firstKeptEntryId || entry.id === event.compactionEntry.id) break;
-			if (entry.type === "custom_message")
-				summarized.push({ role: "custom", customType: entry.customType, details: entry.details });
-		}
-		team.onContext(summarized);
-		return undefined;
-	});
-	// Who changed which file, for `coordinate changes`: `file` by its outcomes (a batch can partly fail), `bash` by the
-	// paths its parse names. A command is only on the start event, so it waits here for the end; a blocked or failed call
-	// ends as an error and records nothing.
-	const commands = new Map<string, string>();
-	api.on("tool_execution_start", async (event) => {
-		if (!event.parentToolCallId) team.onToolStart();
-		if (event.toolName === "bash" && shellChanges && isRecord(event.args) && event.args.type !== "powershell") {
-			const command = optionalString(event.args.command);
-			if (command !== undefined) commands.set(event.toolCallId, command);
-		}
-	});
-	api.on("tool_execution_end", async (event, ctx) => {
-		const command = commands.get(event.toolCallId);
-		commands.delete(event.toolCallId);
-		if (event.isError) return;
-		let written: string[] = [];
-		if (command !== undefined) {
-			try {
-				written = (await shellChanges?.(command)) ?? [];
-			} catch {
-				// A command the parse cannot read records nothing.
-			}
-		}
-		const outcomes =
-			event.toolName === "file" && isRecord(event.result) && isRecord(event.result.details)
-				? event.result.details.outcomes
-				: undefined;
-		const files = Array.isArray(outcomes)
-			? outcomes.flatMap((outcome) =>
-					isRecord(outcome) && outcome.ok === true && typeof outcome.path === "string" ? [outcome.path] : [],
-				)
-			: written;
-		if (files.length === 0) return;
-		try {
-			team.editLog()?.record(
-				team.id ?? unjoinedAgent(),
-				event.toolName,
-				files.map((file) => resolveToolPath(ctx.cwd, file)),
-			);
-		} catch {
-			// A missing record only makes `coordinate changes` less complete.
-		}
-	});
-	// `provider/id:thinking`: `coordinate list` and the panel show every agent's route and effort, so a coordinator sees what each child runs on.
-	api.on("message_end", async (event, ctx) => {
-		if (event.message.role !== "assistant") return;
-		const { provider, model } = event.message;
-		const same = ctx.model?.id === model ? ctx.model : undefined;
-		team.onUsage(
-			event.message.usage,
-			model ? modelRoute({ provider, id: model, reasoning: same?.reasoning }, api.getThinkingLevel()) : undefined,
-			unpricedModel(event.message, modelLookup(ctx)) !== undefined,
-		);
-	});
-	api.on("model_select", async (event) => {
-		team.setModel(modelRoute(event.model, api.getThinkingLevel()));
-	});
-	api.on("thinking_level_select", async (event, ctx) => {
-		team.setModel(modelRoute(ctx.model, event.level));
-	});
 }

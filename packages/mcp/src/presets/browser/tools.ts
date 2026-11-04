@@ -7,6 +7,7 @@ import {
 import { toToolResult } from "../octocode/tools.ts";
 import { hostRender } from "../../host.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
+import { engineDetail } from "./failure.ts";
 import { presentBrowserResult } from "./presentation.ts";
 import { normalizeBrowserArguments } from "./presentation-options.ts";
 import { guardBrowserCall } from "./proxy.ts";
@@ -54,11 +55,16 @@ export function defineBrowserTool(options: McpToolDefinitionOptions) {
 				...createMcpToolRenderers(label),
 				prepareCall: (args, ctx) => {
 					const normalized = normalizeBrowserArguments(tool.name, args);
-					return launcherArgs ? guardBrowserCall(tool.name, normalized, ctx.cwd) : { args: normalized };
+					return launcherArgs ? guardBrowserCall(tool.name, normalized, ctx.cwd, ctx.signal) : { args: normalized };
 				},
 				async convertResult(result, ctx) {
 					const limits = imageLimits(ctx.model);
-					const shown = await presentBrowserResult(tool.name, withStructuredText(result), { cwd: ctx.cwd, limits });
+					const detail = await engineDetail(result, ctx.cwd);
+					const structured = withStructuredText(result);
+					const text: CallToolResult = detail
+						? { ...structured, content: [...structured.content, { type: "text", text: detail }] }
+						: structured;
+					const shown = await presentBrowserResult(tool.name, text, { cwd: ctx.cwd, limits });
 					const converted = await toToolResult(tool.name, shown, false, limits);
 					return { ...converted, details: { ...converted.details, server: options.server } };
 				},

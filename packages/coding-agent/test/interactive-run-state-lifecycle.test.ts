@@ -95,6 +95,9 @@ describe("interactive retry lifecycle", () => {
 			});
 			expect(active).toBeUndefined();
 			expect(host.defaultEditor.onEscape).toBe(originalEscape);
+			// A cancelled manual compaction is a status, not an error.
+			expect(host.showStatus).toHaveBeenCalledWith("Compaction cancelled");
+			expect(host.showError).not.toHaveBeenCalledWith("Compaction cancelled");
 		} finally {
 			active?.dispose();
 		}

@@ -275,18 +275,17 @@ export class AgentSessionRuntime {
 				throw new Error("Persisted session is missing a session file");
 			}
 			const sessionDir = this.session.sessionManager.getSessionDir();
-			if (!targetLeafId) {
+			// A session with no file yet holds no conversation: forking or cloning it starts an empty session.
+			const saved = existsSync(currentSessionFile);
+			if (!targetLeafId || !saved) {
 				const sessionManager = SessionManager.create(this.cwd, sessionDir);
-				sessionManager.newSession({ parentSession: currentSessionFile });
+				sessionManager.newSession({ parentSession: saved ? currentSessionFile : undefined });
 				await this.teardownCurrent("fork", sessionManager.getSessionFile());
 				await this.replaceSession(sessionManager, this.cwd, "fork", previousSessionFile);
 				await this.finishSessionReplacement(options?.withSession);
 				return { cancelled: false, selectedText };
 			}
 
-			if (!existsSync(currentSessionFile)) {
-				throw new Error("This session has not been saved yet. Send a message before cloning or forking it.");
-			}
 			// Keep the cwd this session runs in, which a resume may have moved away from the one in its file header.
 			const sessionManager = SessionManager.open(currentSessionFile, sessionDir, this.session.sessionManager.getCwd());
 			const forkedSessionPath = sessionManager.createBranchedSession(targetLeafId);

@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
@@ -88,6 +89,7 @@ export const runFooter = (details: RunDetails, failed: boolean): string[] => [
 	compactionNote(details),
 	archiveNote(details),
 	asksNote(details.asks),
+	details.editedAfterVerify ? renderInstruction("notices/subagents/verify-stale.md") : "",
 	failed || details.session?.file ? sessionNote(details) : "",
 ];
 
@@ -126,7 +128,12 @@ export function tracker(
 			compactions,
 			notices,
 			requests,
+			editedAfterVerify,
 		}: ChildProgress) => {
+			if (editedAfterVerify !== undefined) {
+				if (editedAfterVerify) details.editedAfterVerify = true;
+				else delete details.editedAfterVerify;
+			}
 			if (waiting !== undefined) {
 				if (waiting) details.waiting = true;
 				else delete details.waiting;

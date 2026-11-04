@@ -68,7 +68,6 @@ Object.assign(process.env, {
 	OCTOCODE_MCP: "0",
 	OCTOCODE_MODELS_DEV: "0",
 	OCTOCODE_MEMORY_AUTO: "0",
-	OCTOCODE_API: "1",
 });
 const hookFile = path.join(run, "hooks.jsonl");
 const recorder = path.join(run, "hook-recorder.mjs");

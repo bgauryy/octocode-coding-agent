@@ -14,6 +14,8 @@ Use **one versioned family of internal contracts**, sharing vocabulary where sem
 
 Reviewed 2026-10-23 against the working tree based on `cdc32be2f1b406c96864d01c2bdcafedc4b62869`, including concurrent changes. [Feature scores and executed checks](FEATURE_VALIDATION.md) distinguish current evidence from earlier runs.
 
+Later decision (2026-11-04): [one agent-to-agent protocol](RFC_AGENT_TO_AGENT.md) adds one model-facing verb over these contracts and keeps each delivery contract below.
+
 Current implementation note (2026-10-29): `packages/acp/package.json` now pins `@agentclientprotocol/sdk` 2.0.2. Inbound and outbound code use its default stable ACP v1 entrypoint; the package version does not select the experimental v2 wire protocol. The version statement in the original review below is retained as dated evidence.
 
 ## Evidence

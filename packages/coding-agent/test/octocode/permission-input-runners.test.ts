@@ -162,7 +162,7 @@ describe("reservation gate: a program behind an input runner", () => {
 	it.each([
 		"echo src/a.ts | xargs uniq /dev/null",
 		"echo src/a.ts | xargs tee",
-		"echo -delete | xargs find src",
+		"echo -delete | xargs find src/a.ts",
 		"echo -o src/a.ts | xargs sort",
 		"echo src/a.ts | xargs rm",
 		"echo 'cp b.ts src/a.ts' | xargs -I{} sh -c {}",

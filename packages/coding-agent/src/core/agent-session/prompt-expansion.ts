@@ -1,4 +1,5 @@
-import { getBuiltinCommand, parseSlashCommand } from "../slash-commands.ts";
+import { renderInstruction } from "../prompt-template.ts";
+import { featureOfCommand, getBuiltinCommand, parseSlashCommand } from "../slash-commands.ts";
 /**
  * Prompt input handling before a message is sent or queued: extension commands, `input` handlers,
  * skill commands, prompt templates, skill mentions and image normalization.
@@ -29,9 +30,14 @@ export { type ParsedSkillBlock, parseSkillBlock } from "../skill-block.ts";
 export type ExpansionHost = Pick<SessionInternals, "session" | "cwd">;
 
 /**
- * Try to execute an extension command. Returns true if command was found and executed.
+ * Try to execute an extension command. Returns true if command was found and executed, whether or not it succeeded;
+ * `onFailure` hears a handler's failure, which is also emitted as an extension error.
  */
-export async function tryExecuteExtensionCommand(runner: ExtensionRunner, text: string): Promise<boolean> {
+export async function tryExecuteExtensionCommand(
+	runner: ExtensionRunner,
+	text: string,
+	onFailure?: (message: string) => void,
+): Promise<boolean> {
 	// Parse command name and args
 	const parsed = parseSlashCommand(text);
 	if (!parsed) return false;
@@ -42,6 +48,8 @@ export async function tryExecuteExtensionCommand(runner: ExtensionRunner, text: 
 		if (getBuiltinCommand(commandName)?.requiresNative) throw new Error(`/${commandName} requires native features.`);
 		if (getBuiltinCommand(commandName))
 			throw new Error(`/${commandName} is available in the interactive terminal only.`);
+		const feature = featureOfCommand(commandName);
+		if (feature) throw new Error(`/${commandName} is unavailable: the ${feature} feature is off.`);
 		return false;
 	}
 
@@ -58,6 +66,7 @@ export async function tryExecuteExtensionCommand(runner: ExtensionRunner, text: 
 			event: "command",
 			error: errorMessage(err),
 		});
+		onFailure?.(errorMessage(err));
 		return true;
 	}
 }
@@ -171,7 +180,7 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 						},
 					)
 				: rawBody;
-		const skillBlock = `<skill name="${skill.name}" location="${filePath}">\nReferences are relative to ${baseDir}.\n\n${body}\n</skill>`;
+		const skillBlock = `<skill name="${skill.name}" location="${filePath}">\n${renderInstruction("system/skill-references.md", { dir: baseDir })}\n\n${body}\n</skill>`;
 		return args && skill.argumentStyle !== "claude" ? `${skillBlock}\n\n${args}` : skillBlock;
 	} catch (err) {
 		// Emit error like extension commands do

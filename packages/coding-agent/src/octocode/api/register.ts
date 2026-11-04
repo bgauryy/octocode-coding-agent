@@ -3,8 +3,13 @@ import { notify, type Subcommands, say, wordCompletions } from "../shared/comman
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AgentDirectory, ApiOperations } from "./bridge/contracts.ts";
-import { optionsFromEnv, transportsFor } from "./bridge/options.ts";
+import { type ApiOptions, startupOptions, transportsFor } from "./bridge/options.ts";
 import { OctocodeApi } from "./bridge.ts";
+import { sessionApiEnabled } from "./enabled.ts";
+import { apiDir, type InstanceRecord, listInstances } from "./registry.ts";
+
+/** The live API instances on this Octocode home, read without sweeping records: a listing must not change anything. */
+export const runningApiInstances = (): InstanceRecord[] => listInstances(apiDir(), false);
 
 /** Wire the external API into Octocode: event publishing, lifecycle and `/api`. Subagents never expose one. */
 export function registerApi(
@@ -16,6 +21,8 @@ export function registerApi(
 ): { api: OctocodeApi; start: (ctx: Parameters<OctocodeApi["start"]>[0]) => Promise<void>; stop: () => Promise<void> } {
 	const server = new OctocodeApi(api, agents, version, process.env, operations);
 	server.observe();
+	/** What `/api on` or `/api off` chose: it holds for this process, across `/new` and `/resume`, over the setting. */
+	let chosen: { options: ApiOptions | undefined } | undefined;
 
 	commands.add("api", {
 		description: "External API status, start or stop",
@@ -27,8 +34,10 @@ export function registerApi(
 			const [action, flag] = line.split(/\s+/);
 			try {
 				if (action === "on") {
-					await server.start(ctx, transportsFor(flag === "http" ? 0 : undefined));
+					chosen = { options: transportsFor(flag === "http" ? 0 : undefined) };
+					await server.start(ctx, chosen.options);
 				} else if (action === "off") {
+					chosen = { options: undefined };
 					await server.stop();
 					// stop() unbinds the session; bind again so a later `api on` works.
 					await server.start(ctx, undefined);
@@ -49,7 +58,7 @@ export function registerApi(
 						]
 							.filter(Boolean)
 							.join("\n")
-					: "Octocode API is off. Start with /api on, or set OCTOCODE_API=1 (OCTOCODE_API_HTTP=<port> adds loopback HTTP).",
+					: "Octocode API is off. Start with /api on (/api on http adds loopback HTTP). The sessionApi setting turns it off for new sessions.",
 				"info",
 			);
 		},
@@ -59,10 +68,10 @@ export function registerApi(
 		api: server,
 		start: async (ctx) => {
 			// A bad environment still binds the session (so `/api on` works) and says why the API is off.
-			let options: ReturnType<typeof optionsFromEnv>;
+			let options = chosen?.options;
 			let failure: unknown;
 			try {
-				options = optionsFromEnv();
+				if (!chosen) options = startupOptions(sessionApiEnabled());
 			} catch (error) {
 				failure = error;
 			}

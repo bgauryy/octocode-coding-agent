@@ -1,0 +1,1 @@
+The conversation continues after your summary with the messages from the {{first}} on; they stay in context word for word, so summarize only what comes before that point and leave out what happens from there on, although you can see it. Where the instructions below say "the last messages above", they mean the last ones before it.

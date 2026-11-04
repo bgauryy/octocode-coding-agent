@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
@@ -26,6 +27,7 @@ import {
 	unpricedModel,
 } from "../shared/util.ts";
 import { summaryMethodOf } from "../shared/summary-method.ts";
+import { archivedSummary } from "../../core/compaction/checkpoint.ts";
 import {
 	type BriefInput,
 	latestRequest,
@@ -42,7 +44,7 @@ import { registerPurgeCommand } from "./purge-command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
 import { type CompleteTitle, createAutoTitler } from "./title.ts";
 import { sweepSessions } from "./sweep.ts";
-import { describeWork, unreportedWork } from "./work.ts";
+import { describeWork, unansweredCalls, unreportedWork } from "./work.ts";
 
 /** Custom message type of the resume brief. */
 export const RESUME_MESSAGE_TYPE = "octocode-resume";
@@ -133,17 +135,21 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 			// The agent database is unavailable: the running work and the request alone still help.
 		}
 		const held = team ? teamBrief(team) : [];
-		// Octocode's own summary is followed by the user's messages word for word, so their latest request is already kept.
-		const kept = summaryMethodOf(event.compactionEntry?.details) !== undefined;
+		// Octocode's own summary is followed by the user's messages word for word, so their latest request is already kept,
+		// unless the summary went to a file: what stays inline then may leave the request out.
+		const details = event.compactionEntry?.details;
+		const kept = summaryMethodOf(details) !== undefined && archivedSummary(details) === undefined;
 		const request = kept ? undefined : latestRequest(branch);
 		if (running.length === 0 && ongoing.length === 0 && held.length === 0 && !request) return;
 		const lines = [
-			...(running.length > 0 ? [`Still running (their reports arrive as messages): ${running.join("; ")}.`] : []),
+			...(running.length > 0
+				? [renderInstruction("notices/compaction/still-running.md", { work: running.join("; ") })]
+				: []),
 			...ongoing,
 			...held,
-			...(request ? [`Latest user request: "${request}"`] : []),
+			...(request ? [renderInstruction("notices/compaction/latest-request.md", { request })] : []),
 		];
-		const content = `[After compaction] ${lines.join("\n")}`;
+		const content = renderInstruction("notices/compaction/session-state.md", { lines: lines.join("\n") });
 		try {
 			void api.sendMessage(
 				{ customType: RUNNING_WORK_TYPE, content, display: false },
@@ -280,12 +286,14 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			if (resumed && at !== undefined) {
 				const recorded = { branch: previous?.branch ?? null, head: previous?.head ?? null };
 				const request = latestRequest(branchOf(ctx));
+				const unanswered = unansweredCalls(branchOf(ctx));
 				pending = {
 					previous: recorded,
 					lastActive: at,
 					sessionId: id,
 					repoKey: registeredWorkspace(ctx.cwd, sessions.agent).id,
 					...(unreported.length > 0 ? { unreported } : {}),
+					...(unanswered.length > 0 ? { unanswered } : {}),
 					...(request ? { request } : {}),
 				};
 			}
@@ -334,7 +342,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		return undefined;
 	});
 
-	api.on("before_agent_start", async (_event, ctx) => {
+	api.on("before_agent_start", async (event, ctx) => {
 		if (!pending) return undefined;
 		const input = pending;
 		pending = undefined;
@@ -346,6 +354,8 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		safely(ctx, (sessions) => {
 			content = resumeBrief(sessions.agent, {
 				...input,
+				// Handler messages follow the message that starts the run (`prepareRun`), so a new prompt comes before this note.
+				newPrompt: event.messageType !== "custom",
 				git: { ...now, dirty, ...(commitsSince === undefined ? {} : { commitsSince }) },
 			});
 		});

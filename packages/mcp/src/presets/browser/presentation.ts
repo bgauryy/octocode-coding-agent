@@ -1,12 +1,12 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { CallToolResult, ContentBlock } from "../../client/index.ts";
 import { hostImages, hostOutput } from "../../host.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { CAPTURE_FOLDER } from "./failure.ts";
 import { type ImageLimits, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 
-/** The package's capture folder inside the session's working directory: the only place a result's files are read from. */
-const CAPTURE_FOLDER = join(".octocode", "octocode-chrome-devtools");
 const IMAGE_FILE = /\.(?:png|jpe?g|webp|gif)$/i;
 const MANIFEST_FILE = /manifest\.json$/i;
 const MAX_IMAGES = 2;
@@ -69,13 +69,21 @@ function namedFiles(structured: Record<string, unknown>): {
 	return { root, images, manifests };
 }
 
-/** The tile files a capture manifest lists, in order. */
+/**
+ * The tile files a capture manifest lists, in order (an entry is a path, or a record with `file` or `path`). A manifest
+ * with no usable tile list still sits beside its image, so the images next to it stand in.
+ */
 async function manifestTiles(manifest: string): Promise<string[]> {
 	try {
 		if ((await stat(manifest)).size > MAX_MANIFEST_BYTES) return [];
 		const parsed: unknown = JSON.parse(await readFile(manifest, "utf8"));
-		if (!isRecord(parsed) || !Array.isArray(parsed.tiles)) return [];
-		return parsed.tiles.flatMap((tile) => (isRecord(tile) && typeof tile.file === "string" ? [tile.file] : []));
+		const tiles = isRecord(parsed) && Array.isArray(parsed.tiles) ? parsed.tiles : [];
+		const listed = tiles.flatMap((tile) => {
+			const path = isRecord(tile) ? (tile.file ?? tile.path) : tile;
+			return typeof path === "string" ? [path] : [];
+		});
+		if (listed.length > 0) return listed;
+		return (await readdir(dirname(manifest))).filter((name) => IMAGE_FILE.test(name)).sort();
 	} catch {
 		return [];
 	}
@@ -90,22 +98,27 @@ interface Preview {
 async function previewOf(
 	file: string,
 	limits: ImageLimits | undefined,
-): Promise<{ block: ContentBlock; note?: string } | undefined> {
+): Promise<{ block: ContentBlock; digest: string; note?: string } | undefined> {
 	try {
 		if ((await stat(file)).size > MAX_IMAGE_BYTES) return undefined;
 		const bytes = await readFile(file);
 		const mimeType = sniffImageType(bytes);
 		if (!mimeType) return undefined;
+		const digest = createHash("sha256").update(bytes).digest("hex");
 		if (limits) {
 			const fitted = await hostImages()
 				.fit(bytes, mimeType, { ...limits, maxBytes: hostOutput().imageBudget(limits) })
 				.catch(() => null);
 			if (fitted) {
 				const note = fitted.note;
-				return { block: { type: "image", data: fitted.data, mimeType: fitted.mimeType }, ...(note ? { note } : {}) };
+				return {
+					block: { type: "image", data: fitted.data, mimeType: fitted.mimeType },
+					digest,
+					...(note ? { note } : {}),
+				};
 			}
 		}
-		return { block: { type: "image", data: bytes.toString("base64"), mimeType } };
+		return { block: { type: "image", data: bytes.toString("base64"), mimeType }, digest };
 	} catch {
 		return undefined;
 	}
@@ -144,17 +157,24 @@ async function screenshotPreview(
 		if (file) add(file, "screenshot", true);
 	}
 	const preview: Preview = { lines: [], images: [] };
+	const attached = new Set<string>();
 	for (const entry of files) {
 		let shown = false;
+		let duplicate = false;
 		if (entry.attach && preview.images.length < MAX_IMAGES) {
 			const image = await previewOf(entry.file, limits);
-			if (image) {
+			// The same capture saved under two names (a copy, a repeated shot) is attached once.
+			if (image && attached.has(image.digest)) duplicate = true;
+			else if (image) {
+				attached.add(image.digest);
 				preview.images.push(image.block);
 				if (image.note) preview.lines.push(image.note);
 				shown = true;
 			}
 		}
-		preview.lines.push(`Screenshot file (${entry.label}${shown ? ", image attached" : ""}): ${entry.shown}`);
+		preview.lines.push(
+			`Screenshot file (${entry.label}${shown ? ", image attached" : duplicate ? ", same image as above" : ""}): ${entry.shown}`,
+		);
 	}
 	return files.length > 0 ? preview : undefined;
 }

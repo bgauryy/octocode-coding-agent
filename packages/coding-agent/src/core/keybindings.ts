@@ -92,6 +92,7 @@ const APP_KEYBINDINGS = {
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },
 	"app.session.fork": { defaultKeys: [], description: "Fork current session" },
 	"app.session.resume": { defaultKeys: [], description: "Resume a session" },
+	"app.session.loadEarlier": { defaultKeys: "alt+pageUp", description: "Load earlier transcript entries" },
 	"app.tree.foldOrUp": {
 		defaultKeys: process.platform === "darwin" ? ["alt+left", "ctrl+left"] : ["ctrl+left", "alt+left"],
 		description: "Fold tree branch or move up",

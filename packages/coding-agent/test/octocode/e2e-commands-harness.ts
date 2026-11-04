@@ -1,7 +1,12 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { createFauxCore, fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
+import {
+	createFauxCore,
+	fauxAssistantMessage,
+	type FauxResponseStep,
+	type TranscriptContext,
+} from "@octocodeai/octocode-ai";
 import type { Terminal } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../src/core/application/index.ts";
 import {
@@ -67,7 +72,39 @@ export interface Outcome {
 	error?: string;
 }
 
+/** A terminal a test can type into: `NullTerminal.press`, or `VirtualTerminal.sendInput` plus its screen grid. */
+export type InputTerminal = Terminal & {
+	press?(data: string): void;
+	sendInput?(data: string): void;
+	flushAndGetViewport?(): Promise<string[]>;
+	getScrollBuffer?(): string[];
+};
+
+export interface InteractiveOptions {
+	/** Replaces the terminal that draws nothing, e.g. `new VirtualTerminal(120, 40)` from `packages/tui/test`. */
+	terminal?: InputTerminal;
+	/** Files written into the project (relative path -> content) before the session starts. */
+	files?: Record<string, string>;
+	/** Model ids the scripted provider offers (default `["faux-1"]`); the first is the session's model. */
+	models?: string[];
+}
+
+/** One scripted model turn: text, or a function that decides (and may wait) given the request. */
+export type Step = string | FauxResponseStep;
+
 export interface InteractiveHarness {
+	/** The terminal the host draws to and reads keys from. */
+	terminal: InputTerminal;
+	/** Types raw input (keys, paste) into the terminal. */
+	press(data: string): void;
+	/** The terminal's visible rows (needs a `VirtualTerminal`); the render-based `screen()` text otherwise. */
+	grid(): Promise<string[]>;
+	/** Waits until `predicate` holds, polling; throws with the grid after `timeoutMs`. */
+	until(predicate: () => boolean | Promise<boolean>, what: string, timeoutMs?: number): Promise<void>;
+	/** Scripted turns that may wait, e.g. `script(hang(), "after")`; each request is recorded in `requests`. */
+	script(...steps: Step[]): void;
+	/** Visible chat, status and editor text (render-based, ANSI stripped). */
+	screen(): string;
 	host: InteractiveModeHost;
 	root: string;
 	cwd: string;
@@ -80,13 +117,17 @@ export interface InteractiveHarness {
 
 const savedEnv = { ...process.env };
 
-export async function startInteractive(): Promise<InteractiveHarness> {
+export async function startInteractive(options: InteractiveOptions = {}): Promise<InteractiveHarness> {
 	const root = fs.realpathSync(tmp("octocode-e2e-commands-"));
 	const cwd = path.join(root, "project");
 	const home = path.join(root, "home");
 	const agentDir = path.join(root, "agent");
 	for (const dir of [cwd, home, agentDir]) fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(cwd, "app.ts"), "export const answer = 41;\n");
+	for (const [file, content] of Object.entries(options.files ?? {})) {
+		fs.mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true });
+		fs.writeFileSync(path.join(cwd, file), content);
+	}
 	const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
 	git("init", "-q", "-b", "main");
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
@@ -105,7 +146,7 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 
 	const faux = createFauxCore({
 		provider: "faux",
-		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
+		models: (options.models ?? ["faux-1"]).map((id) => ({ id, contextWindow: 200_000, maxTokens: 4_096 })),
 	});
 	const provider: ExtensionFactory = (api) => {
 		api.registerProvider("faux", {
@@ -130,7 +171,7 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 				noContextFiles: true,
 			},
 		});
-		const model = services.modelRuntime.getModel("faux", "faux-1");
+		const model = services.modelRuntime.getModel("faux", options.models?.[0] ?? "faux-1");
 		return {
 			...(await createSessionFromServices({ services, sessionManager, sessionStartEvent, model })),
 			services,
@@ -142,7 +183,7 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 		agentDir,
 		sessionManager: SessionManager.create(cwd, path.join(root, "sessions")),
 	});
-	const terminal = new NullTerminal();
+	const terminal: InputTerminal = options.terminal ?? new NullTerminal();
 	const host = createInteractiveModeHost(runtime, { terminal });
 	await host.init();
 	// The input loop of `startup.run`, without its startup network checks: a submitted line that is not a terminal
@@ -155,7 +196,7 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 			if (stopped) return;
 			busy = true;
 			try {
-				await getApplicationPort(host.session).invoke("prompt", input);
+				await getApplicationPort(host.session).invoke("prompt", input, { attachImagePaths: true });
 			} catch (error: unknown) {
 				host.showError(error instanceof Error ? error.message : String(error));
 			} finally {
@@ -172,11 +213,31 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 				return fauxAssistantMessage(text);
 			}),
 		);
+	const press = (data: string) => (terminal.press ?? terminal.sendInput)?.call(terminal, data);
+	const script = (...steps: Step[]) =>
+		faux.setResponses(
+			steps.map((step): FauxResponseStep => {
+				const make = typeof step === "string" ? () => fauxAssistantMessage(step) : step;
+				return (context, streamOptions, state, model) => {
+					requests.push(JSON.stringify(context.messages));
+					return typeof make === "function" ? make(context, streamOptions, state, model) : make;
+				};
+			}),
+		);
 	const screen = () =>
 		[host.chatContainer, host.statusContainer, host.editorContainer]
 			.flatMap((container) => container.render(120))
 			.join("\n")
 			.replace(ANSI, "");
+	const grid = async () => (terminal.flushAndGetViewport ? terminal.flushAndGetViewport() : screen().split("\n"));
+	const until: InteractiveHarness["until"] = async (predicate, what, timeoutMs = 15_000) => {
+		const deadline = Date.now() + timeoutMs;
+		while (Date.now() < deadline) {
+			if (await predicate()) return;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		throw new Error(`Timed out waiting for ${what}. Screen:\n${(await grid()).join("\n")}`);
+	};
 	const transcript = () => host.chatContainer.render(120).map((line) => line.replace(ANSI, ""));
 	/** The transcript from the first line that changed since `before` (a status line may be redrawn in place). */
 	const added = (before: string[]) => {
@@ -207,7 +268,7 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 			if (open || host.activeSelectorDispose) {
 				// A selector or dialog replaced the editor: note what it shows, then dismiss it as a user would.
 				dialogs.push(screen().split("\n").filter(Boolean).slice(-12).join("\n"));
-				terminal.press("\x1b");
+				press("\x1b");
 				if (dialogs.length > 6) break;
 				continue;
 			}
@@ -230,5 +291,5 @@ export async function startInteractive(): Promise<InteractiveHarness> {
 		for (const key of Object.keys(process.env)) delete process.env[key];
 		Object.assign(process.env, savedEnv);
 	};
-	return { host, root, cwd, requests, reply, submit, stop };
+	return { host, root, cwd, requests, reply, submit, stop, terminal, press, grid, until, script, screen };
 }

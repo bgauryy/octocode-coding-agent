@@ -119,7 +119,13 @@ describe("/web with the daemon", () => {
 			return attach.ensure(ctx).then((endpoint) => endpoint?.close());
 		});
 		expect(opened).toHaveLength(1);
-		const url = new URL(opened[0]);
+		// What goes through a process argument holds a one-time code, never the launch token.
+		const launch = new URLSearchParams(new URL(record.url).hash.slice(1)).get("access")!;
+		expect(opened[0]).not.toContain(launch);
+		const door = await fetch(opened[0], { redirect: "manual" });
+		expect(door.status).toBe(303);
+		expect((await fetch(opened[0], { redirect: "manual" })).status).toBe(401);
+		const url = new URL(door.headers.get("location")!, new URL(record.url).origin);
 		expect(url.origin).toBe(new URL(record.url).origin);
 		expect(url.pathname).toBe("/");
 		expect(url.searchParams.get("s")).toBe(id);

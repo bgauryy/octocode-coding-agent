@@ -1,3 +1,4 @@
+import { renderInstruction } from "../prompt-template.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import chalk from "chalk";
@@ -36,7 +37,7 @@ function capContextFile(path: string, content: string): string {
 	let end = CONTEXT_FILE_MAX_BYTES;
 	// Back up to a character boundary: UTF-8 continuation bytes are 0b10xxxxxx.
 	while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
-	return `${bytes.subarray(0, end).toString("utf8")}\n\n[Context file truncated at 64 KiB; read ${path} for the rest.]`;
+	return `${bytes.subarray(0, end).toString("utf8")}\n\n${renderInstruction("notices/context-file-cut.md", { path })}`;
 }
 
 function loadContextFileFromDir(dir: string): { path: string; content: string } | null {

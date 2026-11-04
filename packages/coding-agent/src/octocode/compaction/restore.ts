@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -206,8 +207,7 @@ export function restoreFiles(
 	const blocks: string[] = [];
 	const files: Restored["files"] = [];
 	const worked: WorkedFile[] = [];
-	const intro =
-		"[After compaction] The files you were working on, read again from disk just now. They count as read: you may edit them without reading them first.";
+	const intro = renderInstruction("notices/compaction/restored-files.md");
 	let used = intro.length + 2;
 	let skipped = 0;
 	// One file read by two paths (a symlink and its target) comes back once.
@@ -230,9 +230,13 @@ export function restoreFiles(
 		const relative = path.relative(cwd, file);
 		const display = relative.startsWith("..") ? file : relative;
 		const render = (window: Window): string => {
-			const from = candidate.line && window.first > 1 ? ", from where you last read or changed it" : "";
 			const note = window.cut
-				? `\n[… shown lines ${window.first}–${window.last} of ${window.total}${from}; read the file with an offset for the rest]`
+				? `\n${renderInstruction("notices/compaction/restored-cut.md", {
+						first: window.first,
+						last: window.last,
+						total: window.total,
+						fromLast: Boolean(candidate.line) && window.first > 1,
+					})}`
 				: "";
 			// The file's text stays exact; a file that itself contains `</file>` gets a tag it cannot close by accident.
 			const tag = window.text.includes("</file") ? `file-${sha256(text).slice(0, 8)}` : "file";

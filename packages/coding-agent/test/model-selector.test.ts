@@ -49,10 +49,10 @@ describe("model selector", () => {
 				.find((line) => line.includes(`${id} [`))
 				?.trimEnd();
 
-		expect(getModelRow("current-model")).toBe(`→ ✓ current-model [${currentModel.provider}]`);
+		expect(getModelRow("current-model")).toBe(`› ✓ current-model [${currentModel.provider}]`);
 		selector.handleInput("\x1b[B");
 		expect(getModelRow("current-model")).toBe(`  ✓ current-model [${currentModel.provider}]`);
-		expect(getModelRow("browsed-model")).toBe(`→   browsed-model [${currentModel.provider}]`);
+		expect(getModelRow("browsed-model")).toBe(`›   browsed-model [${currentModel.provider}]`);
 		selector.dispose();
 	});
 
@@ -72,7 +72,7 @@ describe("model selector", () => {
 			saveDefault,
 		);
 
-		expect(stripAnsi(selector.render(120).join("\n"))).toContain("ctrl+r to set as default");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("ctrl+r set as default");
 		selector.handleInput("\x13");
 		expect(saveDefault).not.toHaveBeenCalled();
 		selector.handleInput("\x12");

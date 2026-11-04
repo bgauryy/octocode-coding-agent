@@ -12,9 +12,9 @@ Details: [session commands](native-features.md#session-workflow-commands), [work
 
 ## Recover a saved conversation
 
-Persistent sessions write a JSONL transcript to `.octa/code/sessions/` in the checkout by default. `--session-dir` selects another directory. SQLite also keeps the header and every entry in file order, including tool results, child reports, branch history and compactions. If SQLite is unavailable after a file write, Octocode reports the pending mirror and retries when the transcript is next opened or written.
+Persistent sessions write a JSONL transcript to `.octocode/code/sessions/` in the checkout by default. `--session-dir` selects another directory. SQLite also keeps the header and every entry in file order, including tool results, child reports, branch history and compactions. If SQLite is unavailable after a file write, Octocode reports the pending mirror and retries when the transcript is next opened or written.
 
-Use `octocode --fork <full-session-id>` in the target checkout to continue from a saved copy. When the original checkout is gone, the same command reads the retained transcript from the shared database and creates a new session in the target workspace. `--no-session` keeps the conversation in memory.
+Use `octocode --fork <full-session-id>` in the target checkout to continue from a saved copy. It reads the transcript file when it exists, and when the original checkout is gone, the retained transcript in the shared database; either way it creates a new session in the target workspace. `octocode --fork <file>` is also the way to continue a session whose last record was cut off: the complete records are copied and the file stays as it is. `--no-session` keeps the conversation in memory.
 
 ## Rename a session, and turn off automatic titles
 
@@ -87,3 +87,12 @@ Details: [backlog view](web-workspace.md#backlog-view), [web controls for epics,
 - Say in the description what the skill does and when to use it.
 
 Details: [create a skill](skills.md#create-a-skill), [find and control skills](skills.md#find-and-control-skills), [skill locations](../../../CONFIGURATIONS.md#skills-and-prompts).
+
+## Use Octocode on a slow or small machine
+
+Lower what runs at once, then what moves on screen:
+
+- `OCTOCODE_MAX_SUBAGENTS` sets how many subagents run at once. Without it the default follows the machine: one per CPU and one per GiB of memory, at most 6. A child with its MCP pair peaks near 450 MB.
+- `terminal.reduceMotion` in `settings.json` stops the animated marks.
+- A local model is held in memory while it runs. `/llama` warns when a download is larger than the free memory; pick a smaller quantization when it does.
+- `/processes` shows what each Octocode process uses, and `OCTOCODE_TIMING=1` prints wall and CPU time per startup phase.

@@ -18,13 +18,13 @@ import type { SessionIndex } from "./store.ts";
 export type PurgeScope = "workspace" | "all";
 
 export type PurgeKind =
-	/** A session transcript (JSONL) in a workspace's `.octa/code/sessions`. */
+	/** A session transcript (JSONL) in a workspace's `.octocode/code/sessions`. */
 	| "transcript"
 	/** A transcript in the legacy per-folder directories of the agent home. */
 	| "legacy-transcript"
-	/** An entry of `.octa/code/session-data` or of the global `agent/sessions`. */
+	/** An entry of `.octocode/code/session-data` or of the global `agent/sessions`. */
 	| "session-data"
-	/** An entry of `.octa/code/temp` (session temp, subagent scratch). */
+	/** An entry of `.octocode/code/temp` (session temp, subagent scratch). */
 	| "temp"
 	/** An entry of `<root>/.octocode/tmp`. */
 	| "scratch"
@@ -119,7 +119,7 @@ function liveBlockers(
 
 /**
  * Decides what `/purge` removes, without removing anything. `workspace`: the current workspace's transcripts (and the
- * legacy per-folder transcripts of sessions that ran inside it), `.octa/code/{session-data,temp}` and
+ * legacy per-folder transcripts of sessions that ran inside it), `.octocode/code/{session-data,temp}` and
  * `<root>/.octocode/tmp`. `all`: the same for every registered workspace whose root still exists, the global
  * `agent/sessions`, every legacy transcript and the old `agent/octocode.db`. The current session's transcript, folders
  * and team seat are never listed. Nothing else is: settings, `auth.json`, `mcp-auth.json`, `child-credentials/`, MCP

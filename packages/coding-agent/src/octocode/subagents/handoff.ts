@@ -1,14 +1,13 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type { ExtensionAPI } from "../../core/features/index.ts";
-import type { ReadonlySessionManager } from "../../core/session-manager.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { parseJsonlLine } from "../../../../common/src/jsonl.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
+import { type ReceiptSession, ReportReceipts } from "./handoff/receipts.ts";
 import { shortPath } from "../shared/format.ts";
 
 /**
@@ -27,9 +26,6 @@ const FAST_RETRIES = 3;
 const SLOW_RETRIES = 3;
 const SLOW_RETRY_MS = 30_000;
 
-type ReceiptSession = Pick<ReadonlySessionManager, "getEntries" | "getSessionFile"> &
-	Partial<Pick<ReadonlySessionManager, "getEntryCount">>;
-
 /**
  * Delivers background reports. Reports that finish close together are batched: all are sent at once and only the last
  * may start a turn, so three subagents finishing in a second cost one parent turn instead of three. Delivery is
@@ -41,19 +37,22 @@ export class ReportQueue {
 	private queued: Report[] = [];
 	private timer: NodeJS.Timeout | undefined;
 	private readonly pending = new Map<string, Report>();
-	private readonly retries = new Map<string, { attempts: number; timer?: NodeJS.Timeout }>();
+	private readonly retries = new Map<string, { attempts: number; timer?: NodeJS.Timeout; told?: boolean }>();
+	/** Says something to the person watching, when one is. */
+	private warn: (text: string) => void = () => undefined;
 	private session: ReceiptSession | undefined;
-	/** The transcript file being scanned for receipts, and how many bytes of it end in a complete line already read. */
-	private scanned: { file: string; offset: number } | undefined;
-	private scannedEntries: { length: number; tail: string } | undefined;
-	private scannedEntryCount: number | undefined;
+	private receipts = new ReportReceipts();
 	/** Whether the parent is between turns; reports finishing while it is not also get a short steering notice. */
 	private idle: () => boolean = () => true;
+	/** Rewrites a sent report that still waits unread in the session's queue. */
+	private replaceQueued: (details: object, content: string) => boolean = () => false;
+	/** The `details` object of each report's latest send: what identifies it in the session's queue. */
+	private readonly sent = new WeakMap<Report, object>();
 	/** Reports whose notice was sent. */
 	private readonly noticed = new Set<string>();
+	/** Notices waiting for the parent's next step (`stepEnded`). */
+	private noticesWaiting: Report[] = [];
 	private stopClock: (() => void) | undefined;
-	/** Ids recorded in the parent session. */
-	private readonly known = new Set<string>();
 	/** The pending folder of the Octocode session this queue serves: where a report that could not be sent is saved. */
 	pendingDir: string | undefined;
 
@@ -64,80 +63,28 @@ export class ReportQueue {
 		this.windowMs = windowMs;
 	}
 
-	start(session: ReceiptSession, isIdle?: () => boolean): void {
+	start(
+		session: ReceiptSession,
+		isIdle?: () => boolean,
+		warn?: (text: string) => void,
+		replaceQueued?: (details: object, content: string) => boolean,
+	): void {
 		this.persist();
 		this.session = session;
 		this.idle = isIdle ?? (() => true);
-		this.known.clear();
+		this.warn = warn ?? (() => undefined);
+		this.replaceQueued = replaceQueued ?? (() => false);
+		this.receipts = new ReportReceipts();
 		this.noticed.clear();
-		this.scanned = undefined;
-		this.scannedEntries = undefined;
-		this.scannedEntryCount = undefined;
 		this.recorded();
-	}
-
-	/** Receipts (report ids) the transcript file gained since the last scan: only the new complete lines are read. */
-	private scanFile(file: string): void {
-		try {
-			const size = fs.statSync(file).size;
-			if (this.scanned?.file !== file || size < this.scanned.offset) this.scanned = { file, offset: 0 };
-			const from = this.scanned.offset;
-			if (size === from) return;
-			const buffer = Buffer.alloc(size - from);
-			const fd = fs.openSync(file, "r");
-			let read = 0;
-			try {
-				read = fs.readSync(fd, buffer, 0, buffer.length, from);
-			} finally {
-				fs.closeSync(fd);
-			}
-			const end = buffer.subarray(0, read).lastIndexOf(0x0a) + 1;
-			this.scanned.offset = from + end;
-			for (const line of buffer.subarray(0, end).toString("utf8").split("\n")) {
-				if (!line.includes(AGENT_RESULT_TYPE)) continue;
-				const parsed = parseJsonlLine(line);
-				// A malformed line is not a receipt.
-				if (parsed?.ok) this.receipt(parsed.value);
-			}
-		} catch {
-			// A not-yet-created or unreadable transcript is not a receipt.
-		}
-	}
-
-	private receipt(entry: unknown): void {
-		if (!isRecord(entry) || entry.type !== "custom_message" || entry.customType !== AGENT_RESULT_TYPE) return;
-		if (!isRecord(entry.details)) return;
-		const id = entry.details.reportId;
-		if (typeof id === "string") this.known.add(id);
-	}
-
-	/** Entries are immutable and append-only; a replaced tail invalidates the high-water mark. */
-	private scanEntries(): void {
-		const count = this.session?.getEntryCount?.();
-		if (count !== undefined && count === this.scannedEntryCount) return;
-		const entries = this.session?.getEntries() ?? [];
-		const scanned = this.scannedEntries;
-		const from =
-			scanned && entries.length >= scanned.length && entries[scanned.length - 1]?.id === scanned.tail
-				? scanned.length
-				: 0;
-		for (let index = from; index < entries.length; index++) this.receipt(entries[index]);
-		const tail = entries.at(-1)?.id;
-		this.scannedEntries = typeof tail === "string" ? { length: entries.length, tail } : undefined;
-		this.scannedEntryCount = count;
 	}
 
 	/** Session entries, rather than send-call returns, acknowledge accepted reports. */
 	recorded(): void {
 		if (!this.session) return;
-		const file = this.session.getSessionFile();
-		if (file) this.scanFile(file);
-		// The session writer buffers entries in memory until the first assistant message creates the transcript; after
-		// that every entry is appended as it is added. So with a transcript path, in-memory entries are a durable receipt
-		// only once the file exists. A session with no transcript path has nothing more durable than its entries.
-		if (!file || fs.existsSync(file)) this.scanEntries();
+		this.receipts.scan(this.session);
 		for (const [id, report] of this.pending) {
-			if (this.known.has(id)) {
+			if (this.receipts.has(id)) {
 				try {
 					this.settle(report);
 				} catch {
@@ -153,7 +100,7 @@ export class ReportQueue {
 
 	add(report: Report): void {
 		report.reportId ??= crypto.randomUUID();
-		if (this.known.has(report.reportId)) {
+		if (this.receipts.has(report.reportId)) {
 			this.settle(report);
 			return;
 		}
@@ -197,29 +144,18 @@ export class ReportQueue {
 		if (wake && last && !last.wake) {
 			// The final send carries the whole batch's wake, including on retry or recovery.
 			last.wake = true;
-			const claim = claims.get(last);
-			if (claim) {
-				try {
-					const saved = JSON.parse(fs.readFileSync(claim.claim, "utf8")) as Report;
-					atomicWriteFileSync(claim.claim, JSON.stringify({ ...saved, wake: true }), { mode: 0o600 });
-				} catch {
-					// Keep live delivery working if recovery storage became unavailable.
-				}
-			}
+			rewriteClaim(last);
 		}
 		batch.forEach((report, index) => {
 			// A send may synchronously end or replace the session; the remaining batch then belongs to recovery.
 			if (!report.reportId || this.pending.get(report.reportId) !== report) return;
 			try {
-				// followUp: read once the current turn ends; triggerTurn wakes an idle parent, once per batch.
+				// followUp: read once the current turn ends, with every other report waiting then; triggerTurn wakes an idle parent, once per batch.
+				const details = { ...report.details, reportId: report.reportId };
+				this.sent.set(report, details);
 				const sending = this.api.sendMessage(
-					{
-						customType: AGENT_RESULT_TYPE,
-						content: report.content,
-						display: true,
-						details: { ...report.details, reportId: report.reportId },
-					},
-					{ triggerTurn: wake && index === batch.length - 1, deliverAs: "followUp" },
+					{ customType: AGENT_RESULT_TYPE, content: report.content, display: true, details },
+					{ triggerTurn: wake && index === batch.length - 1, deliverAs: "followUp", together: true },
 				);
 				if (sending && typeof sending.then === "function")
 					void Promise.resolve(sending).catch(() => this.retry(report));
@@ -235,6 +171,8 @@ export class ReportQueue {
 	 * A parent in the middle of a turn reads a short notice (agent, outcome, report path) at its next step; the whole report
 	 * still arrives as a follow-up when the turn ends. Only the parent's own facts go in it: the child's words stay in the
 	 * fenced report. Silent for a stop someone asked for, a report already read, and an idle parent (the report wakes it).
+	 * It waits for `stepEnded`: sent while the parent streams its last reply, it would start a request of its own only to say
+	 * that the report follows.
 	 */
 	private notify(batch: Report[]): void {
 		let idle = true;
@@ -248,11 +186,42 @@ export class ReportQueue {
 			const id = report.reportId;
 			if (!id || !report.wake || this.noticed.has(id)) continue;
 			this.noticed.add(id);
+			this.noticesWaiting.push(report);
+		}
+	}
+
+	/**
+	 * A run is being resumed: what its unread reports say about waiting and unanswered asks is about to be false. Each is
+	 * marked wherever it waits (the batch window, its recovery copy, the session's queue). One already recorded was read.
+	 */
+	supersede(id: string): void {
+		this.recorded();
+		for (const report of this.pending.values()) {
+			if (report.details.id !== id || report.superseded) continue;
+			report.superseded = true;
+			report.content = `${report.content}\n\n${renderInstruction("notices/subagents/superseded.md", { id })}`;
+			rewriteClaim(report);
+			const details = this.sent.get(report);
+			try {
+				if (details) this.replaceQueued(details, report.content);
+			} catch {
+				// The session was replaced: the report goes to the next one from its recovery copy, marked.
+			}
+		}
+	}
+
+	/** A step of the parent's turn ran tools, so another request follows: the notices of reports it has not read join that request. */
+	stepEnded(): void {
+		const waiting = this.noticesWaiting;
+		this.noticesWaiting = [];
+		for (const report of waiting) {
+			const id = report.reportId;
+			// The report itself arrived first: its notice has nothing to add. A resume made it out of date.
+			if (!id || !this.pending.has(id) || report.superseded) continue;
 			try {
 				void Promise.resolve(
 					this.api.sendMessage(
 						{ customType: NOTICE_TYPE, content: noticeText(report), display: false, details: { reportId: id } },
-						// triggerTurn false while streaming holds it for the end of the current step, never between a call and its result.
 						{ triggerTurn: false, deliverAs: "steer" },
 					),
 				).catch(() => undefined);
@@ -267,8 +236,17 @@ export class ReportQueue {
 		if (!id || this.pending.get(id) !== report) return;
 		this.recorded();
 		if (!this.pending.has(id)) return;
-		const retry = this.retries.get(id) ?? { attempts: 0 };
-		if (retry.timer || retry.attempts >= FAST_RETRIES + SLOW_RETRIES) return;
+		const retry: { attempts: number; timer?: NodeJS.Timeout; told?: boolean } = this.retries.get(id) ?? { attempts: 0 };
+		if (retry.timer) return;
+		if (retry.attempts >= FAST_RETRIES + SLOW_RETRIES) {
+			// The report stays claimed: `retryExhausted` sends it again after the next settled turn, and shutdown saves it.
+			this.retries.set(id, retry);
+			if (!retry.told) {
+				retry.told = true;
+				this.warn(`The report of ${report.details.id} could not be delivered; it is retried after the next turn.`);
+			}
+			return;
+		}
 		retry.attempts++;
 		retry.timer = setTimeout(
 			() => {
@@ -283,6 +261,23 @@ export class ReportQueue {
 		);
 		retry.timer.unref?.();
 		this.retries.set(id, retry);
+	}
+
+	/** A turn just settled, so the session can take messages again: one more send of each report the timed retries gave up on. */
+	retryExhausted(): void {
+		let any = false;
+		for (const [id, retry] of this.retries) {
+			const report = this.pending.get(id);
+			if (!report || retry.timer || retry.attempts < FAST_RETRIES + SLOW_RETRIES) continue;
+			this.queued.push(report);
+			any = true;
+		}
+		if (any) this.flush();
+	}
+
+	/** The children whose reports are held for delivery now, so nobody tells the model they went silent. */
+	pendingIds(): ReadonlySet<string> {
+		return new Set([...this.pending.values()].map((report) => report.details.id));
 	}
 
 	private clearRetry(id: string | undefined): void {
@@ -332,6 +327,22 @@ export class ReportQueue {
 	}
 }
 
+/** Brings a report's recovery copy up to date with the wake and content it now has. */
+function rewriteClaim(report: Report): void {
+	const claim = claims.get(report);
+	if (!claim) return;
+	try {
+		const saved = JSON.parse(fs.readFileSync(claim.claim, "utf8")) as Report;
+		atomicWriteFileSync(
+			claim.claim,
+			JSON.stringify({ ...saved, wake: report.wake, content: report.content, superseded: report.superseded }),
+			{ mode: 0o600 },
+		);
+	} catch {
+		// Keep live delivery working if recovery storage became unavailable.
+	}
+}
+
 /** The notice for a parent mid-turn. The path is the saved full report when the report was long enough to be saved. */
 export function noticeText(report: Report): string {
 	const { id, outcome, status } = report.details;
@@ -340,7 +351,5 @@ export function noticeText(report: Report): string {
 	// The host's own report file: the report text is the child's, and may imitate a pointer line.
 	const saved = report.details.reportArtifact?.path;
 	const file = saved ? shortPath(saved) : undefined;
-	return `[Octocode notice] Background subagent ${id} ${result}. ${
-		file ? `Report saved at ${file}. ` : ""
-	}The full report follows when this turn ends.`;
+	return renderInstruction("notices/subagents/report-waiting.md", { id, result, file });
 }

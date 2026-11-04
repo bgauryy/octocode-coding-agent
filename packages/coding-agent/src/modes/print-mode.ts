@@ -7,8 +7,10 @@
  */
 
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
+import type { AgentSessionEvent, RunOutcome } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
-import { flushRawStdout, waitForRawStdoutBackpressure, writeRawStdout } from "../core/output-guard.ts";
+import { flushRawStdout, onRawStdoutFailure, writeRawStdout } from "../core/output-guard.ts";
+import { createEventOutput, waitForEventBackpressure } from "./event-output.ts";
 import { toJsonEvent } from "./json-event.ts";
 import { handleTerminationSignals } from "./termination-signals.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -37,19 +39,36 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	let session = runtimeHost.session;
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeBackpressure: (() => void) | undefined;
-	let disposed = false;
+	let disposing: Promise<void> | undefined;
+	const writeEvent = createEventOutput<AgentSessionEvent>((event) => {
+		writeRawStdout(`${JSON.stringify(toJsonEvent(event))}\n`);
+	});
 
-	const disposeRuntime = async (): Promise<void> => {
-		if (disposed) return;
-		disposed = true;
-		unsubscribe?.();
-		unsubscribeBackpressure?.();
-		await runtimeHost.dispose();
+	const disposeRuntime = (): Promise<void> => {
+		disposing ??= (async () => {
+			unsubscribe?.();
+			unsubscribeBackpressure?.();
+			await runtimeHost.dispose();
+		})();
+		return disposing;
 	};
 
 	const removeSignalHandlers = handleTerminationSignals((_signal, signalExitCode) => {
+		// A shutdown is already running and the user asks again: that is the way out of one that does not finish.
+		if (disposing) process.exit(signalExitCode);
 		void disposeRuntime().finally(() => {
 			process.exit(signalExitCode);
+		});
+	});
+
+	// The reader of a run's output went away: release the session as a signal does, and report the failure.
+	let stdoutFailed = false;
+	const removeStdoutFailureHandler = onRawStdoutFailure((error) => {
+		if (stdoutFailed) return;
+		stdoutFailed = true;
+		console.error(`octocode: stopping, stdout failed: ${error.message}`);
+		void disposeRuntime().finally(() => {
+			process.exit(1);
 		});
 	});
 
@@ -85,23 +104,27 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 				},
 			},
 			onError: (err) => {
-				console.error(`Extension error (${err.extensionPath}): ${err.error}`);
+				// A command that failed is what this run was asked to do; a feature's handler failing on an event fails open.
+				if (err.event === "command") {
+					exitCode = 1;
+					console.error(`Command ${err.extensionPath.replace(/^command:/, "/")} failed: ${err.error}`);
+				} else console.error(`Feature error (${err.extensionPath}): ${err.error}`);
 			},
 		});
 
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
 		unsubscribe = session.subscribe((event) => {
-			if (mode === "json") {
-				writeRawStdout(`${JSON.stringify(toJsonEvent(event))}\n`);
+			if (mode === "json") writeEvent(event);
+			else if (event.type === "auto_retry_start") {
+				// Text mode prints nothing until the end, so a long provider wait would look like a hang.
+				const { attempt, maxAttempts, delayMs, errorMessage: reason } = event;
+				const why = reason.replace(/\s+/g, " ");
+				console.error(`Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt} of ${maxAttempts}): ${why}`);
 			}
 		});
 		unsubscribeBackpressure =
-			mode === "json"
-				? session.agent.subscribe(async () => {
-						await waitForRawStdoutBackpressure();
-					})
-				: undefined;
+			mode === "json" ? session.agent.subscribe((event) => waitForEventBackpressure(event)) : undefined;
 	};
 
 	try {
@@ -114,18 +137,25 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 
 		await rebindSession();
 
-		// Any failed prompt fails the run, in either mode; text mode also reports it on stderr.
+		// Any prompt that did not complete fails the run, in either mode; text mode also reports it on stderr. The verdict
+		// comes from the run's recorded outcome: the context cannot give it, since recovery removes failed attempts.
 		const lastAssistant = (): AssistantMessage | undefined => {
-			const last = session.state.messages[session.state.messages.length - 1];
+			// What the session recorded after the answer (a job stopped at run end) is not the answer.
+			const last = session.state.messages.findLast((message) => message.role !== "custom");
 			return last?.role === "assistant" ? last : undefined;
 		};
-		const failed = (message: AssistantMessage | undefined): boolean =>
-			message?.stopReason === "error" || message?.stopReason === "aborted";
-		const checkPrompt = (isLast: boolean): void => {
-			const message = lastAssistant();
-			if (!failed(message)) return;
+		const reason = (outcome: RunOutcome): string =>
+			outcome.status === "truncated"
+				? "Response was truncated: the model reached its output token limit."
+				: outcome.errorMessage || `Request ${outcome.stopReason ?? outcome.status}`;
+		const reported = new WeakSet<RunOutcome>();
+		const report = (outcome: RunOutcome | undefined, show: boolean): void => {
+			if (!outcome || outcome.status === "completed") return;
 			exitCode = 1;
-			if (mode === "text" && !isLast) console.error(message!.errorMessage || `Request ${message!.stopReason}`);
+			if (show && !reported.has(outcome)) {
+				reported.add(outcome);
+				console.error(reason(outcome));
+			}
 		};
 		const prompts: Array<() => Promise<void>> = [
 			...(initialMessage ? [() => session.prompt(initialMessage, { images: initialImages })] : []),
@@ -133,27 +163,20 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		];
 		for (const [index, run] of prompts.entries()) {
 			await run();
-			checkPrompt(index === prompts.length - 1);
+			await session.settled();
+			if (session.lastRunOutcome?.warning) console.error(`Warning: ${session.lastRunOutcome.warning}`);
+			report(session.lastRunOutcome, mode === "text" && index < prompts.length - 1);
 		}
 
 		if (mode === "text") {
-			const assistantMsg = lastAssistant();
-
-			if (assistantMsg) {
-				if (failed(assistantMsg)) {
-					console.error(assistantMsg.errorMessage || `Request ${assistantMsg.stopReason}`);
-					exitCode = 1;
-				} else {
-					for (const content of assistantMsg.content) {
-						if (content.type === "text") {
-							writeRawStdout(`${content.text}\n`);
-						}
-					}
-					if (assistantMsg.stopReason === "length") {
-						console.error("Response was truncated: the model reached its output token limit.");
-						exitCode = 1;
-					}
+			const outcome = session.lastRunOutcome;
+			if (outcome?.status === "failed" || outcome?.status === "aborted") {
+				report(outcome, true);
+			} else {
+				for (const content of lastAssistant()?.content ?? []) {
+					if (content.type === "text") writeRawStdout(`${content.text}\n`);
 				}
+				report(outcome, true);
 			}
 		}
 
@@ -165,5 +188,6 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		removeSignalHandlers();
 		await disposeRuntime();
 		await flushRawStdout();
+		removeStdoutFailureHandler();
 	}
 }

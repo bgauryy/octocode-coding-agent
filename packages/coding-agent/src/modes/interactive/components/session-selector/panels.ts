@@ -8,7 +8,7 @@ import {
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { keyText } from "../keybinding-hints.ts";
+import { hintLine, keyText } from "../keybinding-hints.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
 import { rowTitle } from "./row.ts";
 import type { SessionAction } from "./types.ts";
@@ -22,7 +22,10 @@ export function renamePanel(input: Input): Component {
 	panel.addChild(new Spacer(1));
 	panel.addChild(
 		new Text(
-			theme.fg("muted", `${keyText("tui.select.confirm")} to save · ${keyText("tui.select.cancel")} to cancel`),
+			hintLine([
+				[keyText("tui.select.confirm"), "save"],
+				[keyText("tui.select.cancel"), "cancel"],
+			]),
 			1,
 			0,
 		),
@@ -83,9 +86,13 @@ export class ActionsMenu implements Component {
 		});
 		lines.push(
 			"",
-			theme.fg(
-				"muted",
-				truncateToWidth(` ${keyText("tui.select.confirm")} run · ${keyText("tui.select.cancel")} back`, width, "…"),
+			truncateToWidth(
+				` ${hintLine([
+					[keyText("tui.select.confirm"), "run"],
+					[keyText("tui.select.cancel"), "back"],
+				])}`,
+				width,
+				"…",
 			),
 		);
 		return lines;

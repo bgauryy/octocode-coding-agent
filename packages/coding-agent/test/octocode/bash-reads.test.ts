@@ -156,7 +156,7 @@ describe("the file tool and plain bash prints", () => {
 
 	it("refuses an unread file and names bash as the reader", async () => {
 		const { change } = setup();
-		const outcome = await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] });
+		const outcome = await change({ type: "edit", edits: [{ oldText: "absent", newText: "2" }] });
 		expect(outcome.ok).toBe(false);
 		expect(outcome.message).toMatch(/was not read in this session\. Read it first: bash `sed -n '1,200p' a\.txt`/);
 	});
@@ -224,7 +224,7 @@ describe("the file tool and plain bash prints", () => {
 		await bash("cat a.txt", { input: { command: "cat a.txt", background: true } });
 		await bash("cat a.txt", { isError: true });
 		await bash("cat a.txt", { parentToolCallId: "script" });
-		const outcome = await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] });
+		const outcome = await change({ type: "edit", edits: [{ oldText: "absent", newText: "2" }] });
 		expect(outcome.message).toMatch(/was not read in this session/);
 	});
 
@@ -250,7 +250,7 @@ describe("the file tool and plain bash prints", () => {
 	it("does not credit a pipe or a cut print as a whole read when the Octocode readers are available", async () => {
 		const { bash, change } = setup(LOCAL_FETCH_READER);
 		await bash("cat a.txt | head -2");
-		const unread = await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] });
+		const unread = await change({ type: "edit", edits: [{ oldText: "absent", newText: "2" }] });
 		expect(unread.message).toMatch(/was not read in this session/);
 		await bash("cat a.txt", { details: { truncation: { truncated: true } } });
 		expect(await change({ type: "write", content: "x" })).toMatchObject({ ok: false });
@@ -268,10 +268,10 @@ describe("the file tool and plain bash prints", () => {
 	});
 
 	it("refusal says what counts as a read, naming localFetch or a plain bash print", async () => {
-		const edit = { type: "edit", edits: [{ oldText: "two", newText: "2" }] };
+		const edit = { type: "edit", edits: [{ oldText: "absent", newText: "2" }] };
 		const local = await setup(LOCAL_FETCH_READER).change(edit);
 		expect(local.message).toMatch(
-			/Read it first: localFetch \{path:"a\.txt"\} or bash `sed -n '1,200p' a\.txt`\. A read piped or redirected/,
+			/Read it first: localFetch \{queries:\[\{path:"a\.txt"\}\]\}\. A plain `cat` or `sed -n` print in bash also counts\. A read piped or redirected/,
 		);
 		const bash = await setup().change(edit);
 		expect(bash.message).toMatch(

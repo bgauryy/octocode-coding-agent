@@ -42,7 +42,7 @@ The trigger is the whole description of the tool's provider declaration; the mod
 
 - One line, at most 200 characters, starting with the situation: "Use to read a GitHub file whose path you know; find the path first with ghSearchCode or ghStructure."
 - Name the sibling that fits the neighbouring situation when two tools are easy to confuse (text search against syntax search, search against read).
-- Only facts the source description or schema states; no limits, field names or result shapes, which the file carries.
+- Only facts the source description or schema states; no limits, field names or result shapes, which the file carries. One exception: the read and search tools of the default research preset (`localFetch`, `localSearch`) state their row limit and one batched example, because the trigger is what the model reads when it decides how many calls to make. Keep that limit equal to the schema's `maxItems`.
 - Without a trigger the declaration uses the first sentence of the tool's description, so a tool whose description already opens with its situation may go without.
 
 ## Budget

@@ -4,6 +4,7 @@ import { privateDir, sessionOutputDir } from "../../shared/home.ts";
 import { type AgentProfile, profileExcludes, profileSelectsBrowser, profileTools } from "../profiles.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../../common/src/mcp-names.ts";
 import type { Identity } from "./env.ts";
+import { operatorLimits } from "./operator-limits.ts";
 
 /** Where a child saves its conversation: Octocode's session folder and the session id. */
 export interface ChildSession {
@@ -46,16 +47,19 @@ export function buildAgentArgs(
 ): string[] {
 	const args = ["--mode", "rpc", "--session-dir", session.dir, "--session-id", session.id];
 	// The built-in MCP feature serves Octocode's research tools and the user's own MCP servers: every specialist needs
-	// local research. A lean child runs without any MCP server.
-	if (profile?.lean) args.push("--no-mcp");
+	// local research. A lean child runs without any MCP server, and so does every child of an operator's `--no-mcp`.
+	const operator = operatorLimits();
+	if (profile?.lean || operator.noMcp) args.push("--no-mcp");
 	// `model` is already resolved (`provider/id`, optionally `:thinking`); none means the parent's model. The profile's own
 	// preference is routed by `routeModel` before this, so an unavailable one never reaches Octocode.
 	if (model) args.push("--model", model);
 	else if (thinking) args.push("--thinking", thinking);
 	args.push("--tools", profileTools(profile));
 	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
-	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`).
+	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`). The floor
+	// `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away.
 	const excluded = [
+		...operator.excludeTools,
 		...profileExcludes(profile?.excludeTools),
 		...(profileSelectsBrowser(profile) ? [] : [`${mcpNamespace(BROWSER_SERVER)}__*`]),
 	];

@@ -302,7 +302,23 @@ describe("team tools on a fake Octocode", () => {
 			stopAgent: () => undefined,
 		});
 		const parameters = main.tools.get("coordinate").parameters;
-		expect(parameters.properties.action.enum).toEqual(["list", "join", "leave", "lock", "unlock", "stop", "changes"]);
+		expect(parameters.properties.action.enum).toEqual([
+			"list",
+			"join",
+			"leave",
+			"lock",
+			"unlock",
+			"stop",
+			"merge",
+			"grant",
+			"changes",
+		]);
+		// A subagent starts no children, so nothing in its schema or its cached prompt names a grant.
+		expect(subagent.properties).not.toHaveProperty("requests");
+		expect(parameters.properties.requests.description).toMatch(/^grant: /);
+		expect(parameters.properties.action.description).toContain(
+			"grant: add requests to the limits of a running subagent you started, for this run only",
+		);
 		expect(parameters.properties.goal.description).toMatch(/^join: your goal, in the form of a task goal/);
 		expect(parameters.properties).not.toHaveProperty("note");
 	});
@@ -437,7 +453,10 @@ describe("team tools on a fake Octocode", () => {
 		const agents = a.commands.get("agents");
 		const tell = { handler: (args: string, ctx: unknown) => agents.handler(`tell ${args}`, ctx) };
 		await tell.handler("   ", a.ctx);
-		expect(a.ctx.ui.notes.at(-1)).toEqual({ message: "Usage: /agents tell <agent|all> <message>", type: "warning" });
+		expect(a.ctx.ui.notes.at(-1)).toEqual({
+			message: "Usage: /agents tell <agent|all> [#<message to answer>] <message>",
+			type: "warning",
+		});
 		await tell.handler(`${b.team.id} line one\n  line two`, a.ctx);
 		expect(a.ctx.ui.notes.at(-1)).toEqual({ message: `Queued for ${b.team.id}`, type: "info" });
 		await vi.waitFor(() => expect(b.sent.length).toBeGreaterThan(0), { timeout: 5_000 });
@@ -447,6 +466,21 @@ describe("team tools on a fake Octocode", () => {
 		]);
 		await tell.handler("ghost-0000 hi", a.ctx);
 		expect(a.ctx.ui.notes.at(-1)!.type).toBe("warning");
+		// `#n` answers a message: it reaches the agent as a reply, and the number is not part of its text.
+		const numbered = b.sent.at(-1)!.message.details.messages[0].id;
+		await tell.handler(`${b.team.id} #${numbered} the second`, a.ctx);
+		await vi.waitFor(
+			() =>
+				expect(b.sent.at(-1)!.message.details.messages).toEqual([
+					expect.objectContaining({ from: "user", text: "the second", replyTo: Number(numbered) }),
+				]),
+			{ timeout: 5_000 },
+		);
+		await tell.handler(`${b.team.id} #999999 nothing to answer`, a.ctx);
+		expect(a.ctx.ui.notes.at(-1)).toMatchObject({
+			type: "warning",
+			message: expect.stringContaining("No message #999999"),
+		});
 
 		expect(await agents.getArgumentCompletions(`tell ${b.team.id!.slice(0, 3)}`)).toEqual([
 			expect.objectContaining({ value: `tell ${b.team.id} ` }),
@@ -556,14 +590,14 @@ describe("AgentsView", () => {
 			vi.advanceTimersByTime(1_000);
 			expect(requestRender).toHaveBeenCalled();
 
-			// Both subagents leave: each keeps a final `✓ done` row for ten seconds, then the widget goes.
+			// Both subagents leave: each keeps a final neutral `left` row for ten seconds, then the widget goes.
 			members = [peer("me-0001", "working", null), ...otherSession];
 			vi.advanceTimersByTime(1_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			const done = widget.render(120).join("\n");
-			expect(done).toContain("2 done");
-			expect(done).toMatch(/✓ reviewer-1a2b .* done +\d/);
-			expect(done).toMatch(/✓ tester-3c4d .* done +\d/);
+			expect(done).toContain("2 left");
+			expect(done).toMatch(/reviewer-1a2b .* left +\d/);
+			expect(done).toMatch(/tester-3c4d .* left +\d/);
 			expect(done).not.toContain("working");
 			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
 			vi.advanceTimersByTime(11_000);

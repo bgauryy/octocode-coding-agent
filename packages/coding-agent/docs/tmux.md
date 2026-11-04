@@ -109,8 +109,8 @@ The agent therefore uses non-interactive forms (`--yes`, `-y`, `GIT_EDITOR=true`
 the step. `/fork pane` starts a new Octocode session in tmux; it does not send keys to other programs.
 
 Agents can still drive a program inside a private tmux server through `bash` (`tmux -L <name> send-keys` and
-`capture-pane`), which is how the [interactive testing skill](../../../.octocode/skills/interactive-testing.md) checks the
-TUI. Prefer waiting for expected text over fixed sleeps, use a private server, and kill it afterwards.
+`capture-pane`), which is how the TUI is checked interactively. Prefer waiting for expected text over fixed sleeps, use
+a private server, and kill it afterwards.
 
 ## Checking tmux support
 

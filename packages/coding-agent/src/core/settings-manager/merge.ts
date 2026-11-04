@@ -73,6 +73,17 @@ export function mergeScopedSettings(global: Settings, project: Settings): Settin
 }
 
 /** Pi's inherited settings under global under project; only the inherited layer is never written back to a file. */
+/** The settings in effect: what the scopes merge to, under the durable overrides. */
+export function effectiveSettings(state: {
+	inheritedSettings: Settings;
+	globalSettings: Settings;
+	projectSettings: Settings;
+	durableOverrides: Settings;
+}): Settings {
+	const merged = mergeAllSettings(state.inheritedSettings, state.globalSettings, state.projectSettings);
+	return deepMergeSettings(merged, state.durableOverrides);
+}
+
 export function mergeAllSettings(inherited: Settings, global: Settings, project: Settings): Settings {
 	return mergeScopedSettings(Object.keys(inherited).length ? deepMergeSettings(inherited, global) : global, project);
 }

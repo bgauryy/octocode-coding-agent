@@ -62,8 +62,38 @@ describe("octocode-api arguments", () => {
 		expect(pickInstance(both, undefined, "/y").id).toBe("b");
 		expect(() => pickInstance(both, undefined, "/z")).toThrow("No running instance matches");
 		expect(() => pickInstance([instance("a"), instance("b")], undefined, "/w")).toThrow(
-			"Several instances match; pass --to <id>: a, b",
+			"Several instances match; pass --to <id>: a (pid 1, /w); b (pid 1, /w)",
 		);
+	});
+
+	it("takes what the process is known by elsewhere, and an ambiguous or unknown one lists what would work", () => {
+		const running: InstanceRecord = {
+			...instance("oc-1"),
+			pid: 41,
+			name: "octocode-main-c0ea9f3e",
+			session: "01a1a6c7-7a9a-702e-9fcd-5365c0ea9f3e",
+		};
+		const other: InstanceRecord = {
+			...instance("oc-2"),
+			pid: 42,
+			name: "octocode-rpc-11112222",
+			session: "s-11112222",
+		};
+		for (const selector of ["oc-1", "octocode-main-c0ea9f3e", "c0ea9f3e", running.session!, "41"])
+			expect(pickInstance([running, other], selector, "/elsewhere").id).toBe("oc-1");
+
+		const sameSession: InstanceRecord = { ...running, id: "oc-3", pid: 43 };
+		expect(() => pickInstance([running, sameSession], "octocode-main-c0ea9f3e", "/w")).toThrow(
+			'Several instances match "octocode-main-c0ea9f3e"; use an instance id: oc-1 (octocode-main-c0ea9f3e, pid 41, /w); oc-3',
+		);
+		// The instance id still picks one of them.
+		expect(pickInstance([running, sameSession], "oc-3", "/w").pid).toBe(43);
+
+		expect(() => pickInstance([running], "octocode-main-00000000", "/w")).toThrow(
+			'No running instance matches "octocode-main-00000000". Running: oc-1 (octocode-main-c0ea9f3e, pid 41, /w).',
+		);
+		// A fragment of an id is not a name.
+		expect(() => pickInstance([running], "c0ea", "/w")).toThrow("No running instance matches");
 	});
 
 	it("treats an empty --to as a name, not as no name", () => {
@@ -76,7 +106,6 @@ describe("API start failure without a UI", () => {
 
 	it("says why the API is off on stderr, where a headless run can read it", async () => {
 		vi.stubEnv("OCTOCODE_HOME", tmp("octo-api-headless-"));
-		vi.stubEnv("OCTOCODE_API", "1");
 		vi.stubEnv("OCTOCODE_API_HTTP", "abc");
 		fs.mkdirSync(apiDir(), { recursive: true });
 		const { api } = fakeHost();

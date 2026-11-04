@@ -10,18 +10,25 @@ import {
 	type ContentOptions,
 } from "./application-content.ts";
 
-const OSC133_ZONE_START = "\x1b]133;A\x07";
-const OSC133_ZONE_END = "\x1b]133;B\x07";
-const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+import { Osc133ZoneMarker } from "./osc133-zone.ts";
 
 /** The first padding cell of a message row, after the background escape. */
 const FIRST_CELL = /^((?:\x1b\[[0-9;]*m)*) /;
 
-/** An accent bar in the left padding column marks every row of the prompt without moving its text. */
+/**
+ * An accent bar in the left padding column marks every row of the prompt without moving its text. The marked rows are
+ * kept while the Markdown returns its cached rows and the bar is unchanged, so an idle frame does not rewrite them.
+ */
 class MarkedMarkdown extends Markdown {
+	private marked?: { base: string[]; bar: string; lines: string[] };
+
 	override render(width: number): string[] {
 		const bar = theme.fg("accent", GLYPH.userBar);
-		return super.render(width).map((line) => line.replace(FIRST_CELL, (_cell, escapes: string) => escapes + bar));
+		const base = super.render(width);
+		if (this.marked?.base === base && this.marked.bar === bar) return this.marked.lines;
+		const lines = base.map((line) => line.replace(FIRST_CELL, (_cell, escapes: string) => escapes + bar));
+		this.marked = { base, bar, lines };
+		return lines;
 	}
 }
 
@@ -34,6 +41,7 @@ export class UserMessageComponent extends Container {
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
 	private contentOptions: ContentOptions;
+	private readonly zone = new Osc133ZoneMarker();
 
 	constructor(
 		text: string | ApplicationMessage,
@@ -100,13 +108,6 @@ export class UserMessageComponent extends Container {
 	}
 
 	override render(width: number): string[] {
-		const lines = super.render(width);
-		if (lines.length === 0) {
-			return lines;
-		}
-
-		lines[0] = OSC133_ZONE_START + lines[0];
-		lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
-		return lines;
+		return this.zone.mark(super.render(width));
 	}
 }

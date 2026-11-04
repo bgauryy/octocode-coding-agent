@@ -26,7 +26,7 @@ import { baseEnv, type Fixture, scriptedSession, withEnv } from "./capture.ts";
  */
 
 /** Octocode's cache-sharing summary request (`shared-summary.ts`); the standalone ones send `SUMMARIZATION_SYSTEM_PROMPT`. */
-const SUMMARY_REQUEST = "write a context checkpoint";
+export const SUMMARY_REQUEST = "write a context checkpoint";
 /** A provider's context-overflow error, as `isContextOverflow` recognizes it (Anthropic's wording). */
 const OVERFLOW = "prompt is too long: 213462 tokens > 200000 maximum";
 
@@ -152,5 +152,5 @@ export async function runChild(
 
 /** A long reply, so the earlier turns fall outside the retained tail and are summarized. */
 export const long = (lead: string) => `${lead} ${"detail ".repeat(14_000)}`;
-/** A task long enough that the checkpoint keeps it only behind a saved-file reference (over `USER_MESSAGE_CHARS`). */
-export const longTask = (lead: string) => `${lead}\n${"Step: check the module and record what it does.\n".repeat(150)}`;
+/** A task long enough that a subagent's checkpoint keeps it only behind a saved-file reference (over half the section, at most `USER_MESSAGES_CHARS`). */
+export const longTask = (lead: string) => `${lead}\n${"Step: check the module and record what it does.\n".repeat(700)}`;

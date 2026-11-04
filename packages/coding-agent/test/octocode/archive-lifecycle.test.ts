@@ -114,7 +114,7 @@ describe("durable agent lifecycle", () => {
 				}),
 			);
 		projectAgents(db, root);
-		const file = path.join(root, ".octa/code/agents.txt");
+		const file = path.join(root, ".octocode/code/agents.txt");
 		const content = fs.readFileSync(file, "utf8");
 		const rows = content
 			.trim()
@@ -149,7 +149,7 @@ describe("durable agent lifecycle", () => {
 			);
 		event("first");
 		projectAgents(db, root);
-		const file = path.join(root, ".octa/code/agents.txt");
+		const file = path.join(root, ".octocode/code/agents.txt");
 		const content = fs.readFileSync(file, "utf8");
 		// Another process holds the view's lock: a commit that changed no event does not wait for it or fail.
 		fs.mkdirSync(`${file}.lock`);
@@ -163,8 +163,8 @@ describe("durable agent lifecycle", () => {
 		expect(fs.readFileSync(file, "utf8")).toContain('"id":"second"');
 	});
 	it("refuses symlink and empty projections without overwriting them", () => {
-		fs.mkdirSync(path.join(root, ".octa/code"), { recursive: true });
-		const file = path.join(root, ".octa/code/agents.txt");
+		fs.mkdirSync(path.join(root, ".octocode/code"), { recursive: true });
+		const file = path.join(root, ".octocode/code/agents.txt");
 		fs.writeFileSync(file, "");
 		expect(() => projectAgents(db, root)).toThrow("Invalid");
 		fs.unlinkSync(file);
@@ -183,7 +183,7 @@ describe("durable agent lifecycle", () => {
 		const replacement = registeredWorkspace(project, db);
 		expect(replacement.id).not.toBe(original.id);
 		expect(() => projectAgents(db, project, original)).toThrow(/path changed/);
-		expect(fs.existsSync(path.join(project, ".octa/code/agents.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(project, ".octocode/code/agents.txt"))).toBe(false);
 	});
 
 	it("records every activation, deduplicates dispatch retries and skips no-session", async () => {

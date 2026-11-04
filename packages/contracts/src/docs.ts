@@ -12,7 +12,7 @@ export const DOCS_ROUTES = {
 /** What a document is, read from the `.octocode/` folder (or file name) it sits in. */
 export const DOC_KINDS = ["rfc", "research", "brainstorm", "review", "audit", "plan", "contract", "report"] as const;
 
-/** Markdown in the workspace docs view. Authored paths are relative to `.octocode/`; runtime exports and opted-in scratch paths start with `.octa/code/`. */
+/** Markdown in the workspace docs view. Authored paths are relative to `.octocode/`; runtime exports and opted-in scratch paths start with `.octocode/code/`. */
 export const DocSummarySchema = Type.Object(
 	{
 		path: Type.String({ minLength: 1, maxLength: 300 }),

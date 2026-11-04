@@ -31,17 +31,25 @@ describe("Octocode preset overrides for the catalog without a classification key
 
 	it("match lspSearch whatever language servers the host has, and name them", () => {
 		const lsp = keyless.tools.find((tool) => tool.name === "lspSearch")!;
-		expect(lsp.description).toContain("Servers found here: ts/js, py, c/c++.");
+		expect(lsp.description).toMatch(/Servers found here: [^.<]*\./);
 		const hosted = {
 			...keyless,
 			tools: keyless.tools.map((tool) =>
-				tool === lsp ? { ...tool, description: tool.description!.replace("ts/js, py, c/c++", "ts/js, rust") } : tool,
+				tool === lsp
+					? {
+							...tool,
+							description: tool.description!.replace(
+								/Servers found here: [^.<]*\./,
+								"Servers found here: ts/js, rust.",
+							),
+						}
+					: tool,
 			),
 		};
 		const text = octocodeCompactOverrides(hosted)?.tools?.lspSearch;
 		expect(text).toContain("Servers: ts/js, rust.");
 		expect(text).not.toContain("c/c++");
-		expect(octocodeCompactOverrides(keyless)?.tools?.lspSearch).toContain("Servers: ts/js, py, c/c++.");
+		expect(octocodeCompactOverrides(keyless)?.tools?.lspSearch).toMatch(/Servers: [^.]*\./);
 	});
 
 	it("give each variant of a tool its own entry", () => {

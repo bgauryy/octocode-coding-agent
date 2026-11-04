@@ -1,14 +1,14 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
- * Which lines of a file the model has seen. Octocode's `read` shows at most 2000 lines or 50 KB, so a big file is never seen
- * in one read: a full write over it is allowed once the reads together cover every line (`firstGap`).
+ * Which lines of a file the model has seen. A big file is never seen in one read (a page, a range or a search row shows
+ * part of it): a full write over it is allowed once the reads together cover every line (`firstGap`).
  */
 
 /** An inclusive, 1-based range of lines; `last` is Infinity when the read ran to the end of the file. */
 export type LineRange = readonly [first: number, last: number];
 
-/** What one `read` result showed of its file. */
+/** What one read result showed of its file. */
 export interface ReadView {
 	/** The whole file: an untruncated read with no offset or limit, or an image (all the tool can show of it). */
 	whole: boolean;
@@ -16,7 +16,7 @@ export interface ReadView {
 	lines?: LineRange;
 }
 
-/** The view a Octocode `read` result gives, or undefined for any other tool. */
+/** The view a `read` result gives (a tool of a resumed transcript or an SDK caller; Octocode ships none), or undefined for any other tool. */
 export function readView(
 	toolName: string,
 	input: Record<string, unknown>,

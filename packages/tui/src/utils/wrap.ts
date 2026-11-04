@@ -283,7 +283,8 @@ function breakLongWord(word: string, width: number, tracker: AnsiCodeTracker): s
 
 		const graphemeWidth = visibleWidth(grapheme);
 
-		if (currentWidth + graphemeWidth > width) {
+		// A grapheme wider than the whole row goes on a row of its own: flushing an empty row first would only add a blank one.
+		if (currentWidth > 0 && currentWidth + graphemeWidth > width) {
 			// Add specific reset for underline only (preserves background)
 			const lineEndReset = tracker.getLineEndReset();
 			if (lineEndReset) {

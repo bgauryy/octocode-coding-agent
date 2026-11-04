@@ -20,6 +20,8 @@ export interface ToolRow {
 	/** The state the row's animation subscription paints, and how to end it (see `rowMark`). */
 	marking?: string;
 	unmark?: () => void;
+	/** The moving state (`running`, `waiting`) in which the row last took the one animated mark (see `rowMark`). */
+	movedAs?: string;
 }
 
 /** The part of Octocode's ToolRenderContext these helpers read. */

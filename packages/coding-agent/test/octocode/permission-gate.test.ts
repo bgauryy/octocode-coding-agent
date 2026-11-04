@@ -115,8 +115,16 @@ describe("the purpose from a call's reason", () => {
 		const ctx = { cwd: tmp() };
 		const input = { command: "npm test", reason: "check the fix" };
 		expect(classify(call("bash", input), ctx)?.purpose).toBe("check the fix");
-		expect(classify(call("bash", { command: "npm test" }), ctx)?.purpose).toBeUndefined();
-		expect(classify(call("bash", { command: "ls", reason: "   " }), ctx)?.purpose).toBeUndefined();
+		expect(classify(call("bash", input), ctx)).not.toHaveProperty("reasonDerived");
+		// A native call that reached the gate without a reason still shows one, made from its arguments and marked.
+		expect(classify(call("bash", { command: "npm test" }), ctx)).toMatchObject({
+			purpose: "bash npm test",
+			reasonDerived: true,
+		});
+		expect(classify(call("bash", { command: "ls", reason: "   " }), ctx)).toMatchObject({
+			purpose: "bash ls",
+			reasonDerived: true,
+		});
 		// A tool outside the native set (an MCP server, an extension) may use `reason` for something else.
 		expect(classify(call("mcp__docs__write_page", { reason: "x" }), ctx)?.purpose).toBeUndefined();
 	});
@@ -134,6 +142,19 @@ describe("the purpose from a call's reason", () => {
 			expect.objectContaining({ action: "shell", purpose: "list the folder" }),
 		);
 	});
+
+	it("marks a purpose derived from the arguments in the audit", async () => {
+		const full = setup("full");
+		await full.gate(call("bash", { command: "ls" }), full.ctx);
+		const shells = () =>
+			full.fake.entries.map((item) => item.data as Record<string, unknown>).filter((data) => data.action === "shell");
+		const entry = shells()[0];
+		expect(entry).toMatchObject({ purpose: "bash ls", reasonDerived: true });
+		await full.gate(call("bash", { command: "pwd", reason: "print the folder" }), full.ctx);
+		const stated = shells().at(-1);
+		expect(stated).toMatchObject({ purpose: "print the folder" });
+		expect(stated).not.toHaveProperty("reasonDerived");
+	});
 });
 
 describe("permission gate", () => {
@@ -145,10 +166,10 @@ describe("permission gate", () => {
 			"session-data/s/archive/SESSION.md",
 			"temp/sessions/s/bash/job.json",
 		]) {
-			expect(stateFolderRefusal(path.join(root, ".octa/code", target), target, "file")).toContain("state folder");
+			expect(stateFolderRefusal(path.join(root, ".octocode/code", target), target, "file")).toContain("state folder");
 		}
 		expect(
-			stateFolderRefusal(path.join(root, ".octa/code/temp/agents/worker/report.md"), "report", "file"),
+			stateFolderRefusal(path.join(root, ".octocode/code/temp/agents/worker/report.md"), "report", "file"),
 		).toBeUndefined();
 	});
 
@@ -264,8 +285,8 @@ describe("permission gate", () => {
 			"docs/npmrc.md",
 			"src/gitmodules.ts",
 			".github/workflows-notes.md",
-			".octa/code/temp/agents/x/report.md",
-			".octa/code/temp",
+			".octocode/code/temp/agents/x/report.md",
+			".octocode/code/temp",
 		]) {
 			expect(runsLater(path.join(root, file), root), file).toBe(false);
 		}
@@ -278,9 +299,9 @@ describe("permission gate", () => {
 			".HUSKY/pre-commit",
 			".GitHub/Workflows/ci.yml",
 			// Outside the scratch folder `.octocode/` still loads later; a hook inside scratch still runs.
-			".octa/code/temp-not-scratch/x",
+			".octocode/code/temp-not-scratch/x",
 			".octocode/settings.json",
-			".octa/code/temp/repo/.git/hooks/pre-commit",
+			".octocode/code/temp/repo/.git/hooks/pre-commit",
 		])
 			expect(runsLater(path.join(root, file), root), file).toBe(true);
 	});

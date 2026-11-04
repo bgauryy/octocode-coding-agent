@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import { storedText } from "../../../../../common/src/sanitize.ts";
 import { addReply, emptyTotals, type UsageTotals } from "../../shared/util.ts";
 import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
@@ -18,6 +19,8 @@ interface ActivityHost {
 	readonly mail: Pick<Mail, "notice">;
 	/** The model and level this session runs now (`modelRoute`), or undefined without a model. */
 	route(): string | undefined;
+	/** Keeps the reservations this agent holds for its children alive; those last as long as the child's run. */
+	renewChildren(db: TeamStore, now: number): void;
 }
 
 /** This agent's row as it works: status, tool counts and usage change in memory and reach the database on the heartbeat. */
@@ -70,6 +73,27 @@ export class Activity {
 		});
 	}
 
+	started(): void {
+		this.update((me) => void (me.status = "working"), true);
+	}
+
+	idle(): void {
+		this.update((me) => void (me.status = "idle"), true);
+	}
+
+	/** A top-level tool call started (parallel calls each count; calls a tool makes itself do not). */
+	toolStarted(): void {
+		this.update((me) => void (me.toolCalls += 1));
+	}
+
+	/** What the agent does now (the line src/ui/activity.ts describes), or undefined between steps and when idle. */
+	setLine(line: string | undefined): void {
+		this.update((me) => {
+			if (line) me.activity = storedText(line, LINE_MAX);
+			else delete me.activity;
+		});
+	}
+
 	/** Moves the replies counted before the join onto the new row. */
 	private takeEarlyUsage(me: Member): void {
 		const { usage, model } = this.early;
@@ -101,6 +125,7 @@ export class Activity {
 		// Reservations live while their owner works; an idle owner's lapse once it has been idle too long.
 		const idle = now - this.activeAt >= LEASE_IDLE_MS;
 		if (!idle) db.renew(me.id, now);
+		this.host.renewChildren(db, now);
 		this.savedAt = now;
 		this.statusChanged = false;
 		if (!this.host.held.holding) return;
@@ -108,7 +133,7 @@ export class Activity {
 		const lost = this.host.held.lost(db.owned(me.id, now));
 		const why = idle ? ` after ${Math.round((now - this.activeAt) / 60_000)}m idle` : "";
 		if (lost.length > 0)
-			this.host.mail.notice(`Your reservation on ${lost.join(", ")} lapsed${why}; lock it again before editing.`);
+			this.host.mail.notice(renderInstruction("notices/mail/reservation-lapsed.md", { paths: lost.join(", "), why }));
 	}
 
 	/** Writes the heartbeat when a status changed or `HEARTBEAT_MS` passed since the last; whether it did. */

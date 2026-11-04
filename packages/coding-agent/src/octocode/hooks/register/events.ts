@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../../../../../common/src/env.ts";
@@ -79,7 +80,9 @@ export function registerPostCompactHook(api: ExtensionAPI, dispatch: Dispatch): 
 			await api.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(`Context from PostCompact hooks:\n${verdict.context}`),
+					content: capContext(
+						renderInstruction("notices/hooks/context.md", { source: "PostCompact", text: verdict.context }),
+					),
 					display: false,
 				},
 				{ triggerTurn: false },
@@ -135,7 +138,11 @@ export function registerPromptHook(api: ExtensionAPI, dispatch: Dispatch): void 
 		return {
 			block: !!verdict.block,
 			additionalContext: verdict.context
-				? [capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`)]
+				? [
+						capContext(
+							renderInstruction("notices/hooks/context.md", { source: "UserPromptSubmit", text: verdict.context }),
+						),
+					]
 				: [],
 		};
 	});
@@ -153,7 +160,9 @@ export function registerPromptHook(api: ExtensionAPI, dispatch: Dispatch): void 
 			await api.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`),
+					content: capContext(
+						renderInstruction("notices/hooks/context.md", { source: "UserPromptSubmit", text: verdict.context }),
+					),
 					display: false,
 				},
 				{ triggerTurn: false },

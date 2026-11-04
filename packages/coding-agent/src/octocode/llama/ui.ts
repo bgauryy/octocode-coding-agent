@@ -11,7 +11,7 @@ import { sanitizeTerminalText as plain } from "../../../../common/src/sanitize.t
 import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { frame, renderClipped, runInView } from "../../modes/interactive/components/framed-view.ts";
-import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
+import { hintLine, keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.ts";
 import type { Theme } from "../../theme/theme.ts";
 import type { LlamaModelInfo, LlamaProgress } from "./client.ts";
 import type { HuggingFaceModel } from "./huggingface.ts";
@@ -152,7 +152,10 @@ class LlamaView implements LlamaUi, Focusable {
 					this.theme,
 					"llama.cpp models",
 					[new Text(this.theme.fg("dim", plain(serverUrl)), 1, 0), new Spacer(1), list],
-					`${keyHint("tui.select.confirm", "load/unload/download")} • ${keyHint("tui.select.cancel", "close")}`,
+					hintLine([
+						[keyText("tui.select.confirm"), "load/unload/download"],
+						[keyText("tui.select.cancel"), "close"],
+					]),
 				),
 				list,
 			);
@@ -174,7 +177,10 @@ class LlamaView implements LlamaUi, Focusable {
 					// Titles carry server text: model ids and the server's error messages.
 					plain(title),
 					[new Spacer(1), list],
-					`${keyHint("tui.select.confirm", "select")} • ${keyHint("tui.select.cancel", "cancel")}`,
+					hintLine([
+						[keyText("tui.select.confirm"), "select"],
+						[keyText("tui.select.cancel"), "cancel"],
+					]),
 				),
 				list,
 			);
@@ -207,7 +213,10 @@ class LlamaView implements LlamaUi, Focusable {
 					this.theme,
 					"Download model",
 					[new Spacer(1), component],
-					`${keyHint("tui.select.confirm", "select")} • ${keyHint("tui.select.cancel", "back")}`,
+					hintLine([
+						[keyText("tui.select.confirm"), "select"],
+						[keyText("tui.select.cancel"), "back"],
+					]),
 				),
 				component,
 				component,

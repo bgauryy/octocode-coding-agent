@@ -4,6 +4,8 @@ Implemented; current reference: [packages/coding-agent/docs/acp.md](../packages/
 
 Date: 2026-10-23; updated 2026-10-25. Implemented locally. A real configured provider session and independent ACP compatibility checks now supplement the source CLI lifecycle tests. See [dated validation](FEATURE_VALIDATION.md) for exact scope; editor and cross-platform interoperability remain unverified.
 
+Reaching an already running session is not this broker's job: see [one agent-to-agent protocol](RFC_AGENT_TO_AGENT.md).
+
 ## Decision and ownership
 
 `octocode --mode acp` is an inbound Agent Client Protocol v1 stdio broker, distinct from Octocode's outbound ACP client. It translates protocol frames and events while one RPC child per session owns execution, credentials, workspace trust, persistence, MCP and native permission decisions. There is no second agent loop or database. The [ACP reference](../packages/coding-agent/docs/acp.md) owns launch instructions and the contract.

@@ -88,8 +88,8 @@ const WRAPPING_CDP = new Set(["Target.sendMessageToTarget"]);
 
 /** One thing a browser MCP call does beyond driving pages in the isolated browser. */
 export interface BrowserMcpEscalation {
-	/** `control`: it takes control of the browser or the machine (a `browser.control` ask); `upload`: it sends `path` to a page. */
-	kind: "control" | "upload";
+	/** `control`: it takes control of the browser or the machine (a `browser.control` ask); `cookies`: it reads or changes cookies (a `browser.cookies` ask); `upload`: it sends `path` to a page. */
+	kind: "control" | "cookies" | "upload";
 	/** What it does, as a noun phrase ("Using your real browser profile (--profile Default)"). */
 	what: string;
 	/** For an upload, the local file as given (relative to the server's folder, the session's). */
@@ -131,7 +131,7 @@ export function browserMcpEscalations(toolName: string, input: Record<string, un
 		found.push({ kind: "control", what: `Starting ${value ?? "a program"} as the browser (--chromePath)` });
 	for (const { method, params } of cdp) {
 		if (COOKIE_CDP.has(method))
-			found.push({ kind: "control", what: `CDP ${method}, which reads or changes the browser's cookies` });
+			found.push({ kind: "cookies", what: `CDP ${method}, which reads or changes the browser's cookies` });
 		else if (DOWNLOAD_CDP.has(method) && params.behavior !== "deny" && params.behavior !== "default")
 			found.push({
 				kind: "control",

@@ -18,6 +18,7 @@ import { applyLineResets } from "./tui/composite.ts";
 import { Container } from "./tui/container.ts";
 import { extractCursorPosition, resolveFakeCursors } from "./tui/cursor.ts";
 import { FocusManager } from "./tui/focus-manager.ts";
+import { ResizeDebounce } from "./tui/resize-debounce.ts";
 import { InputListeners, type TuiInputListener } from "./tui/input-listeners.ts";
 import { OverlayCompositor } from "./tui/overlay-compositor.ts";
 import type { OverlayHandle, OverlayOptions } from "./tui/overlay-types.ts";
@@ -89,6 +90,7 @@ export abstract class TuiBase extends Container implements TUI {
 		hideCursor: () => this.hideTerminalCursor(),
 	});
 	private readonly overlays = new OverlayCompositor(this.focus);
+	private readonly resizeDebounce = new ResizeDebounce(() => this.stopped || this.requestRender());
 	private readonly scheduler = new RenderScheduler({
 		terminal: () => this.terminal,
 		isStopped: () => this.stopped,
@@ -244,7 +246,7 @@ export abstract class TuiBase extends Container implements TUI {
 		this.beforeTerminalStart();
 		this.terminal.start(
 			(data) => this.handleTerminalInput(data),
-			() => this.requestRender(),
+			() => this.resizeDebounce.trigger(),
 			() => {
 				if (this.stopped) return;
 				this.onTerminalCapabilitiesChanged();
@@ -363,11 +365,10 @@ export abstract class TuiBase extends Container implements TUI {
 
 	/**
 	 * Find and extract cursor position from rendered lines.
-	 * Searches for CURSOR_MARKER, calculates its position, and strips it from the output.
-	 * Only scans the bottom terminal height lines (visible viewport).
-	 * @param lines - Rendered lines to search
+	 * Strips every CURSOR_MARKER from every row and reports the bottom-most one in the bottom terminal height lines.
+	 * @param lines - Rendered lines; changed in place
 	 * @param height - Terminal height (visible viewport size)
-	 * @returns Cursor position { row, col } or null if no marker found
+	 * @returns Cursor position { row, col } or null if no marker is in the viewport
 	 */
 	protected extractCursorPosition(lines: string[], height: number): { row: number; col: number } | null {
 		return extractCursorPosition(lines, height);

@@ -291,7 +291,7 @@ export function renderAgentResult(
 		// The first line is for the model; only a later note (an isolation warning) is worth expanding to.
 		const note = body.split("\n").slice(1).join("\n").trim();
 		return resultBlock(theme, context, {
-			summary: `Running in the background as ${details.id}`,
+			summary: `${details.queued ? "Queued in the background" : "Running in the background"} as ${details.id}`,
 			summaryColor: "accent",
 			...(note ? { body: note } : {}),
 			prefaceLabel: "prompt",

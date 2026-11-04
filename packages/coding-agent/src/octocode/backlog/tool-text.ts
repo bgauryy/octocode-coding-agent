@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Item } from "./store.ts";
 import { plural } from "../shared/render/text.ts";
 
@@ -49,16 +50,9 @@ export function backlogPrompt(subagent: boolean): {
 			: "add: propose; update: edit, claim (ongoing) or add notes; remove: only duplicates or user-requested items without history");
 	return {
 		// The snippet says when to use the tool for every role; the description and `op` say how.
-		promptSnippet:
-			"Work that outlives the session, needs another person, records a follow-up or failure, or was requested",
+		promptSnippet: renderInstruction("tools/backlog/snippet.md"),
 		description,
 		ops,
-		promptGuidelines: subagent
-			? [
-					"The backlog item your task names is the only one you may update: note progress on it and close it after verifying its goal. Put follow-ups and unfixed failures (trigger, evidence, fix) in your report; your parent files them.",
-				]
-			: [
-					"Claim the item before starting or delegating work it covers; update touched items before reporting. Every item needs why, paths, links (a follow-up: from, trigger, evidence, fix).",
-				],
+		promptGuidelines: renderInstruction("tools/backlog/guidelines.md", { subagent }).split("\n"),
 	};
 }

@@ -142,6 +142,6 @@ export function parseExternalCommand(args: string): unknown {
 	if (action === "connect" && id === "acp" && rest.length >= 2)
 		return { action, transport: id, vendor: rest[0], command: rest[1], args: rest.slice(2) };
 	throw new Error(
-		"Usage: /agents external [list | connect octocode <instanceId> | connect acp <vendor> <command> [args...] | prompt <id> <text> | cancel <id> | disconnect <id>]",
+		"Usage: /agents external [list | connect octocode <instance id or name> | connect acp <vendor> <command> [args...] | prompt <id> <text> | cancel <id> | disconnect <id>]",
 	);
 }

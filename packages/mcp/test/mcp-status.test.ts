@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
+import { formatStatus } from "../src/report.ts";
+import type { McpServer } from "../src/server.ts";
+import type { McpExtensionState } from "../src/state.ts";
 import { getMcpSessionStatus, setMcpSessionStatus, type McpServerStatus } from "../src/status.ts";
 
 const server = (name: string): McpServerStatus => ({
@@ -37,5 +40,39 @@ describe("shared MCP status", () => {
 		original.enabled = false;
 		getMcpSessionStatus(bus)[0].state = "failed";
 		expect(getMcpSessionStatus(bus)).toEqual([server("docs")]);
+	});
+});
+
+describe("formatStatus", () => {
+	const entry = (name: string, enabled = true) => ({
+		name,
+		config: { command: "unused", ...(enabled ? {} : { enabled: false }) },
+		source: "test",
+	});
+	const status = (servers: Partial<McpServer>[]) =>
+		formatStatus({ servers, configErrors: [], overridden: [] } as unknown as McpExtensionState);
+
+	it("names each server's state, so an unselected server does not read as starting", () => {
+		const connection = (state: string, more = {}) => ({ state, tools: [{ name: "a" }], ...more }) as never;
+		const lines = status([
+			{ entry: entry("browser"), unselected: true },
+			{ entry: entry("pending") },
+			{ entry: entry("off", false) },
+			{ entry: entry("live"), connection: connection("connected") },
+			{ entry: entry("dropped"), connection: connection("disconnected") },
+			{ entry: entry("ended"), connection: connection("connected", { isStopped: true }) },
+			{ entry: entry("broken"), connection: connection("failed", { error: "first\nsecond" }) },
+		]).split("\n");
+		expect(lines).toEqual([
+			"browser: enabled · not selected (direct)",
+			"pending: enabled · starting (direct)",
+			"off: disabled (direct)",
+			"live: enabled · connected · 1 tool (direct)",
+			"dropped: enabled · disconnected, reconnects on next call (direct)",
+			"ended: enabled · stopped (direct)",
+			"broken: enabled · failed (direct)",
+			"    first",
+			"    second",
+		]);
 	});
 });

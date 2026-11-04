@@ -42,7 +42,6 @@ it("exchanges API messages on an ACP session and refuses overlapping ACP work wi
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_MCP: "0",
 		OCTOCODE_MODELS_DEV: "0",
-		OCTOCODE_API: "1",
 		OCTOCODE_API_HTTP: "0",
 		OCTOCODE_PERMISSION: "full",
 		OCTOCODE_MEMORY_AUTO: "0",

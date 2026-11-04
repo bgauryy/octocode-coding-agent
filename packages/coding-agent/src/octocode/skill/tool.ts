@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
@@ -16,8 +17,6 @@ import { textResult } from "../shared/util.ts";
 import { type CatalogSkill, SkillCatalog, closeNames, setActiveSkillCatalog } from "./catalog.ts";
 import { skillHeader, skillInstructions, skillOrigin } from "./render.ts";
 
-/** A skill's instructions are read whole up to this size; a larger file is cut and says so. */
-const MAX_SKILL_BYTES = 256 * 1024;
 /** Names listed when nothing is close to the requested one. */
 const LISTED_NAMES = 20;
 
@@ -28,7 +27,6 @@ interface SkillDetails {
 	lines: number;
 	/** Where the skill came from (`skillOrigin`), shown on the row. */
 	origin?: string;
-	truncated?: boolean;
 }
 
 /** `skill:name`, `/skill:name` and `/name` name the same skill as `name`: the forms users type. */
@@ -46,13 +44,8 @@ function unknownSkill(name: string, available: readonly CatalogSkill[]): Error {
 	);
 }
 
-function body(entry: CatalogSkill, sessionId: string, cwd: string): { text: string; truncated: boolean } {
-	const bytes = fs.readFileSync(entry.file);
-	const truncated = bytes.length > MAX_SKILL_BYTES;
-	let end = Math.min(bytes.length, MAX_SKILL_BYTES);
-	// Never cut inside a UTF-8 sequence.
-	while (truncated && end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
-	const raw = stripFrontmatter(bytes.subarray(0, end).toString("utf8")).trim();
+function body(entry: CatalogSkill, sessionId: string, cwd: string): string {
+	const raw = stripFrontmatter(fs.readFileSync(entry.file, "utf8")).trim();
 	const { skill } = entry;
 	// The same expansion `/skill:name` does, without arguments: a Claude skill's `${CLAUDE_*}` values resolve here too.
 	const text =
@@ -65,7 +58,7 @@ function body(entry: CatalogSkill, sessionId: string, cwd: string): { text: stri
 					pluginData: skill.claudePluginData,
 				})
 			: raw;
-	return { text, truncated };
+	return text;
 }
 
 /**
@@ -88,7 +81,7 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 			name: "skill",
 			label: "Skill",
 			// The skills section owns the trigger; the snippet only points to it and this text says what the tool does.
-			promptSnippet: "To load a skill listed in <available_skills>",
+			promptSnippet: renderInstruction("tools/skill/snippet.md"),
 			description:
 				"Load a skill's instructions by name and follow them. The result holds the skill's SKILL.md and its directory: " +
 				"resolve relative paths in the instructions against that directory. Only listed skills load.",
@@ -119,26 +112,22 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 					throw new Error(
 						`Skill "${skill.name}" is reserved for the user (disable-model-invocation); do not load it. Ask the user to run /skill:${skill.name} if it is needed.`,
 					);
-				let loaded: ReturnType<typeof body>;
+				let text: string;
 				try {
-					loaded = body(entry, ctx.sessionManager.getSessionId(), ctx.cwd);
+					text = body(entry, ctx.sessionManager.getSessionId(), ctx.cwd);
 				} catch (error) {
 					throw new Error(`Skill "${skill.name}" could not be read: ${errorMessage(error)}`, { cause: error });
 				}
-				const lines = loaded.text.split("\n").length;
+				const lines = text.split("\n").length;
 				const baseDir = path.dirname(entry.file);
-				const cut = loaded.truncated
-					? `\n\n[Cut at ${MAX_SKILL_BYTES / 1024} KB. Read the rest of ${entry.file} with a file reader.]`
-					: "";
 				return textResult(
-					`<skill name="${skill.name}" location="${entry.file}">\nReferences are relative to ${baseDir}.\n\n${loaded.text}${cut}\n</skill>`,
+					`<skill name="${skill.name}" location="${entry.file}">\n${renderInstruction("system/skill-references.md", { dir: baseDir })}\n\n${text}\n</skill>`,
 					{
 						name: skill.name,
 						location: entry.file,
 						baseDir,
 						lines,
 						origin: skillOrigin(skill),
-						...(loaded.truncated ? { truncated: true } : {}),
 					} satisfies SkillDetails,
 				);
 			},

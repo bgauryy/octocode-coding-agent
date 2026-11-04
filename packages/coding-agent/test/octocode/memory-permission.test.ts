@@ -127,10 +127,18 @@ describe("shared memory", () => {
 		]);
 	});
 
-	it("follows full mode, which allows changes that reach later sessions without a dialog", async () => {
+	it("asks before a global or pinned save in full mode too, and refuses it when no one can be asked", async () => {
 		const run = memoryTool("full");
-		expect(await run({ op: "set", title: "Full rule", scope: "global" }, { hasUI: false })).toMatch(
-			/^Saved M\d+ \(global/,
-		);
+		const selects = ["Allow once"];
+		expect(await run({ op: "set", title: "Full rule", scope: "global" }, { selects })).toMatch(/^Saved M\d+ \(global/);
+		expect(selects).toEqual([]);
+		for (const params of [
+			{ op: "set", title: "Injected rule", scope: "global" },
+			{ op: "set", title: "Injected pin", pinned: true },
+		])
+			await expect(run(params, { hasUI: false })).rejects.toThrow(/needs the user's approval .*no one can be asked/);
+		// A plain workspace note is still no ask, and a delete follows the mode.
+		expect(await run({ op: "set", title: "Plain note" }, { hasUI: false })).toMatch(/^Saved M\d+ \(workspace/);
+		expect(await run({ op: "delete", id: "M1" }, { hasUI: false })).toMatch(/^Deleted M1/);
 	});
 });

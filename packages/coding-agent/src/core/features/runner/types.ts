@@ -82,7 +82,14 @@ export type RunnerEmitEvent = Exclude<
 
 export type SessionBeforeEvent = Extract<
 	RunnerEmitEvent,
-	{ type: "session_before_switch" | "session_before_fork" | "session_before_compact" | "session_before_tree" }
+	{
+		type:
+			| "session_before_switch"
+			| "session_before_fork"
+			| "session_before_quit"
+			| "session_before_compact"
+			| "session_before_tree";
+	}
 >;
 
 export type SessionBeforeEventResult =
@@ -91,7 +98,9 @@ export type SessionBeforeEventResult =
 	| NativeCompactionResult
 	| SessionBeforeTreeResult;
 
-export type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "session_before_switch" }
+export type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends {
+	type: "session_before_switch" | "session_before_quit";
+}
 	? SessionBeforeSwitchResult | undefined
 	: TEvent extends { type: "session_before_fork" }
 		? SessionBeforeForkResult | undefined
@@ -136,8 +145,10 @@ export interface RunnerBindings {
 	getSignalFn: () => AbortSignal | undefined;
 	waitForIdleFn: () => Promise<void>;
 	abortFn: (reason?: "interrupted" | "internal") => void;
+	failRunFn: (reason: string) => void;
 	hasPendingMessagesFn: () => boolean;
 	isMessageQueuedFn: (details: object) => boolean;
+	replaceQueuedMessageFn: (details: object, content: string) => boolean;
 	getContextUsageFn: () => ContextUsage | undefined;
 	compactFn: (options?: CompactOptions) => void;
 	getSystemPromptFn: () => string;

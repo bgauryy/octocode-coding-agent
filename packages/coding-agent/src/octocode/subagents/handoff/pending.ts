@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -14,6 +15,8 @@ export interface Report {
 	details: ResultDetails;
 	/** Start a parent turn for it (not for a stop someone asked for, nor a report the parent already read). */
 	wake: boolean;
+	/** A resume made what it says out of date; its content already says so. */
+	superseded?: boolean;
 	/** Names this one report wherever it is saved, claimed or queued, so a copy is never delivered twice; stamped when it is first queued or saved. */
 	reportId?: string;
 }
@@ -92,7 +95,10 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 				continue;
 			}
 			if (report.reportId !== undefined) seen.add(report.reportId);
-			const late = { ...report, content: `(Arrived after the session restarted) ${report.content}` };
+			const late = {
+				...report,
+				content: renderInstruction("notices/subagents/report-late.md", { content: report.content }),
+			};
 			claims.set(late, { claim, file });
 			taken.push(late);
 		} catch {

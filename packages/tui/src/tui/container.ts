@@ -6,6 +6,7 @@ import { renderIsolated } from "./render-isolation.ts";
  */
 export class Container implements Component {
 	children: Component[] = [];
+	private renderCache?: { width: number; components: Component[]; arrays: string[][]; lines: string[] };
 	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
 
 	addChild(component: Component): void {
@@ -24,6 +25,7 @@ export class Container implements Component {
 	}
 
 	invalidate(): void {
+		this.renderCache = undefined;
 		for (const child of this.children) {
 			child.invalidate?.();
 		}
@@ -53,17 +55,31 @@ export class Container implements Component {
 		return undefined;
 	}
 
+	/**
+	 * Concatenate the children's rows. When the width and every child's returned array are the same
+	 * references as last frame, the previous result is returned, so parents and the frame diff can
+	 * rely on identity. A child that returns a new array makes a new result.
+	 */
 	render(width: number): string[] {
+		const previous = this.renderCache;
+		const children = this.children;
+		const arrays: string[][] = [];
+		let same = previous?.width === width && previous.components.length === children.length;
+		for (const [i, child] of children.entries()) {
+			const childLines = renderIsolated(child, width);
+			arrays.push(childLines);
+			if (same && (previous?.components[i] !== child || previous.arrays[i] !== childLines)) same = false;
+		}
+		if (same && previous) return previous.lines;
 		const lines: string[] = [];
 		const mouseChildren: Array<{ component: Component; height: number }> = [];
-		for (const child of this.children) {
-			const childLines = renderIsolated(child, width);
+		for (const [i, child] of children.entries()) {
+			const childLines = arrays[i] ?? [];
 			mouseChildren.push({ component: child, height: childLines.length });
-			for (const line of childLines) {
-				lines.push(line);
-			}
+			for (const line of childLines) lines.push(line);
 		}
 		this.mouseLayout = { width, children: mouseChildren };
+		this.renderCache = { width, components: children.slice(), arrays, lines };
 		return lines;
 	}
 }

@@ -4,7 +4,7 @@ This private workspace owns the MCP protocol client, transports, configuration, 
 
 The protocol client can run without an agent session and uses the official `@modelcontextprotocol/client` SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-coding-agent.mjs` bundles its sources into coding-agent's one bundle file, behind the `/mcp` exports. The MCP SDK license ships with the host.
 
-The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocodecode/mcp`, `/mcp/oauth` and `/mcp/testing`. Internal workspace exports resolve directly to source.
+The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocodecode/mcp` and `/mcp/oauth`; the testing helpers do not ship. Internal workspace exports resolve directly to source.
 
 The package provides a transport-neutral client core, stdio and Streamable HTTP transports, and an in-memory testing transport.
 
@@ -16,7 +16,7 @@ The host declares every tool of a selected server up front: each server's genera
 
 ### Preset overrides and the generate:compact command
 
-Each override is keyed on the upstream text it replaces: the server text on the hash of the instructions, a tool's description and trigger on the hash of its description, and every field on the hash of its description at a stable dotted path (`queries.limit`; array items and union variants are transparent). The hash covers that text only, so a rebuild of the server that reformats the schema, reorders fields, adds `$defs` or documents other fields leaves every override in force. An override whose upstream text changed, or whose tool or field is gone, is dropped for that field alone and the server's own text shows; `presetStatus` names it as `<tool>.<field>`, and the drift tests (`test/mcp-octocode-override-drift.test.ts`, `test/mcp-browser-override-drift.test.ts`) fail with that list.
+Each override is keyed on the upstream text it replaces: the server text on the hash of the instructions, a tool's description and trigger on the hash of its description, and every field on the hash of its description at a stable dotted path (`queries.limit`; array items and union variants are transparent). The hash covers that text only, so a rebuild of the server that reformats the schema, reorders fields, adds `$defs` or documents other fields leaves every override in force. An override whose upstream text changed, or whose tool or field is gone, is dropped for that field alone and the server's own text shows; `presetStatus` names it as `<tool>.<field>`, and the drift tests (`test/mcp-octocode-override-drift.test.ts`, `test/mcp-browser-override-drift.test.ts`) fail with that list. `octocode mcp compact apply` stores a server's own overrides in this same form, so the one resolver (`resolveServerFile`) reads both, the stored ones over the preset's, entry by entry.
 
 After the linked sibling `octocode-mcp` or the browser server is rebuilt, run one command:
 
@@ -155,7 +155,7 @@ The stateless `2026-07-28` protocol is not implemented. Batch JSON-RPC messages,
 
 ## Testing
 
-`@octocodeai/octocodecode/mcp/testing` exports `createInMemoryTransportPair()` for client and adapter tests.
+`src/client/testing/index.ts` exports `createInMemoryTransportPair()` for this repository's client and adapter tests. It is not part of the published package.
 
 Run these commands from the repository root:
 

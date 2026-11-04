@@ -20,7 +20,7 @@ import { shortPath } from "../shared/format.ts";
 import { readPaths } from "../shared/home.ts";
 import { isOctocodeTool } from "../../../../mcp/src/presets/octocode/names.ts";
 import { saveContentCopy } from "../shared/spill.ts";
-import { cacheClock } from "./cache.ts";
+import { cacheClock, cacheCold } from "./cache.ts";
 
 /**
  * Clearing old tool results after the prompt cache went cold (the practice of Claude Code's time-based clearing).
@@ -175,9 +175,8 @@ export function clearStaleResults(
 	occasion: ClearingOccasion = {},
 	now = Date.now(),
 ): void {
-	const lastUse = cacheClock(ctx.sessionManager).useAt;
-	if (lastUse === undefined) return;
-	const cold = ttlMs !== undefined && now - lastUse > ttlMs;
+	if (cacheClock(ctx.sessionManager).useAt === undefined) return;
+	const cold = cacheCold(ctx.sessionManager, ttlMs, now);
 	const messages = contextMessages(ctx);
 	const crowded =
 		occasion.rewrite === true &&

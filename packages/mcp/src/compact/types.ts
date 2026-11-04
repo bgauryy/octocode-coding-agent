@@ -36,15 +36,48 @@ export interface DescriptionOverrides {
 	fields?: Record<string, Record<string, string>>;
 }
 
+/** One hash, or the hashes a text had in the catalogs the override was written for (a server varies a field by configuration). */
+export type UpstreamHashes = string | string[];
+
+interface KeyedFieldOverride {
+	/** `upstreamHash` of the description(s) the field has upstream at its path. */
+	upstream: UpstreamHashes;
+	text: string;
+}
+
+export interface PresetToolOverrides {
+	/** `upstreamHash` of the tool's description, which `description` and `trigger` were written for. */
+	descriptionHash?: UpstreamHashes;
+	description?: string;
+	trigger?: string;
+	/** By dotted field path (`queries.path`, `output.results.path`). */
+	fields?: Record<string, KeyedFieldOverride>;
+}
+
+/**
+ * Overrides as they are kept, whether a preset ships them or `octocode mcp compact apply` stores them: each keyed on
+ * the upstream text it replaces, so it applies exactly while that text is unchanged (`presetOverridesFor`).
+ */
+export interface PresetOverrides {
+	/** The server text, for the instructions with this `instructionsHash`. */
+	server?: { instructionsHash: string; text: string };
+	tools?: Record<string, PresetToolOverrides>;
+}
+
 export interface GeneratedMeta {
 	/** {@link catalogHash} of the catalog the text was rendered from. */
 	hash: string;
 	generatorVersion: number;
-	/** {@link toolHash} of each tool, so overrides of unchanged tools survive a change to other tools. */
-	toolHashes?: Record<string, string>;
-	/** {@link instructionsHash} of the server instructions, so a server override survives a change to tools only. */
-	instructionsHash?: string;
+	/** What the text was rendered with: the stored and preset overrides that describe the catalog. */
 	overrides?: DescriptionOverrides;
+	/** The overrides stored for this server (`octocode mcp compact apply`), kept whole while parts of them are stale. */
+	authored?: PresetOverrides;
+	/**
+	 * Written only before overrides were keyed: {@link toolHash} of each tool and the instructions' hash, which
+	 * `authoredOverrides` reads once to key a file's overrides.
+	 */
+	toolHashes?: Record<string, string>;
+	instructionsHash?: string;
 	/** {@link presetHash} of the preset overrides the text was rendered with; absent without a preset. */
 	presetHash?: string;
 	optimizedBy?: { model: string; at: string };

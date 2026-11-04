@@ -84,6 +84,7 @@ function recipient() {
 	const mail = {
 		settled: () => false,
 		notice: () => true,
+		forgetForUser: () => undefined,
 		reportDeadLetters: () => undefined,
 		deliver: (batch: Message[], _parent: unknown, _ctx: unknown, onRejected?: () => void) => {
 			handed.push(batch);
@@ -99,6 +100,8 @@ function recipient() {
 			headless: () => false,
 			heartbeat: () => false,
 			relays: () => undefined,
+			reporting: () => false,
+			checkIn: () => ({ seconds: 0, parentWaits: false }),
 		},
 		mail,
 		new WakePace(() => clock.now),

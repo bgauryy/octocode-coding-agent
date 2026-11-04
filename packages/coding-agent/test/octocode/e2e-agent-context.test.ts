@@ -1,78 +1,23 @@
 import fs from "node:fs";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AGENTS, captureAll, type AgentContext } from "./agent-context/capture.ts";
 import { isMcpTool } from "./agent-context/analyze.ts";
-import { renderIndex, renderMessages, renderSystem, renderTools, systemText } from "./agent-context/render.ts";
+import { renderMessages, renderSystem, renderTools, systemText } from "./agent-context/render.ts";
 
 /**
  * The full context each agent receives with its first model request, captured from real sessions on a scripted model:
- * the main session as the user starts it and every kind of subagent as `subagents/tool.ts` starts it. The files under
- * `instructions/rendered/` are snapshots of it, so this test fails while they are stale; `yarn run generate:prompts`
- * rewrites them (`vitest -u`). The checks below say what each agent's context must hold.
+ * the main session as the user starts it and every kind of subagent as `subagents/tool.ts` starts it. The checks below
+ * say what each agent's context must hold; every build writes the contexts themselves to `.octocode/tmp/agent-prompts/`.
  */
-const RENDERED = fileURLToPath(new URL("../../src/octocode/instructions/rendered/", import.meta.url));
-const FILES = ["system.md", "tools.md", "messages.md"] as const;
-
-const POLICY = [
-	"octocode_work",
-	"octocode_research",
-	"octocode_delegation",
-	"octocode_safety",
-	"octocode_communication",
-];
+const POLICY = ["work", "research", "delegation", "safety", "communication"];
 const BASE = ["preamble", "tools", "rules", "project_context", "cwd", "environment"];
 
-const expectedFiles = (): string[] => [
-	"README.md",
-	...AGENTS.flatMap((agent) => FILES.map((file) => `${agent.name}/${file}`)),
-];
-
-const listed = (directory: string, prefix = ""): string[] =>
-	fs.existsSync(directory)
-		? fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-				const name = `${prefix}${entry.name}`;
-				return entry.isDirectory() ? listed(path.join(directory, entry.name), `${name}/`) : [name];
-			})
-		: [];
-
-/** Whether vitest is rewriting snapshots (`-u`): a missing file is then expected, not a failure. */
-const updating = (): boolean =>
-	(expect.getState() as unknown as { snapshotState?: { _updateSnapshot?: string } }).snapshotState?._updateSnapshot ===
-	"all";
-
 let contexts: AgentContext[] = [];
-/** What `rendered/` held when the run began (vitest writes a snapshot file only when the test file ends). */
-let before: string[] = [];
 
 beforeAll(async () => {
-	before = listed(RENDERED);
 	contexts = await captureAll();
 }, 600_000);
-
-// Declared first so it runs first: with -u a file no agent produces any more (a removed role, an old layout) goes with
-// the rewrite; otherwise a stale or missing file fails the run.
-it("rendered/ holds exactly the files the agents produce", () => {
-	const wanted = expectedFiles();
-	if (updating())
-		for (const stale of before.filter((file) => !wanted.includes(file))) {
-			fs.rmSync(path.join(RENDERED, stale));
-			const folder = path.dirname(path.join(RENDERED, stale));
-			if (path.resolve(folder) !== path.resolve(RENDERED) && fs.readdirSync(folder).length === 0) fs.rmdirSync(folder);
-		}
-	else {
-		expect(
-			before.filter((file) => !wanted.includes(file)),
-			"stale files in rendered/",
-		).toEqual([]);
-		// A missing file is out of date, not new: vitest would otherwise write it silently.
-		expect(
-			wanted.filter((file) => !before.includes(file)),
-			"files missing from rendered/",
-		).toEqual([]);
-	}
-});
 
 const named = (name: string): AgentContext => {
 	const found = contexts.find((context) => context.name === name);
@@ -120,17 +65,17 @@ describe.each(AGENTS)("$name context", (agent) => {
 		expect(systemText(context())).toContain("You are a subagent");
 		expect(names.includes("role")).toBe(agent.role !== undefined);
 		if (agent.role === "lean") {
-			expect(names).toContain("octocode_lean");
+			expect(names).toContain("lean");
 			for (const policy of POLICY) expect(names, `the full policy ${policy} in a lean child`).not.toContain(policy);
 		} else if (["researcher", "reviewer", "browser"].includes(agent.role ?? "")) {
 			// A read-only child's compact core (`policy/readonly.md`) replaces the work, delegation and safety sections.
-			const core = POLICY.filter((name) => name !== "octocode_delegation" && name !== "octocode_safety");
+			const core = POLICY.filter((name) => name !== "delegation" && name !== "safety");
 			expect(names).toEqual(expect.arrayContaining(core));
-			expect(names).not.toContain("octocode_delegation");
-			expect(names).not.toContain("octocode_safety");
+			expect(names).not.toContain("delegation");
+			expect(names).not.toContain("safety");
 		} else {
 			expect(names).toEqual(expect.arrayContaining(POLICY));
-			expect(names).not.toContain("octocode_lean");
+			expect(names).not.toContain("lean");
 		}
 	});
 
@@ -155,6 +100,22 @@ describe.each(AGENTS)("$name context", (agent) => {
 		}
 	});
 
+	it("has the protocol and its own name only where it can use them", () => {
+		const text = systemText(context());
+		const agentTool = JSON.stringify(context().tools.find((tool) => tool.name === "agent") ?? {});
+		if (agent.kind === "main") {
+			expect(text).toContain("One protocol reaches every agent");
+			expect(text).toMatch(/^Process name: <process name>$/m);
+			expect(agentTool).toContain("Also another Octocode process by its name");
+			expect(agentTool).toContain("a linked worktree's branch");
+			return;
+		}
+		expect(text).not.toContain("One protocol reaches every agent");
+		expect(text).not.toContain("Process name:");
+		expect(agentTool).not.toContain("Also another Octocode process by its name");
+		expect(agentTool).not.toContain("a linked worktree's branch");
+	});
+
 	it("starts from the message the agent is given", () => {
 		const { messages } = context();
 		expect(messages.map((message) => message.role)).toEqual(["user"]);
@@ -165,24 +126,35 @@ describe.each(AGENTS)("$name context", (agent) => {
 		expect(messages[0].text).toContain("child-example");
 	});
 
-	it("matches its snapshot (run `yarn run generate:prompts` after changing a prompt source)", async () => {
-		const files = {
-			"system.md": renderSystem(context()),
-			"tools.md": renderTools(context()),
-			"messages.md": renderMessages(context()),
-		};
-		for (const [file, text] of Object.entries(files)) {
-			expect(text, `${agent.name}/${file}`).not.toMatch(/\/(?:Users|home|private|var)\//);
-			expect(text, `${agent.name}/${file}`).not.toMatch(/^Date: \d{4}-/m);
-			await expect(text).toMatchFileSnapshot(path.join(RENDERED, agent.name, file));
+	it("names no machine's paths or date", () => {
+		for (const text of [renderSystem(context()), renderTools(context()), renderMessages(context())]) {
+			expect(text).not.toMatch(/\/(?:Users|home|private|var)\//);
+			expect(text).not.toMatch(/^Date: \d{4}-/m);
 		}
 	});
 });
 
-describe("rendered index", () => {
-	it("lists every agent and matches its snapshot", async () => {
-		const index = renderIndex();
-		for (const agent of AGENTS) expect(index).toContain(`](${agent.name}/system.md)`);
-		await expect(index).toMatchFileSnapshot(path.join(RENDERED, "README.md"));
+describe("the real assembled prefix of a main session", () => {
+	// What a main session in this repository sends before the user's first word: the captured prompt and declarations, plus
+	// this repository's AGENTS.md, for which the capture uses a stand-in. The tools and `mcps` block are declared up front
+	// by decision, so this does not ask for a cut: it makes growth a decision too.
+	// Measured 107,209 bytes on 2026-11-04 (system 58,758, tools 34,372, AGENTS.md 14,079), plus 7.3% for what lands with it.
+	const REAL_PREFIX_CEILING = 115_000;
+
+	it("stays under its ceiling", () => {
+		const main = named("main");
+		const parts = {
+			system: Buffer.byteLength(renderSystem(main)),
+			tools: Buffer.byteLength(renderTools(main)),
+			agents: fs.statSync(fileURLToPath(new URL("../../../../AGENTS.md", import.meta.url))).size,
+		};
+		const total = parts.system + parts.tools + parts.agents;
+		// Not vacuous: a capture that lost its `mcps` block or its tools would pass any ceiling.
+		expect(parts.system).toBeGreaterThan(30_000);
+		expect(parts.tools).toBeGreaterThan(15_000);
+		expect(
+			total,
+			`first-request prefix grew to ${total} bytes (${JSON.stringify(parts)}); if the growth is worth paying on every request, raise REAL_PREFIX_CEILING and say why`,
+		).toBeLessThanOrEqual(REAL_PREFIX_CEILING);
 	});
 });

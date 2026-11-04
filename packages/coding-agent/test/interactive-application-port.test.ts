@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { createFakeHost, heldStore } from "./interactive-mode-host.ts";
 
 const sessions: AgentSession[] = [];
 afterEach(() => {
@@ -59,6 +59,9 @@ describe("terminal application port", () => {
 				terminalEvents.push(event);
 			},
 			unsubscribe: undefined as undefined | (() => void),
+			uiStore: heldStore(),
+			pendingMessagesContainer: { clear() {}, addChild() {} },
+			getAppKeyDisplay: () => "alt+up",
 		};
 		subscribeToAgent(createFakeHost(terminal));
 		const progress = {
@@ -91,6 +94,9 @@ describe("terminal application port", () => {
 				events.push(event);
 			},
 			unsubscribe: undefined as undefined | (() => void),
+			uiStore: heldStore(),
+			pendingMessagesContainer: { clear() {}, addChild() {} },
+			getAppKeyDisplay: () => "alt+up",
 		};
 		subscribeToAgent(createFakeHost(terminal));
 		terminal.session = next.session;

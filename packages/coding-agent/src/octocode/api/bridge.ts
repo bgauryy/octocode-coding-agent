@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { redactData, redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
 import { boundedExternal, boundedText } from "./bridge/bounded.ts";
+import { admission, callerFrom, externalFacts } from "./bridge/caller.ts";
 import { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
 import { historyPage } from "./bridge/history.ts";
 import type { ApiOptions } from "./bridge/options.ts";
@@ -23,6 +24,7 @@ import {
 	apiDir,
 	ensurePrivateDir,
 	type InstanceRecord,
+	listInstances,
 	newInstanceId,
 	newToken,
 	removeRecord,
@@ -119,7 +121,15 @@ export class OctocodeApi {
 		// retry), and the caller wants the final answer, not an intermediate one.
 		api.on("agent_settled", (event) => {
 			if (!this.server) return;
-			const result = { ...(this.lastResult ?? { text: "" }), ...(event.aborted ? { stopReason: "aborted" } : {}) };
+			// The recorded outcome decides failure: recovery can remove the failed attempt `agent_end` would have reported.
+			const { outcome } = event;
+			const failure = outcome && outcome.status !== "completed" ? outcome : undefined;
+			const result: RunResult = {
+				...(this.lastResult ?? { text: "" }),
+				...(event.aborted ? { stopReason: "aborted" } : {}),
+				...(failure?.stopReason ? { stopReason: failure.stopReason } : {}),
+				...(failure?.errorMessage ? { errorMessage: boundedText(failure.errorMessage) } : {}),
+			};
 			this.receipts.settle(result);
 			log.publish("agent.settled", result);
 		});
@@ -167,6 +177,8 @@ export class OctocodeApi {
 		if (!options) return;
 		this.dir = apiDir(this.env);
 		ensurePrivateDir(this.dir);
+		// Every session publishes a record, and a killed one cannot remove its own: each start sweeps what the dead left.
+		listInstances(this.dir);
 		const id = newInstanceId();
 		const token = newToken();
 		const server = new ApiServer(
@@ -181,6 +193,9 @@ export class OctocodeApi {
 				cwd: ctx.cwd,
 				startedAt: Date.now(),
 				protocol: PROTOCOL_VERSION,
+				session: ctx.sessionManager.getSessionId(),
+				// The process names itself for this session before the API starts (`processes/register.ts`, registered first).
+				name: process.title,
 			};
 			if (options.socket) {
 				record.socket = socketPath(this.dir, id, this.env);
@@ -268,7 +283,7 @@ export class OctocodeApi {
 			case "status":
 				return this.status();
 			case "message.send":
-				return this.send(params);
+				return this.send(params, connection);
 			case "turn.abort": {
 				const ctx = this.session();
 				this.guardSession(params, ctx);
@@ -331,6 +346,10 @@ export class OctocodeApi {
 	private async tell(params: Record<string, unknown>): Promise<unknown> {
 		const to = stringParam(params, "to")!;
 		const text = visibleControls(stringParam(params, "text")!);
+		const facts = externalFacts("external client", callerFrom(params), undefined, false);
+		await this.operations.admit?.(admission(facts, text), this.session()).catch((error: unknown) => {
+			throw new RpcError(ERR.unavailable, errorMessage(error), { execution: "not-sent" });
+		});
 		const result = await this.agents.tell(to, text);
 		this.audit({
 			method: "agents.tell",
@@ -353,7 +372,7 @@ export class OctocodeApi {
 	}
 
 	/** `message.send` (`bridge/send.ts`), with this API's session, receipts and audit. */
-	private send(params: Record<string, unknown>): Promise<unknown> {
+	private send(params: Record<string, unknown>, connection: Connection): Promise<unknown> {
 		return sendMessage(
 			{
 				api: this.api,
@@ -365,6 +384,7 @@ export class OctocodeApi {
 				guardSession: (given, ctx) => this.guardSession(given, ctx),
 				nextId: () => `x${++this.counter}`,
 				audit: (data) => this.audit(data),
+				transport: connection.transport,
 			},
 			params,
 		);

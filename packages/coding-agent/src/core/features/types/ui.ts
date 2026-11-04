@@ -182,7 +182,7 @@ export interface ExtensionUIContext {
 	getEditorText(): string;
 
 	/** Show a multi-line editor for text editing. */
-	editor(title: string, prefill?: string): Promise<string | undefined>;
+	editor(title: string, prefill?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
 
 	/** Stack additional autocomplete behavior on top of the built-in provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;

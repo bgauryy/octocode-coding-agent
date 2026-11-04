@@ -53,6 +53,7 @@ export class FakeWorker implements Worker {
 	stop = vi.fn(async () => {
 		this.fail(new Error("Worker stopped"));
 	});
+	getCommands = vi.fn(async (): Promise<Array<{ name: string; description?: string; argumentHint?: string }>> => []);
 	getState = vi.fn(async (): Promise<AcpWorkerState> => ({
 		sessionId: this.sessionId,
 		sessionFile: "/tmp/acp-fixture-session.jsonl",

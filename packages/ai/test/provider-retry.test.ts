@@ -1,6 +1,7 @@
 import { APICallError } from "@ai-sdk/provider";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { retryAfterMsFromError, retryProviderRequest } from "../src/utils/provider-retry.ts";
+import { RetryDelayExceededError } from "../src/utils/retry.ts";
 
 function providerError(status: number | undefined, headers?: Record<string, string>): Error {
 	return Object.assign(new Error(`Provider error: ${status}`), {
@@ -114,6 +115,19 @@ describe("provider request retries", () => {
 		await expect(result).rejects.toMatchObject({ name: "AbortError" });
 		expect(request).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe("RetryDelayExceededError", () => {
+	it("keeps the response's headers, so the session retry can still read what the provider asked for", async () => {
+		const request = vi.fn(async () => {
+			throw providerError(503, { "retry-after": "300" });
+		});
+		const failure = await retryProviderRequest(request, { maxRetries: 1, maxRetryDelayMs: 1000 }).catch(
+			(error: unknown) => error,
+		);
+		expect(failure).toBeInstanceOf(RetryDelayExceededError);
+		expect(retryAfterMsFromError(failure)).toBe(300_000);
 	});
 });
 

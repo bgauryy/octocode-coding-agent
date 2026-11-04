@@ -1,4 +1,3 @@
-import { methods } from "@agentclientprotocol/sdk";
 import { expect, it } from "vitest";
 import { FakeWorker, harness } from "./acp-test-harness.ts";
 
@@ -55,7 +54,8 @@ it("rejects a changed final identity without leaking startup output", async () =
 	await h.initialize();
 	await expect(h.newSession()).rejects.toThrow("Native session identity changed");
 	expect(worker.stop).toHaveBeenCalledOnce();
-	await expect(
-		h.connection.agent.request(methods.agent.session.close, { sessionId: "wrong-identity" }),
-	).rejects.toThrow();
+	await expect(h.prompt("wrong-identity")).rejects.toMatchObject({
+		code: -32002,
+		data: { sessionId: "wrong-identity" },
+	});
 });

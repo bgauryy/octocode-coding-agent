@@ -5,7 +5,8 @@ import { renderLayoutFrame } from "./layout.ts";
 import type { Terminal } from "./terminal.ts";
 import type { ImageProtocol, TerminalCapabilities } from "./terminal-image/types.ts";
 import { getCapabilities, setCapabilities } from "./terminal-image/capabilities.ts";
-import { isImageLine } from "./terminal-image.ts";
+import { registerExitRestore } from "./terminal/exit-restore.ts";
+import { clipLinesToWidth } from "./tui/clip.ts";
 import {
 	type Component,
 	Container,
@@ -27,7 +28,7 @@ import {
 	EXIT_ALT_SCREEN,
 	OSC133_ZONE_PREFIX,
 } from "./tui-alt-screen/constants.ts";
-import { buildAltScreenExit, renderAltScreenOutput } from "./tui-alt-screen/frame.ts";
+import { buildAltScreenExit, buildAltScreenForcedExit, renderAltScreenOutput } from "./tui-alt-screen/frame.ts";
 import { deleteKittyImagesFor } from "./tui-alt-screen/kitty-cache.ts";
 import { AltScreenMouseGesture, type AltScreenMouseGestureHost } from "./tui-alt-screen/mouse-gesture.ts";
 import { getMouseTrackingSequence } from "./tui-alt-screen/mouse-input.ts";
@@ -38,8 +39,6 @@ import { AltScreenSearchController, type AltScreenSearchHost } from "./tui-alt-s
 import { AltScreenSelection, type AltScreenSelectionHost } from "./tui-alt-screen/selection-controller.ts";
 import type { CachedKittyImage, ScrollToEndIndicatorRect, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 import { type AltScreenViewportKeysHost, handleViewportKeys } from "./tui-alt-screen/viewport-keys.ts";
-import { visibleWidth } from "./utils/width.ts";
-import { sliceByColumn } from "./utils/columns.ts";
 import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
 
 /** Alternate-screen TUI with a scrollable, application-owned viewport. */
@@ -56,6 +55,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly implicitScrollView: ScrollView;
 	private readonly flashes: AltScreenFlashContainer;
 	private altScreenActive = false;
+	private disposeExitRestore?: () => void;
 	private imageProtocol: ImageProtocol = null;
 	private savedCapabilities?: TerminalCapabilities;
 	private readonly uploadedKittyImages = new Map<number, CachedKittyImage>();
@@ -237,6 +237,9 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.scrollbar.stopScrollbarDrag();
 		this.flashes.dispose();
 		this.altScreenActive = true;
+		this.disposeExitRestore = registerExitRestore(() =>
+			this.terminal.write(buildAltScreenForcedExit(this.mouseEnabled)),
+		);
 		const capabilities = getCapabilities();
 		this.imageProtocol = capabilities.images;
 		this.uploadedKittyImages.clear();
@@ -270,6 +273,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.scrollbar.stopScrollbarDrag();
 		this.mouse.clearComponentMouseGesture();
 		this.flashes.dispose();
+		this.disposeExitRestore?.();
 		if (!this.altScreenActive) return;
 		this.terminal.write(
 			`${BEGIN_SYNCHRONIZED_OUTPUT}${this.deleteKittyImages()}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`,
@@ -285,11 +289,9 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		} else {
 			const width = Math.max(1, this.terminal.columns);
 			const documentLines = this.resolveFakeCursors(this.render(width)).map((line) =>
-				line.replace(OSC133_ZONE_PREFIX, ""),
+				line.replace(OSC133_ZONE_PREFIX, "").replaceAll(CURSOR_MARKER, ""),
 			);
-			this.lastDocument = this.applyLineResets(documentLines.map((line) => line.replaceAll(CURSOR_MARKER, ""))).map(
-				(line) => (isImageLine(line) || visibleWidth(line) <= width ? line : sliceByColumn(line, 0, width, true)),
-			);
+			this.lastDocument = clipLinesToWidth(this.applyLineResets(documentLines), width);
 			this.terminal.write(buildAltScreenExit(this.lastDocument));
 		}
 		if (this.savedCapabilities) {
@@ -372,10 +374,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		screen = compositeFlashLines(screen, this.flashes.render(width).slice(-height), width, height);
 
 		const cursorPos = this.extractCursorPosition(screen, height);
-		screen = this.applyLineResets(screen).map((line) => {
-			if (isImageLine(line) || visibleWidth(line) <= width) return line;
-			return sliceByColumn(line, 0, width, true);
-		});
+		screen = clipLinesToWidth(this.applyLineResets(screen), width);
 
 		const { buffer, fullRedraw } = renderAltScreenOutput({
 			screen,

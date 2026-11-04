@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { MAX_COMPACTION_INSTRUCTIONS } from "../../core/compaction/manual-options.ts";
@@ -22,8 +23,7 @@ const COMPACT_MIN_SHARE = 0.5;
 const COMPACT_COOLDOWN_TURNS = 2;
 export const COMPACT_RESUME_TYPE = "octocode-compact-resume";
 
-export const COMPACT_RESUME_TEXT =
-	"[Compaction] The compaction you requested is done. Continue the task from the summary; read again what you need.";
+export const COMPACT_RESUME_TEXT = renderInstruction("notices/compaction/compact-done.md");
 
 interface Pending {
 	focus?: string;
@@ -92,7 +92,11 @@ export class CompactRequests {
 	 * After a run settles: runs the pending request, then resumes the task with a hidden message. A run the user stopped
 	 * drops it, and so does a compaction that already ran since the request.
 	 */
-	settle(api: Pick<ExtensionAPI, "sendMessage">, ctx: Pick<ExtensionContext, "compact">, aborted: boolean): void {
+	settle(
+		api: Pick<ExtensionAPI, "sendMessage">,
+		ctx: Pick<ExtensionContext, "compact" | "hasUI">,
+		aborted: boolean,
+	): void {
 		const pending = this.#pending;
 		this.#pending = undefined;
 		if (!pending || aborted || pending.compactions !== this.#compactions) return;
@@ -110,10 +114,11 @@ export class CompactRequests {
 				this.#inFlight = false;
 				send(COMPACT_RESUME_TEXT, true);
 			},
-			// The session reports the failure to the user; the model learns of it on its next turn, without a new one.
+			// The session reports the failure to the user; the model learns of it on its next turn, without a new one. A
+			// headless run has no next turn: its last reply was the status line it was told to end with, so it goes on from here.
 			onError: (error) => {
 				this.#inFlight = false;
-				send(`[Compaction] The compaction you requested did not run: ${errorMessage(error)}`, false);
+				send(renderInstruction("notices/compaction/compact-failed.md", { error: errorMessage(error) }), !ctx.hasUI);
 			},
 		});
 	}
@@ -127,7 +132,7 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 		timedTool({
 			name: COMPACT_TOOL,
 			label: "Compact",
-			promptSnippet: "At a task boundary when the context is over half full, or when the user asks",
+			promptSnippet: renderInstruction("tools/compact/snippet.md"),
 			description:
 				"Summarize older turns to free context once this reply ends; the task then resumes from the summary, so end your reply after calling it.",
 			parameters: Type.Object({

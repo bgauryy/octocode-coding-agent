@@ -165,7 +165,8 @@ describe("installed MCP and skills through the native SDK", () => {
 						expect(names).toEqual(expect.arrayContaining(["file", "agent", "archive"]));
 						// Browsing defaults to the browser MCP server (docs/native-features.md); no role has a native `browser` tool.
 						expect(names).not.toContain("browser");
-						if (role === "browser") expect(names).not.toContain("bash");
+						// Every child keeps `bash` (SHELL_TOOLS); a read-only role's permission layer refuses its mutations.
+						if (role === "browser") expect(names).toContain("bash");
 						const reader = names.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name));
 						expect(reader).toBeDefined();
 						const read = (file: string, end: number): JsonObject =>
@@ -174,7 +175,7 @@ describe("installed MCP and skills through the native SDK", () => {
 								: { path: file, startLine: 1, endLine: end, minify: "none" };
 						expect(getCurrentSystemPrompt(context.messages)).toContain("<name>octocode-research</name>");
 						expect(getCurrentSystemPrompt(context.messages)).toContain(
-							"Use the skill tool with a skill's name to load it",
+							"Use the skill tool, one call per name, to load every skill",
 						);
 						return fauxAssistantMessage(
 							[

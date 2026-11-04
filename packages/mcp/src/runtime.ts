@@ -16,6 +16,7 @@ import {
 	createConnectionAuthProvider,
 	mcpOAuthSettings,
 	needsSignIn,
+	callWhileDownError,
 	signInRequiredMessage,
 	unavailableError,
 	usesOAuth,
@@ -157,7 +158,7 @@ export class McpServerConnection implements McpToolCaller {
 		expireSession: (client) => {
 			if (this.client === client) {
 				this.client = undefined;
-				this.withdrawCatalog();
+				this.listRevision++;
 			}
 		},
 		requireSignIn: async (client, error) => {
@@ -167,6 +168,23 @@ export class McpServerConnection implements McpToolCaller {
 			return new Error(signInRequiredMessage(this.entry));
 		},
 	};
+
+	/**
+	 * The error for a call made while the connection is not up, or undefined when it is connected. A call does not wait
+	 * for the connection: after a drop the next call starts the reconnect in the background (its outcome shows in
+	 * `state` and `error`) and fails with the state and how to restart the server.
+	 */
+	rejectWhileDown(): Error | undefined {
+		const failure = callWhileDownError(this.entry, {
+			state: this.state,
+			error: this.error,
+			stopped: this.stopped,
+			closed: this.closed,
+		});
+		if (failure && this.state === "disconnected" && !this.stopped && !this.closed)
+			void this.getClient().catch(() => undefined);
+		return failure;
+	}
 
 	/**
 	 * Cancel a connect in progress, for example a hung one that a reconnect replaces. Its callers see the failure;
@@ -210,11 +228,12 @@ export class McpServerConnection implements McpToolCaller {
 	async signOut(): Promise<void> {
 		await this.opening?.catch(() => undefined);
 		if (this.client) await this.dropClient(this.client);
+		this.withdrawCatalog();
 		if (!this.closed) this.markNeedsAuth();
 	}
 
+	/** The tools stay declared: a server that needs a sign-in again is a transient state, not a withdrawal. */
 	private markNeedsAuth(): void {
-		this.withdrawCatalog();
 		this.state = "needs-auth";
 		this.error = undefined;
 		this.changed();
@@ -227,7 +246,7 @@ export class McpServerConnection implements McpToolCaller {
 	private async dropClient(client: McpClient): Promise<void> {
 		if (this.client === client) {
 			this.client = undefined;
-			this.withdrawCatalog();
+			this.listRevision++;
 		}
 		await client.close().catch(() => undefined);
 	}
@@ -299,7 +318,7 @@ export class McpServerConnection implements McpToolCaller {
 			this.markNeedsAuth();
 			return new Error(signInRequiredMessage(this.entry));
 		}
-		this.withdrawCatalog();
+		this.listRevision++;
 		if (!this.closed) this.backoff.failed();
 		this.state = this.closed ? "closed" : "failed";
 		this.error = this.stderrTail ? `${errorMessage(error)}\n${this.stderrTail}` : errorMessage(error);
@@ -307,11 +326,14 @@ export class McpServerConnection implements McpToolCaller {
 		return new Error(`MCP server "${this.entry.name}" failed to connect: ${this.error}`);
 	}
 
-	/** The transport dropped. The next call reconnects; until then the status shows why. */
+	/**
+	 * The transport dropped. The tools stay declared, so the provider's cached prompt prefix is not rewritten
+	 * (`rejectWhileDown` fails calls until the server is back); the status shows why.
+	 */
 	private handleClientClose(client: McpClient, stdio: StdioTransport | undefined): void {
 		if (this.client !== client || this.closed) return;
 		this.client = undefined;
-		this.withdrawCatalog();
+		this.listRevision++;
 		this.state = "disconnected";
 		const stderr = stderrTail(stdio);
 		this.error = stderr ? `Connection closed\n${stderr}` : "Connection closed";
@@ -326,6 +348,7 @@ export class McpServerConnection implements McpToolCaller {
 		this.onTools(this);
 	}
 
+	/** Remove the catalog: the server is stopped, signed out or shut down, or its catalog could not be verified. A drop or a failed reconnect keeps it. */
 	private withdrawCatalog(): void {
 		this.listRevision++;
 		if (this.tools.length === 0 && this.instructions === undefined) return;
@@ -343,6 +366,7 @@ export class McpServerConnection implements McpToolCaller {
 			this.error = undefined;
 		} catch (error) {
 			if (this.client !== client || this.closed || revision !== this.listRevision) return;
+			// Unlike a drop, the connection is up but its catalog is unverified, so its tools are withdrawn.
 			this.withdrawCatalog();
 			this.error = `Failed to refresh tools: ${errorMessage(error)}`;
 		}

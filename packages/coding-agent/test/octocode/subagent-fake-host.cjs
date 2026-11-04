@@ -521,6 +521,15 @@ async function scenario() {
 		emit({ type: "tool_execution_start", toolName: "bash", args: { command: "wait for the gate" } });
 		while (!fs.existsSync(process.env.OCTOCODE_FAKE_GATE)) await new Promise((resolve) => setTimeout(resolve, 20));
 		emit(say("finished after asking"));
+	} else if (task.startsWith("loop halted")) {
+		// The guard refused the call and ended the run, so no final answer follows.
+		emit({
+			type: "extension_ui_request",
+			id: "n-loop",
+			method: "notify",
+			message: "Loop guard ended this run: 8 identical bash calls with the same outcome.",
+			notifyType: "error",
+		});
 	} else if (task.startsWith("slow")) {
 		emit({ type: "tool_execution_start", toolName: "bash", args: { command: "sleep 60" } });
 		end = "hold";

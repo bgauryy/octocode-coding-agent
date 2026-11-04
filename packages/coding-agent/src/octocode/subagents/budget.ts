@@ -1,16 +1,20 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { envInt } from "../../../../common/src/env.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { type ResultContract, unavailableResult } from "./result-schema.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import type { RunDetails } from "./run-types.ts";
 import { stopFacts } from "./stop-facts.ts";
+import type { BudgetStanding } from "../team/model.ts";
 import type { Team } from "../team/session.ts";
 import type { Usage } from "@octocodeai/octocode-ai";
 
 /**
- * A subagent task's request budget: how many model requests the child may make before the parent asks it to wrap up (the
- * soft limit) and, past `HARD_LIMIT_FACTOR` times that, stops it. The parent counts one request per assistant reply
+ * A subagent task's request budget: how many model requests the child may make before the parent tells it where it stands
+ * (the soft limit) and, past `HARD_LIMIT_FACTOR` times that, stops it. The parent counts one request per assistant reply
  * (`reduceEvent`); a compaction summary is not a reply. Resuming the same child continues its saved request count.
+ * The child may ask for more; its parent can grant more to this run (`RunningBudgets`), and a resume at or past the soft
+ * limit is itself a grant. Nothing waits for an answer: without one the child stops at the hard limit, as ever.
  */
 
 export const MAX_REQUESTS_ENV = "OCTOCODE_SUBAGENT_MAX_REQUESTS";
@@ -38,27 +42,66 @@ export function maxRequests(profile?: Pick<AgentProfile, "maxRequests">, env: No
 	return value >= 0 ? value : DEFAULT_MAX_REQUESTS;
 }
 
-/** What the parent tells a child that reached its soft limit. */
-export const steerMessage = (used: number, soft: number): string =>
-	`You have used ${used} of ${soft} model requests. Finish now: report what is done, what is partial, and the next step.`;
+/**
+ * What the parent tells a child that reached its soft limit. `ask`: the parent can answer during this run, so the child
+ * may ask it for more; else (a foreground run, or no team) it can only say so in its report. `continued`: a resumed task.
+ */
+export const steerMessage = (
+	used: number,
+	soft: number,
+	hard: number = hardLimit(soft),
+	options: { continued?: boolean; ask?: boolean } = {},
+): string =>
+	renderInstruction("notices/subagents/budget-steer.md", {
+		used,
+		soft,
+		hard,
+		left: Math.max(0, hard - used),
+		continued: options.continued === true,
+		ask: options.ask === true,
+	});
 
 /**
  * Applies the budget to a child's replies: one steer at the soft limit, one stop at the hard limit. Both only while the
- * reply asked for tools (the child goes on); a final answer needs neither.
+ * reply asked for tools (the child goes on); a final answer needs neither. `canAsk`: the steer may tell the child to ask its
+ * parent. `resumeIsGrant`: a run resumed at or past the soft limit starts a whole allowance from there; false (a peer's
+ * relayed message, which no parent decided) leaves it within the limits it had.
  */
 export class RequestBudget {
 	private steered = false;
 	private stoppedAt: number | undefined;
-	private readonly soft: number;
+	private soft: number;
+	private hard: number;
+	/** Replies so far, saved ones included. */
+	private used: number;
+	/** The requests a resume from the hard limit gets. */
+	private readonly allowance: number;
 	private readonly steer: (message: string) => void;
 	private readonly stop: () => void;
 	private readonly previous: number;
+	private readonly canAsk: boolean;
+	/** This run continues a child that was at or past its soft limit. */
+	private readonly continued: boolean;
 
-	constructor(soft: number, steer: (message: string) => void, stop: () => void, previous = 0) {
-		this.soft = soft;
+	constructor(
+		soft: number,
+		steer: (message: string) => void,
+		stop: () => void,
+		previous = 0,
+		{ canAsk = true, resumeIsGrant = true }: { canAsk?: boolean; resumeIsGrant?: boolean } = {},
+	) {
+		this.allowance = soft < 1 ? 0 : hardLimit(soft);
+		this.continued = soft >= 1 && previous >= soft;
+		const start = this.continued && resumeIsGrant ? previous : 0;
+		this.soft = soft < 1 ? 0 : soft + start;
+		this.hard = this.allowance + start;
 		this.steer = steer;
 		this.stop = stop;
 		this.previous = previous;
+		this.used = previous;
+		this.canAsk = canAsk;
+		// Without a grant the run is past its soft limit already: the resume's own text is all it is told.
+		this.steered = this.continued && !resumeIsGrant;
 	}
 
 	/** Whether the budget stopped the run; its request count. */
@@ -66,50 +109,117 @@ export class RequestBudget {
 		return this.stoppedAt;
 	}
 
-	get limit(): number {
-		return this.soft;
+	/** The limits a report names, and what a resume from them would get. */
+	get limits(): { soft: number; hard: number; allowance: number } {
+		return { soft: this.soft, hard: this.hard, allowance: this.allowance };
 	}
 
-	/** A resumed task already at its soft limit sees the wrap-up instruction before spending another request. */
+	/** Where the child stands; undefined when the budget is off. */
+	get usage(): BudgetStanding | undefined {
+		return this.soft < 1 ? undefined : { used: this.used, soft: this.soft, hard: this.hard };
+	}
+
+	/** A task resumed at or past the soft limit is told where its run stops: its parent asked for this work, so it does it. */
 	prompt(task: string): string {
-		if (this.soft < 1 || this.previous < this.soft) return task;
-		this.steered = true;
-		return `${task}\n\n${steerMessage(this.previous, this.soft)}`;
+		if (!this.continued) return task;
+		return `${task}\n\n${steerMessage(this.previous, this.soft, this.hard, { continued: true })}`;
+	}
+
+	/** Adds `requests` to both limits of this run. A new soft limit still ahead gets its own steer, so the child can ask again. */
+	grant(requests: number): BudgetStanding | undefined {
+		if (this.soft < 1 || this.stoppedAt !== undefined) return undefined;
+		this.soft += requests;
+		this.hard += requests;
+		if (this.used < this.soft) this.steered = false;
+		return this.usage;
 	}
 
 	/** A reply ended: `count` replies in this process; `continues`: it asked for tools. */
 	onReply(count: number, continues: boolean): void {
-		count += this.previous;
+		this.used = count + this.previous;
 		if (this.soft < 1 || this.stoppedAt !== undefined || !continues) return;
-		if (count >= hardLimit(this.soft)) {
-			this.stoppedAt = count;
+		if (this.used >= this.hard) {
+			this.stoppedAt = this.used;
 			this.stop();
-		} else if (count >= this.soft && !this.steered) {
+		} else if (this.used >= this.soft && !this.steered) {
 			this.steered = true;
-			this.steer(steerMessage(count, this.soft));
+			this.steer(steerMessage(this.used, this.soft, this.hard, { ask: this.canAsk }));
 		}
 	}
 }
 
+/**
+ * The budgets of the children running now, by id: one per registration of the `agent` tool, so a parent reaches only the
+ * children it started. A run leaves as soon as it is over or stopping, and a grant then has nothing to raise.
+ */
+export class RunningBudgets {
+	private readonly running = new Map<string, RequestBudget>();
+
+	add(id: string, budget: RequestBudget): void {
+		this.running.set(id, budget);
+	}
+
+	remove(id: string, budget: RequestBudget): void {
+		if (this.running.get(id) === budget) this.running.delete(id);
+	}
+
+	usage(id: string): BudgetStanding | undefined {
+		return this.running.get(id)?.usage;
+	}
+
+	/** Adds `requests` to child `id`'s limits for this run; the new standing, or the refusal. */
+	grant(id: string, requests: number): BudgetStanding | string {
+		const budget = this.running.get(id);
+		if (!budget) {
+			const ids = [...this.running.keys()];
+			return `${id} is not running as a subagent you started: it has not started yet, or it finished or was stopped. A grant raises a running child; continue a finished one with \`agent\` type \`task\` and \`resume: ${id}\`. Running: ${ids.join(", ") || "none"}.`;
+		}
+		if (!budget.usage) return `${id} has no request limit: its budget is off, so there is nothing to raise.`;
+		return (
+			budget.grant(requests) ??
+			`${id} is not running: the budget has just stopped it. Continue it with \`agent\` type \`task\` and \`resume: ${id}\`.`
+		);
+	}
+}
+
 /** The first line of a report from a run the budget stopped. */
-export const budgetHeading = (requests: number, soft: number): string =>
-	`partial: stopped at the model request budget (${requests} requests; limit ${soft}, hard limit ${hardLimit(soft)}).`;
+export const budgetHeading = (requests: number, soft: number, hard: number = hardLimit(soft)): string =>
+	renderInstruction("notices/subagents/budget-stop.md", {
+		outcome: "partial",
+		requests,
+		soft,
+		hard,
+	});
+
+/** The child a budget stop reports on: who to resume, whether it can be, and the result it never delivered. */
+export interface BudgetChild {
+	id: string;
+	isolation?: unknown;
+	resultContract?: ResultContract;
+}
 
 /**
- * The outcome of a run the hard limit stopped: `partial`, led by a line naming the budget, then the child's last
- * progress. `unavailable` when the run has a result contract: a stopped child never delivered the result.
+ * The outcome of a run the hard limit stopped: `partial`, led by a line naming the budget and one saying how to continue
+ * the child, then its last progress. `unavailable` when the run has a result contract: a stopped child never delivered
+ * the result. Nothing is lost by the stop: the work and the transcript stay, and a resume picks them up.
  */
 export function budgetOutcome(
 	requests: number,
-	soft: number,
+	limits: { soft: number; hard: number; allowance: number },
+	child: BudgetChild,
 	lastProgress: string,
 	usage: Usage,
-	contract?: ResultContract,
 ): SubagentOutcome {
 	const progress = lastProgress.trim();
+	const next = renderInstruction("notices/subagents/budget-continue.md", {
+		id: child.id,
+		isolated: child.isolation !== undefined,
+		allowance: limits.allowance,
+	});
+	const { soft, hard } = limits;
 	return {
-		text: `${budgetHeading(requests, soft)}${progress ? `\nLast progress:\n${progress}` : ""}`,
-		...(contract ? { structured: unavailableResult(contract) } : {}),
+		text: `${budgetHeading(requests, soft, hard)}\n${next}${progress ? `\nLast progress:\n${progress}` : ""}`,
+		...(child.resultContract ? { structured: unavailableResult(child.resultContract) } : {}),
 		usage,
 		outcome: "partial",
 		outcomeSource: "first",

@@ -69,9 +69,11 @@ describe("file tool", () => {
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toMatch(/does not exist/);
 		fs.writeFileSync(file, "one");
-		for (const mode of ["write", "edit", "delete"] as const)
+		// An edit of an unread file is left to its anchors (run.ts re-checks each oldText); a write and a delete need the read.
+		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
+		for (const mode of ["write", "delete"] as const)
 			expect(guard.check(file, mode, "a.txt")).toMatch(
-				/already exists and was not read in this session\. Read it first: localFetch \{path:"a\.txt"\} or bash `sed -n '1,200p' a\.txt`\./,
+				/already exists and was not read in this session\. Read it first: localFetch \{queries:\[\{path:"a\.txt"\}\]\}\. A plain `cat` or `sed -n` print in bash also counts\./,
 			);
 		guard.record(file);
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
@@ -84,7 +86,7 @@ describe("file tool", () => {
 		fs.writeFileSync(file, "one\ntwo\nthree\nfour");
 		const guard = new FileGuard();
 		guard.reader = BASH_READER;
-		expect(guard.check(file, "edit", "a.txt")).toMatch(
+		expect(guard.check(file, "write", "a.txt")).toMatch(
 			/was not read in this session\. Read it first: bash `sed -n '1,200p' a\.txt`/,
 		);
 		guard.record(file, undefined, true, [1, 2]);
@@ -205,7 +207,7 @@ describe("file tool", () => {
 		expect(guard.check(file, "write", "a.txt")).toMatch(
 			/earlier read of it is no longer in your context[\s\S]*Read it again/,
 		);
-		expect(guard.check(other, "edit", "b.txt")).toMatch(/not read in this session/);
+		expect(guard.check(other, "write", "b.txt")).toMatch(/not read in this session/);
 		guard.record(file);
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
 		// A rewound file that is gone can be created again without a read.
@@ -344,7 +346,7 @@ describe("file tool", () => {
 			},
 			{ cwd },
 		);
-		expect(guard.inspect(file, "edit", "a.txt").refusal).toMatch(/not read in this session/);
+		expect(guard.inspect(file, "edit", "a.txt").unread).toBe(true);
 		await handlers.get("tool_result")!(
 			{ toolName: "read", input: { path: "a.txt" }, content: [{ type: "text", text: "one" }], isError: false },
 			{ cwd },
@@ -372,7 +374,7 @@ describe("file tool", () => {
 			...extra,
 		});
 		await handlers.get("tool_result")!(localFetch({ toolCallId: "script/1", parentToolCallId: "script" }), { cwd });
-		expect(guard.inspect(file, "edit", "a.txt").refusal).toMatch(/not read in this session/);
+		expect(guard.inspect(file, "edit", "a.txt").unread).toBe(true);
 		await handlers.get("tool_result")!(localFetch({ toolCallId: "direct" }), { cwd });
 		expect(guard.inspect(file, "edit", "a.txt").refusal).toBeUndefined();
 	});
@@ -698,7 +700,7 @@ describe("file tool", () => {
 			},
 			{ cwd },
 		);
-		const refusal = /you have seen lines 11–15 of its 30 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/;
+		const refusal = /you have seen lines 11–15 of its 30 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/;
 		expect(guard.check(file, "write", "a.txt")).toMatch(refusal);
 		// A delete needs only proof that the read was of the current file; an edit its exact match.
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
@@ -746,7 +748,7 @@ describe("file tool", () => {
 		const reloaded = new FileGuard();
 		reloaded.restore(contextReads(session as never));
 		expect(reloaded.check(file, "write", "a.txt")).toMatch(
-			/you have seen lines 1–5 of its 30 lines[\s\S]*ranges=\["6-[0-9]+"\]\)/,
+			/you have seen lines 1–5 of its 30 lines[\s\S]*ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/,
 		);
 		expect(reloaded.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(reloaded.check(file, "edit", "a.txt")).toBeUndefined();
@@ -818,7 +820,7 @@ describe("file tool", () => {
 		const guard = new FileGuard();
 		guard.restore([{ file, at: Date.now() + 1000, partial: true }]);
 		expect(guard.check(file, "write", "a.txt")).toMatch(
-			/you have seen only part of its 1 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/,
+			/you have seen only part of its 1 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/,
 		);
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
@@ -882,7 +884,7 @@ describe("file tool", () => {
 			await read({}, text(1, 2000), { details: cut });
 			const refusal = await run("write").catch((error: Error) => error.message);
 			expect(refusal).toMatch(
-				/a write replaces the whole file, but you have seen lines 1–2000 of its 3000 lines\. Read the rest with `localFetch` \(ranges=\["2001-[0-9]+"\]\)/,
+				/a write replaces the whole file, but you have seen lines 1–2000 of its 3000 lines\. Read the rest with `localFetch` \(ranges:\[\{startLine:2001,endLine:[0-9]+\}\]\)/,
 			);
 			// Never asks for what a big file cannot give.
 			expect(refusal).not.toMatch(/whole file \(no offset|read the whole file/);
@@ -911,7 +913,7 @@ describe("file tool", () => {
 				details: { truncation: { truncated: true, outputLines: 500 } },
 			});
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1501–2000 of its 3001 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/,
+				/you have seen lines 1501–2000 of its 3001 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/,
 			);
 		});
 
@@ -990,13 +992,13 @@ describe("file tool", () => {
 			// Same line count: the lines the agent saw are where it saw them.
 			await edit([{ oldText: "line 2\n", newText: "LINE 2\n" }]);
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges=\["6-[0-9]+"\]\)/,
+				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/,
 			);
-			await expect(run("write")).rejects.toThrow(/ranges=\["6-[0-9]+"\]\)/);
+			await expect(run("write")).rejects.toThrow(/ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/);
 			// A different line count moved what lies below, so the ranges start over.
 			await edit([{ oldText: "LINE 2\n", newText: "LINE 2\nextra\n" }]);
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen only part of its 3001 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/,
+				/you have seen only part of its 3001 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/,
 			);
 			// An edit keeps the digest it wrote, so the next edit and a delete still pass; reading the rest lifts the write refusal.
 			await edit([{ oldText: "LINE 2\nextra\n", newText: "LINE 2\n" }]);
@@ -1018,8 +1020,8 @@ describe("file tool", () => {
 		it("counts the tool's own write as a whole view", async () => {
 			const { file, guard, read, run } = setup();
 			await read({ offset: 1, limit: 5 }, text(1, 5));
-			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges=\["6-[0-9]+"\]\)/);
-			await expect(run("write")).rejects.toThrow(/ranges=\["6-[0-9]+"\]\)/);
+			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/);
+			await expect(run("write")).rejects.toThrow(/ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/);
 			guard.restore([]);
 			guard.record(file);
 			await run("write");
@@ -1035,9 +1037,9 @@ describe("file tool", () => {
 			await read({ offset: 1, limit: 3 }, "one\n2\nthree");
 			// Only what the new read showed counts: the outside line (and the rest) are unseen.
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–3 of its 7 lines[\s\S]*ranges=\["4-[0-9]+"\]\)/,
+				/you have seen lines 1–3 of its 7 lines[\s\S]*ranges:\[\{startLine:4,endLine:[0-9]+\}\]\)/,
 			);
-			await expect(run("write")).rejects.toThrow(/ranges=\["4-[0-9]+"\]\)/);
+			await expect(run("write")).rejects.toThrow(/ranges:\[\{startLine:4,endLine:[0-9]+\}\]\)/);
 			await read({ offset: 4 }, "four\nfive\nsix\noutside");
 			await run("write");
 			expect(fs.readFileSync(file, "utf8")).toBe("new\n");
@@ -1105,7 +1107,7 @@ describe("file tool", () => {
 			).toEqual([{ file, at: later + 20 }]);
 			guard.restore(reads(edit(0)));
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges=\["6-[0-9]+"\]\)/,
+				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/,
 			);
 			guard.restore(reads(whole));
 			expect(guard.check(file, "write", "big.txt")).toBeUndefined();
@@ -1163,7 +1165,7 @@ describe("file tool", () => {
 					},
 				} as never),
 			);
-			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges=\["2001-/);
+			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges:\[\{startLine:2001,/);
 		});
 	});
 

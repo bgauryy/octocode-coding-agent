@@ -100,8 +100,8 @@ describe("agent context boundaries", () => {
 		};
 		const inactive = await prompt(["read"]);
 		expect(inactive).toContain("no lookup tool is available");
-		expect(inactive).not.toContain("# Delegation");
-		expect(inactive).not.toContain("# Subagent");
+		expect(inactive).not.toContain("## Manage running children");
+		expect(inactive).not.toContain("You are a subagent");
 		const active = ["read", "agent", "mcp__octocode__localSearch"];
 		expect(await prompt(active)).toContain("first profile");
 		description = "updated profile";

@@ -15,6 +15,8 @@ import { IdleStatus } from "../components/status-indicator.ts";
 import { ProgramStatusReporter } from "../program-status-reporter.ts";
 import { getEditorTheme, setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { InteractiveThemeController } from "../theme/theme-controller.ts";
+import { bindUiState } from "../state/bind-ui.ts";
+import { createUiStore } from "../state/store.ts";
 import { createInteractiveTui, createInteractiveTuiReference } from "../tui-renderer.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { bindInteractiveModeMethods } from "./host-methods.ts";
@@ -49,7 +51,6 @@ export function createInteractiveModeHost(
 		autocompleteProvider: undefined,
 		autocompleteProviderWrappers: [],
 		fdPath: undefined,
-		activeSelectorToken: undefined,
 		activeSelectorDispose: undefined,
 		isInitialized: false,
 		onInputCallback: undefined,
@@ -66,6 +67,7 @@ export function createInteractiveModeHost(
 
 		lastSigintTime: 0,
 		lastEscapeTime: 0,
+		escapeQuietUntil: 0,
 		changelogMarkdown: undefined,
 		startupNoticesShown: false,
 		anthropicSubscriptionWarningShown: false,
@@ -83,11 +85,8 @@ export function createInteractiveModeHost(
 		// Tool execution tracking: toolCallId -> component
 		pendingTools: new Map(),
 
-		// Tool output expansion state
-		toolOutputExpanded: false,
-
-		// Thinking block visibility state
-		hideThinkingBlock: false,
+		// Tool output expansion, thinking visibility and the footer notice
+		uiStore: createUiStore(),
 		outputPad: 1,
 		mermaidMarkdownTransformer: createMermaidMarkdownTransformer({
 			getMode: () => host.settingsManager.getMermaidRenderingMode(),
@@ -101,9 +100,6 @@ export function createInteractiveModeHost(
 		unsubscribe: undefined,
 		signalCleanupHandlers: [],
 
-		// Track if editor is in bash mode (text starts with !)
-		isBashMode: false,
-
 		// Track current bash execution component
 		bashComponent: undefined,
 
@@ -115,9 +111,6 @@ export function createInteractiveModeHost(
 
 		// Auto-retry state
 		retryEscapeHandler: undefined,
-
-		// Messages queued while compaction is running
-		compactionQueuedMessages: [],
 
 		// Shutdown state
 		shutdownRequested: false,
@@ -162,8 +155,17 @@ export function createInteractiveModeHost(
 	const tuiMode = options.tuiMode ?? host.settingsManager.getTuiMode();
 	host.options = { ...options, tuiMode };
 	host.runtimeHost.setBeforeSessionInvalidate(() => {
-		// The outgoing session's queue and the compaction queue would be discarded with it; keep the text.
-		host.restoreQueuedMessagesToEditor();
+		// The outgoing session's queue would be discarded with it. Its messages stay a queue, in order and by kind,
+		// held by the interface and marked `carried`: they are listed in the new session and wait for the user to send
+		// (Enter in an empty editor), edit, take back (Alt+Up) or restore (Esc) them; nothing sends them on its own.
+		const { steering, followUp } = host.clearAllQueues();
+		if (steering.length + followUp.length + host.uiStore.getState().queue.compaction.length > 0) {
+			host.uiStore.getState().editHeldMessages((held) => {
+				for (const message of held) message.carried = true;
+				held.push(...steering.map((text) => ({ text, mode: "steer" as const, carried: true as const })));
+				held.push(...followUp.map((text) => ({ text, mode: "followUp" as const, carried: true as const })));
+			});
+		}
 		host.resetExtensionUI();
 	});
 	host.runtimeHost.setRebindSession(async () => {
@@ -215,7 +217,7 @@ export function createInteractiveModeHost(
 	host.footerContainer.addChild(host.footer);
 
 	// Load hide thinking block setting
-	host.hideThinkingBlock = host.settingsManager.getHideThinkingBlock();
+	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
 	host.outputPad = host.settingsManager.getOutputPad();
 
 	// Register themes from resource loader and initialize
@@ -227,5 +229,6 @@ export function createInteractiveModeHost(
 		initialThemeSetting: options.initialThemeSetting,
 	});
 	installFolderTrustAsker(host, options.createFolderTrustAsker);
+	bindUiState(host);
 	return host;
 }

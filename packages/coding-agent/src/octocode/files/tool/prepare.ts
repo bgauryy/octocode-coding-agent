@@ -58,7 +58,7 @@ export async function preparePatch(
 			throw new Error(
 				`The new text contains "${copied}": an output-cut placeholder, not file content. Re-read the source and write the full text.`,
 			);
-		return { data, digest, changed: judged.changed };
+		return { data, digest, changed: judged.changed, unread: check.unread === true };
 	};
 	for (const hunk of patch.hunks) {
 		const source = resolveToolPath(ctx.cwd, hunk.path);
@@ -93,7 +93,7 @@ export async function preparePatch(
 			if (!checked.data) throw new Error(`Cannot update missing file ${hunk.path}`);
 			if (checked.changed) {
 				const by = guard.modifierNote(source);
-				const lost = lostAnchor(hunk.path, edits, checked.data.toString("utf8"), guard.reader, by);
+				const lost = lostAnchor(hunk.path, edits, checked.data.toString("utf8"), guard.reader, by, checked.unread);
 				if (lost || !edits.length) throw new Error(lost ?? staleRefusal(hunk.path, guard.reader, by));
 			}
 			const content = transformPatch(checked.data.toString("utf8"), hunk.chunks);
@@ -146,7 +146,7 @@ export async function inspectQueryBatch(
 		if (rejectOverlap && repeated)
 			throw new Error("Overlapping rewritten file targets require sequential preparation; no changes applied");
 		targets.add(real);
-		const state = stateFolderRefusal(real, query.path, "the file tool");
+		const state = stateFolderRefusal(real, query.path, "the file tool", ctx.cwd);
 		if (state) throw new Error(state);
 		const root = workspaceRoot(ctx.cwd);
 		outside ||= !root || !changesOnlyWorkspace(real, root) || runsLater(real, root);
@@ -180,6 +180,7 @@ export async function inspectQueryBatch(
 					data?.toString("utf8") ?? "",
 					guard.reader,
 					inspection.by,
+					inspection.unread === true,
 				);
 				if (lost) throw new Error(lost);
 			}

@@ -6,7 +6,6 @@ const workspaceSourcePaths = {
 	telemetryTesting: fileURLToPath(new URL("./packages/telemetry/src/testing/index.ts", import.meta.url)),
 	mcpIndex: fileURLToPath(new URL("./packages/mcp/src/client/index.ts", import.meta.url)),
 	mcpOAuth: fileURLToPath(new URL("./packages/mcp/src/client/oauth/index.ts", import.meta.url)),
-	mcpTesting: fileURLToPath(new URL("./packages/mcp/src/client/testing/index.ts", import.meta.url)),
 	aiIndex: fileURLToPath(new URL("./packages/ai/src/index.ts", import.meta.url)),
 	aiCompat: fileURLToPath(new URL("./packages/ai/src/compat.ts", import.meta.url)),
 	aiOAuth: fileURLToPath(new URL("./packages/ai/src/oauth.ts", import.meta.url)),
@@ -48,7 +47,6 @@ export default defineConfig({
 			// The package root exports only the CLI and RPC; extension fixtures import the loader's host module.
 			{ find: /^@octocodeai\/octocodecode\/mcp$/, replacement: workspaceSourcePaths.mcpIndex },
 			{ find: /^@octocodeai\/octocodecode\/mcp\/oauth$/, replacement: workspaceSourcePaths.mcpOAuth },
-			{ find: /^@octocodeai\/octocodecode\/mcp\/testing$/, replacement: workspaceSourcePaths.mcpTesting },
 			{ find: /^@octocodeai\/octocode-ai$/, replacement: workspaceSourcePaths.aiIndex },
 			{ find: /^@octocodeai\/octocode-ai\/compat$/, replacement: workspaceSourcePaths.aiCompat },
 			{ find: /^@octocodeai\/octocode-ai\/oauth$/, replacement: workspaceSourcePaths.aiOAuth },

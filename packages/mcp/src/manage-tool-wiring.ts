@@ -31,7 +31,6 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		defaultActive: false,
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
-			contract: (name, tool) => state.presentation.contractOf(name, tool),
 			servers: (): ManagedMcpServer[] =>
 				state.servers.map((server) => ({
 					name: server.entry.name,

@@ -24,6 +24,8 @@ interface Run extends Outcome {
 interface Case {
 	/** Safe arguments; omitted means the bare command. */
 	args?: string;
+	/** Model requests the command makes; omitted means none. */
+	requests?: number;
 	check(run: Run, t: InteractiveHarness): void | Promise<void>;
 }
 
@@ -69,13 +71,16 @@ const CASES: Record<string, Case> = {
 	status: { check: says(/Session Info[\s\S]*File:/) },
 	llama: { check: says(/Configure llama\.cpp with \/login llama\.cpp/) },
 	mcp: { check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/octocode/) },
-	api: { check: says(/Octocode API is off/) },
+	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
+	api: { check: says(/Octocode API oc-[0-9a-f]+\s+socket: \S+\.sock\s+Discovery:[\s\S]*\/home\/\.octocode\/api/) },
 	archive: { check: says(/segment|archive|compact/i) },
-	hooks: { check: says(/Hooks: (on|off)/) },
-	config: { check: says(/Loaded context and where each item came from|Nothing is loaded/) },
+	harness: { check: asks(/MCP servers[\s\S]*Skills/) },
 	jobs: { check: says(/job/i) },
 	memory: { check: asks(/memor/i) },
-	plugins: { check: asks(/type to filter/) },
+	// Bare `/optimize` shows the state and offers the toggle; the terminal dismisses the dialog, which changes nothing.
+	optimize: { check: asks(/Prompt optimization is off/) },
+	// Reads the real process table: this session is listed (or the table is unreadable where `ps` is missing).
+	processes: { check: says(/Octocode processes:|No Octocode process found|cannot be read/) },
 	rewind: { check: says(/No file changes to rewind on this branch/) },
 	// Without a scope word `/purge` only prints its usage; deleting needs a preview and a typed confirmation.
 	purge: { check: says(/Usage: \/purge workspace\|all/) },
@@ -201,7 +206,8 @@ describe("every slash command through the terminal editor", () => {
 					expect(t.requests.at(-1)).toContain(name);
 					expect(result.text).toContain(`[skill] ${name}`);
 				} else {
-					noModel(result);
+					if (CASES[name].requests === undefined) noModel(result);
+					else expect(result.requests).toBe(CASES[name].requests);
 					await CASES[name].check(result, t);
 				}
 			} catch (error) {

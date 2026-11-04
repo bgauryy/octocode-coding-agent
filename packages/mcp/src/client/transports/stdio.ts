@@ -27,6 +27,8 @@ const DEFAULT_MAX_STDERR_BYTES = 64 * 1024;
 const DEFAULT_CLOSE_TIMEOUT_MS = 2_000;
 /** How long a server gets to exit on its own after stdin closes, before it is sent SIGTERM. */
 const STDIN_CLOSE_GRACE_MS = 500;
+/** After the spawned process exits, how long what it left in its stdout pipe has to arrive when something else holds the pipes. */
+const EXIT_STDOUT_DRAIN_MS = 250;
 const USE_PROCESS_GROUPS = process.platform !== "win32";
 
 /** The host's environment reduced to `DEFAULT_INHERITED_ENV_VARS` (exported functions are skipped, as the SDK does). */
@@ -43,6 +45,11 @@ export function getDefaultEnvironment(source: NodeJS.ProcessEnv = process.env): 
 /** Process groups of running servers, killed if the host exits without closing them. */
 const liveProcessGroups = new Set<number>();
 let exitHookInstalled = false;
+
+/** Pids of the stdio servers this process has running (each leads its own process group); empty on Windows. */
+export function liveStdioServerPids(): number[] {
+	return [...liveProcessGroups];
+}
 
 function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
 	const pid = child.pid;
@@ -132,6 +139,9 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 	private stderrBuffer = Buffer.alloc(0);
 	private started = false;
 	private closed = false;
+	private closing: Promise<void> | undefined;
+	/** Running from the spawned process's exit until the transport closes (`handleExit`). */
+	private exitDrain: ReturnType<typeof setTimeout> | undefined;
 	/** Ids of requests sent and not yet answered: an oversized response fails its request instead of stalling it. */
 	private readonly outstanding = new Set<JsonRpcId>();
 
@@ -177,15 +187,11 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		});
 		child.stderr?.on("data", (chunk: Buffer | string) => this.handleStderr(chunk));
 		child.stderr?.on("error", (error) => this.emitError(error));
+		child.once("exit", () => this.handleExit());
 		child.on("close", () => {
+			clearTimeout(this.exitDrain);
 			this.child = undefined;
-			if (this.stdoutBuffer.toString("utf8").trim()) {
-				this.emitError(new Error("MCP stdio server closed with an incomplete JSON-RPC message"));
-			}
-			this.stdoutBuffer = Buffer.alloc(0);
-			this.discardingLine = false;
-			this.outstanding.clear();
-			this.emitClose();
+			this.endStream();
 		});
 
 		await new Promise<void>((resolve, reject) => {
@@ -215,8 +221,40 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		});
 	}
 
-	async close(): Promise<void> {
+	close(): Promise<void> {
+		return (this.closing ??= this.shutdown());
+	}
+
+	/**
+	 * The spawned process exited. Its `close` waits for every holder of the pipes, which may never let go: a descendant that
+	 * inherited stderr, say. Node destroyed `child.stdin` at this exit, so nothing can reach whatever still runs. That holds
+	 * for a server that outlived its launcher (npx, uvx) too: its stdin is at end of file and no request can be sent to it, so
+	 * waiting would only leave the client "connected" to something it cannot use. What the process wrote before it exited is
+	 * already in the pipe and arrives within the drain; a reply only a survivor could still send is given up. Then the same
+	 * shutdown as `close()` runs for a launcher that already exited: SIGTERM to the group at once, SIGKILL, release the pipes.
+	 */
+	private handleExit(): void {
 		if (this.closed) return;
+		this.exitDrain = setTimeout(() => {
+			if (this.closed) return;
+			void this.close();
+			this.endStream();
+		}, EXIT_STDOUT_DRAIN_MS);
+		this.exitDrain.unref();
+	}
+
+	/** No more messages will count: report a message cut short, then tell the client. */
+	private endStream(): void {
+		if (this.stdoutBuffer.toString("utf8").trim()) {
+			this.emitError(new Error("MCP stdio server closed with an incomplete JSON-RPC message"));
+		}
+		this.stdoutBuffer = Buffer.alloc(0);
+		this.discardingLine = false;
+		this.outstanding.clear();
+		this.emitClose();
+	}
+
+	private async shutdown(): Promise<void> {
 		this.closed = true;
 		const child = this.child;
 		if (!child) {

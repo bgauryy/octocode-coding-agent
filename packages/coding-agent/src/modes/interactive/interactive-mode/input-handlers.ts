@@ -20,7 +20,6 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 type InputHandlersHost = Pick<
 	InteractiveModeHost,
 	| "cycleModel"
-	| "compactionQueuedMessages"
 	| "cycleThinkingLevel"
 	| "defaultEditor"
 	| "editor"
@@ -33,8 +32,9 @@ type InputHandlersHost = Pick<
 	| "handleDebugCommand"
 	| "handleDequeue"
 	| "handleFollowUp"
-	| "isBashMode"
+	| "loadEarlierFromKey"
 	| "lastEscapeTime"
+	| "escapeQuietUntil"
 	| "renderer"
 	| "restoreQueuedMessagesToEditor"
 	| "session"
@@ -47,28 +47,47 @@ type InputHandlersHost = Pick<
 	| "showUserMessageSelector"
 	| "toggleThinkingBlockVisibility"
 	| "toggleToolOutputExpansion"
+	| "uiStore"
 	| "ui"
-	| "updateEditorBorderColor"
 >;
+
+const hasQueuedMessages = (host: Pick<InputHandlersHost, "session" | "uiStore">) =>
+	host.session.getQueuedInputs().length > 0 || host.uiStore.getState().queue.compaction.length > 0;
+
+/**
+ * How long after an Esc that aborted or interrupted something further Esc presses are ignored by the double-Esc action.
+ * 500 ms is the double-Esc window itself: a press that close to the last one belongs to the same burst, whoever mashes
+ * Esc to stop a run does not mean "open the tree", and each ignored press extends the quiet time, so one long burst
+ * (100 ms apart in the audit) never ends in a tree. Only a pause of this length makes the next two Esc presses a gesture.
+ */
+const ESCAPE_BURST_MS = 500;
 
 export function setupKeyHandlers(host: InputHandlersHost): void {
 	// Set up handlers on defaultEditor - they use host.editor for text access
 	// so they work correctly regardless of which editor is active
 	host.defaultEditor.onEscape = () => {
+		const now = Date.now();
 		if (host.session.isStreaming) {
+			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
 			host.restoreQueuedMessagesToEditor({ abort: true });
 		} else if (host.session.isBashRunning) {
+			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
 			getApplicationPort(host.session).invoke("abortBash");
-		} else if (host.isBashMode) {
+		} else if (host.uiStore.getState().editor.bashMode) {
 			host.editor.setText("");
-			host.isBashMode = false;
-			host.updateEditorBorderColor();
+			host.uiStore.getState().setBashMode(false);
+		} else if (hasQueuedMessages(host)) {
+			// Idle with messages still queued (carried over a session switch): they return to the editor.
+			host.restoreQueuedMessagesToEditor();
+		} else if (now < host.escapeQuietUntil) {
+			// The tail of a burst that aborted something: not the start of a double-Esc.
+			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
+			host.lastEscapeTime = 0;
 		} else if (!host.editor.getText().trim()) {
 			// Double-escape with empty editor triggers /tree, /fork, or nothing based on setting
 			const action = host.settingsManager.getDoubleEscapeAction();
 			if (action !== "none") {
-				const now = Date.now();
-				if (now - host.lastEscapeTime < 500) {
+				if (now - host.lastEscapeTime < ESCAPE_BURST_MS) {
 					if (action === "tree") {
 						host.showTreeSelector();
 					} else {
@@ -102,21 +121,16 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	);
 	host.defaultEditor.onAction("app.message.followUp", () => void host.handleFollowUp());
 	host.defaultEditor.onAction("app.message.dequeue", () => host.handleDequeue());
+	host.defaultEditor.onAction("app.session.loadEarlier", () => host.loadEarlierFromKey());
 	// Up in an empty editor manages queued messages when there are any; otherwise it browses prompt history.
-	host.defaultEditor.onEmptyUp = () =>
-		(host.session.getQueuedInputs().length > 0 || host.compactionQueuedMessages.length > 0) &&
-		host.showQueueManager("last");
+	host.defaultEditor.onEmptyUp = () => hasQueuedMessages(host) && host.showQueueManager("last");
 	host.defaultEditor.onAction("app.session.new", () => void host.handleClearCommand());
 	host.defaultEditor.onAction("app.session.tree", () => host.showTreeSelector());
 	host.defaultEditor.onAction("app.session.fork", () => host.showUserMessageSelector());
 	host.defaultEditor.onAction("app.session.resume", () => host.showSessionSelector());
 
 	host.defaultEditor.onChange = (text: string) => {
-		const wasBashMode = host.isBashMode;
-		host.isBashMode = text.trimStart().startsWith("!");
-		if (wasBashMode !== host.isBashMode) {
-			host.updateEditorBorderColor();
-		}
+		host.uiStore.getState().setBashMode(text.trimStart().startsWith("!"));
 	};
 
 	// Handle clipboard paste (triggered on Ctrl+V). Copied files use their original paths,
@@ -148,7 +162,9 @@ export async function handleClipboardPaste(host: InputHandlersHost): Promise<voi
 			if (filePaths.some((filePath) => /\p{Cc}/u.test(filePath))) {
 				throw new Error("Clipboard file path contains control characters");
 			}
-			const paths = host.isBashMode ? filePaths.map(quoteIfNeeded).join(" ") : filePaths.join("\n");
+			const paths = host.uiStore.getState().editor.bashMode
+				? filePaths.map(quoteIfNeeded).join(" ")
+				: filePaths.join("\n");
 			const cursor = host.editor.getCursor?.();
 			const currentLine = cursor ? (host.editor.getText().split("\n")[cursor.line] ?? "") : "";
 			const characterBeforeCursor = cursor && cursor.col > 0 ? currentLine[cursor.col - 1] : "";

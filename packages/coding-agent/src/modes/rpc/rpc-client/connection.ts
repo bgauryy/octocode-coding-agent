@@ -3,6 +3,8 @@ import { stopTree } from "../../../octocode/shared/process.ts";
 import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "../jsonl.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
+import type { RpcReady } from "../session-identity.ts";
+import { collectUntilSettled, guarded, notifyAll } from "./listeners.ts";
 import type { RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./types.ts";
 import { leadsProcessGroup } from "../../../utils/shell.ts";
 
@@ -19,6 +21,7 @@ export class RpcConnection {
 		new Map();
 	private requestId = 0;
 	private stderr = "";
+	private lastProtocolError: string | undefined;
 	private exitError: Error | null = null;
 	private closeListeners = new Set<(error: Error) => void>();
 	private stopping?: Promise<void>;
@@ -228,101 +231,76 @@ export class RpcConnection {
 	 * Wait for agent to become idle (no streaming).
 	 * Resolves when agent_settled event is received.
 	 */
-	waitForIdle(timeout = 60000): Promise<void> {
-		if (this.exitError) return Promise.reject(this.exitError);
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(() => {
-				cleanup();
-				reject(new Error(`Timeout waiting for agent to become idle. Stderr: ${this.stderr}`));
-			}, timeout);
-
-			const unsubscribe = this.onEvent((event) => {
-				if (event.type === "agent_settled") {
-					cleanup();
-					resolve();
-				}
-			});
-			const unsubscribeClose = this.onClose((error) => {
-				cleanup();
-				reject(error);
-			});
-			function cleanup() {
-				clearTimeout(timer);
-				unsubscribe();
-				unsubscribeClose();
-			}
-		});
+	async waitForIdle(timeout = 60000): Promise<void> {
+		await this.untilSettled(timeout, "waiting for agent to become idle");
 	}
 
 	/**
 	 * Collect events until agent becomes idle.
 	 */
 	collectEvents(timeout = 60000): Promise<RpcEvent[]> {
-		if (this.exitError) return Promise.reject(this.exitError);
-		return new Promise((resolve, reject) => {
-			const events: RpcEvent[] = [];
-			const timer = setTimeout(() => {
-				cleanup();
-				reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
-			}, timeout);
+		return this.untilSettled(timeout, "collecting events");
+	}
 
-			const unsubscribe = this.onEvent((event) => {
-				events.push(event);
-				if (event.type === "agent_settled") {
-					cleanup();
-					resolve(events);
-				}
-			});
-			const unsubscribeClose = this.onClose((error) => {
-				cleanup();
-				reject(error);
-			});
-			function cleanup() {
-				clearTimeout(timer);
-				unsubscribe();
-				unsubscribeClose();
-			}
-		});
+	private untilSettled(timeout: number, activity: string): Promise<RpcEvent[]> {
+		if (this.exitError) return Promise.reject(this.exitError);
+		return collectUntilSettled(this, timeout, () => `Timeout ${activity}. Stderr: ${this.stderr}`);
 	}
 
 	private handleLine(line: string): void {
+		let data;
 		try {
-			const data = JSON.parse(line);
-			if (typeof data !== "object" || data === null || typeof data.type !== "string") return;
-			if (data.type === "rpc_session_identity") {
-				if (typeof data.sessionId === "string" && data.sessionId) this.options.onSessionIdentity?.(data.sessionId);
-				return;
-			}
-			if (data.type === "extension_ui_dismiss") {
-				if (typeof data.id === "string") this.options.onExtensionUIDismiss?.(data.id);
-				return;
-			}
-			if (data.type === "extension_ui_request") {
-				// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during dispatch do not change iteration
-				for (const listener of [...this.extensionUIListeners]) {
-					listener(data as RpcExtensionUIRequest);
-				}
-				return;
-			}
-
-			// Check if it's a response to a pending request
-			if (data.type === "response" && data.id && this.pendingRequests.has(data.id)) {
-				const pending = this.pendingRequests.get(data.id)!;
-				this.pendingRequests.delete(data.id);
-				pending.resolve(data as RpcResponse);
-				return;
-			}
-			if (data.type === "response") return;
-
-			// Otherwise it's an event. Iterate a snapshot so listeners that unsubscribe during dispatch
-			// do not cause later listeners to miss this event.
-			// oxlint-disable-next-line unicorn/no-useless-spread -- the snapshot described above
-			for (const listener of [...this.eventListeners]) {
-				listener(data as RpcEvent);
-			}
+			data = JSON.parse(line);
 		} catch {
-			// Ignore non-JSON lines
+			// A line that is not JSON is not protocol: nothing to dispatch.
+			return;
 		}
+		if (typeof data !== "object" || data === null || typeof data.type !== "string") return;
+		// A listener that throws is its own failure: it is reported, and it neither hides the line nor costs later listeners.
+		guarded("RPC record handler", () => this.dispatch(data));
+	}
+
+	private dispatch(data: { type: string; id?: string; [key: string]: any }): void {
+		if (data.type === "rpc_ready") {
+			this.options.onReady?.(data as RpcReady);
+			return;
+		}
+		if (data.type === "rpc_session_identity") {
+			if (typeof data.sessionId === "string" && data.sessionId) this.options.onSessionIdentity?.(data.sessionId);
+			return;
+		}
+		if (data.type === "extension_ui_dismiss") {
+			if (typeof data.id === "string") this.options.onExtensionUIDismiss?.(data.id);
+			return;
+		}
+		if (data.type === "extension_ui_request") {
+			notifyAll("RPC UI request listener", this.extensionUIListeners, data as RpcExtensionUIRequest);
+			return;
+		}
+
+		// Check if it's a response to a pending request
+		if (data.type === "response" && data.id && this.pendingRequests.has(data.id)) {
+			const pending = this.pendingRequests.get(data.id)!;
+			this.pendingRequests.delete(data.id);
+			pending.resolve(data as RpcResponse);
+			return;
+		}
+		if (data.type === "response") {
+			if (!data.id && data.success === false) this.protocolError(String(data.error));
+			return;
+		}
+
+		notifyAll("RPC event listener", this.eventListeners, data as RpcEvent);
+	}
+
+	/**
+	 * A failure the agent could not tie to a command, such as a line it could not parse. The command it belongs to will
+	 * never be answered, so a timeout's message carries it too.
+	 */
+	private protocolError(message: string): void {
+		this.lastProtocolError = message;
+		if (this.options.onProtocolError) this.options.onProtocolError(message);
+		else console.error(`RPC protocol error: ${message}`);
 	}
 
 	private createProcessExitError(code: number | null, signal: NodeJS.Signals | null): Error {
@@ -373,7 +351,8 @@ export class RpcConnection {
 					? undefined
 					: setTimeout(() => {
 							this.pendingRequests.delete(id);
-							reject(new Error(`Timeout waiting for response to ${command.type}. Stderr: ${this.stderr}`));
+							const protocol = this.lastProtocolError ? ` Last protocol error: ${this.lastProtocolError}.` : "";
+							reject(new Error(`Timeout waiting for response to ${command.type}.${protocol} Stderr: ${this.stderr}`));
 						}, timeoutMs);
 
 			this.pendingRequests.set(id, {

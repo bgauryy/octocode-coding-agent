@@ -70,6 +70,8 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 		// Anthropic doesn't provide total_tokens, compute from components
 		output.usage.totalTokens = sumUsageTokens(output.usage);
 		calculateCost(state.usageModel, output.usage);
+		// Output tokens are counted only in message_delta, so a stream dropped before it undercounts them.
+		output.usage.lowerBound = true;
 	} else if (event.type === "content_block_start") {
 		if (event.content_block.type === "fallback") {
 			if (output.content.length > 0) {
@@ -247,6 +249,7 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 			}
 		}
 	} else if (event.type === "message_delta") {
+		delete output.usage.lowerBound;
 		const transformations = event.input_transformations;
 		if (Array.isArray(transformations)) state.inputTransformations = transformations;
 		if (event.delta.stop_reason) {

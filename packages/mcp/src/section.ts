@@ -1,5 +1,6 @@
 import { MCP_STATUS_SECTION, MCPS_SECTION, mcpNamespace } from "../../common/src/mcp-names.ts";
 import type { McpServerEntry } from "./config.ts";
+import { hostRender } from "./host.ts";
 
 // The names live in common so the core section registry (`system-prompt-spec.ts`) can declare them without importing MCP.
 export { MCP_STATUS_SECTION, MCPS_SECTION };
@@ -31,10 +32,6 @@ const listedServers = (servers: readonly McpServerListing[]) =>
 const attribute = (value: string): string => value.replace(/[<>"&\r\n]/g, "_");
 const oneLine = (value: string | undefined): string => value?.replace(/\s+/g, " ").trim() ?? "";
 
-/** The one line of a block that has no contract: the server had not connected when the prompt described it, or none of its tools is enabled for this agent. */
-const NOT_CONNECTED = "Not connected yet: its instructions and tools are listed here once it connects.";
-const NO_TOOLS = "None of its tools is enabled for this agent.";
-
 /**
  * The `mcps` section: one block per enabled server in server order, each with its name, its tool prefix
  * (`mcp__<name>__*`) and its contract: the server's own instructions and, for each tool enabled for this agent, its
@@ -46,15 +43,18 @@ const NO_TOOLS = "None of its tools is enabled for this agent.";
  * or its catalog is first described or renewed. Undefined without an enabled server.
  */
 export function renderMcpsSection(servers: readonly McpServerListing[]): string | undefined {
-	const blocks = listedServers(servers).map((server) => {
-		const open = `<mcp name="${attribute(server.entry.name)}" tools="${mcpNamespace(server.entry.name)}__*">`;
-		if (!server.declared) {
-			const purpose = oneLine(server.entry.config.description);
-			return [open, ...(purpose ? [purpose] : []), server.pending ? NOT_CONNECTED : NO_TOOLS, "</mcp>"].join("\n");
-		}
-		return [open, ...(server.contract ? [server.contract] : []), "</mcp>"].join("\n");
-	});
-	return blocks.length > 0 ? blocks.join("\n") : undefined;
+	const { instruction } = hostRender();
+	const blocks = listedServers(servers).map((server) =>
+		instruction("sections/mcp-server.md", {
+			name: attribute(server.entry.name),
+			tools: `${mcpNamespace(server.entry.name)}__*`,
+			declared: server.declared,
+			contract: server.contract,
+			purpose: oneLine(server.entry.config.description),
+			pending: server.pending === true,
+		}),
+	);
+	return blocks.length > 0 ? instruction("sections/mcps.md", { blocks: blocks.join("\n") }) : undefined;
 }
 
 /**
@@ -98,8 +98,5 @@ export function renderMcpStatusSection(
 		return status ? [`- ${server.entry.name}: ${oneLine(status)}`] : [];
 	});
 	if (lines.length === 0) return undefined;
-	return [
-		`These MCP servers are not ready: their tools are missing or their calls fail until they connect.${options.canManage ? " Use mcp to check status, connect or restart." : ""}`,
-		...lines,
-	].join("\n");
+	return hostRender().instruction("sections/mcp_status.md", { canManage: options.canManage, lines: lines.join("\n") });
 }

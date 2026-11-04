@@ -16,8 +16,11 @@ interface SettingsCoreApi {
 	setProjectTrusted(trusted: boolean): void;
 	reload(): Promise<void>;
 
-	/** Apply additional overrides on top of current settings */
-	applyOverrides(overrides: Partial<Settings>): void;
+	/**
+	 * Apply additional overrides on top of current settings, without writing them anywhere. A plain override lasts until
+	 * the next save or reload; a durable one stays for the life of this manager.
+	 */
+	applyOverrides(overrides: Partial<Settings>, options?: { durable?: boolean }): void;
 	flush(): Promise<void>;
 	drainErrors(): SettingsError[];
 	/** Settings the loaded files hold that Octocode ignores (unknown or removed root keys), reported once per load. */

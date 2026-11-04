@@ -16,6 +16,7 @@ import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { daemonPage, type DaemonPage } from "./build.ts";
 import { type ConfigRoutes, handleConfigRequest } from "./config-routes.ts";
 import { bearerOf, replier, tokenAccess, type DaemonTokens, type Reply } from "./http-util.ts";
+import { LAUNCH_CODE_ROUTE, LAUNCH_DOOR_PREFIX, LaunchCodes, openDoor } from "./launch-code.ts";
 import { RemotePublisher } from "./remote/publisher.ts";
 import { handleRemoteRequest } from "./remote/routes.ts";
 import { handleRepoRequest } from "./repo-routes.ts";
@@ -95,8 +96,8 @@ function requestUrl(target: string | undefined, origin: string): URL | undefined
 /**
  * The daemon's loopback server. Rules enforced here for every route (R1-R9 of the RFC): the Host header must be the
  * daemon's own `127.0.0.1:<port>` (R3); a request with an Origin must carry exactly the daemon's origin, and a socket
- * upgrade always needs it (R2, R4); only `GET /` and `GET /api/health` need no bearer token (R5), and `/` embeds no
- * data; the page is served with a script-hash Content-Security-Policy (R6); the token is read only from the
+ * upgrade always needs it (R2, R4); only `GET /`, `GET /api/health` and a one-time `GET /open/<code>` need no bearer
+ * token (R5), and `/` embeds no data; the page is served with a script-hash Content-Security-Policy (R6); the token is read only from the
  * `Authorization` header or the socket hello, never from a URL (R1); no cookies, no CORS headers, no OPTIONS answer (R2);
  * every scoped route names a session or repository id the daemon itself indexed, never a path (R8).
  */
@@ -112,6 +113,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 	let host = "";
 	let port = 0;
 	const notify = () => options.onActivity();
+	const launchCodes = new LaunchCodes();
 	const registry = new SessionRegistry(options.env, notify);
 	const catalog = new RepoCatalog(options.env, registry);
 	const state = { draining: false };
@@ -171,6 +173,8 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			res.end(page.html);
 			return;
 		}
+		if (req.method === "GET" && url.pathname.startsWith(LAUNCH_DOOR_PREFIX))
+			return openDoor(url, launchCodes, tokens.launch, res, reply);
 		const access = tokenAccess(bearerOf(req), tokens);
 		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.health) return reply(200, access ? status() : health());
 		if (!access) return reply(401, { error: "Reopen /web to connect to the Octocode web workspace." });
@@ -204,6 +208,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			if (await handleRemoteRequest(req, reply, remote)) return;
 			return reply(405, { error: "Method not allowed" });
 		}
+		if (req.method === "POST" && url.pathname === LAUNCH_CODE_ROUTE) return reply(200, { code: launchCodes.issue() });
 		if (req.method === "POST" && url.pathname === DAEMON_ROUTES.drain) {
 			reply(200, { draining: true });
 			options.onDrain();

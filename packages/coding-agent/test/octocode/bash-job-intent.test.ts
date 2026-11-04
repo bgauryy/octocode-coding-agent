@@ -33,11 +33,13 @@ const plainTheme = {
 } as never;
 
 describe.runIf(process.platform !== "win32")("background job intent", () => {
-	it("declares reason itself, so the registered schema is the one every native tool gets", () => {
+	it("declares reason itself, and registration moves its own definition first", () => {
 		const { tool } = setup();
 		expect(tool.parameters.required).toEqual(["command", "reason"]);
-		expect(Object.keys(tool.parameters.properties).at(-1)).toBe("reason");
-		expect(JSON.stringify(withReason(tool.parameters))).toBe(JSON.stringify(tool.parameters));
+		const first = withReason(tool.parameters);
+		expect(Object.keys(first.properties)[0]).toBe("reason");
+		expect(first.properties.reason).toEqual(tool.parameters.properties.reason);
+		expect(first.required).toEqual(["command", "reason"]);
 	});
 
 	it("reports why the job ran, and /jobs lists it", async () => {

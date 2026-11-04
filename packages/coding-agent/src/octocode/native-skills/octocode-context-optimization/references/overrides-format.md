@@ -30,7 +30,7 @@ Load when writing, validating or debugging an overrides file.
 
 ## Stored metadata
 
-`octocode mcp compact apply` stores the overrides next to the generated file in `<agent directory>/context-optimization/mcp/<server>.json`, with the catalog hash, a hash per tool, a hash of the instructions and `optimizedBy` (the model that wrote the rewrite). When the catalog changes, a session keeps the overrides of tools whose hash is unchanged and the server text while the instructions are unchanged; the others fall back to the source wording, and `octocode mcp compact list` names them under `stale overrides`.
+`octocode mcp compact apply` stores the overrides next to the generated file in `<agent directory>/context-optimization/mcp/<server>.json`, with the catalog hash, each override keyed on the upstream text it replaces (the form a preset ships, below) and `optimizedBy` (the model that wrote the rewrite). When the catalog changes, a session keeps every override whose upstream text is unchanged; the others fall back to the source wording, and `octocode mcp compact list` names them under `stale overrides`.
 
 ## Preset form
 

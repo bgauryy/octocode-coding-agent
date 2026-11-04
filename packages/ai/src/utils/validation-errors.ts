@@ -122,9 +122,45 @@ function summarizeValidationErrors(errors: ValidationError[]): string[] {
 	return [...new Set(lines)];
 }
 
+/** The value at a validation error's instance path, for quoting what was sent. */
+function valueAt(args: unknown, instancePath: string): unknown {
+	let value = args;
+	for (const part of instancePath.split("/").slice(1)) value = (value as Record<string, unknown> | undefined)?.[part];
+	return value;
+}
+
+/**
+ * A field sent inside a nested object when the input takes it at the top level (a `cursor` inside `queries`): the
+ * correct form, ahead of the required-property errors the misplaced object also raises.
+ */
+function misplacedFieldLines(errors: ValidationError[], schema: unknown, args: unknown): string[] {
+	const accepted = (schema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {};
+	const lines: string[] = [];
+	for (const error of errors) {
+		if (error.keyword !== "additionalProperties" || !error.instancePath) continue;
+		const names = (error.params as { additionalProperties?: string[] }).additionalProperties ?? [];
+		for (const name of names) {
+			if (!Object.hasOwn(accepted, name)) continue;
+			const path = formatValidationPath(error);
+			const value = JSON.stringify((valueAt(args, error.instancePath) as Record<string, unknown>)?.[name]) ?? "";
+			// The arguments are echoed below, capped: a value too long to retype is only named here.
+			const form = value.length > 500 ? `"${name}"` : `{"${name}":${value}}`;
+			lines.push(`${path}.${name}: goes at the top level of the input, not inside ${path}: ${form}`);
+		}
+	}
+	return [...new Set(lines)];
+}
+
 /** Message body for a failed validation: the problems, then a capped echo of the arguments. */
-export function formatValidationFailure(toolName: string, errors: ValidationError[], args: unknown): string {
-	const lines = summarizeValidationErrors(errors).map((line) => `  - ${line}`);
+export function formatValidationFailure(
+	toolName: string,
+	errors: ValidationError[],
+	args: unknown,
+	schema?: unknown,
+): string {
+	const lines = [...misplacedFieldLines(errors, schema, args), ...summarizeValidationErrors(errors)].map(
+		(line) => `  - ${line}`,
+	);
 	const problems = lines.join("\n") || "Unknown validation error";
 	const received = describeReceivedArguments(JSON.stringify(args) ?? "undefined");
 	return `Validation failed for tool "${toolName}":\n${problems}\n\n${received}`;

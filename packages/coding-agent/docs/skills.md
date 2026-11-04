@@ -56,7 +56,7 @@ Use the exact path when names collide. A session-only or synthetic skill cannot 
 
 At startup, Octocode scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-The skill catalog shares a budget of 8,000 characters (about 1% of a 200k-token window), covering XML entries and overflow names; fixed loading instructions are separate. A description longer than the 1,024-character limit is cut. When the entries do not fit, descriptions are dropped from the last skills first and the prompt says how many skills are listed without one. If bare entries still do not fit, a bounded share of the budget shows representative omitted names and a count of the remaining skills.
+The catalog lists every skill a model may use, each with its full description: there is no character budget, no cut and no skill dropped from the list, however many skills are loaded. The catalog's first line tells the model that several skills can apply and to load each one that matches, with one `skill` tool call per name. The tool returns a skill's `SKILL.md` whole, with its directory. A description over the 1,024-character Agent Skills limit still draws a loader warning, and `octocode context check` still rejects a stored rewrite over 1,024 characters, but the prompt shows the description as written. The catalog still passes through the [context-optimization stage](#optimized-descriptions): a stored rewrite replaces the description, and the catalog shows it as it is stored.
 
 ### Optimized descriptions
 
@@ -121,7 +121,7 @@ This supports the pinned Codex local-host plaintext selector. Structured vendor 
 
 ## Child skill inheritance
 
-The native `agent` tool carries the accepted skill inventory into child sessions, including model-only resources and eligible Codex explicit candidates hidden by a name collision. Plugin names, invocation flags, argument substitution metadata and prompt byte limits survive the handoff. An explicit subset uses the parent's available skill command names; `skills: []` means no skills. See [subagent invocation](native-features.md).
+The native `agent` tool carries the accepted skill inventory into child sessions, including model-only resources and eligible Codex explicit candidates hidden by a name collision. Plugin names, invocation flags, argument substitution metadata and prompt byte limits survive the handoff. An explicit subset uses the parent's available skill command names; `skills: []` means no skills. A profile's `skills:` front matter applies when the task names none: their text is inlined in the child's cached role prompt, so siblings share it and no load turn is needed, and the rest of the catalog stays available. See [subagent invocation](native-features.md).
 
 The file loader captures canonical identities when it accepts skills; the handoff retains those identities and discovery aliases. Catalog paths, instruction reads and reference access stay with the captured resource when an alias changes, including skills inlined into a lean child's task. The inventory does not copy instruction bytes; edits to the same canonical file remain visible when read. A changed canonical identity or invalid snapshot fails the launch rather than rediscovering unrelated default resources.
 
@@ -139,7 +139,7 @@ Every loaded skill belongs to one of three groups, which the agent's skill list 
 | Octocode | The public Octocode skill collection                                     | The installed research CLI, or beside the standalone executable                   |
 | External | Everything you or another tool added                                     | User and project folders, Claude and Codex folders, packages, settings, `--skill` |
 
-When the list exceeds its budget, external skills lose their descriptions first.
+The catalog lists the groups in this order. No group loses entries or descriptions.
 
 All public Octocode skills ship with the installed research CLI and are available automatically, including their scripts, references, and assets. Startup reads the installed files without downloading or copying skills into your home directory. Standalone releases include the same collection beside the executable. Updating Octocode updates these defaults.
 
@@ -169,7 +169,7 @@ The application also ships its core skills (in `octocode/native-skills/` of the 
 
 Extra user skill discovery honors `CLAUDE_CONFIG_DIR/skills` and `CODEX_HOME/skills` when those environment variables are set. Claude skills retain their description fallback, argument syntax and boolean parsing under a custom directory, including when discovery filters out the `synced/` subtree. Codex canonicalizes its selected home and requires it to exist. Missing or invalid selected homes do not fall back to another user profile; project roots and their trust checks are unchanged. These settings select local discovery paths, not vendor credentials or cloud connections.
 
-Octocode accepts some standalone Markdown skills, but a directory containing `SKILL.md` is the portable form and should be preferred. A standalone file without a `name` is named after the file, so `deploy.md` becomes `deploy`. In a Claude skills folder, standalone Markdown needs a `description` in frontmatter: notes such as a `README.md` are not loaded. See Settings and [Octocode Packages](packages.md) for additional locations.
+Octocode accepts some standalone Markdown skills, but a directory containing `SKILL.md` is the portable form and should be preferred. A standalone file without a `name` is named after the file, so `deploy.md` becomes `deploy`. In a Claude skills folder, standalone Markdown needs a `description` in frontmatter: a `README.md` is never a skill candidate, so `/skills` does not list it. See Settings and [Octocode Packages](packages.md) for additional locations.
 
 Project skills can instruct the model to run scripts or modify files. Review unfamiliar skills and their supporting files before granting project trust.
 
@@ -223,7 +223,7 @@ octocode --mode json --print --no-session --no-skills \
   "Prepare a release note for version 2.4: it fixes duplicate invoice emails."
 ```
 
-`--no-skills` suppresses automatic discovery, including extension-discovered skills, while the explicit `--skill` still loads. A `--skill` path also wins a name collision: the installed skill with that name is skipped with a collision warning. Inspect the effective skill list when evaluating an isolated skill. Use a skill appropriate to your test request and a configured model. In the JSON events, look for a completed file read of `SKILL.md`, reads of any required references, and an answer that follows the instructions. A statement that the agent will use the skill is not evidence of a successful read. Also test an unrelated request to check that it does not load the skill unnecessarily. Run each request in a fresh session and a disposable project when tools can modify files.
+`--no-skills` suppresses automatic discovery, including extension-discovered skills, while the explicit `--skill` still loads. A `--skill` path also wins a name collision: the installed skill with that name is skipped with a collision warning. Inspect the effective skill list when evaluating an isolated skill. Use a skill appropriate to your test request and a configured model. In the JSON events, look for a completed file read of `SKILL.md`, reads of any required references, and an answer that follows the instructions. A statement that the agent will use the skill is not evidence of a successful read. A `--skill` path that does not exist prints a warning on stderr, loads nothing and does not stop the run. Also test an unrelated request to check that it does not load the skill unnecessarily. Run each request in a fresh session and a disposable project when tools can modify files.
 
 The initial system prompt carries skill metadata; file reads add the full instructions to conversation history. Compaction may summarize those reads, so retained skill metadata and paths allow the model to read them again. Do not assume that a skill body remains verbatim after compaction.
 

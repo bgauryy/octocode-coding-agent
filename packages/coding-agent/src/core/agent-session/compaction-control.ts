@@ -14,6 +14,8 @@ import { type CompactionHost, type CompactionReason, runCompaction } from "../se
 import { createSessionUsageRecorder } from "../usage-totals.ts";
 import type { SessionInternals, SessionPublic } from "./host.ts";
 import type { RequestAuth } from "./request-auth.ts";
+import { AutoCompactionLimit } from "./auto-compaction-limit.ts";
+import { recordRunFailure } from "./run-outcome.ts";
 import type { AgentSessionEvent } from "./types.ts";
 
 /** A manual compaction had nothing to summarize. The message stays the SDK/RPC error text; interactive mode shows it as a status. */
@@ -91,7 +93,7 @@ export interface CompactionControlHost extends Pick<
 }
 
 export class SessionCompaction {
-	private _autoCompactionFailures = { key: "", count: 0 };
+	private readonly _autoCompactionLimit = new AutoCompactionLimit();
 	private _compactionAbortController: AbortController | undefined = undefined;
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 
@@ -138,6 +140,7 @@ export class SessionCompaction {
 	 */
 	private async _recoveryNotStarted(cause: string): Promise<void> {
 		const errorMessage = `Context overflow recovery failed: ${cause}. Try reducing context or switching to a larger-context model.`;
+		recordRunFailure(this.host.run.outcome, errorMessage);
 		this.host.emit({
 			type: "compaction_end",
 			reason: "overflow",
@@ -209,7 +212,7 @@ export class SessionCompaction {
 				},
 				outcome,
 			});
-			this._autoCompactionFailures = { key: "", count: 0 };
+			this._autoCompactionLimit.succeeded();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const aborted = controller.signal.aborted || outcome.cancelledByExtension;
@@ -278,8 +281,9 @@ export class SessionCompaction {
 			targetThinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
 		);
 		const failureKey = JSON.stringify([session.sessionManager.getSessionId(), model?.provider, model?.id]);
-		if (this._autoCompactionFailures.key !== failureKey) this._autoCompactionFailures = { key: failureKey, count: 0 };
-		if (this._autoCompactionFailures.count >= 3) {
+		const limit = this._autoCompactionLimit.check(failureKey, reason);
+		if (limit === "quiet") return false;
+		if (limit === "notice") {
 			this.host.emit({
 				type: "compaction_end",
 				reason,
@@ -328,7 +332,7 @@ export class SessionCompaction {
 				checkAbort: () => signal.throwIfAborted(),
 				outcome,
 			});
-			this._autoCompactionFailures.count = 0;
+			this._autoCompactionLimit.succeeded();
 			const stoppedAfterCompaction = abortController.signal.aborted || this.host.run.agentRunAbortRequested;
 			this.host.emit({
 				type: "compaction_end",
@@ -347,13 +351,14 @@ export class SessionCompaction {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "compaction failed";
 			const aborted = abortController?.signal.aborted === true || outcome.cancelledByExtension;
-			if (!aborted && started) this._autoCompactionFailures.count += 1;
+			if (!aborted && started) this._autoCompactionLimit.failed();
 			if (started) {
 				const errorMessage = aborted
 					? undefined
 					: reason === "overflow"
 						? `Context overflow recovery failed: ${message}`
 						: `Auto-compaction failed: ${message}`;
+				if (errorMessage && reason === "overflow") recordRunFailure(this.host.run.outcome, errorMessage);
 				this.host.emit({
 					type: "compaction_end",
 					reason,

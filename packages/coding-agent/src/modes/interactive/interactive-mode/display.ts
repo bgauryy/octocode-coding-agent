@@ -24,7 +24,7 @@ type DisplayHost = Pick<
 	| "outputPad"
 	| "session"
 	| "settingsManager"
-	| "toolOutputExpanded"
+	| "uiStore"
 	| "transcriptScrollView"
 	| "ui"
 >;
@@ -37,7 +37,7 @@ export function getMarkdownThemeWithSettings(host: DisplayHost): MarkdownTheme {
 }
 
 export function getStartupExpansionState(host: DisplayHost): boolean {
-	return host.options.verbose || host.toolOutputExpanded;
+	return host.options.verbose || host.uiStore.getState().view.toolsExpanded;
 }
 
 /** Startup header (title, version, key hints). Hidden only by quietStartup: true. */

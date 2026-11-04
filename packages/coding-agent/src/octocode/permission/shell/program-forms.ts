@@ -160,6 +160,25 @@ export function changesGitConfig(rest: Word[], after: Word[]): boolean {
 	return after.length >= 2 || after.includes(undefined);
 }
 
+/**
+ * The files a program given a script (`perl -i`, `gawk -i inplace`) rewrites: its operands, without the script. The
+ * script is the value of an option that `scriptOption` matches, or else the first operand.
+ */
+export function scriptedFiles(words: Word[], scriptOption: RegExp): Word[] {
+	const files: Word[] = [];
+	let scripted = false;
+	for (let at = 0; at < words.length; at++) {
+		const word = words[at];
+		if (word !== undefined && scriptOption.test(word)) {
+			scripted = true;
+			at++;
+		} else if (word === undefined || !word.startsWith("-")) files.push(word);
+	}
+	// `gawk -i inplace`'s value is not a file either.
+	const named = files.filter((file) => file !== "inplace" && file !== "inplace.awk");
+	return scripted ? named : named.slice(1);
+}
+
 /** The words that are not options (a `--` ends them); an unresolved word stays `undefined`. */
 export function operandsOf(words: Word[]): Word[] {
 	const operands: Word[] = [];

@@ -14,7 +14,9 @@ describe("CLI value completion", () => {
 		const fake = fakeHost();
 		await octocode(fake.api);
 		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp"]));
-		expect(completeCli(["--exclude-tools", "file,deb"])).toEqual(["file,debug"]);
+		expect(completeCli(["--exclude-tools", "file,arc"])).toEqual(["file,archive"]);
+		// The former `debug` tool is removed (docs/native-features.md), so nothing completes it.
+		expect(completeCli(["--exclude-tools", "file,deb"])).toEqual([]);
 		// The native `browser` tool is retired: browsing is the built-in browser MCP server, so nothing completes it.
 		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual([]);
 	});

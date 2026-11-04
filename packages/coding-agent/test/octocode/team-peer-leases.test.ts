@@ -107,6 +107,15 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		expect(warnings).toEqual([]);
 	});
 
+	it("asks for a tree: a lease below it overlaps, a sibling does not", () => {
+		const file = path.join(home(), "communication.sqlite");
+		peerDb(file, [{ path: "/w/src/a.ts" }]);
+		const found = peers(file);
+		expect(found.conflict("/w/src")).toBeUndefined();
+		expect(found.conflict("/w/src", "tree")?.owner).toBe("s1");
+		expect(found.conflict("/w/docs", "tree")).toBeUndefined();
+	});
+
 	it("is a no-op while the database does not exist, and notices it once it does", () => {
 		const file = path.join(home(), "communication.sqlite");
 		const warnings: string[] = [];

@@ -1,0 +1,1 @@
+Trimmed output is saved in full at the path the result names: read that file by line range instead of rerunning, or pass a smaller maxOutputTokens. Put `set -o pipefail;` before an explicit pipe so a failing command is not hidden by the last command's status.

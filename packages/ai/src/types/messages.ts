@@ -79,6 +79,11 @@ export interface Usage {
 	 * providers that expose a reasoning breakdown; left undefined by providers that don't.
 	 */
 	reasoning?: number;
+	/**
+	 * The stream ended before the provider's final count, so these figures are a lower bound: a provider bills for what
+	 * it generated, whether or not the count reached us. Absent on a complete count.
+	 */
+	lowerBound?: boolean;
 	totalTokens: number;
 	cost: {
 		input: number;

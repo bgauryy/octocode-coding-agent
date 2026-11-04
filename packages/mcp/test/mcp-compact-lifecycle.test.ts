@@ -2,8 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import {
-	carryOverrides,
-	catalogHashes,
+	catalogHash,
 	checkFidelity,
 	COMPACT_GENERATOR_VERSION,
 	type CompactServerInput,
@@ -15,9 +14,11 @@ import {
 	readGenerated,
 	renderServer,
 	resolveServerFile,
+	toolHash,
 	toPresetOverrides,
 	writeGenerated,
 } from "../src/compact/index.ts";
+import { instructionsHash } from "../src/compact/render.ts";
 import { McpPresentation } from "../src/presentation/index.ts";
 import { createMcpToolDefinition } from "../src/tool-definition.ts";
 
@@ -44,9 +45,10 @@ const overrides = {
 function stored(input: CompactServerInput, generatorVersion = COMPACT_GENERATOR_VERSION) {
 	const dir = generatedDir(tmp());
 	writeGenerated(dir, "s", renderServer(input, overrides), {
-		...catalogHashes(input),
+		hash: catalogHash(input),
 		generatorVersion,
 		overrides,
+		authored: toPresetOverrides(overrides, input),
 		optimizedBy: { model: "writer", at: "2026-10-28T00:00:00.000Z" },
 		generatedAt: "2026-10-28T00:00:00.000Z",
 	});
@@ -63,6 +65,17 @@ describe("generated file lifecycle", () => {
 		expect(file.rendered).toBe(false);
 		expect(file.meta.overrides).toEqual(overrides);
 		expect(readFileSync(`${dir}/s.json`, "utf8")).toBe(before);
+	});
+
+	it("drops only the override that fails its check, never the others", () => {
+		const preset = {
+			server: "Short server text.",
+			tools: { a: "Rewritten a.", b: "See https://example.invalid for b." },
+		};
+		const file = resolveServerFile(generatedDir(tmp()), "s", input, { preset });
+		expect(file.meta.overrides).toEqual({ server: "Short server text.", tools: { a: "Rewritten a." } });
+		expect(file.text).toContain("Rewritten a.");
+		expect(file.text).not.toContain("example.invalid");
 	});
 
 	it("keeps every stored override across a generator change", () => {
@@ -91,14 +104,77 @@ describe("generated file lifecycle", () => {
 
 	it("drops only the server text when the instructions change", () => {
 		const changed = catalog([tool("a"), tool("b")], "New instructions.");
-		const carried = carryOverrides(overrides, catalogHashes(input), changed);
-		expect(carried?.server).toBeUndefined();
-		expect(carried?.tools).toEqual(overrides.tools);
+		const file = resolveServerFile(stored(input), "s", changed);
+		expect(file.meta.overrides?.server).toBeUndefined();
+		expect(file.meta.overrides?.tools).toEqual(overrides.tools);
 	});
 
-	it("carries nothing from a stored file without per-tool hashes once the catalog changes", () => {
-		const { hash } = catalogHashes(input);
-		expect(carryOverrides(overrides, { hash }, catalog([tool("a"), tool("c")]))).toBeUndefined();
+	it("keeps a stored override while the text it replaces is unchanged, like a preset's", () => {
+		const reshaped: CompactToolInput = {
+			...tool("a"),
+			inputSchema: {
+				type: "object",
+				properties: { text: { type: "string" }, extra: { type: "number" } },
+				required: ["text"],
+			},
+		};
+		const file = resolveServerFile(stored(input), "s", catalog([reshaped, tool("b")]));
+		expect(file.meta.overrides).toEqual(overrides);
+		expect(file.text).toContain("extra?: number;");
+	});
+
+	it("keeps a stale stored override, which applies again when the server's text comes back", () => {
+		const dir = stored(input);
+		const changed = resolveServerFile(dir, "s", catalog([tool("a", "Other work."), tool("b")]));
+		expect(changed.meta.overrides?.tools).toEqual({ b: "Rewritten b." });
+		expect(changed.meta.optimizedBy?.model).toBe("writer");
+		const back = resolveServerFile(dir, "s", input);
+		expect(back.meta.overrides).toEqual(overrides);
+	});
+
+	it("lets a new preset reach every entry the stored overrides do not replace", () => {
+		const dir = generatedDir(tmp());
+		const own = { tools: { a: "Writer a." } };
+		writeGenerated(dir, "s", renderServer(input, own), {
+			hash: catalogHash(input),
+			generatorVersion: COMPACT_GENERATOR_VERSION,
+			overrides: own,
+			authored: toPresetOverrides(own, input),
+			generatedAt: "2026-10-28T00:00:00.000Z",
+		});
+		const old = { tools: { a: "Old a.", b: "Old b." } };
+		expect(resolveServerFile(dir, "s", input, { preset: old }).meta.overrides?.tools).toEqual({
+			a: "Writer a.",
+			b: "Old b.",
+		});
+		const next = { tools: { a: "New a.", b: "New b." } };
+		expect(resolveServerFile(dir, "s", input, { preset: next }).meta.overrides?.tools).toEqual({
+			a: "Writer a.",
+			b: "New b.",
+		});
+	});
+
+	it("keys the overrides of a file written before they were keyed, by its tool and instruction hashes", () => {
+		const dir = generatedDir(tmp());
+		const legacy = {
+			hash: catalogHash(input),
+			generatorVersion: COMPACT_GENERATOR_VERSION,
+			toolHashes: Object.fromEntries(input.tools.map((entry) => [entry.name, toolHash(entry)])),
+			instructionsHash: instructionsHash(input.instructions),
+			overrides,
+			optimizedBy: { model: "writer", at: "2026-10-28T00:00:00.000Z" },
+			generatedAt: "2026-10-28T00:00:00.000Z",
+		};
+		writeGenerated(dir, "s", renderServer(input, overrides), legacy);
+		const file = resolveServerFile(dir, "s", catalog([tool("a"), tool("b", "Changed.")]));
+		expect(file.meta.overrides?.tools).toEqual({ a: "Rewritten a." });
+		expect(file.meta.overrides?.server).toBe(overrides.server);
+		expect(file.meta.authored?.tools?.a?.description).toBe("Rewritten a.");
+		expect(file.meta.toolHashes).toBeUndefined();
+		// Without per-tool hashes nothing says which overrides still hold once the catalog changes.
+		const { toolHashes: _tools, instructionsHash: _instructions, ...unhashed } = legacy;
+		writeGenerated(dir, "s", renderServer(input, overrides), unhashed);
+		expect(resolveServerFile(dir, "s", catalog([tool("a"), tool("c")])).meta.overrides).toBeUndefined();
 	});
 
 	it("renders again when the preset's overrides change for an unchanged catalog", () => {
@@ -118,7 +194,7 @@ describe("generated file lifecycle", () => {
 		const dir = generatedDir(tmp());
 		const old = { tools: { a: "Old preset a." } };
 		writeGenerated(dir, "s", renderServer(input, old), {
-			...catalogHashes(input),
+			hash: catalogHash(input),
 			generatorVersion: COMPACT_GENERATOR_VERSION,
 			overrides: old,
 			optimizedBy: { model: "preset", at: "2026-10-28T00:00:00.000Z" },
@@ -152,16 +228,10 @@ describe("generated file lifecycle", () => {
 describe("triggers", () => {
 	const input = catalog([tool("a"), tool("b")]);
 
-	it("are checked: one line, within the limit, for a known tool", () => {
-		const bad = { triggers: { a: "Two\nlines.", b: "x".repeat(201), c: "Unknown." } };
+	it("are checked: one line, for a known tool", () => {
+		const bad = { triggers: { a: "Two\nlines.", c: "Unknown." } };
 		const { problems } = checkFidelity(input, renderServer(input, bad), bad);
-		expect(problems).toEqual(
-			expect.arrayContaining([
-				"a trigger: must be one line",
-				"b trigger: 201 chars exceeds 200",
-				"trigger names unknown tool c",
-			]),
-		);
+		expect(problems).toEqual(expect.arrayContaining(["a trigger: must be one line", "trigger names unknown tool c"]));
 	});
 
 	it("become the description of the thin declaration, else the rewritten first sentence", () => {

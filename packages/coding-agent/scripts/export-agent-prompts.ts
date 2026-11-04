@@ -118,7 +118,7 @@ try {
 					id: "child-example",
 					role: name,
 					parentId: "parent-example",
-					scratch: "/workspace/project/.octa/code/temp/agents/child-example",
+					scratch: "/workspace/project/.octocode/code/temp/agents/child-example",
 				})}\n`,
 			);
 		}

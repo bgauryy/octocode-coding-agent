@@ -704,7 +704,13 @@ describe("AgentSession actionable boundaries", () => {
 			expect.objectContaining({ type: "custom", customType: "committed-after-abort", data: true }),
 		);
 		// #10607: settlement reports the abort although the last response succeeded.
-		expect(harness.eventsOfType("agent_settled")).toEqual([{ type: "agent_settled", aborted: true }]);
+		expect(harness.eventsOfType("agent_settled")).toEqual([
+			expect.objectContaining({
+				type: "agent_settled",
+				aborted: true,
+				outcome: expect.objectContaining({ status: "aborted" }),
+			}),
+		]);
 	});
 });
 
@@ -992,8 +998,8 @@ describe("durable length recovery", () => {
 		});
 		harnesses.push(harness);
 		harness.setResponses([
-			fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded_error" }),
-			fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded_error" }),
+			fauxAssistantMessage("", { stopReason: "error", errorMessage: "500 internal server error" }),
+			fauxAssistantMessage("", { stopReason: "error", errorMessage: "500 internal server error" }),
 		]);
 
 		await harness.session.prompt("start");

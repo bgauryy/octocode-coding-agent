@@ -24,6 +24,8 @@ import {
 import { notificationHook, registerMessageHooks } from "./register/messages.ts";
 import { registerPostToolUseHook } from "./register/post-tool-use.ts";
 import { preToolUseGate } from "./register/pre-tool-use.ts";
+import { plural } from "../shared/render/text.ts";
+import { hooksPromptSection } from "./prompt-section.ts";
 import { hookCount, hooksReport } from "./register/report.ts";
 import { registerSessionStartHooks } from "./register/session-start.ts";
 import { registerStopHook, registerStopRenderer } from "./register/stop.ts";
@@ -63,8 +65,9 @@ export function registerHooks(
 			enabled
 				? paused?.()
 					? "paused during planning"
-					: `on, ${hookCount(session.config)} commands`
+					: `on, ${plural(hookCount(session.config), "hook")}`
 				: "off in this subagent (its profile does not set hooks: true)",
+		promptSection: () => (enabled && !paused?.() ? hooksPromptSection(session.config) : ""),
 		report: (cwd) => hooksReport(enabled, session.config, session.errors, cwd, home, timings),
 		preToolUse: async () => undefined,
 		permissionRequest: async () => undefined,

@@ -17,6 +17,7 @@ import { computeContextUsage } from "../session-stats.ts";
 import type { CacheWarmingMode, SettingsManager } from "../settings-manager.ts";
 import { createRunState } from "./host.ts";
 import { SessionListeners } from "./listeners.ts";
+import type { RunOutcome } from "./run-outcome.ts";
 import type { SessionCollaborators } from "./wiring.ts";
 import type { AgentSessionConfig, AgentSessionEvent, ModelCycleResult, ModelMutationOptions } from "./types.ts";
 
@@ -92,6 +93,10 @@ export abstract class AgentSessionState {
 	}
 	get isIdle(): boolean {
 		return !this._run.active && !this.isCompacting;
+	}
+	/** How the latest run ended, or undefined before the first run. A new object per run, so a caller can tell runs apart. */
+	get lastRunOutcome(): RunOutcome | undefined {
+		return this._run.hasRun ? this._run.outcome : undefined;
 	}
 	get systemPrompt(): string {
 		return this._c.tools.systemPrompt;

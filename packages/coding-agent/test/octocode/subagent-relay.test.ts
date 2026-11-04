@@ -144,6 +144,19 @@ describe("subagent dialogs relayed to the parent", () => {
 		]);
 	});
 
+	it("tells the host the child waits for an answer, and when it stops waiting", async () => {
+		const awaitingApproval = vi.fn();
+		await relay([{ id: "c1", method: "confirm", title: "Sure?", message: "m" }], {
+			permission: parent("workspace").permission,
+			ui: ui(),
+			awaitingApproval,
+		});
+		expect(awaitingApproval.mock.calls).toEqual([
+			["a-relay", true],
+			["a-relay", false],
+		]);
+	});
+
 	it("forwards confirm and input, and cancels editor", async () => {
 		const dialogs = ui(undefined, async () => "typed");
 		const result = await relay(

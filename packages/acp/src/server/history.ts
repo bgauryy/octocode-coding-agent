@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 import { RequestError, methods, type AgentContext } from "@agentclientprotocol/sdk";
 import type { AcpBrokerHost, AcpSessionInfo } from "../host.ts";
 import { normalizePath } from "../../../common/src/paths.ts";
-import { compactionReplay, customMessageUpdates, toolContent, toolTitle } from "./events.ts";
+import { compactionReplay, customMessageUpdates, toolContent, toolKind, toolTitle } from "./events.ts";
 
 function sessionDir(host: AcpBrokerHost, cwd: string, override?: string): string | undefined {
 	const fromEnvironment = process.env[host.sessionDirEnv];
@@ -21,8 +21,13 @@ export async function findHistory(
 	const directory = await canonicalDirectory(cwd);
 	const sessions = await host.listSessions(directory, sessionDir(host, directory, configuredDir));
 	const info = sessions.find((item) => item.id === id && item.cwd && isAbsolute(item.cwd));
-	if (!info || (await realpath(info.cwd).catch(() => undefined)) !== directory) throw RequestError.resourceNotFound(id);
+	if (!info || (await realpath(info.cwd).catch(() => undefined)) !== directory) throw sessionNotFound(id);
 	return info;
+}
+
+/** ACP's error for a session that does not exist or is not active on this connection, which names it in `data.sessionId`. */
+export function sessionNotFound(id: string): RequestError {
+	return new RequestError(-32002, `Resource not found: ${id}`, { sessionId: id });
 }
 
 export async function canonicalDirectory(cwd: string): Promise<string> {
@@ -45,7 +50,7 @@ export function prepareHistoryReplay(
 	client: AgentContext,
 ): () => Promise<void> {
 	const transcript = host.openTranscript(path);
-	if (transcript.sessionId !== id) throw RequestError.resourceNotFound(id);
+	if (transcript.sessionId !== id) throw sessionNotFound(id);
 	const branch = transcript.branch;
 	return async () => {
 		const tools = new Set<string>();
@@ -64,6 +69,8 @@ export function prepareHistoryReplay(
 							sessionUpdate: "tool_call",
 							toolCallId: message.toolCallId,
 							title: message.toolName.slice(0, 512),
+							name: message.toolName,
+							kind: toolKind(message.toolName),
 							status: "in_progress",
 						},
 					});
@@ -97,6 +104,8 @@ export function prepareHistoryReplay(
 							sessionUpdate: "tool_call",
 							toolCallId: block.id,
 							title: toolTitle(block.name, block.arguments),
+							name: block.name,
+							kind: toolKind(block.name),
 							status: "in_progress",
 						},
 					});

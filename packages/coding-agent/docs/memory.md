@@ -6,7 +6,7 @@ Part of the [native feature guide](native-features.md).
 
 ## Workspace notes
 
-Notes live in the agent database selected by `OCTOCODE_AGENT_DB`. New notes belong to the workspace identified by `.octa/code/workspace/id`. Every Git worktree has its own workspace, including a child agent's isolated worktree. The ID follows a moved checkout.
+Notes live in the agent database selected by `OCTOCODE_AGENT_DB`. New notes belong to the workspace identified by `.octocode/code/workspace/id`. Every Git worktree has its own workspace, including a child agent's isolated worktree. The ID follows a moved checkout.
 
 Use `project` to share a note across a repository's worktrees or `global` to make it available everywhere. Reads with scope `all` see this workspace, its repository's project notes and global notes. Workspace notes reference the workspace catalog by ID. Memory IDs use `M<n>`.
 
@@ -44,6 +44,6 @@ Before each prompt, automatic recall considers pinned and relevant notes. Existi
 
 Built-in hooks record init, create, update, delete and committed compaction events in the same database. Each activation, including resume and reload, receives its own init event. Repeated delivery is idempotent. Registration IDs distinguish reused agent names; heartbeat counters and activity text do not generate audit events. Nonpersistent agents do not produce automatic durable events.
 
-`.octa/code/agents.txt` is a generated JSON Lines view of the latest 50 workspace events. Each line has time, event id, name, parentId, sessionId, type, data and schema version. Older events remain in the database and available through Archive. The first writer binds the view to its configured database via data.storeKey; a different database or malformed file is refused. Remove this generated file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused. Projection failure does not undo database commits.
+`.octocode/code/agents.txt` is a generated JSON Lines view of the latest 50 workspace events. Each line has time, event id, name, parentId, sessionId, type, data and schema version. Older events remain in the database and available through Archive. The first writer binds the view to its configured database via data.storeKey; a different database or malformed file is refused. Remove this generated file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused. Projection failure does not undo database commits.
 
 Complete compaction summaries survive indefinitely. Detailed archive copies expire according to `OCTOCODE_CLEANUP_DAYS` (default 30, zero disables), measured from committed compaction time, not reads, resume or file mtime. A copy is removed only after its full summary and trustworthy timestamp have been retained. Unverifiable legacy copies stay. Forks reference source compactions; repair never recreates expired copies. Original transcripts remain available for resume and branching. `--no-session` skips automatic lifecycle/compaction persistence; explicitly saving a memory retains its existing behavior.

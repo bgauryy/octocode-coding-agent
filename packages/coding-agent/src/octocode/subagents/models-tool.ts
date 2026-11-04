@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
@@ -19,7 +20,7 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 	api.registerTool({
 		name: "models",
 		label: "Models",
-		promptSnippet: "This session's model, the configured providers and the models a task can run on",
+		promptSnippet: renderInstruction("tools/models/snippet.md"),
 		description:
 			"This session's model and thinking level; configured providers with credential status; models with price, context and abilities; the small/medium and profile routes. Filters combine.",
 		parameters: Type.Object({

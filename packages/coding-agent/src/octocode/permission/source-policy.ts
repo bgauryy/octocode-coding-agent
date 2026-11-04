@@ -159,7 +159,7 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 			if (!op.mutation || !op.path) return false;
 			const file = canonicalPath(resolveToolPath(cwd, op.path));
 			return (
-				!stateFolderRefusal(file, op.path, op.name) &&
+				!stateFolderRefusal(file, op.path, op.name, cwd) &&
 				roots.some((root) => isWithin(file, root) && !runsLater(file, root))
 			);
 		};

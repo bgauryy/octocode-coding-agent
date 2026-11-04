@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { getCliInvocation } from "../../../config.ts";
 import { writeRolePrompt } from "../../instructions/role.ts";
-import { formatDuration, shortPath } from "../../shared/format.ts";
+import { shortPath } from "../../shared/format.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { stopTree } from "../../shared/process.ts";
 import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
@@ -31,7 +31,7 @@ import {
 	exitReason,
 	LOAD_ERROR,
 	MAX_EVENT_BYTES,
-	NO_ANSWER,
+	noAnswerError,
 	StartupError,
 	SUBAGENT_STOP_GRACE_MS,
 	type SubagentOutcome,
@@ -43,6 +43,7 @@ import { leftBehind } from "./left-behind.ts";
 import { startGate } from "../rate-gate.ts";
 import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
+import { ChildWatchdog } from "./watchdog.ts";
 import { leadsProcessGroup } from "../../../utils/shell.ts";
 
 /** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
@@ -62,7 +63,7 @@ export async function runChild(
 	host?: RelayHost,
 ): Promise<SubagentOutcome> {
 	if (signal?.aborted) throw new Error("Subagent cancelled");
-	const history = await requestBudgetHistory(args, profile, identity.resultContract, signal);
+	const history = await requestBudgetHistory(args, profile, identity, signal);
 	if (history.exhausted) return history.exhausted;
 	const { command, prefix } = getCliInvocation();
 	// Windows: the helper that owns the child's job runs before the child, so no grandchild escapes the job.
@@ -140,6 +141,7 @@ export async function runChild(
 			// helpers like a Chrome the child launched) then happens before the parent can exit, not on a timer lost with it.
 			let stopped: Promise<void> | undefined;
 			const abort = () => {
+				host?.budgets?.remove(identity.id, budget);
 				relay.cancelAll();
 				stopped ??= stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS).catch(
 					() => undefined,
@@ -148,10 +150,12 @@ export async function runChild(
 			signal?.addEventListener("abort", abort, { once: true });
 			// The request budget: one steer at the soft limit, the same stop as above at the hard limit (0: off).
 			const steer = (message: string) => void send({ type: "steer", message });
-			const budget = new RequestBudget(history.limit, steer, abort, history.requests);
-			// Watchdog: a child stuck on a stalled model stream emits nothing; stop it instead of spinning forever.
-			let activeAt = Date.now();
-			let stalled: Error | undefined;
+			const budget = new RequestBudget(history.limit, steer, abort, history.requests, {
+				// A foreground child's parent is inside this call, and one without the team has no parent to write to.
+				canAsk: Boolean(identity.parentId) && !identity.parentWaits,
+				resumeIsGrant: identity.peerResumed !== true,
+			});
+			host?.budgets?.add(identity.id, budget);
 			let cancelled = false;
 			/** Waits after an unrequested aborted settle for the run an interrupt's message starts. */
 			let followUp: NodeJS.Timeout | undefined;
@@ -167,32 +171,13 @@ export async function runChild(
 				onWaiting: (waiting) => {
 					const now = Date.now();
 					if (waiting) waitingSince = now;
-					else {
-						// The wait does not count against the child's deadlines.
-						state.busyUntil += now - waitingSince;
-						activeAt = now;
-					}
+					else watchdog.waited(now - waitingSince, now);
+					host?.awaitingApproval?.(identity.id, waiting);
 					progress({ usage: state.usage, waiting });
 				},
 			});
-			const watchdog = setInterval(
-				() => {
-					const now = Date.now();
-					if (streamFailure || stalled || relay.open > 0) return;
-					const busy = state.toolsRunning > 0 || state.settling;
-					if (busy ? now < state.busyUntil : now - activeAt < limits.idleMs) return;
-					stalled = busy
-						? new Error(
-								`Subagent stopped: ${state.lastActivity} ran past its own deadline; last output ${formatDuration(now - activeAt)} ago. Its process tree was killed.`,
-							)
-						: new Error(
-								`Subagent stopped: no output for ${formatDuration(now - activeAt)}; last activity: ${state.lastActivity}, ${formatDuration(now - activeAt)} ago. Its process tree was killed.`,
-							);
-					abort();
-				},
-				Math.max(250, Math.min(30_000, limits.idleMs / 4)),
-			);
-			watchdog.unref();
+			const watchdog = new ChildWatchdog(state, limits, () => Boolean(streamFailure) || relay.open > 0, abort);
+			watchdog.start();
 			// Progress is display only: a failure there (a screenshot write, a stale render) must not throw out of the stream handler.
 			const progress: typeof onProgress = (update) => {
 				try {
@@ -219,7 +204,7 @@ export async function runChild(
 					case "settled":
 						// Octocode can abort after a normal reply or between tools without an aborted assistant message.
 						// A watchdog stopping shutdown after an answer still preserves that completed report.
-						cancelled = effect.aborted && !stalled;
+						cancelled = effect.aborted && !watchdog.stalled;
 						clearTimeout(followUp);
 						// An abort nobody here asked for may be a team interrupt: the child's held message starts its next run right
 						// after this settle, and closed input would end that run. It leaves only if no run starts within the grace.
@@ -233,6 +218,7 @@ export async function runChild(
 							}, INTERRUPT_FOLLOW_UP_MS);
 							return;
 						}
+						host?.budgets?.remove(identity.id, budget);
 						onSettled?.();
 						return closeInput();
 					case "incoming":
@@ -247,7 +233,8 @@ export async function runChild(
 			};
 			child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
 				if (streamFailure) return;
-				activeAt = Date.now();
+				watchdog.activeAt = Date.now();
+				host?.output?.(identity.id, watchdog.activeAt);
 				let start = 0;
 				while (start < chunk.length) {
 					const newline = chunk.indexOf("\n", start);
@@ -275,8 +262,9 @@ export async function runChild(
 			const finish = (): boolean => {
 				if (finished) return false;
 				finished = true;
+				host?.budgets?.remove(identity.id, budget);
 				relay.cancelAll();
-				clearInterval(watchdog);
+				watchdog.stop();
 				clearTimeout(exitGrace);
 				clearTimeout(followUp);
 				signal?.removeEventListener("abort", abort);
@@ -291,7 +279,7 @@ export async function runChild(
 				// A dialog of a child that is gone has nobody to answer: close it in the parent's UI.
 				relay.cancelAll();
 				if (finished) return;
-				clearInterval(watchdog);
+				watchdog.stop();
 				// What the child left in its own process group (an MCP server, a dev server, a Chrome) dies with the run, and
 				// before the run settles: the caller removes the child's worktree next, and a holder must not outlive that.
 				if (leftBehind(child.pid)) stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS).catch(() => undefined);
@@ -324,10 +312,10 @@ export async function runChild(
 				startGate.noteFailure(error);
 				if (streamFailure) reject(streamFailure);
 				// A child stopped while settling after its answer still delivers that answer.
-				else if (stalled && !answered) reject(stalled);
+				else if (watchdog.stalled && !answered) reject(watchdog.stalled);
 				else if (signal?.aborted && !answered) reject(new Error("Subagent cancelled"));
 				else if (budget.stopped !== undefined)
-					resolve(budgetOutcome(budget.stopped, budget.limit, lastProgress, state.usage, identity.resultContract));
+					resolve(budgetOutcome(budget.stopped, budget.limits, identity, lastProgress, state.usage));
 				// The child's report (already shown with visible escapes by `Report`) and stderr are untrusted text headed for the model and the terminal. A crash before any
 				// final answer is a failure even when the child narrated progress first: narration is not a report.
 				else if (code !== 0 && !answered && !state.turnSeen) {
@@ -354,7 +342,7 @@ export async function runChild(
 						? state.notices.lastError
 							? `Subagent stopped: ${state.notices.lastError}`
 							: "Subagent cancelled before its run settled"
-						: (error ?? (answered ? undefined : NO_ANSWER));
+						: (error ?? (answered ? undefined : noAnswerError(state.notices.lastError)));
 					resolve({
 						text: finalText,
 						...(reportArtifact ? { reportArtifact } : {}),

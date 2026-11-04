@@ -11,26 +11,46 @@ import type { SettingsManager } from "../core/settings-manager.ts";
 /** How this process runs: a terminal UI, a one-shot print run, JSON-lines output or the RPC server. */
 export type AppMode = "interactive" | "print" | "json" | "rpc";
 
+const STDIN_NOTICE_MS = 5_000;
+
 /**
  * Read all content from piped stdin.
  * Returns undefined if stdin is a TTY (interactive terminal).
+ *
+ * A parent that spawns with a pipe and never closes it would otherwise hold the run silently, so one line says what the
+ * run is waiting for. It only reports: the wait has no deadline, because a slow producer is a legitimate one.
  */
-export async function readPipedStdin(): Promise<string | undefined> {
+export async function readPipedStdin(
+	stdin: Pick<NodeJS.ReadStream, "isTTY" | "setEncoding" | "on" | "resume"> = process.stdin,
+	noticeMs = STDIN_NOTICE_MS,
+): Promise<string | undefined> {
 	// If stdin is a TTY, we're running interactively - don't read stdin
-	if (process.stdin.isTTY) {
+	if (stdin.isTTY) {
 		return undefined;
 	}
 
 	return new Promise((resolve) => {
 		let data = "";
-		process.stdin.setEncoding("utf8");
-		process.stdin.on("data", (chunk) => {
+		let noticed = false;
+		const notice = () => {
+			noticed = true;
+			console.error("octocode: waiting for stdin to close before starting; close the pipe, or pass --no-stdin.");
+		};
+		let timer = setTimeout(notice, noticeMs);
+		timer.unref();
+		stdin.setEncoding("utf8");
+		stdin.on("data", (chunk) => {
 			data += chunk;
+			clearTimeout(timer);
+			if (noticed) return;
+			timer = setTimeout(notice, noticeMs);
+			timer.unref();
 		});
-		process.stdin.on("end", () => {
+		stdin.on("end", () => {
+			clearTimeout(timer);
 			resolve(data.trim() || undefined);
 		});
-		process.stdin.resume();
+		stdin.resume();
 	});
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { computeFileLists, formatFileOperations } from "../../src/core/compaction/utils.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { addFileToolOps, registerCompaction } from "../../src/octocode/compaction/register.ts";
 
@@ -54,9 +55,56 @@ describe("compaction", () => {
 			],
 			["b.ts"],
 		);
-		addFileToolOps(preparation);
+		addFileToolOps(preparation, "/repo");
 		expect([...preparation.fileOps.edited].sort()).toEqual(["a.ts", "b.ts", "c.ts", "e.ts"]);
 		expect([...preparation.fileOps.read]).toEqual(["a.ts"]);
+	});
+
+	it("lists the files Octocode's local tools read, from their recorded reads, in <read-files>", () => {
+		const localRead = (file: string) => ({ file, sha256: "a".repeat(64), size: 10, whole: true });
+		const localFetch = (id: string, file: string, isError = false) => [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id,
+						name: "mcp__octocode__localFetch",
+						arguments: { queries: [{ path: file }] },
+					},
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: id,
+				toolName: "mcp__octocode__localFetch",
+				isError,
+				content: [],
+				details: { localReads: [localRead(file)] },
+			},
+		];
+		const preparation = prepare([
+			...localFetch("1", "/repo/src/read-only.ts"),
+			...localFetch("2", "/repo/src/failed.ts", true),
+			...localFetch("3", "/repo/src/changed.ts"),
+			call("4", "file", [{ type: "edit", path: "src/changed.ts" }]),
+			result("4", false, { outcomes: [{ ok: true, path: "src/changed.ts" }] }),
+			{
+				role: "toolResult",
+				toolCallId: "5",
+				toolName: "bash",
+				isError: false,
+				content: [],
+				details: { localReads: [{ file: "relative.ts" }] },
+			},
+		]);
+		addFileToolOps(preparation, "/repo");
+		const { readFiles, modifiedFiles } = computeFileLists(preparation.fileOps);
+		expect(readFiles).toEqual(["/repo/src/read-only.ts", "a.ts"]);
+		expect(modifiedFiles).toEqual(["src/changed.ts"]);
+		expect(formatFileOperations(readFiles, modifiedFiles)).toContain(
+			"<read-files>\n/repo/src/read-only.ts\na.ts\n</read-files>",
+		);
 	});
 
 	it("skips a failed query, a failed call and a call with no result", () => {
@@ -77,7 +125,7 @@ describe("compaction", () => {
 			call("4", "file", [{ type: "edit", path: "no-outcomes.ts" }]),
 			result("4", false),
 		]);
-		addFileToolOps(preparation);
+		addFileToolOps(preparation, "/repo");
 		expect([...preparation.fileOps.edited]).toEqual(["ok.ts"]);
 	});
 
@@ -88,7 +136,7 @@ describe("compaction", () => {
 			result("b", false, { outcomes: [{ ok: true, path: "two.ts" }] }),
 			result("a", true),
 		]);
-		addFileToolOps(preparation);
+		addFileToolOps(preparation, "/repo");
 		expect([...preparation.fileOps.edited]).toEqual(["two.ts"]);
 	});
 
@@ -107,7 +155,7 @@ describe("compaction", () => {
 			},
 			result("p", false, { outcomes: [{ ok: true, path: "x.ts", type: "edit" }] }),
 		]);
-		addFileToolOps(preparation);
+		addFileToolOps(preparation, "/repo");
 		expect([...preparation.fileOps.edited]).toEqual(["x.ts"]);
 	});
 });

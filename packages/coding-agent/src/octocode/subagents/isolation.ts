@@ -24,10 +24,16 @@ export class Isolation {
 		ctx: Pick<ExtensionContext, "cwd" | "hasUI" | "ui">,
 		identity: Identity,
 		workingCopy = false,
+		signal?: AbortSignal,
 	): Promise<string> {
 		// The parent asks, because the worktree is created in this process: the child never prompts and never records.
+		// Esc on the turn, a permission change or shutdown dismisses the question, which holds a slot while it is open.
 		const ask = ctx.hasUI
-			? (request: WorktreeTrustRequest) => ctx.ui.confirm(worktreeTrustTitle(request), "")
+			? async (request: WorktreeTrustRequest) => {
+					const answer = await ctx.ui.confirm(worktreeTrustTitle(request), "", signal ? { signal } : undefined);
+					signal?.throwIfAborted();
+					return answer;
+				}
 			: undefined;
 		this.worktree = await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item, ask);
 		identity.isolation = { path: this.worktree.path, repo: this.worktree.repo, cwd: this.worktree.cwd };

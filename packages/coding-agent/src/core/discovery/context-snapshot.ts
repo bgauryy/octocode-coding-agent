@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { getBundledSkillsDir } from "../../config.ts";
 import { effectivePlugins } from "../extensibility/toggles.ts";
 import type { Settings } from "../settings-schema.ts";
@@ -29,8 +30,16 @@ export function collectContextView(options: ContextSnapshotOptions): ContextView
 		...(options.contextRoot ? { contextRoot: options.contextRoot } : {}),
 		...(options.settings ? { plugins: effectivePlugins(options.settings, options.cwd) } : {}),
 	});
+	const discovery = configDiscovery.discoverAll(input);
+	// Discovery lists every hook file Octocode may read (`hookSources`), whether or not it exists; the view counts the files that do.
+	const hooks = discovery.get("hook");
+	if (hooks)
+		discovery.set(
+			"hook",
+			hooks.filter((item) => existsSync(item.provenance.path)),
+		);
 	return buildContextView({
-		discovery: configDiscovery.discoverAll(input),
+		discovery,
 		loaded: options.loaded,
 		mcp: options.mcp,
 		piRoots: input.piRoots,

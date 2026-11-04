@@ -1,4 +1,4 @@
-/** Registers server tools and hides them when their server goes away. */
+/** Registers server tools and hides them when their server is stopped, disabled or removed, or stops offering them. */
 
 import { isDeepStrictEqual } from "node:util";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
@@ -93,7 +93,6 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				? {
 						compact: {
 							signature: () => presentation.signature(server, tool.name),
-							indexed: () => presentation.indexedTools(server).has(tool.name),
 							...(metadata.summary ? { summary: metadata.summary } : {}),
 						},
 					}
@@ -111,6 +110,9 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				) {
 					throw new Error(`MCP tool "${server}/${tool.name}" is no longer available.`);
 				}
+				// A dropped server keeps its tools declared; its calls fail here, at once, until it is connected again.
+				const down = client.rejectWhileDown();
+				if (down) throw down;
 				return client;
 			},
 		});
@@ -121,7 +123,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		if (wasDirect && exposure !== "direct") demoted.push(name);
 	}
 	serverTools.set(server, current);
-	// Tools cannot be unregistered, so tools the server dropped are re-registered as hidden. When
+	// Tools cannot be unregistered, so tools the server no longer offers are re-registered as hidden. A drop or
+	// a failed reconnect never gets here: the connection keeps its catalog, so the declarations stay as they were. When
 	// the server offers them again they are registered with their configured exposure above.
 	for (const name of previous) {
 		const definition = definitions.get(name);

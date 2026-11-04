@@ -113,8 +113,15 @@ export class BacklogStore {
 		return itemNotes(this.db, item, limit, offset);
 	}
 
-	dispatch(ref: string, version: number, actor: Actor, deliver: (item: Item) => void): void {
-		this.agentDb().transaction(() => deliver(this.update(ref, { state: "ongoing", version }, actor)));
+	/** Claims `ref` as ongoing and hands the claimed item to `deliver`, in one transaction; `fields` are set in the same update. */
+	dispatch(
+		ref: string,
+		version: number,
+		actor: Actor,
+		deliver: (item: Item) => void,
+		fields: Pick<UpdateInput, "why" | "goal"> = {},
+	): void {
+		this.agentDb().transaction(() => deliver(this.update(ref, { ...fields, state: "ongoing", version }, actor)));
 	}
 
 	comments(ref: string): BacklogComment[] {

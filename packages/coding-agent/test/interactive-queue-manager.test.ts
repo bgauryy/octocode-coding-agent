@@ -8,7 +8,7 @@ import {
 	recallLastQueuedMessage,
 	removeQueueItem,
 } from "../src/modes/interactive/interactive-mode/queue-manager.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { createFakeHost, heldStore } from "./interactive-mode-host.ts";
 
 /** A host whose session queue behaves like the core one: ids, kinds, edit/remove/move. */
 function fixture(
@@ -56,7 +56,7 @@ function fixture(
 	const editorText = { value: "" };
 	const ui = {
 		session,
-		compactionQueuedMessages: compaction,
+		uiStore: heldStore(compaction),
 		editor: {
 			getText: () => editorText.value,
 			setText: (text: string) => {
@@ -67,7 +67,6 @@ function fixture(
 		showStatus: vi.fn(),
 		showError: vi.fn(),
 		showWarning: vi.fn(),
-		updatePendingMessagesDisplay: vi.fn(),
 		showExtensionSelector: vi.fn(),
 		showExtensionEditor: vi.fn(),
 		ui: { requestRender: vi.fn() },
@@ -129,9 +128,8 @@ describe("recalling the last queued message (Alt+Up)", () => {
 		// Delivery order is steering session then steering compaction, so the compaction message is last.
 		handleDequeue(host);
 		expect(editorText.value).toBe("during compaction");
-		expect(ui.compactionQueuedMessages).toEqual([]);
+		expect(ui.uiStore.getState().queue.compaction).toEqual([]);
 		expect(session.removeQueuedInput).not.toHaveBeenCalled();
-		expect(ui.updatePendingMessagesDisplay).toHaveBeenCalled();
 	});
 
 	test("reports an empty queue and leaves the editor alone", () => {
@@ -175,7 +173,7 @@ describe("removing and moving", () => {
 			],
 		);
 		expect(removeQueueItem(host, listQueueItems(host)[1])).toBe(true);
-		expect(ui.compactionQueuedMessages).toEqual([{ text: "a", mode: "steer" }]);
+		expect(ui.uiStore.getState().queue.compaction).toEqual([{ text: "a", mode: "steer" }]);
 	});
 
 	test("removing a message that has been delivered meanwhile reports false", () => {
@@ -199,7 +197,7 @@ describe("removing and moving", () => {
 		expect(moveQueueItem(host, listQueueItems(host)[0], "up")).toBe(false);
 		items = listQueueItems(host);
 		expect(moveQueueItem(host, items[3], "up")).toBe(true);
-		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["y", "x"]);
+		expect(ui.uiStore.getState().queue.compaction.map((entry) => entry.text)).toEqual(["y", "x"]);
 		expect(moveQueueItem(host, listQueueItems(host)[3], "down")).toBe(false);
 	});
 });

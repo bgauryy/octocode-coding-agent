@@ -190,12 +190,12 @@ describe("the item a parent hands to a child", () => {
 		attachReport(b, "B1", {
 			agent: "inky-kraken",
 			outcome: "partial",
-			file: "/repo/.octa/code/temp/agents/x/report.md",
+			file: "/repo/.octocode/code/temp/agents/x/report.md",
 		});
 		attachReport(b, "B1", { agent: "inky-kraken", outcome: undefined, checks: ["yarn test"] });
 		const notes = b.store.notes(b.store.get("B1")!, -1).filter((note) => note.kind === "note");
 		expect(notes.map((note) => note.text)).toEqual([
-			"Report from inky-kraken: partial. Saved at /repo/.octa/code/temp/agents/x/report.md.",
+			"Report from inky-kraken: partial. Saved at /repo/.octocode/code/temp/agents/x/report.md.",
 			"Report from inky-kraken: no outcome word.",
 		]);
 		expect(notes.every((note) => note.author === "session-test")).toBe(true);

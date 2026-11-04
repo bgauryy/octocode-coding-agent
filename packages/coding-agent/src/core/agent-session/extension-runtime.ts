@@ -48,6 +48,7 @@ export function buildExtensionRuntime(host: ExtensionRuntimeHost, options: Build
 						commandPrefix: shellCommandPrefix,
 						shellPath,
 						maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
+						spillMaxBytes: session.settingsManager.getBashSpillMaxBytes(),
 					}),
 				};
 

@@ -7,16 +7,20 @@ import { theme } from "../../../theme/theme.ts";
  */
 export class DynamicBorder implements Component {
 	private color: (str: string) => string;
+	private cached?: { width: number; lines: string[] };
 
 	constructor(color: (str: string) => string = (str) => theme.fg("border", str)) {
 		this.color = color;
 	}
 
 	invalidate(): void {
-		// No cached state to invalidate currently
+		this.cached = undefined;
 	}
 
 	render(width: number): string[] {
-		return [this.color("─".repeat(Math.max(1, width)))];
+		if (this.cached?.width === width) return this.cached.lines;
+		const lines = [this.color("─".repeat(Math.max(1, width)))];
+		this.cached = { width, lines };
+		return lines;
 	}
 }

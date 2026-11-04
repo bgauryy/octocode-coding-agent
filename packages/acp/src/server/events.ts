@@ -1,5 +1,5 @@
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
-import type { SessionNotification, StopReason, ToolCallContent } from "@agentclientprotocol/sdk";
+import type { SessionNotification, StopReason, ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
 import type { AcpWorkerEvent } from "../host.ts";
 
 /** A compaction summary as the Markdown a person reads (the host owns the summary format). */
@@ -24,9 +24,14 @@ function chunk(text: string): Update[] {
 export function customMessageUpdates(message: {
 	customType: string;
 	content: string | Array<TextContent | ImageContent>;
+	details?: unknown;
 }): Update[] {
 	const blocks =
 		typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content;
+	const external =
+		message.details && typeof message.details === "object" && "external" in message.details
+			? message.details.external
+			: undefined;
 	const updates: Update[] = [];
 	for (const block of blocks) {
 		if (block.type === "text" && !block.text) continue;
@@ -36,7 +41,7 @@ export function customMessageUpdates(message: {
 				block.type === "text"
 					? { type: "text", text: block.text }
 					: { type: "image", data: block.data, mimeType: block.mimeType },
-			_meta: { "octocode/customType": message.customType },
+			_meta: { "octocode/customType": message.customType, ...(external ? { "octocode/external": external } : {}) },
 		});
 	}
 	return updates;
@@ -116,6 +121,38 @@ export function toolTitle(name: string, args?: unknown): string {
 	return (reason.includes(" ") ? `${name}: ${reason}` : name).slice(0, 512);
 }
 
+/** What a client's icon says about a native tool; anything else, MCP tools included, is ACP's default `other`. */
+const TOOL_KINDS: Readonly<Record<string, ToolKind>> = {
+	bash: "execute",
+	file: "edit",
+	web: "fetch",
+	localFetch: "read",
+	localSearch: "search",
+	structureSearch: "search",
+	astSearch: "search",
+	lspSearch: "search",
+};
+
+export function toolKind(name: string): ToolKind {
+	return Object.hasOwn(TOOL_KINDS, name) ? TOOL_KINDS[name] : "other";
+}
+
+/**
+ * A retry can hold a turn silent for minutes, which a client cannot tell from a hang. A thought chunk says why without
+ * becoming part of the reply, and `_meta` gives the numbers to a client that shows its own status.
+ */
+function retryNotice(event: Extract<AcpWorkerEvent, { type: "auto_retry_start" }>): Update {
+	const { attempt, maxAttempts, delayMs, errorMessage } = event;
+	return {
+		sessionUpdate: "agent_thought_chunk",
+		content: {
+			type: "text",
+			text: `Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt} of ${maxAttempts}): ${errorMessage}\n`,
+		},
+		_meta: { "octocode/autoRetry": { attempt, maxAttempts, delayMs } },
+	};
+}
+
 /** Stateful projection for one prompt. The broker owns session IDs, delivery order and settled completion. */
 export class AcpEventProjector {
 	private readonly streamed = new Map<number, string>();
@@ -177,6 +214,8 @@ export class AcpEventProjector {
 					this.reason = "end_turn";
 				}
 				return [];
+			case "auto_retry_start":
+				return [retryNotice(event)];
 			case "auto_retry_end":
 				if (!event.success && event.finalError) this.failure = event.finalError;
 				return [];
@@ -229,6 +268,15 @@ export class AcpEventProjector {
 	private startTool(id: string, name: string, args?: unknown): Update[] {
 		if (this.tools.has(id)) return [];
 		this.tools.add(id);
-		return [{ sessionUpdate: "tool_call", toolCallId: id, title: toolTitle(name, args), status: "in_progress" }];
+		return [
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: id,
+				title: toolTitle(name, args),
+				name,
+				kind: toolKind(name),
+				status: "in_progress",
+			},
+		];
 	}
 }

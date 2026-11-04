@@ -50,6 +50,7 @@ export function createCompletionsChunkProcessor(
 	let textBlock: TextContent | null = null;
 	let thinkingBlock: ThinkingContent | null = null;
 	let hasFinishReason = false;
+	let usageReported = false;
 	const toolCallBlocksByIndex = new Map<number, StreamingToolCallBlock>();
 	const toolCallBlocksById = new Map<string, StreamingToolCallBlock>();
 	const blocks = output.content as StreamingBlock[];
@@ -204,8 +205,11 @@ export function createCompletionsChunkProcessor(
 		if (typeof chunk.model === "string" && chunk.model.length > 0 && chunk.model !== model.id) {
 			output.responseModel ||= chunk.model;
 		}
+		// Usage arrives in a final chunk, so a stream dropped before it has recorded nothing of what was generated.
+		if (!usageReported) output.usage.lowerBound = true;
 		if (chunk.usage) {
 			output.usage = parseChunkUsage(chunk.usage, model);
+			usageReported = true;
 		}
 
 		const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
@@ -215,6 +219,7 @@ export function createCompletionsChunkProcessor(
 		// in choice.usage instead of the standard chunk.usage
 		if (!chunk.usage && (choice as any).usage) {
 			output.usage = parseChunkUsage((choice as any).usage, model);
+			usageReported = true;
 		}
 
 		if (choice.finish_reason) {

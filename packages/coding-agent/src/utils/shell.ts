@@ -1,6 +1,8 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
+import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { getBinDir } from "../config.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
 
@@ -220,6 +222,20 @@ export async function spawnShell(
 	return child;
 }
 
+let keepProviderKeys = false;
+
+/** The `bash.inheritProviderKeys` setting: `octocode/files/bash-env.ts` applies it when a session starts. */
+export function setShellKeepsProviderKeys(keep: boolean): void {
+	keepProviderKeys = keep;
+}
+
+/**
+ * The environment every shell command starts from: this process's, with Octocode's `bin` on the path and without the
+ * provider API keys it found (`bash.inheritProviderKeys` keeps them). A command's output reaches the model and a build
+ * script reads its environment, while the session itself already holds what it needs. Same-user `auth.json` reads remain
+ * possible, so this is defence in depth, as `web-daemon/spawn-env.ts` is for the daemon and the MCP transport's filter for
+ * servers. A tool's own token (`GH_TOKEN`) is the user's tool working, and stays.
+ */
 export function getShellEnv(): NodeJS.ProcessEnv {
 	const binDir = getBinDir();
 	const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
@@ -228,10 +244,11 @@ export function getShellEnv(): NodeJS.ProcessEnv {
 	const hasBinDir = pathEntries.includes(binDir);
 	const updatedPath = hasBinDir ? currentPath : [binDir, currentPath].filter(Boolean).join(delimiter);
 
-	return {
-		...process.env,
-		[pathKey]: updatedPath,
-	};
+	const env: NodeJS.ProcessEnv = { ...process.env, [pathKey]: updatedPath };
+	if (!keepProviderKeys)
+		for (const provider of builtinProviders())
+			for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) delete env[name];
+	return env;
 }
 
 /**

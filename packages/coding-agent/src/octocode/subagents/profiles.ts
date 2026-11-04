@@ -39,7 +39,7 @@ export interface AgentProfile {
 	/**
 	 * True: the child investigates and reports without changing source (`OCTOCODE_READ_ONLY`). Its prompt says so, and the
 	 * permission gate enforces it in every mode (`permission/read-only-role.ts`): `file` writes are refused outside its
-	 * scratch folder, `.octa/code/temp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
+	 * scratch folder, `.octocode/code/temp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
 	 * the workspace. It is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen.
 	 */
 	readOnly?: true;
@@ -54,7 +54,7 @@ export interface AgentProfile {
 	 * floor, MCP or extensions, and a short subagent prompt replaces the native policy (`instructions/lean.ts`).
 	 */
 	lean?: true;
-	/** Skills the child gets when the task names none (`skills:` front matter); they ride in its task (`task-skills.ts`). */
+	/** Skills the child gets when the task names none (`skills:` front matter): inlined in its role prompt, or its task when lean (`task-skills.ts`). */
 	skills?: string[];
 }
 
@@ -359,8 +359,10 @@ export async function askSpawn(
 	const name = profile?.name ?? GENERAL_PROFILE;
 	const reach = profileReach(profile, defaultTools);
 	const declared = profile?.permissions ?? [];
+	// A read-only role keeps `file` for its reports and `permission/read-only-role.ts` refuses repository edits, whatever it is granted.
+	const shown = profile?.readOnly ? reach.filter((action) => action !== "file.workspace") : reach;
 	const may =
-		reach.length > 0 ? `may ${reach.map((action) => REACH_TEXT[action]).join(" and ")}` : "may only read and research";
+		shown.length > 0 ? `may ${shown.map((action) => REACH_TEXT[action]).join(" and ")}` : "may only read and research";
 	// One identity for both remembered answers: the profile's name and the hash of its whole content.
 	const seen = `${name} ${profile?.hash ?? ""}`;
 	const needsAnswer = declared.length > 0 && !permission.profileSeen(seen);

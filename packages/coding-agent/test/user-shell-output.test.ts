@@ -95,12 +95,12 @@ it("says when a command was cancelled or ended without an exit code", async () =
 	expect(cancelled.header).toMatch(/^\[aborted · /);
 });
 
-it("still streams sanitized chunks without carriage returns", async () => {
+it("streams chunks without colors and keeps carriage returns for the live view to fold", async () => {
 	const chunks: string[] = [];
-	await executeBashWithOperations("x", process.cwd(), printing("\u001b[31mred\u001b[0m\r\n"), {
+	await executeBashWithOperations("x", process.cwd(), printing("\u001b[31mred\u001b[0m\r\n10%\r20%\r30%"), {
 		onChunk: (chunk) => chunks.push(chunk),
 	});
-	expect(chunks.join("")).toBe("red\n");
+	expect(chunks.join("")).toBe("red\r\n10%\r20%\r30%");
 });
 
 const base: BashExecutionMessage = {

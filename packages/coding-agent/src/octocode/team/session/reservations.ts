@@ -1,7 +1,7 @@
 import { USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import type { HeldLeases } from "../held.ts";
-import type { Lease, LeaseRequest } from "../model.ts";
+import type { Lease, LeaseConflict, LeaseRequest } from "../model.ts";
 import type { PeerLease, PeerLeases } from "../peer-leases.ts";
 import { dbFailure, leaseAge, resolveLockPath } from "../routing.ts";
 import { type TeamStore } from "../store.ts";
@@ -15,6 +15,8 @@ export interface ReservationHost {
 	join(): Member;
 	/** The session's cwd, which relative paths resolve against. */
 	cwd(): string | undefined;
+	/** The name a parent chose for this subagent: its reservations are its own even while it could not join. */
+	chosenId(): string | undefined;
 	store(): TeamStore;
 	/** The database only if someone already created it (`Team.existing`). */
 	existing(): TeamStore | undefined;
@@ -24,30 +26,33 @@ export interface ReservationHost {
 	peerLeases(): PeerLeases;
 }
 
+/** What a reservation of `entry` covers: a trailing `/` marks a whole directory tree. */
+export const leaseKind = (entry: string): LeaseRequest["kind"] => (/[\\/]$/.test(entry) ? "tree" : "file");
+
+/** The requests for `paths`, resolved from this session's cwd the way edits resolve, and conflicts shown as given. */
+export function leaseRequests(
+	cwd: string | undefined,
+	paths: string[],
+	reason: string,
+): { requests: LeaseRequest[]; asGiven: (conflict: LeaseConflict) => LeaseConflict } {
+	const shown = new Map(paths.map((entry) => [resolveLockPath(cwd, entry), entry]));
+	return {
+		requests: paths.map((entry) => ({ path: resolveLockPath(cwd, entry), kind: leaseKind(entry), reason })),
+		asGiven: (conflict) => ({ ...conflict, path: shown.get(conflict.path) ?? conflict.path }),
+	};
+}
+
 /** Reserve paths (a trailing `/` marks a whole directory tree) for this agent. */
 export function lockPaths(
 	host: ReservationHost,
 	paths: string[],
 	reason: string,
-): { ok: true; leases: Lease[]; held: number } | { ok: false; conflicts: Array<{ path: string; heldBy: Lease }> } {
+): { ok: true; leases: Lease[]; held: number } | { ok: false; conflicts: LeaseConflict[] } {
 	const me = host.join();
-	// Stored resolved from this session's cwd, the way edits resolve; conflicts still show the paths as given.
-	const shown = new Map(paths.map((entry) => [resolveLockPath(host.cwd(), entry), entry]));
-	const requests: LeaseRequest[] = paths.map((entry) => ({
-		path: resolveLockPath(host.cwd(), entry),
-		kind: /[\\/]$/.test(entry) ? "tree" : "file",
-		reason,
-	}));
+	const { requests, asGiven } = leaseRequests(host.cwd(), paths, reason);
 	const db = host.store();
 	const result = db.lock(me.id, requests);
-	if (!result.ok)
-		return {
-			ok: false,
-			conflicts: result.conflicts.map((conflict) => ({
-				...conflict,
-				path: shown.get(conflict.path) ?? conflict.path,
-			})),
-		};
+	if (!result.ok) return { ok: false, conflicts: result.conflicts.map(asGiven) };
 	host.held.granted(
 		result.leases.map((lease) => ({ key: `${lease.kind}:${pathKey(db.workspace, lease.path)}`, lease })),
 	);
@@ -84,7 +89,7 @@ function checkReservation(
 	try {
 		const db = host.existing();
 		if (db) {
-			const lease = db.conflict(file, host.me()?.id ?? USER_SENDER);
+			const lease = db.conflict(file, host.me()?.id ?? host.chosenId() ?? USER_SENDER);
 			if (lease) return { lease };
 			const lapsed = lapsedCover(host, db, file);
 			if (lapsed) return { lapsed };
@@ -122,7 +127,7 @@ export function reservationText(
 function anyReservationText(host: ReservationHost): string | undefined {
 	try {
 		const db = host.existing();
-		const self = host.me()?.id ?? USER_SENDER;
+		const self = host.me()?.id ?? host.chosenId() ?? USER_SENDER;
 		// `conflict` retires the leases of an owner that is gone; `leases` alone only checks expiry.
 		const lease = db?.leases().find((entry) => entry.owner !== self && db.conflict(entry.path, self, entry.kind));
 		if (lease) return describeReservation({ lease }, lease.path);

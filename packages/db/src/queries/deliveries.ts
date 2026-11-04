@@ -97,10 +97,18 @@ export function recentTraffic(
 }
 
 /**
- * The questions `child` sent `parent` since `since`, oldest first, each with the parent's first reply. A relay row is
- * addressed to the parent but asks the agent in `relay_to`, so it is a peer ask (`unansweredAsks`), not one of these.
+ * The questions `child` sent `parent` since `since`, oldest first, each with the first reply from the parent or `user`
+ * (`/agents tell` answers one directly). A relay row is addressed to the parent but asks the agent in `relay_to`, so it
+ * is a peer ask (`unansweredAsks`), not one of these.
  */
-export function asks(db: DatabaseSync, team: string, child: string, parent: string, since: number): Row[] {
+export function asks(
+	db: DatabaseSync,
+	team: string,
+	child: string,
+	parent: string,
+	user: string,
+	since: number,
+): Row[] {
 	return db
 		.prepare(
 			`SELECT m.id, m.body, m.created_at, r.id AS reply_id, r.created_at AS reply_at, r.sender AS reply_by
@@ -108,10 +116,10 @@ export function asks(db: DatabaseSync, team: string, child: string, parent: stri
          LEFT JOIN messages r ON r.id = (
            SELECT min(reply.id) FROM messages reply
            JOIN deliveries receipt ON receipt.message = reply.id AND receipt.recipient = m.sender
-           WHERE reply.reply_to = m.id AND reply.sender = d.recipient)
+           WHERE reply.reply_to = m.id AND reply.sender IN (d.recipient, ?))
          WHERE m.team = ? AND m.sender = ? AND m.reply_required = 1 AND m.created_at >= ? ORDER BY m.id`,
 		)
-		.all(parent, team, child, since);
+		.all(parent, user, team, child, since);
 }
 
 /**
@@ -215,6 +223,18 @@ export function closeAsksOf(db: DatabaseSync, sender: string, now: number): void
 }
 
 /**
+ * Closes the questions `asker` sent `recipient` that it read and has not answered, and settles the dead letters of them
+ * not yet reported: the recipient's report answered them, so the asker is not told they went unanswered. Relay requests stay.
+ */
+export function closeQuestionsTo(db: DatabaseSync, asker: string, recipient: string, now: number): void {
+	db.prepare(
+		`UPDATE deliveries SET completed_at = COALESCE(completed_at, ?), notified_at = CASE WHEN dead_at IS NOT NULL AND notified_at IS NULL THEN ? ELSE notified_at END
+       WHERE recipient = ? AND relay_to IS NULL AND delivered_at IS NOT NULL AND (completed_at IS NULL OR (dead_at IS NOT NULL AND notified_at IS NULL))
+       AND message IN (SELECT id FROM messages WHERE sender = ? AND reply_required = 1)`,
+	).run(now, now, recipient, asker);
+}
+
+/**
  * The questions read and not yet answered in `team`, oldest first: recipient, message id, sender, body and time. The
  * same rows `agents.inTeam` counts as `pending`; relay requests are the parent's errand, not questions to it.
  */
@@ -227,6 +247,17 @@ export function openQuestions(db: DatabaseSync, team: string): Row[] {
          ORDER BY m.id`,
 		)
 		.all(team);
+}
+
+/** When `a` and `b` last exchanged a message, in either direction, relay requests aside; 0 when no such message is kept. */
+export function lastExchange(db: DatabaseSync, team: string, a: string, b: string): number {
+	const row = db
+		.prepare(
+			`SELECT MAX(m.created_at) AS at FROM messages m JOIN deliveries d ON d.message = m.id
+         WHERE m.team = ? AND d.relay_to IS NULL AND ((m.sender = ? AND d.recipient = ?) OR (m.sender = ? AND d.recipient = ?))`,
+		)
+		.get(team, a, b, b, a) as { at: number | null } | undefined;
+	return row?.at ?? 0;
 }
 
 /** Dead-letters `id`'s unread mail, and its read but unanswered questions and the relay requests it took but never settled. */

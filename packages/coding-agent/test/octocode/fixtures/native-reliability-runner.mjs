@@ -204,7 +204,7 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
       assert(!listInstances(apiDir(env)).some((entry) => entry.id === old.instanceId));
       assert.equal(leaseState().leases.length, 1);
       const staleConnect = await caught(a.command('native-connect', { input: { instanceId: old.instanceId, cwd } }));
-      assert(!staleConnect.ok && staleConnect.error.message.includes('discoverable'));
+      assert(!staleConnect.ok && staleConnect.error.message.includes(`No running instance matches "${old.instanceId}"`));
       b = start(`peer-${cycle}`); rb = await b.ready;
       assert.notEqual(rb.instanceId, old.instanceId); assert.notEqual(rb.sessionId, old.sessionId);
       const oldConnection = await caught(a.command('native-prompt', { input }));

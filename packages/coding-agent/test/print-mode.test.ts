@@ -1,6 +1,7 @@
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionShutdownEvent } from "../src/core/features/index.ts";
+import { createRunOutcome, recordRunMessage, type RunOutcome } from "../src/core/agent-session/run-outcome.ts";
 import { runPrintMode } from "../src/modes/print-mode.ts";
 
 type EmitEvent = SessionShutdownEvent;
@@ -14,10 +15,12 @@ type FakeSession = {
 	sessionManager: { getHeader: () => object | undefined };
 	agent: { waitForIdle: () => Promise<void>; subscribe: ReturnType<typeof vi.fn> };
 	state: { messages: AssistantMessage[] };
+	readonly lastRunOutcome: RunOutcome | undefined;
 	extensionRunner: FakeExtensionRunner;
 	bindExtensions: ReturnType<typeof vi.fn>;
 	subscribe: ReturnType<typeof vi.fn>;
 	prompt: ReturnType<typeof vi.fn>;
+	settled: ReturnType<typeof vi.fn>;
 	reload: ReturnType<typeof vi.fn>;
 };
 
@@ -55,6 +58,19 @@ function createAssistantMessage(options?: {
 	};
 }
 
+/** The outcome the run loop records, derived per message so each fake run reports a new object as a real one does. */
+const outcomes = new WeakMap<AssistantMessage, RunOutcome>();
+function outcomeOf(message: AssistantMessage | undefined): RunOutcome | undefined {
+	if (!message) return undefined;
+	let outcome = outcomes.get(message);
+	if (!outcome) {
+		outcome = createRunOutcome();
+		recordRunMessage(outcome, message);
+		outcomes.set(message, outcome);
+	}
+	return outcome;
+}
+
 function createRuntimeHost(assistantMessage: AssistantMessage): FakeRuntimeHost {
 	const extensionRunner: FakeExtensionRunner = {
 		hasHandlers: (eventType: string) => eventType === "session_shutdown",
@@ -67,10 +83,14 @@ function createRuntimeHost(assistantMessage: AssistantMessage): FakeRuntimeHost 
 		sessionManager: { getHeader: () => undefined },
 		agent: { waitForIdle: async () => {}, subscribe: vi.fn(() => () => {}) },
 		state,
+		get lastRunOutcome() {
+			return outcomeOf(state.messages.at(-1));
+		},
 		extensionRunner,
 		bindExtensions: vi.fn(async () => {}),
 		subscribe: vi.fn(() => () => {}),
 		prompt: vi.fn(async () => {}),
+		settled: vi.fn(async () => {}),
 		reload: vi.fn(async () => {}),
 	};
 
@@ -91,6 +111,59 @@ afterEach(() => {
 });
 
 describe("runPrintMode", () => {
+	it("writes one stderr line for each retry wait in text mode, and none in json mode", async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const retry = {
+			type: "auto_retry_start",
+			attempt: 2,
+			maxAttempts: 5,
+			delayMs: 1500,
+			errorMessage: "503\nservice unavailable",
+		};
+		for (const mode of ["text", "json"] as const) {
+			error.mockClear();
+			const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "done" }));
+			runtimeHost.session.subscribe.mockImplementation((listener: (event: unknown) => void) => {
+				listener(retry);
+				return () => {};
+			});
+			await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+				mode,
+				initialMessage: "go",
+			});
+			if (mode === "text") {
+				expect(error.mock.calls).toEqual([["Retrying in 2s (attempt 2 of 5): 503 service unavailable"]]);
+			} else expect(error).not.toHaveBeenCalled();
+		}
+	});
+
+	it("releases the session and exits 1 when stdout fails", async () => {
+		vi.resetModules();
+		const { runPrintMode: fresh } = await import("../src/modes/print-mode.ts");
+		const write = vi.spyOn(process.stdout, "write").mockImplementation(((
+			_text: string,
+			callback: (e: Error) => void,
+		) => {
+			callback(Object.assign(new Error("closed"), { code: "EPIPE" }));
+			return false;
+		}) as never);
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exited = Promise.withResolvers<number | undefined>();
+		const exit = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+			exited.resolve(code);
+		}) as never);
+		try {
+			const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "done" }));
+			await fresh(runtimeHost as unknown as Parameters<typeof fresh>[0], { mode: "text", initialMessage: "go" });
+			await expect(exited.promise).resolves.toBe(1);
+			expect(runtimeHost.dispose).toHaveBeenCalledTimes(1);
+			expect(error.mock.calls.flat().join("\n")).toContain("stdout failed: closed");
+		} finally {
+			write.mockRestore();
+			exit.mockRestore();
+		}
+	});
+
 	it("emits session_shutdown in text mode", async () => {
 		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "done" }));
 		const { session } = runtimeHost;
@@ -171,6 +244,24 @@ describe("runPrintMode", () => {
 		expect(errorSpy).toHaveBeenCalledWith("first failed");
 	});
 
+	it("judges a prompt only once what its run left behind has settled", async () => {
+		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "unused" }));
+		runtimeHost.session.state.messages = [];
+		const { session } = runtimeHost;
+		// The compaction an extension asked for as the run settled fails only after `prompt` has returned.
+		session.settled = vi.fn(async () => {
+			session.state.messages.push(createAssistantMessage({ stopReason: "error", errorMessage: "late failure" }));
+		});
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "text",
+			messages: ["hello"],
+		});
+		expect(session.settled).toHaveBeenCalledTimes(1);
+		expect(exitCode).toBe(1);
+		expect(errorSpy).toHaveBeenCalledWith("late failure");
+	});
+
 	// #10799
 	it("warns on stderr and returns non-zero when the response was truncated", async () => {
 		const runtimeHost = createRuntimeHost(createAssistantMessage({ stopReason: "length" }));
@@ -182,5 +273,32 @@ describe("runPrintMode", () => {
 
 		expect(exitCode).toBe(1);
 		expect(errorSpy).toHaveBeenCalled();
+	});
+
+	it("returns non-zero in json mode when the response was truncated", async () => {
+		const runtimeHost = createRuntimeHost(createAssistantMessage({ stopReason: "length" }));
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "json",
+			messages: ["hello"],
+		});
+		expect(exitCode).toBe(1);
+	});
+
+	it("fails on the recorded outcome even when the context's last message is not the failure", async () => {
+		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "unused" }));
+		const failure = createRunOutcome();
+		failure.status = "failed";
+		failure.stopReason = "error";
+		failure.errorMessage = "Context overflow recovery failed: nothing in the context can be summarized.";
+		Object.defineProperty(runtimeHost.session, "lastRunOutcome", { value: failure });
+		runtimeHost.session.state.messages = [];
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "text",
+			messages: ["hello"],
+		});
+		expect(exitCode).toBe(1);
+		expect(errorSpy).toHaveBeenCalledWith(failure.errorMessage);
 	});
 });

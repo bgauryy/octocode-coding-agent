@@ -1,4 +1,4 @@
-import type { InstanceRecord } from "./registry.ts";
+import { describeInstance, type InstanceRecord, selectInstance } from "./registry.ts";
 
 export const API_COMMAND_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	list: [],
@@ -60,19 +60,19 @@ export function integerFlag(
 	return number;
 }
 
-/** The instance `--to` names; without it, the only running one, or the one in this directory when several run. */
-export function pickInstance(instances: InstanceRecord[], id: string | undefined, cwd: string): InstanceRecord {
-	const found =
-		id !== undefined
-			? instances.filter((entry) => entry.id === id)
-			: instances.length > 1
-				? instances.filter((entry) => entry.cwd === cwd)
-				: instances;
-	if (found.length !== 1)
-		throw new Error(
-			found.length === 0
-				? "No running instance matches. Start Octocode with OCTOCODE_API=1."
-				: `Several instances match; pass --to <id>: ${found.map((entry) => entry.id).join(", ")}`,
-		);
-	return found[0];
+/**
+ * The instance `--to` names (see `matchInstances` for what it accepts); without it, the only running one, or the one in
+ * this directory when several run.
+ */
+export function pickInstance(instances: InstanceRecord[], to: string | undefined, cwd: string): InstanceRecord {
+	if (to !== undefined) return selectInstance(instances, to);
+	const found = instances.length > 1 ? instances.filter((entry) => entry.cwd === cwd) : instances;
+	if (found.length === 1) return found[0];
+	if (found.length > 1)
+		throw new Error(`Several instances match; pass --to <id>: ${found.map(describeInstance).join("; ")}`);
+	throw new Error(
+		instances.length
+			? `No running instance matches this directory; pass --to <id>: ${instances.map(describeInstance).join("; ")}`
+			: "No running instance matches. Start Octocode, or run /api on in a session whose API is off.",
+	);
 }

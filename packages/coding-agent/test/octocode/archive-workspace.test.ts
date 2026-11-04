@@ -153,7 +153,7 @@ it("does not create a workspace in the directory named by an imported transcript
 	fs.writeFileSync(file, [header, entry].map((record) => JSON.stringify(record)).join("\n") + "\n");
 	const db = sharedAgentDb();
 	await new HistoryRepair(db).transcript(file);
-	expect(fs.existsSync(path.join(other, ".octa"))).toBe(false);
+	expect(fs.existsSync(path.join(other, ".octocode"))).toBe(false);
 	expect(compactions.forSession(db.db, header.id)).toEqual([]);
 });
 

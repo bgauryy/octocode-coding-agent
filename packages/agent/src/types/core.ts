@@ -212,6 +212,11 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any
 	 * If omitted, the default execution mode applies.
 	 */
 	executionMode?: ToolExecutionMode;
+	/**
+	 * How long a call may keep running after an abort before the loop abandons it, in ms. For a tool whose stop takes
+	 * longer than the short default (a command given time to clean up after SIGTERM) and that then returns what it has.
+	 */
+	abortGraceMs?: number;
 }
 
 /** Context snapshot passed into the low-level agent loop. */

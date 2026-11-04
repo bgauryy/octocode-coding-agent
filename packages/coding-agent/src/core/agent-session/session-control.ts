@@ -39,7 +39,7 @@ export abstract class AgentSessionControl extends AgentSessionState {
 	}
 	async sendCustomMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },
 	): Promise<void> {
 		const send = () => sendCustomMessage(this._c.prompting, message, options);
 		if (options?.triggerTurn)
@@ -69,6 +69,9 @@ export abstract class AgentSessionControl extends AgentSessionState {
 	}
 	isCustomMessageQueued(details: object): boolean {
 		return this._c.inputs.isCustomMessageQueued(details);
+	}
+	replaceQueuedCustomMessage(details: object, content: string): boolean {
+		return this._c.inputs.replaceQueuedCustomMessage(details, content);
 	}
 	getSteeringMessages(): readonly string[] {
 		return this._c.inputs.steeringMessages;
@@ -109,6 +112,16 @@ export abstract class AgentSessionControl extends AgentSessionState {
 			return;
 		}
 		await this._listeners.idleWait();
+	}
+
+	async settled(): Promise<void> {
+		for (;;) {
+			await Promise.all(this._run.settledWork);
+			// A turn that work starts begins a macrotask later at the latest.
+			await new Promise((resolve) => setImmediate(resolve));
+			if (this._run.settledWork.size === 0 && this.isIdle) return;
+			await this.waitForIdle();
+		}
 	}
 
 	// Compaction, auto-retry and bash execution

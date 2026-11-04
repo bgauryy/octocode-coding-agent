@@ -97,9 +97,11 @@ describe("native external Octocode adapter", () => {
 		await backend.close();
 	});
 
-	it("requires an exact discovered instance, matching protocol and workspace", async () => {
+	it("requires a discovered instance, matching protocol and workspace", async () => {
 		const { api, env, cwd } = await boot();
-		await expect(OctocodeBackend.connect({ instanceId: "absent", cwd }, env)).rejects.toThrow("discoverable");
+		await expect(OctocodeBackend.connect({ instanceId: "absent", cwd }, env)).rejects.toThrow(
+			`No running instance matches "absent". Running: ${api.instance!.id}`,
+		);
 		await expect(
 			OctocodeBackend.connect({ instanceId: api.instance!.id, cwd: tmp("other-workspace-") }, env),
 		).rejects.toThrow("workspace mismatch");

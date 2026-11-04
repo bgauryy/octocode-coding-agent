@@ -251,7 +251,11 @@ describe("ProcessTerminal graphics negotiation", () => {
 					false,
 				);
 				h.send(response(h.writes.find((write) => write.includes("a=q"))!) + DA1);
-				await new Promise((resolve) => setTimeout(resolve, 25));
+				// The repaint is a throttled frame (at most one per 40 ms), so wait for it rather than a fixed time.
+				const painted = () => h.writes.some((write) => write.includes("a=T") || write.includes("a=t"));
+				for (const started = Date.now(); !painted() && Date.now() - started < 1_000; ) {
+					await new Promise((resolve) => setTimeout(resolve, 10));
+				}
 				assert.equal(
 					h.writes.some((write) => write.includes("\x1b[16t")),
 					true,

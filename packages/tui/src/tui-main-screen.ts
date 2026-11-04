@@ -1,12 +1,10 @@
 import { hasTmuxSession } from "./multiplexer.ts";
 import { isImageLine } from "./terminal-image.ts";
+import { clipLineToWidth, FinishedLines } from "./tui/clip.ts";
+import { applyLineReset } from "./tui/composite.ts";
+import { trimTrailingBlanks } from "./tui/trailing-blanks.ts";
 import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
-import {
-	widthErrorMessage,
-	writeRedrawLog,
-	writeRenderDebugLog,
-	writeWidthCrashLog,
-} from "./tui-main-screen/debug-logs.ts";
+import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-logs.ts";
 import {
 	collectKittyImageIds,
 	deleteChangedKittyImages,
@@ -16,7 +14,6 @@ import {
 import { findChangedLineRange, type TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
 import { appendClearedExtraLines, appendFullRenderLines, cursorMoveSequence } from "./tui-main-screen/render-output.ts";
 import { BoundedTerminalWriter } from "./tui-main-screen/terminal-writer.ts";
-import { visibleWidth } from "./utils/width.ts";
 
 function isTermuxSession(): boolean {
 	return Boolean(process.env.TERMUX_VERSION);
@@ -26,6 +23,8 @@ function isTermuxSession(): boolean {
 export class TuiMainScreen extends TuiBase implements TUI {
 	readonly mode = "regular" as const;
 	private previousLines: string[] = [];
+	/** Resets and clipping of the rows, once per changed row. */
+	private readonly finishedLines = new FinishedLines((line, width) => clipLineToWidth(applyLineReset(line), width));
 	private previousKittyImageIds = new Set<number>();
 	private previousWidth = 0;
 	private previousHeight = 0;
@@ -109,7 +108,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// Extract cursor position before applying line resets (marker must be found first)
 		const cursorPos = this.extractCursorPosition(newLines, height);
 
-		newLines = this.applyLineResets(newLines);
+		// A row wider than the terminal would wrap and shift every row below it, in the full render and the diff alike.
+		newLines = this.finishedLines.apply(newLines, width);
 
 		// Helper to clear scrollback and viewport and render all new lines
 		const fullRender = (clear: boolean): void => {
@@ -292,17 +292,10 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				continue;
 			}
 
+			// An unchanged row between changed ones is already on screen: step over it.
+			if (i < this.previousLines.length && line === this.previousLines[i] && !isImage) continue;
 			output.append("\x1b[2K"); // Clear current line
-			if (!isImage && visibleWidth(line) > width) {
-				// Log all lines to crash file for debugging
-				const crashLogPath = writeWidthCrashLog(this.logDirectory, width, i, line, newLines);
-
-				// Clean up terminal state before throwing
-				this.stop();
-
-				throw new Error(widthErrorMessage(i, line, width, crashLogPath));
-			}
-			output.append(line);
+			output.append(isImage ? line : trimTrailingBlanks(line));
 		}
 
 		// Track where cursor ended up after rendering

@@ -1,9 +1,11 @@
 import path from "node:path";
-import { RELATIVE_AFTER_CD, underDirectory } from "../bash-cwd.ts";
+import { RELATIVE_AFTER_CD, followingBareCd, underDirectory } from "../bash-cwd.ts";
 import { bashSyntax, initializeBashSyntax } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { homeSpelling } from "../file-access.ts";
+import { gitRefMove, gitRoleGlobal, gitUnread } from "./git-forms.ts";
+import { programSetting } from "./git-programs.ts";
 import { destinations, gitDestinations, literalCommand, optionValues, withoutLocations } from "./destinations.ts";
 import {
 	ALL_OPERANDS,
@@ -20,6 +22,7 @@ import {
 	PACKAGE_MANAGERS,
 	PACKAGE_MUTATING,
 	PACKAGE_RUNNERS,
+	scriptedFiles,
 	scriptOf,
 	SHELL_PROGRAMS,
 	type Word,
@@ -49,6 +52,14 @@ interface ShellMutation {
 	areas: string[];
 	/** Changes with no path to name (`git commit`, `sed -i`, `npm install`), one short description each. */
 	opaque: string[];
+	/** Git calls that are not a read a read-only role may run (`gitUnread`, `gitRoleGlobal`): the closed list only that role answers to, since most of them only read too (`git merge-base`) or stay in the repository (`git fetch`). */
+	unread: string[];
+	/** Where those calls run, for a guard about one directory. */
+	unreadAreas: string[];
+	/** Git commands that move a ref every worktree of the repository shares (`git branch -f`, `git update-ref`): `gitRefMove`. */
+	refMoves: string[];
+	/** Databases `sqlite3` opens for writing, as written; a command changes one with no other sign, so a caller decides which matter. */
+	databases: string[];
 	/** The command writes somewhere the parse could not resolve (`> $FILE`), or did not parse. */
 	uncertain: boolean;
 	/** The first reason for `uncertain` other than a `cd`: what the caller must change (`> $FILE`, a `$VAR` operand, a script the parse cannot read). */
@@ -77,7 +88,7 @@ function place(
 	file: string,
 	dirs: string[] | undefined,
 	moved: boolean,
-	into: "writes" | "areas" | "directories" = "writes",
+	into: "writes" | "areas" | "directories" | "databases" | "unreadAreas" = "writes",
 ): void {
 	if (dirs) {
 		found[into].push(...dirs.map((dir) => (file === "." && dir !== "" ? dir : underDirectory(dir, file))));
@@ -94,6 +105,10 @@ function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undef
 	for (const file of other.directories) place(into, file, dirs, moved, "directories");
 	for (const area of other.areas) place(into, area, dirs, moved, "areas");
 	into.opaque.push(...other.opaque);
+	into.refMoves.push(...other.refMoves);
+	into.unread.push(...other.unread);
+	for (const area of other.unreadAreas) place(into, area, dirs, moved, "unreadAreas");
+	for (const database of other.databases) place(into, database, dirs, moved, "databases");
 	into.uncertain ||= other.uncertain;
 	if (other.uncertainBecause) into.uncertainBecause ??= other.uncertainBecause;
 	into.unparsed ||= other.unparsed;
@@ -164,6 +179,29 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 			writes: [],
 			areas: [],
 		};
+		if (name === "git") {
+			const move = gitRefMove(rest, sub, after);
+			if (move) found.refMoves.push(move);
+			// What git is told to run or where to look, in its own options or the environment set for it, whatever it reads.
+			const setting = literals.slice(0, at).find((word) => word !== undefined && programSetting(word) !== undefined);
+			const before = command.assignments.find(({ raw }) => programSetting(raw) !== undefined)?.raw ?? setting;
+			const global = gitRoleGlobal(rest);
+			if (global) found.unread.push(`git ${global}`);
+			else if (before) found.unread.push(`${before} git`);
+			const unread = gitUnread(
+				rest,
+				command.tokens.slice(at + 1).map((word) => word.raw),
+				sub,
+				after,
+			);
+			if (unread) {
+				found.unread.push(unread);
+				for (const area of named.areas.length > 0 ? named.areas : ["."])
+					if (area !== undefined) place(found, area, command.dirs, moved, "unreadAreas");
+			}
+		}
+		// `octocode --help` prints; any other run is a session of its own, top-level, with none of this role's limits.
+		if (name === "octocode" && !/^(?:--version|-v|--help|-h)$/.test(rest[0] ?? "")) found.opaque.push("octocode");
 		// Words read at run time may be operands or options (`-delete`, `-o f`): a program judged by its words cannot be judged.
 		const input = fed.get(at);
 		if (input && inputMayWrite(name, rest, input)) {
@@ -191,10 +229,14 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 			if (script.unread) unsure(found, `sed's script ${script.unread}`);
 		} else if (name === "perl" && options.some((word) => /^-[a-zA-Z]*i/.test(word ?? ""))) {
 			changes("perl -i");
+			take(scriptedFiles(rest, /^-[a-zA-Z]*[eE]$/));
 		} else if (["awk", "gawk"].includes(name) && gawkInPlace(rest)) {
 			changes(`${name} -i inplace`);
+			take(scriptedFiles(rest, /^-[a-zA-Z]*[ef]$/));
 		} else if (OPAQUE_WRITERS.includes(name)) {
 			take(named.writes);
+			if (name === "ed" || name === "ex") take(operands);
+			if (name === "patch" && named.areas.length === 0 && named.writes.length === 0) take(operands.slice(0, 1));
 			changes(name, named.areas);
 		} else if (
 			name === "curl" &&
@@ -259,6 +301,9 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 					unsure(found, `\`${name} ${sub}\` runs a command the guard cannot read`);
 				else inspect(literalCommand(payload, command.dirs), found, depth + 1, moved);
 			}
+		} else if (name === "sqlite3") {
+			if (operands[0] !== undefined && !rest.includes("-readonly"))
+				place(found, operands[0], command.dirs, moved, "databases");
 		} else if (SHELL_PROGRAMS.has(name) || name === "eval") {
 			const script = name === "eval" ? operands.join(" ") : scriptOf(rest);
 			if (script !== undefined && depth < 4 && !operands.includes(undefined))
@@ -277,17 +322,22 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
  * What `command` writes, moves or removes, by its bash parse. A command made only of read-only programs has no effect;
  * one the parser cannot read at all is `uncertain` (a caller decides whether that matters).
  */
-export function shellMutation(command: string, depth = 0): ShellMutation {
+export function shellMutation(command: string, depth = 0, env: NodeJS.ProcessEnv = process.env): ShellMutation {
 	const found: ShellMutation = {
 		writes: [],
 		directories: [],
 		areas: [],
 		opaque: [],
+		unread: [],
+		unreadAreas: [],
+		refMoves: [],
+		databases: [],
 		uncertain: false,
 		unparsed: false,
 	};
 	if (readOnlyCommand(command)) return found;
-	const syntax = bashSyntax(command);
+	// Every write-target check (state folder, read-only role, reservations, isolated tree) shares this one cd-following.
+	const syntax = bashSyntax(depth === 0 ? followingBareCd(command, env) : command);
 	found.unparsed = syntax.incomplete;
 	// A `cd` changes what a relative path names: `BashCommand.dirs` and `BashFileTarget.dirs` say where each part runs.
 	const moved = syntax.commands.some((part) => part.movesDirectory === true);
@@ -314,6 +364,8 @@ export function shellMutation(command: string, depth = 0): ShellMutation {
 	);
 	found.writes = [...new Set(found.writes)];
 	found.areas = [...new Set(found.areas)];
+	found.unreadAreas = [...new Set(found.unreadAreas)];
+	found.databases = [...new Set(found.databases)];
 	return found;
 }
 

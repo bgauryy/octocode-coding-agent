@@ -134,7 +134,7 @@ describe("scoped models selector", () => {
 		const selectedRow = () =>
 			stripAnsi(selector.render(120).join("\n"))
 				.split("\n")
-				.find((line) => line.startsWith("→ "));
+				.find((line) => line.startsWith("› "));
 
 		for (const character of "alpha") selector.handleInput(character);
 		selector.handleInput("\x1b[B");

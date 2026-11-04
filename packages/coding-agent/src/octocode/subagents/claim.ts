@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../instructions/report.ts";
@@ -24,16 +25,29 @@ import {
 import { providerHealth } from "./provider-health.ts";
 import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
+import type { RunDetails } from "./run-types.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
 export const MAX_SUBAGENTS_ENV = "OCTOCODE_MAX_SUBAGENTS";
-const DEFAULT_MAX_SUBAGENTS = 6;
+const MOST_DEFAULT_SUBAGENTS = 6;
+const GIB = 1024 ** 3;
 
-/** How many subagents may run at once: `OCTOCODE_MAX_SUBAGENTS` (a positive integer), else 6. A call past it waits for a slot. */
-export function maxSubagents(env: NodeJS.ProcessEnv = process.env): number {
-	const value = envInt(env, MAX_SUBAGENTS_ENV, DEFAULT_MAX_SUBAGENTS);
-	return value >= 1 ? value : DEFAULT_MAX_SUBAGENTS;
+/**
+ * The default for a machine: at most 6, one per CPU, and one per GiB of memory (a child and its MCP pair peak near
+ * 450 MB, so that stays within about half the machine).
+ */
+export const machineSubagents = (cores: number, totalMemory: number): number =>
+	Math.max(1, Math.min(MOST_DEFAULT_SUBAGENTS, cores, Math.floor(totalMemory / GIB)));
+
+/** Read once: the limit is in a tool description, which must not change during a session. */
+let thisMachine: number | undefined;
+const thisMachineSubagents = (): number => (thisMachine ??= machineSubagents(os.availableParallelism(), os.totalmem()));
+
+/** How many subagents may run at once: `OCTOCODE_MAX_SUBAGENTS` (a positive integer), else what this machine suits. A call past it waits for a slot. */
+export function maxSubagents(env: NodeJS.ProcessEnv = process.env, fallback: number = thisMachineSubagents()): number {
+	const value = envInt(env, MAX_SUBAGENTS_ENV, fallback);
+	return value >= 1 ? value : fallback;
 }
 
 const SUBAGENT_LINGER_ENV = "OCTOCODE_SUBAGENT_LINGER_SECONDS";
@@ -127,6 +141,8 @@ export interface AgentRuns {
 	background: Background;
 	/** Foreground runs, so `/agents kill` can stop one without aborting the whole turn. */
 	foreground: Background;
+	/** What each task running now has spent so far (`spawn-limits.ts`). */
+	live: Map<string, Pick<RunDetails, "cost">>;
 	reports: ReportQueue;
 	read: ReadReports;
 	/** Subagents running now (foreground and background), by name. */
@@ -249,7 +265,8 @@ export function planRun(
 }
 
 /**
- * Names the run and claims it, in the slot the caller already took (`runs.slots`); `release` gives the slot back.
+ * Names the run and claims it, in the slot the caller already took (`runs.slots`); `release` gives the slot back. A
+ * queued background run is claimed before it has one: `slot.held` says whether there is one to give.
  * `avoid`: names to skip besides the team's, those of existing scratch folders and those of existing session folders
  *, e.g. existing refs of isolated runs. A
  * resumed run keeps its own name, and with it its saved conversation; a new one never gets a name with a saved one.
@@ -261,6 +278,7 @@ export function claimRun(
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
+	slot: { held: boolean } = { held: true },
 ): Run {
 	const { cwd } = ctx;
 	const { profile, route } = plan;
@@ -304,11 +322,11 @@ export function claimRun(
 	runs.running.set(identity.id, undefined);
 	const release = () => {
 		if (!runs.running.delete(identity.id)) return;
-		runs.slots.give();
+		if (slot.held) runs.slots.give();
 		const kept = scratch && !dropEmptyScratch(scratch);
 		runs.team.rememberFinished(
 			identity.id,
-			`its report (or failure) already reached you${kept ? ` (files it handed back, and its full report when cut, are in ${shortPath(scratch)})` : ""}.`,
+			`its report (or failure) reached you or arrives when your turn ends${kept ? ` (files it handed back, and its full report when cut, are in ${shortPath(scratch)})` : ""}.`,
 		);
 	};
 	return { identity, profile, route, teamNote, release };

@@ -9,6 +9,28 @@ import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5m8AAAAASUVORK5CYII=";
 
+describe("ACP retry notices", () => {
+	it("shows a retry wait as a thought, outside the reply, with its numbers in _meta", () => {
+		const projector = new AcpEventProjector((summary) => summary);
+		const updates = projector.update({
+			type: "auto_retry_start",
+			attempt: 2,
+			maxAttempts: 5,
+			delayMs: 1500,
+			errorMessage: "503 service unavailable",
+		});
+		expect(updates).toEqual([
+			{
+				sessionUpdate: "agent_thought_chunk",
+				content: { type: "text", text: "Retrying in 2s (attempt 2 of 5): 503 service unavailable\n" },
+				_meta: { "octocode/autoRetry": { attempt: 2, maxAttempts: 5, delayMs: 1500 } },
+			},
+		]);
+		expect(projector.error).toBeUndefined();
+		expect(projector.stopReason).toBe("end_turn");
+	});
+});
+
 describe("ACP prompt conversion", () => {
 	it("preserves text, labels resource context, and leaves resource links unfetched", () => {
 		expect(
@@ -182,7 +204,16 @@ describe("ACP event projection", () => {
 				toolName: "bash",
 				args: { command: "test" },
 			}),
-		).toEqual([{ sessionUpdate: "tool_call", toolCallId: "call-1", title: "bash", status: "in_progress" }]);
+		).toEqual([
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "call-1",
+				title: "bash",
+				name: "bash",
+				kind: "execute",
+				status: "in_progress",
+			},
+		]);
 		const updates = projector.update({
 			type: "tool_execution_update",
 			toolCallId: "call-1",
@@ -230,7 +261,14 @@ describe("ACP event projection", () => {
 				isError: false,
 			}),
 		).toEqual([
-			{ sessionUpdate: "tool_call", toolCallId: "call-2", title: "read", status: "in_progress" },
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "call-2",
+				title: "read",
+				name: "read",
+				kind: "other",
+				status: "in_progress",
+			},
 			{ sessionUpdate: "tool_call_update", toolCallId: "call-2", status: "completed", content: [] },
 		]);
 	});
@@ -239,7 +277,14 @@ describe("ACP event projection", () => {
 		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		const args = { command: "npm test", reason: "Run the focused\ntests\u0007 now" };
 		expect(projector.update({ type: "tool_execution_start", toolCallId: "c", toolName: "bash", args })).toEqual([
-			{ sessionUpdate: "tool_call", toolCallId: "c", title: "bash: Run the focused tests now", status: "in_progress" },
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "c",
+				title: "bash: Run the focused tests now",
+				name: "bash",
+				kind: "execute",
+				status: "in_progress",
+			},
 		]);
 		// A one-word reason says no more than the name; a missing or non-text one is left out.
 		expect(toolTitle("file", { reason: "Edit" })).toBe("file");

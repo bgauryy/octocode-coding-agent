@@ -574,4 +574,50 @@ describe("askUser tool", () => {
 			rendered(tool.renderResult({ content: [{ type: "text", text: "No interactive user" }] }, {}, theme, {})),
 		).toBe("  ⎿  No interactive user");
 	});
+
+	describe("forward", () => {
+		const setup = (stored: (id: number) => { from: string; text: string } | { error: string }) => {
+			const f = fakeHost();
+			registerAskUser(f.api, stored);
+			return f.tools.get("askUser");
+		};
+		const headlessDialogs = () => Object.assign(fakeCtx({ cwd: "." }), { mode: "rpc" });
+
+		it("shows the child's question word for word above the parent's", async () => {
+			const seen: string[] = [];
+			const ctx = headlessDialogs();
+			ctx.ui.input = async (title: string) => {
+				seen.push(title);
+				return "the second";
+			};
+			const result = await setup((id) => ({ from: "jolly-tentacle", text: `Exact question ${id}` })).execute(
+				"1",
+				{ forward: 7, questions: [{ question: "Which do you want?" }] },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(seen[0]).toContain("jolly-tentacle asks (message #7):\nExact question 7\n\nWhich do you want?");
+			expect(result.content[0].text).toContain("the second");
+		});
+
+		it("refuses a message it cannot read, and asks nothing", async () => {
+			const ctx = headlessDialogs();
+			let asked = false;
+			ctx.ui.input = async () => {
+				asked = true;
+				return "x";
+			};
+			await expect(
+				setup(() => ({ error: "no message #9 that you can read" })).execute(
+					"1",
+					{ forward: 9, questions: [{ question: "Which?" }] },
+					undefined,
+					undefined,
+					ctx,
+				),
+			).rejects.toThrow("Cannot forward message #9: no message #9 that you can read");
+			expect(asked).toBe(false);
+		});
+	});
 });

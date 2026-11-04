@@ -234,13 +234,14 @@ describe("with Octocode MCP (default)", () => {
 		// tool; before that, 93,097 and 98,493 while the renderer kept full schemas (B322).
 		// 75_000 (2026-10-31, measured 74,765; B366): the sibling server's catalog had changed, so every preset override was stale
 		// and the raw contract made 82,523. The overrides were rewritten (prose -46%), and `agent` shows one line per type.
-		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(75_000);
+		// 88_000 (2026-11-03, measured 86,642; B6): every Octocode tool contract is resident (no cold-start index), by decision.
+		expect(fixedChars, "default runtime prompt and declarations grew beyond their headroom").toBeLessThan(88_000);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
 		expect(turn.tools).toContain("mcp__octocode__localFetch");
 		expect(turn.tools).toContain("mcp__octocode__localSearch");
 		for (const name of ["edit", "write"]) expect(turn.tools).not.toContain(name);
-		expect(turn.systemPrompt).toContain("<octocode_work>");
+		expect(turn.systemPrompt).toContain("<work>");
 		// Every tool the server lists, GitHub and package registry ones included, is declared from the first request.
 		for (const name of [
 			"ghSearchRepo",
@@ -260,13 +261,11 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.tools).not.toContain("tool_search");
 		// The extension's client connects before the first request is built, so the guidance and the server's contract
 		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
-		// The policy says nothing about the server: it explains itself in `<mcps>` and its declarations.
-		expect(turn.systemPrompt).not.toContain("Use Octocode MCP");
-		expect(turn.systemPrompt).not.toContain("block routes each question");
+		// The research section routes code search to the server, and the bash search rule is left out.
+		expect(turn.systemPrompt).toContain("Use Octocode MCP (`mcp__octocode__*`)");
+		expect(turn.systemPrompt).toContain("block routes each question");
 		expect(turn.systemPrompt).not.toContain("Search with bash");
-		expect(turn.systemPrompt).toMatch(
-			/<mcps>\n<mcp name="octocode" tools="mcp__octocode__\*">\n\/\/ MCP server "octocode"[^\n]*\n\/\*\* \S/,
-		);
+		expect(turn.systemPrompt).toMatch(/<mcps>\n[^\n]*\n<mcp name="octocode" tools="mcp__octocode__\*">\n\/\*\* \S/);
 		// `<tools>` lists native tools one by one and each described server once by its purpose (stated there, not in
 		// its `<mcps>` block); the server's tools are in `<mcps>`.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
@@ -479,8 +478,8 @@ describe("with the user's own octocode server in mcp.json", () => {
 		expect(first.tools).toContain("mcp__octocode__shout");
 		expect(first.tools).not.toContain("mcp__octocode__localSearch");
 		// The prompt follows the tools by server name (`turn.ts`: `isOctocodeTool`), so the user's own `octocode` entry still
-		// counts as the research server: no native fallback, and no routing text either way.
-		expect(first.systemPrompt).not.toContain("Use Octocode MCP");
+		// counts as the research server: it gets the routing line and no native fallback.
+		expect(first.systemPrompt).toContain("Use Octocode MCP");
 		expect(first.systemPrompt).not.toContain("Search with bash");
 		expect(first.systemPrompt).not.toContain("# Octocode MCP server instructions");
 		expect(turns.at(-1)!.lastResults[0]).toEqual({

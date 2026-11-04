@@ -37,6 +37,8 @@ export const API_HTTP_LIMITS = {
 
 /** What a method handler may do for the connection it was called on. */
 export interface Connection {
+	/** Which listener took this call: what it proves about the caller differs. */
+	transport?: "socket" | "http";
 	/** Start streaming events to this connection. Socket connections get notifications; HTTP clients use GET /events. */
 	subscribe?(options: { since?: number; types?: string[] }): { seq: number; gap: boolean };
 	unsubscribe?(): void;
@@ -93,6 +95,8 @@ export class ApiServer {
 				server.listen(file, () => {
 					this.socketFile = file;
 					server.off("error", reject);
+					// On by default in every session: it must never be what keeps a finished process alive.
+					server.unref();
 					resolve();
 				});
 			} finally {
@@ -137,6 +141,7 @@ export class ApiServer {
 			socket.write(`${JSON.stringify(value)}\n`);
 		};
 		const connection: Connection = {
+			transport: "socket",
 			subscribe: (options) => {
 				subscription?.close();
 				const sub = this.log.subscribe((event) => write({ jsonrpc: "2.0", method: "event", params: event }), options);
@@ -209,7 +214,7 @@ export class ApiServer {
 		const parsed = parseRequest(Buffer.concat(chunks, bytes).toString("utf8"));
 		if (isResponse(parsed)) return reply(400, parsed);
 		// Event streaming over HTTP is GET /events; a subscription needs a connection that outlives the request.
-		const response = await answer(parsed, this.dispatch, {});
+		const response = await answer(parsed, this.dispatch, { transport: "http" });
 		if (response) reply(200, response);
 		else {
 			res.writeHead(204);

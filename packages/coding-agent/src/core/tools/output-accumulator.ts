@@ -1,7 +1,8 @@
-import type { WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../../utils/ansi.ts";
-import { createOutputFileStream } from "../../utils/output-files.ts";
+import { formatBytes } from "../../utils/bytes.ts";
+import { type CappedOutputFile, createCappedOutputFile } from "../../utils/output-files.ts";
+import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 import { OutputHead } from "./output-head.ts";
 import {
 	collapseCarriageReturns,
@@ -32,6 +33,11 @@ interface OutputAccumulatorOptions {
 	 * (`output-trim.ts`) from the elided middle under the head. The temp file keeps every line.
 	 */
 	smartTrim?: boolean;
+	/**
+	 * Most bytes the temp file holds (the `bash.spillMaxBytes` setting): past it the file keeps the start and the end of
+	 * the output around a marker. 0 lifts the cap. The snapshots are not affected, as they never read the file.
+	 */
+	spillMaxBytes?: number;
 }
 
 interface OutputSnapshot {
@@ -94,9 +100,9 @@ export class OutputAccumulator {
 	private hasOpenLine = false;
 	private finished = false;
 
+	private readonly spillMaxBytes: number;
 	private tempFilePath: string | undefined;
-	private tempFileStream: WriteStream | undefined;
-	private closeOutputFile: (() => Promise<void>) | undefined;
+	private tempFile: CappedOutputFile | undefined;
 
 	constructor(options: OutputAccumulatorOptions = {}) {
 		this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -104,6 +110,7 @@ export class OutputAccumulator {
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
 		this.tempFilePrefix = options.tempFilePrefix ?? "octocode-output";
 		this.smartTrim = options.smartTrim ?? false;
+		this.spillMaxBytes = options.spillMaxBytes ?? SETTINGS_DEFAULTS.bash.spillMaxBytes;
 		const head = splitHeadTailBudget(this.maxLines, this.maxBytes);
 		this.head = new OutputHead(head.headLines, head.headBytes, this.smartTrim);
 	}
@@ -116,9 +123,9 @@ export class OutputAccumulator {
 		this.totalRawBytes += data.length;
 		this.appendText(this.withoutAnsi(this.decoder.decode(data, { stream: true })));
 
-		if (this.tempFileStream || this.shouldUseTempFile()) {
+		if (this.tempFile || this.shouldUseTempFile()) {
 			this.ensureTempFile();
-			this.tempFileStream?.write(data);
+			this.tempFile?.write(data);
 		} else if (data.length > 0) {
 			this.rawChunks.push(data);
 		}
@@ -215,8 +222,12 @@ export class OutputAccumulator {
 	}
 
 	async closeTempFile(): Promise<void> {
-		await this.closeOutputFile?.();
-		this.tempFileStream = undefined;
+		await this.tempFile?.close();
+	}
+
+	/** Bytes the cap dropped from the middle of the temp file; 0 means it holds the whole output. */
+	get spillDroppedBytes(): number {
+		return this.tempFile?.droppedBytes ?? 0;
 	}
 
 	/**
@@ -370,12 +381,17 @@ export class OutputAccumulator {
 		if (this.tempFilePath) {
 			return;
 		}
-		const { path, stream, close } = createOutputFileStream(this.tempFilePrefix, ".log");
-		this.tempFilePath = path;
-		this.tempFileStream = stream;
-		this.closeOutputFile = close;
+		const file = createCappedOutputFile(
+			this.tempFilePrefix,
+			".log",
+			this.spillMaxBytes,
+			(dropped) =>
+				`\n[... ${formatBytes(dropped, "spaced")} dropped here: this file keeps only the start and the end of output past the bash.spillMaxBytes cap (0 lifts it), so lines below this mark sit earlier than the numbers the result showed ...]\n`,
+		);
+		this.tempFilePath = file.path;
+		this.tempFile = file;
 		for (const chunk of this.rawChunks) {
-			this.tempFileStream.write(chunk);
+			file.write(chunk);
 		}
 		this.rawChunks = [];
 	}

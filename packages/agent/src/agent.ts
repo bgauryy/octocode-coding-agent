@@ -171,9 +171,9 @@ export class Agent {
 		this.steeringQueue.enqueue(message);
 	}
 
-	/** Queue a message to run only after the agent would otherwise stop. */
-	followUp(message: AgentMessage): void {
-		this.followUpQueue.enqueue(message);
+	/** Queue a message to run only after the agent would otherwise stop; `together` drains it with its neighbours that set it too. */
+	followUp(message: AgentMessage, options?: { together?: boolean }): void {
+		this.followUpQueue.enqueue(message, options);
 	}
 
 	/** Remove all queued steering messages. */

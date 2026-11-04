@@ -41,7 +41,6 @@ type CommandDispatchHost = Pick<
 	| "handleSessionCommand"
 	| "handleShareCommand"
 	| "handleThinkingCommand"
-	| "isBashMode"
 	| "isExtensionCommand"
 	| "onInputCallback"
 	| "pendingUserInputs"
@@ -49,6 +48,7 @@ type CommandDispatchHost = Pick<
 	| "queueInteractiveMessage"
 	| "runtimeHost"
 	| "sessionManager"
+	| "sendCarriedMessages"
 	| "session"
 	| "showExtensionConfirm"
 	| "showError"
@@ -67,7 +67,7 @@ type CommandDispatchHost = Pick<
 	| "shutdown"
 	| "skillCommands"
 	| "ui"
-	| "updateEditorBorderColor"
+	| "uiStore"
 >;
 
 export function handleStartupSubmit(host: CommandDispatchHost, text: string): void {
@@ -229,10 +229,21 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 		case "resume":
 			if (!(await runNativeCommand(host, "resume", args))) host.showSessionSelector();
 			return;
-		case "quit":
-			// Quitting mid-reply discards the reply; ask, as /new and /fork do for running work.
-			if (!host.session.isStreaming || (await host.showExtensionConfirm("Quit", "Stop the running reply and quit?")))
+		case "quit": {
+			// Quitting discards a running reply and stops background work: the native check asks, as it does for /new and /fork.
+			const runner = host.session.extensionRunner;
+			const guarded = runner?.hasHandlers("session_before_quit");
+			if (guarded ? (await runner?.emit({ type: "session_before_quit" }))?.cancel : false) {
+				host.showStatus("Still running: quit cancelled.");
+				return;
+			}
+			if (
+				guarded ||
+				!host.session.isStreaming ||
+				(await host.showExtensionConfirm("Quit", "Stop the running reply and quit?"))
+			)
 				await host.shutdown();
+		}
 	}
 }
 
@@ -240,7 +251,11 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 	// oxlint-disable-next-line typescript/no-misused-promises -- the editor ignores the callback's result
 	host.defaultEditor.onSubmit = async (text: string) => {
 		text = text.trim();
-		if (!text) return;
+		if (!text) {
+			// Enter in an empty editor sends the messages carried over a session switch.
+			await host.sendCarriedMessages();
+			return;
+		}
 
 		const parsed = parseSlashCommand(text);
 		const builtin = parsed && getBuiltinCommand(parsed.name);
@@ -272,8 +287,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 				}
 				host.editor.addToHistory?.(text);
 				await host.handleBashCommand(command, isExcluded);
-				host.isBashMode = false;
-				host.updateEditorBorderColor();
+				host.uiStore.getState().setBashMode(false);
 				return;
 			}
 		}

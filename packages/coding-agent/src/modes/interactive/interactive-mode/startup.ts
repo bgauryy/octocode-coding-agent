@@ -6,6 +6,7 @@
 import * as path from "node:path";
 import { SEPARATOR, Spacer, Text } from "@octocodeai/octocode-tui";
 import { APP_NAME, APP_TITLE } from "../../../config.ts";
+import { setMirrorNoticeHandler } from "../../../core/session-manager/mirror.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { takeUnnotifiedCrash } from "../../../core/crash-log.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
@@ -17,9 +18,11 @@ import { createChatViewport } from "../chat-viewport.ts";
 import { formatKeyText, keyHint, keyText, rawKeyHint } from "../components/keybinding-hints.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { onThemeChange, theme } from "../../../theme/theme.ts";
+import { bindFooterState } from "../state/bind-footer.ts";
 import { refreshGithubFooter } from "./github-footer.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { offerForkOfTornSession } from "./session-navigation.ts";
 
 /** Interactive-mode members used by startup and the main loop. */
 type StartupHost = Pick<
@@ -42,6 +45,7 @@ type StartupHost = Pick<
 	| "getUserInput"
 	| "handleCtrlC"
 	| "handleCtrlD"
+	| "handleResumeSession"
 	| "handleStartupSubmit"
 	| "headerContainer"
 	| "init"
@@ -67,6 +71,7 @@ type StartupHost = Pick<
 	| "shouldShowStartupDetails"
 	| "shouldShowStartupHeader"
 	| "showError"
+	| "showExtensionConfirm"
 	| "showManagedToolStatus"
 	| "showNewVersionNotification"
 	| "showPackageUpdateNotification"
@@ -225,6 +230,8 @@ export async function init(host: StartupHost): Promise<void> {
 
 	// Enable remaining input only after both independent setup paths complete, and keep resources before messages.
 	host.setupKeyHandlers();
+	// The database mirror reports through the TUI instead of printing over it.
+	setMirrorNoticeHandler((message) => host.showWarning(message));
 	host.setupEditorSubmitHandler();
 	host.ui.requestRender();
 	host.renderInitialMessages();
@@ -238,7 +245,7 @@ export async function init(host: StartupHost): Promise<void> {
 
 	// Footer data (branch, statuses, GitHub, providers) is a state source: each real change asks for one frame,
 	// so its writers never request frames themselves.
-	host.footerDataProvider.subscribe(() => host.ui.requestRender());
+	bindFooterState(host);
 
 	void refreshGithubFooter(host);
 
@@ -269,6 +276,7 @@ export function updateTerminalTitle(host: StartupHost): void {
  */
 export async function run(host: StartupHost): Promise<void> {
 	await host.init();
+	await offerForkOfTornSession(host, host.session.sessionManager.getSessionFile());
 
 	if (!isOfflineModeEnabled()) {
 		const controller = new AbortController();

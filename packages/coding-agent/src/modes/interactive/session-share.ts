@@ -1,3 +1,4 @@
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import { runtimeTempDir } from "../../config/runtime-paths.ts";
 import { getApplicationPort } from "../../core/application/index.ts";
 import { type ChildProcess, spawn } from "node:child_process";
@@ -109,7 +110,7 @@ export async function shareSession(context: SessionShareContext): Promise<void> 
 }
 
 async function shareViaGist(tmpFile: string, context: SessionShareContext): Promise<void> {
-	const loader = new BorderedLoader(context.ui, theme, "Creating gist...");
+	const loader = new BorderedLoader(context.ui, theme, `Creating gist${ELLIPSIS}`);
 	context.editorContainer.clear();
 	context.editorContainer.addChild(loader);
 	context.ui.setFocus(loader);

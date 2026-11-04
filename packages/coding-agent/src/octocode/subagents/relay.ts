@@ -14,6 +14,7 @@ import { headerText } from "../shared/fence.ts";
 import { withDialog } from "../shared/locks.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { stringList } from "../shared/util.ts";
+import type { RunningBudgets } from "./budget.ts";
 
 /**
  * A subagent's dialogs, answered by its parent. The child runs in Octocode's RPC mode: its `ctx.ui.select`, `confirm` and `input`
@@ -52,6 +53,12 @@ export interface RelayHost {
 	ui?: Pick<ExtensionUIContext, "select" | "confirm" | "input" | "notify"> | undefined;
 	/** Registers the secret given to child `id` with the team, so the user's messages to it are signed; returns what ends that when the child is gone (`Team.vouch`). */
 	vouch?: ((id: string, secret: string) => () => void) | undefined;
+	/** Child `id` began or stopped waiting for the user's answer, so listings can say why it does nothing. */
+	awaitingApproval?: ((id: string, waiting: boolean) => void) | undefined;
+	/** Child `id` wrote output at `at`, so listings can say how long it has been quiet. */
+	output?: ((id: string, at: number) => void) | undefined;
+	/** The budgets of running children, so this session can show and raise them (`coordinate`). */
+	budgets?: Pick<RunningBudgets, "add" | "remove"> | undefined;
 }
 
 /** The child as the parent knows it: from its own spawn, not from anything the child says. */

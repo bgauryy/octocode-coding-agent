@@ -379,7 +379,7 @@ export class FooterDataProvider {
 						this.scheduleRefresh();
 					}
 				};
-				watchFile(tablesListPath, { interval: 250 }, this.reftableTablesListListener);
+				watchFile(tablesListPath, { interval: 1000 }, this.reftableTablesListListener);
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 /** Sending user and custom messages to a session: start a run, queue into the current one, or append. */
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
-import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "../auth-guidance.ts";
+import { AuthRequiredError, formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "../auth-guidance.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionCompaction } from "./compaction-control.ts";
 import type { SessionInternals } from "./host.ts";
@@ -36,10 +36,13 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	// Handle extension commands first (execute immediately, even during streaming)
 	// Extension commands manage their own LLM interaction via api.sendMessage()
 	if (expandPromptTemplates && text.startsWith("/")) {
-		const handled = await tryExecuteExtensionCommand(session.extensionRunner, text);
+		let commandFailure: string | undefined;
+		const handled = await tryExecuteExtensionCommand(session.extensionRunner, text, (message) => {
+			commandFailure = message;
+		});
 		if (handled) {
 			// Extension command executed, no prompt to send
-			preflightResult?.("handled");
+			preflightResult?.("handled", commandFailure);
 			return;
 		}
 	}
@@ -101,7 +104,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 
 	// Validate model
 	if (!session.model) {
-		throw new Error(formatNoModelSelectedMessage());
+		throw new AuthRequiredError(formatNoModelSelectedMessage());
 	}
 
 	const hasConfiguredAuth =
@@ -111,13 +114,13 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	if (!hasConfiguredAuth) {
 		const isOAuth = session.modelRuntime.isUsingOAuth(session.model.provider);
 		if (isOAuth) {
-			throw new Error(
+			throw new AuthRequiredError(
 				`Authentication failed for "${session.model.provider}". ` +
 					`Credentials may have expired or network is unavailable. ` +
 					`Run '/login ${session.model.provider}' to re-authenticate.`,
 			);
 		}
-		throw new Error(formatNoApiKeyFoundMessage(session.model.provider));
+		throw new AuthRequiredError(formatNoApiKeyFoundMessage(session.model.provider));
 	}
 
 	const started = attachImagePaths
@@ -170,6 +173,7 @@ export async function sendCustomMessage<T = unknown>(
 	options?: {
 		triggerTurn?: boolean;
 		deliverAs?: "steer" | "followUp" | "nextTurn";
+		together?: boolean;
 	},
 ): Promise<void> {
 	const { session, run } = host;
@@ -187,7 +191,7 @@ export async function sendCustomMessage<T = unknown>(
 	} else if (session.isStreaming && options?.triggerTurn !== false) {
 		host.inputs.noteQueuedCustomMessage(appMessage);
 		if (options?.deliverAs === "followUp") {
-			session.agent.followUp(appMessage);
+			session.agent.followUp(appMessage, { together: options.together });
 		} else {
 			session.agent.steer(appMessage);
 			host.inputs.noteSteeredCustomMessage(appMessage);

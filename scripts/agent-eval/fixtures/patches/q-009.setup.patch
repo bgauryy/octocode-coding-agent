@@ -1,0 +1,13 @@
+--- a/packages/coding-agent/src/octocode/subagents/budget.ts
++++ b/packages/coding-agent/src/octocode/subagents/budget.ts
+@@ -34,8 +34,8 @@
+  */
+ export function maxRequests(profile?: Pick<AgentProfile, "maxRequests">, env: NodeJS.ProcessEnv = process.env): number {
+ 	if (profile?.maxRequests !== undefined) return profile.maxRequests;
+-	const value = envInt(env, MAX_REQUESTS_ENV, DEFAULT_MAX_REQUESTS);
+-	return value >= 0 ? value : DEFAULT_MAX_REQUESTS;
++	const configured = envInt(env, MAX_REQUESTS_ENV, DEFAULT_MAX_REQUESTS);
++	return configured > 0 ? configured : DEFAULT_MAX_REQUESTS;
+ }
+ 
+ /** What the parent tells a child that reached its soft limit. */

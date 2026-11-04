@@ -1,4 +1,4 @@
-import { sliceByColumn, truncateToWidth } from "@octocodeai/octocode-tui";
+import { closeOpenStyles, sliceByColumn, truncateToWidth } from "@octocodeai/octocode-tui";
 
 export interface HorizontalViewportRow {
 	gutter: string;
@@ -45,10 +45,9 @@ export function renderHorizontalViewport(rows: HorizontalViewportRow[], width: n
 
 	// Clip only the body; the fixed-width gutter remains visible as navigation context.
 	return rows.map((row) => {
-		const line =
-			horizontalScroll > 0
-				? `${row.gutter}${sliceByColumn(row.body, horizontalScroll, viewportWidth, true)}\x1b[0m`
-				: row.gutter + row.body;
-		return truncateToWidth(line, width, "");
+		if (horizontalScroll === 0) return truncateToWidth(row.gutter + row.body, width, "");
+		// The clip can cut a style's closer off; close only what is left open, not a full reset.
+		const body = sliceByColumn(row.body, horizontalScroll, viewportWidth, true);
+		return truncateToWidth(`${row.gutter}${body}${closeOpenStyles(body)}`, width, "");
 	});
 }

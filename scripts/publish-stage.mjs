@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, posix, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { execNpmSync } from "./npm-command.mjs";
 import { stageRegistryManifest } from "./registry-release.mjs";
 
@@ -9,6 +9,8 @@ import { stageRegistryManifest } from "./registry-release.mjs";
 const DEVELOPMENT_FIELDS = ["devDependencies", "scripts", "overrides", "octocodeRelease"];
 /** Where the repository's `docs/` go in the package, beside the package's own docs. */
 const PROJECT_DOCS = "docs/project";
+/** Dated reviews, evidence and RFCs: a record of how the project got here, not guidance for someone who installed it. */
+const INTERNAL_DOC = /^(?:RFC_.+|.+_(?:REVIEW|AUDIT|VALIDATION|COVERAGE|ASSESSMENT|CONFORMANCE|ROLLOUT))\.md$/;
 
 /**
  * The manifest a consumer installs: development fields gone, and `dependencies` cut down to what stays outside the bundle
@@ -92,13 +94,14 @@ function rewriteRelativeLinks(file, replace) {
 }
 
 /**
- * Copy the repository's `docs/` to `docs/project/` in the package. Their links were written for the repository layout, so
- * each one is re-pointed: at the shipped copy when the package has it, otherwise at the release tag on GitHub.
+ * Copy the repository's `docs/`, without the internal ones, to `docs/project/` in the package. Their links were written for
+ * the repository layout, so each one is re-pointed: at the shipped copy when the package has it, otherwise at the release
+ * tag on GitHub, which still has the internal ones.
  */
 export function stageProjectDocs(docsDirectory, packageDirectory, manifest, packagePath) {
 	const url = releaseUrl(manifest);
 	const stagedDocs = join(packageDirectory, PROJECT_DOCS);
-	cpSync(docsDirectory, stagedDocs, { recursive: true });
+	cpSync(docsDirectory, stagedDocs, { recursive: true, filter: (from) => !INTERNAL_DOC.test(basename(from)) });
 	const files = markdownFiles(stagedDocs);
 	for (const file of files) {
 		const folder = dirname(file);

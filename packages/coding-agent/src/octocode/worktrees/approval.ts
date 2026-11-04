@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { worktreesDir } from "../shared/own-worktree.ts";
 import { grantFolder } from "../trust/grants.ts";
 import { shown } from "../trust/messages.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
@@ -7,7 +8,10 @@ import { resolveFolderTrust } from "../trust/resolve.ts";
 /**
  * Trust for a worktree that is about to be created. The folder does not exist yet, so the user is asked before
  * `git worktree add` and a "No" leaves nothing behind. Yes records a `worktree` grant once the folder exists. A worktree
- * under a folder the user already trusted as a subtree needs no question. Nothing here reads a project file.
+ * under a folder the user already trusted as a subtree needs no question, and neither does an isolated subagent's under
+ * Octocode's own worktrees folder when the checkout it comes from is trusted: it holds that checkout's contents, so a
+ * question per spawn would add nothing, and would stop an unattended run on its first isolated child. Nothing here reads a
+ * project file.
  */
 
 export interface WorktreeTrustRequest {
@@ -51,6 +55,14 @@ function covered(target: string): boolean {
 	return trust.grant.scope === "subtree" || trust.root !== trust.path;
 }
 
+/** Whether `request.path` is an agent's worktree of this repository, under Octocode's own folder for them, from a trusted checkout. */
+function agentWorktreeOfTrustedCheckout(request: WorktreeTrustRequest): boolean {
+	return (
+		path.dirname(path.resolve(request.path)) === worktreesDir(request.from) &&
+		resolveFolderTrust(request.from).state === "trusted"
+	);
+}
+
 /**
  * Settles trust for the worktree at `request.path` before it is created. Throws when the user declines or nobody can
  * be asked. Returns the step that records the grant: call it after the worktree exists.
@@ -63,6 +75,8 @@ export async function approveWorktree(
 	if (covered(request.path)) return () => undefined;
 	const record = () =>
 		void grantFolder(request.path, "folder", { source: "worktree", surface, fromPath: request.from });
+	// The child still reads its folder's trust when it starts, so the grant is recorded; only the question goes.
+	if (agentWorktreeOfTrustedCheckout(request)) return record;
 	if (ask) {
 		const originTrusted = resolveFolderTrust(request.from).state === "trusted";
 		if (!(await ask({ ...request, originTrusted })))

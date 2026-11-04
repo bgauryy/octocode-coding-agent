@@ -1,5 +1,9 @@
 import os from "node:os";
 import path from "node:path";
+import { gitMarkerDir } from "../../../utils/git-marker.ts";
+import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
+import { ownWorktreeRoot } from "../../shared/own-worktree.ts";
+import { gitOptionsEnd } from "./program-forms.ts";
 import { base, mask, nestedScripts, REMOVERS, SEPARATOR, stdinOf, unhide, words } from "./words.ts";
 
 const SYSTEM = /^(?:mkfs(?:\.[a-z0-9]+)?|newfs(?:_[a-z0-9]+)?|shutdown|reboot|halt|poweroff)$/i;
@@ -9,10 +13,13 @@ const DISKUTIL_ERASE = /^(?:erase\w*|zeroDisk|randomDisk|secureErase)$/i;
 const DD_DEVICE = /^of=\/dev\/(?!(?:null|zero|stdout|stderr|tty)$|fd\/)/i;
 const FORK_BOMB = /:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;?\s*:/;
 
-/** Where a command runs: the home folder, and the shell's folder when known (`cd` moves it). */
+/** Where a command runs: the home folder, the workspace it started in and the shell's folder when known (`cd` moves it). */
 interface Place {
 	home: string;
+	workspace: string | undefined;
 	cwd: string | undefined;
+	/** This process's own isolated worktree, whose uncommitted work is only its own to discard. */
+	own?: string;
 }
 
 /** `path` with the platform separator written as `/`. */
@@ -53,6 +60,13 @@ const systemDir = (where: string, home: string): string | undefined =>
 const holdsHome = (where: string, home: string): boolean =>
 	where === "/" || home === where || home.startsWith(`${where}/`);
 
+/** Whether acting on `where` recursively would remove the workspace: its root or a folder holding it. */
+function holdsWorkspace(where: string, workspace: string | undefined): boolean {
+	if (workspace === undefined) return false;
+	const real = posix(canonicalPath(where));
+	return real === workspace || workspace.startsWith(`${real === "/" ? "" : real}/`);
+}
+
 /** The protected place `target` names (`/`, home or above it, a system folder, `~/.ssh`), else undefined. */
 function protectedPlace(target: string, place: Place): string | undefined {
 	const where = locate(target, place);
@@ -74,7 +88,7 @@ function removesProtected(tokens: string[], place: Place): string | undefined {
 	for (const target of targets) {
 		const where = locate(target, place);
 		if (where === undefined) continue;
-		if (recursive && holdsHome(where, place.home))
+		if (recursive && (holdsHome(where, place.home) || holdsWorkspace(where, place.workspace)))
 			return `recursive removal of ${unhide(target)}${where === unhide(target) ? "" : ` (${where})`}`;
 		const system = systemDir(where, place.home);
 		if (system) return `removal under ${system}`;
@@ -104,26 +118,67 @@ function findDeletesRoot(tokens: string[], place: Place): boolean {
 	return deletes && roots.some((root) => protectedPlace(root, place) !== undefined);
 }
 
+/**
+ * The git call that throws away work no restore can bring back from git itself: uncommitted changes (`reset --hard`,
+ * `clean -f`, `checkout .`, `restore .`) or commits on a remote (a forced push). The snapshot the mode's ask takes covers the first three.
+ */
+function gitDiscards(tokens: string[]): string | undefined {
+	if (base(tokens[0] ?? "") !== "git") return undefined;
+	const all = tokens.slice(1).map(unhide);
+	const end = gitOptionsEnd(all);
+	const sub = all[end];
+	const rest = all.slice(end + 1);
+	const everything = rest.some((word) => word === "." || word === "./" || word === ":/");
+	if (sub === "reset" && rest.includes("--hard")) return "`git reset --hard`";
+	const dry = rest.some((word) => /^-[a-zA-Z]*n|^--dry-run$/.test(word));
+	if (sub === "clean" && !dry && rest.some((word) => /^-[a-zA-Z]*f|^--force$/.test(word))) return "`git clean -f`";
+	// `restore --staged .` only unstages; `--worktree` next to it also rewrites the files.
+	const onlyIndex = rest.includes("--staged") && !rest.includes("--worktree");
+	if ((sub === "checkout" || (sub === "restore" && !onlyIndex)) && everything) return `\`git ${sub} .\``;
+	if (sub === "push" && rest.some((word) => /^--force(?:-with-lease|-if-includes)?(?:=|$)|^-[a-zA-Z]*f|^\+/.test(word)))
+		return "`git push --force`";
+	return undefined;
+}
+
 /** Block devices a stray write destroys (`/dev/sda`, `/dev/nvme0n1`, `/dev/disk2`, `/dev/rdisk2`, …). */
 const BLOCK_DEVICE = /^\/dev\/(?:sd[a-z]|hd[a-z]|vd[a-z]|xvd[a-z]|nvme\d|mmcblk\d|r?disk\d)/i;
 
-/** The block device a simple command writes to (a redirect, `tee`, `shred`, `truncate`, `wipefs`, `blkdiscard`, or the last operand of `cp`/`mv`), else undefined. */
-function writesDevice(tokens: string[]): string | undefined {
+/** What a simple command writes by its words: redirect targets, the operands of `tee`, `shred`, `truncate`, `wipefs` and `blkdiscard`, and the last operand of `cp`/`mv`. */
+function writtenWords(tokens: string[]): string[] {
 	const name = base(tokens[0] ?? "");
 	const words = tokens.map(unhide);
-	for (const [at, word] of words.entries()) {
+	const redirects = words.flatMap((word, at) => {
 		const redirect = /^(?:\d*|&)>>?\|?(.*)$/.exec(word);
-		if (!redirect) continue;
-		const target = redirect[1] || words[at + 1] || "";
-		if (BLOCK_DEVICE.test(target)) return target;
-	}
+		return redirect ? [redirect[1] || words[at + 1] || ""] : [];
+	});
 	const targets = operandsOf(words);
 	const written = new Set(["tee", "shred", "truncate", "wipefs", "blkdiscard"]).has(name)
 		? targets
 		: ["cp", "mv"].includes(name)
 			? targets.slice(-1)
 			: [];
-	return written.find((target) => BLOCK_DEVICE.test(target));
+	return [...redirects, ...written];
+}
+
+/** The block device a simple command writes to, else undefined. */
+const writesDevice = (tokens: string[]): string | undefined =>
+	writtenWords(tokens).find((target) => BLOCK_DEVICE.test(target));
+
+/** The file under `~/.ssh` a simple command writes to: also what `touch`, `chmod`, `chown`, `sed -i`, `dd of=` or an `mv` away changes there. */
+function writesSshKeys(tokens: string[], place: Place): string | undefined {
+	const name = base(tokens[0] ?? "");
+	const words = tokens.map(unhide);
+	const operands = operandsOf(words);
+	const changed = [
+		...writtenWords(tokens),
+		...(name === "mv" || ["touch", "chmod", "chown"].includes(name) ? operands : []),
+		...(name === "sed" && words.some((word) => /^-[a-zA-Z]*i/.test(word)) ? operands : []),
+		...(name === "dd" ? words.filter((word) => word.startsWith("of=")).map((word) => word.slice(3)) : []),
+	];
+	return changed.find((target) => {
+		const where = locate(target, place);
+		return where !== undefined && isUnder(where, `${place.home}/.ssh`);
+	});
 }
 
 function emitted(tokens: string[], bodies: string[]): string[] {
@@ -148,13 +203,21 @@ function afterCd(tokens: string[], place: Place): string | undefined {
 }
 
 /**
- * Why a shell command would be destructive (wipe `/` or home, `rm` in a system folder or `~/.ssh`, `chmod -R` on a
- * protected root, write to a disk device, format a disk, power off, fork-bomb), else undefined. Relative targets resolve
+ * Why a shell command would be destructive (wipe `/`, home or the workspace root, `rm` in a system folder, any change in
+ * `~/.ssh`, `chmod -R` on a protected root, a git call that discards work, write to a disk device, format a disk, power off, fork-bomb), else undefined. Relative targets resolve
  * against `cwd`, which `cd` moves along the command line. It flags common destructive commands by reading the command's
  * words; it is not a security boundary (quoting and variable tricks get past it).
  */
 export function catastrophicCommand(command: string, cwd?: string): string | undefined {
-	return destructiveIn(command, { home: posix(os.homedir()), cwd: cwd === undefined ? undefined : posix(cwd) });
+	// Only a checkout has a root to lose; outside one, `.` is just the current folder.
+	const root = cwd === undefined ? undefined : gitMarkerDir(cwd);
+	const own = cwd === undefined ? undefined : ownWorktreeRoot(cwd);
+	return destructiveIn(command, {
+		home: posix(os.homedir()),
+		workspace: root === undefined ? undefined : posix(canonicalPath(root)),
+		cwd: cwd === undefined ? undefined : posix(cwd),
+		own: own === undefined ? undefined : posix(own),
+	});
 }
 
 function destructiveIn(command: string, start: Place): string | undefined {
@@ -180,7 +243,14 @@ function destructiveIn(command: string, start: Place): string | undefined {
 			return "dd writing to a device";
 		const device = writesDevice(tokens);
 		if (device) return `a write to ${device}`;
-		if (name === "cd" || name === "pushd") place = { home: place.home, cwd: afterCd(tokens, place) };
+		const discards = gitDiscards(tokens);
+		// An isolated child undoing a failed attempt in its own worktree: refused headless, it could never start over.
+		if (discards && !(place.own && place.cwd && isWithin(place.cwd, place.own) && !tokens.includes("-C")))
+			return discards;
+		const key = writesSshKeys(tokens, place);
+		if (key) return `a write to ${unhide(key)}`;
+		if (name === "cd" || name === "pushd")
+			place = { home: place.home, workspace: place.workspace, cwd: afterCd(tokens, place), own: place.own };
 		for (const script of nestedScripts(name, tokens, bodies, fromPipe)) {
 			const danger = destructiveIn(script, place);
 			if (danger) return danger;

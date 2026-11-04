@@ -29,6 +29,8 @@ export class GenericToolContent extends Container {
 	private readonly assets = new ApplicationAssets({ memory: true });
 	private readonly attachments = new Map<string, ContentAttachmentComponent>();
 	private readonly requestRender: () => void;
+	/** One reader for the component's life: an attachment keeps its Image (and Kitty image id) only while the reader is the same. */
+	private readonly readAsset = (id: string) => this.assets.get(id);
 	constructor(requestRender: () => void) {
 		super();
 		this.requestRender = requestRender;
@@ -65,7 +67,7 @@ export class GenericToolContent extends Container {
 			];
 		}
 		const options = {
-			readAsset: (id: string) => this.assets.get(id),
+			readAsset: this.readAsset,
 			showImages: display.showImages,
 			imageWidthCells: display.imageWidthCells,
 			requestRender: this.requestRender,

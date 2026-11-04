@@ -209,7 +209,7 @@ describe("compaction summary", () => {
 		const section = userMessagesSection([], 0, [long]);
 		expect(section).toContain("Complete text saved at");
 		expect(savedTexts.at(-1)).toContain(long);
-		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
+		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS - 10)}`);
 		const kept = userMessagesSection(["older kept"], 4, many);
 		expect(kept.length).toBeLessThanOrEqual(USER_MESSAGES_CHARS);
 		for (const message of ["older kept", ...many]) expect(savedTexts.at(-1)).toContain(message);
@@ -240,7 +240,7 @@ describe("compaction summary", () => {
 	});
 
 	it("preserves the existing archive provenance when replacing a collection with a durable reference", () => {
-		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
+		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS - 10)}`);
 		const section = userMessagesSection([], 2, many, { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS }, 4);
 		expect(section).toContain("Complete text saved at");
 		expect(savedTexts.at(-1)).toContain("the archive (segment 4 and earlier) has them");

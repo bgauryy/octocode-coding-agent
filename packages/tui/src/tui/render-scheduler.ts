@@ -17,7 +17,12 @@ export interface RenderSchedulerHost {
 	paint(): void;
 }
 
-const MIN_RENDER_INTERVAL_MS = 16;
+/**
+ * Minimum time between throttled frames. Streamed content arrives faster than a reader can follow, so
+ * painting each chunk (16 ms) cost ~47 frames/s; 40 ms caps it near 25 while the last request of a burst
+ * still paints on its own timer. Keyboard input uses `requestImmediate` and ignores this floor.
+ */
+const MIN_RENDER_INTERVAL_MS = 40;
 
 /**
  * The render loop: coalesces render requests into frames, throttles them to a minimum interval,

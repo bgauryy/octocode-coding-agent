@@ -33,8 +33,6 @@ export interface McpManageOperations {
 	servers(): ManagedMcpServer[];
 	/** Read the current catalog without connecting or executing a server. */
 	tools?(name: string): McpToolListing[];
-	/** One tool's contract as the system prompt would describe it (`McpPresentation.contractOf`), when it has one. */
-	contract?(name: string, tool: string): string | undefined;
 	/** Start a stopped or failed server, or restart a running one. Resolves with an error message on failure. */
 	restart(name: string, ctx: McpContext): Promise<string | undefined>;
 	/** Stop a server for this session. Resolves with an error message when it cannot be stopped. */
@@ -75,7 +73,7 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 		label: "MCP",
 		promptSnippet: "When an MCP server's tools fail, time out or disappear, or to check its state",
 		description:
-			"Manage this session's MCP servers; configuration files are not changed. list: state, tool count and last error of every server, or of one with server. tools: the current catalog; add tool for its full contract (description and schemas, the one an on-demand tool needs before its first call), without running it. restart: start a stopped or failed server, or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session, default servers included.",
+			"Manage this session's MCP servers; configuration files are not changed. list: state, tool count and last error of every server, or of one with server. tools: the current catalog; add tool for its full description and schemas, without running it. restart: start a stopped or failed server, or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session, default servers included.",
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {
@@ -103,12 +101,7 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 					if (params.tool) {
 						const tool = tools.find((candidate) => candidate.name === params.tool);
 						if (!tool) throw new Error(`No available tool named "${params.tool}" on MCP server "${server.name}".`);
-						const contract = operations.contract?.(server.name, tool.name);
-						return reply(contract ?? formatMcpTool(tool, true), {
-							server: server.name,
-							tool,
-							...(contract ? { contract: true } : {}),
-						});
+						return reply(formatMcpTool(tool, true), { server: server.name, tool });
 					}
 					return reply(
 						tools.length

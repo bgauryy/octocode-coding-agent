@@ -210,10 +210,10 @@ export class VirtualTerminal implements Terminal {
 		};
 	}
 
-	/** Wait for TUI's throttled render pipeline to settle. */
+	/** Wait for the throttled render pipeline to settle: longer than its 40 ms minimum frame interval. */
 	async waitForRender(): Promise<void> {
 		await new Promise<void>((resolve) => process.nextTick(resolve));
-		await new Promise<void>((resolve) => setTimeout(resolve, 20));
+		await new Promise<void>((resolve) => setTimeout(resolve, 60));
 		await this.flush();
 	}
 }

@@ -9,8 +9,10 @@ import {
 } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { setCustomEditorComponent } from "../src/modes/interactive/interactive-mode/extension-chrome.ts";
 import { setupKeyHandlers } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
-import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { bindEditorState } from "../src/modes/interactive/state/bind-editor.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
+import { getEditorTheme, initTheme, theme } from "../src/theme/theme.ts";
+import { createFakeHost, heldStore } from "./interactive-mode-host.ts";
 
 function createStartupHost() {
 	const keybindings = new KeybindingsManager();
@@ -27,12 +29,12 @@ function createStartupHost() {
 		showStatus: vi.fn(),
 		shutdown: vi.fn(),
 		toggleToolOutputExpansion: vi.fn(),
-		updateEditorBorderColor: vi.fn(),
 		flushPendingBashComponents: vi.fn(),
 		pendingUserInputs: [] as string[],
 		session: { isStreaming: false, isBashRunning: false, isCompacting: false },
-		isBashMode: false,
+		uiStore: createUiStore(),
 	});
+	bindEditorState(host);
 	defaultEditor.onSubmit = (text) => handleStartupSubmit(host, text);
 	setCustomEditorComponent(host, (tui, theme, keys) => new CustomEditor(tui, theme, keys));
 	return host;
@@ -66,8 +68,8 @@ describe("custom editor installed during startup", () => {
 		host.editor.handleInput("\x0f");
 		expect(host.toggleToolOutputExpansion).toHaveBeenCalledOnce();
 		host.editor.handleInput("!");
-		expect(host.isBashMode).toBe(true);
-		expect(host.updateEditorBorderColor).toHaveBeenCalledOnce();
+		expect(host.uiStore.getState().editor.bashMode).toBe(true);
+		expect(host.editor.borderColor?.("x")).toBe(theme.getBashModeBorderColor()("x"));
 	});
 
 	it("opens the queued-messages list on Up in the empty replacement editor", () => {
@@ -75,7 +77,7 @@ describe("custom editor installed during startup", () => {
 		const queued = [{ id: "q1", mode: "steer", text: "queued", imageCount: 0, source: "user" }];
 		Object.assign(host.session, { getQueuedInputs: () => queued });
 		const showQueueManager = vi.fn(() => true);
-		Object.assign(host, { compactionQueuedMessages: [], showQueueManager });
+		Object.assign(host, { uiStore: heldStore(), showQueueManager });
 		setupKeyHandlers(host);
 		expect(host.editor).not.toBe(host.defaultEditor);
 

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { constants as osConstants } from "node:os";
 import type { BashOperations } from "../../core/tools/index.ts";
 import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell.ts";
-import { groupAlive, groupMembers, killTree } from "../shared/process.ts";
+import { groupAlive, groupMembers, KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { signalTree } from "../../utils/process-tree.ts";
 import { firstLine } from "../shared/util.ts";
 import type { BashJob } from "./bash-jobs/types.ts";
@@ -23,6 +23,13 @@ const EXIT_STDIO_GRACE_MS = 100;
 const KEPT_OUTPUT_BYTES = 4 * 1024 * 1024;
 /** Processes listed by name in the "left running" note; the rest are counted. */
 const LISTED_STRAYS = 5;
+/** After a stop, how long the waiter keeps reading: until SIGKILL has reached the group, and its last output has arrived. */
+const STOP_DRAIN_MS = KILL_GRACE_MS + EXIT_STDIO_GRACE_MS;
+/**
+ * How long an aborted call waits for this tool: the command's SIGTERM cleanup and last output (`STOP_DRAIN_MS`), then
+ * the time to close the spill file, so the result keeps what the command printed and says how it ended.
+ */
+export const BASH_ABORT_GRACE_MS = STOP_DRAIN_MS + 400;
 
 /** Process groups of foreground commands running now: Octocode kills its own at exit, so these die with Octocode too. */
 const running = new Set<number>();
@@ -85,15 +92,24 @@ const DEFAULT_WATCH_POLL_MS = 250;
 /**
  * Resolves with the shell's exit code once it exited and its pipes ended, or fell quiet for `EXIT_STDIO_GRACE_MS`: a
  * process it left behind may hold them open forever. Output still arriving keeps it reading (Octocode's waitForChildProcess).
- * `detach` stops watching, leaves the process and its pipes alone, and resolves with undefined.
+ * `detach` stops watching, leaves the process and its pipes alone, and resolves with undefined. `stopped` says the command
+ * was told to stop: output then keeps it reading for `STOP_DRAIN_MS` after the shell exits and no longer, since a writer
+ * that left the group is out of reach of the stop and would otherwise hold the call past its deadline.
  */
-function waitForExit(child: ChildProcess): { done: Promise<number | null | undefined>; detach: () => void } {
+function waitForExit(child: ChildProcess): {
+	done: Promise<number | null | undefined>;
+	detach: () => void;
+	stopped: () => void;
+} {
 	let detach = (): void => undefined;
+	let stopped = (): void => undefined;
 	const done = new Promise<number | null | undefined>((resolve, reject) => {
 		let settled = false;
 		let exited = false;
 		let code: number | null = null;
 		let idle: NodeJS.Timeout | undefined;
+		let drain: NodeJS.Timeout | undefined;
+		let stopRequested = false;
 		const open = new Set([child.stdout, child.stderr].filter((pipe) => pipe !== null));
 		const unlisten: Array<() => void> = [];
 		const listen = (target: NodeJS.EventEmitter, event: string, handler: Parameters<NodeJS.EventEmitter["on"]>[1]) => {
@@ -103,14 +119,18 @@ function waitForExit(child: ChildProcess): { done: Promise<number | null | undef
 		detach = () => {
 			if (settled) return;
 			settled = true;
-			if (idle) clearTimeout(idle);
+			clearTimers();
 			for (const off of unlisten) off();
 			resolve(undefined);
+		};
+		const clearTimers = () => {
+			if (idle) clearTimeout(idle);
+			if (drain) clearTimeout(drain);
 		};
 		const finalize = () => {
 			if (settled) return;
 			settled = true;
-			if (idle) clearTimeout(idle);
+			clearTimers();
 			child.stdout?.destroy();
 			child.stderr?.destroy();
 			resolve(code);
@@ -118,6 +138,13 @@ function waitForExit(child: ChildProcess): { done: Promise<number | null | undef
 		const arm = () => {
 			if (idle) clearTimeout(idle);
 			idle = setTimeout(finalize, EXIT_STDIO_GRACE_MS);
+		};
+		const armDrain = () => {
+			drain ??= setTimeout(finalize, STOP_DRAIN_MS);
+		};
+		stopped = () => {
+			stopRequested = true;
+			if (exited && !settled) armDrain();
 		};
 		for (const pipe of open) {
 			listen(pipe, "end", () => {
@@ -131,21 +158,24 @@ function waitForExit(child: ChildProcess): { done: Promise<number | null | undef
 		listen(child, "error", (error) => {
 			if (settled) return;
 			settled = true;
-			if (idle) clearTimeout(idle);
+			clearTimers();
 			reject(error);
 		});
 		listen(child, "exit", (exitCode) => {
 			exited = true;
 			code = exitCode;
 			if (open.size === 0) finalize();
-			else arm();
+			else {
+				arm();
+				if (stopRequested) armDrain();
+			}
 		});
 		listen(child, "close", (exitCode) => {
 			code ??= exitCode;
 			finalize();
 		});
 	});
-	return { done, detach: () => detach() };
+	return { done, detach: () => detach(), stopped: () => stopped() };
 }
 
 /**
@@ -180,7 +210,10 @@ export function foregroundOperations(
 			let movedAfter: number | undefined;
 			const startedAt = Date.now();
 			const kept = handoff ? new KeptOutput() : undefined;
-			const stop = () => killTree(pid);
+			const stop = () => {
+				killTree(pid);
+				waiter.stopped();
+			};
 			const read = (chunk: Buffer) => {
 				kept?.push(chunk);
 				onData(chunk);

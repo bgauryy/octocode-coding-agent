@@ -32,7 +32,6 @@ import {
 	toolBlock,
 	unoptimizedTools,
 } from "../compact/index.ts";
-import type { ResolvedContractTier } from "../contract-tiers.ts";
 import { firstSentence } from "./declaration.ts";
 import { jsonContract, jsonToolBlock } from "./json-block.ts";
 
@@ -78,8 +77,6 @@ export interface DescribedServer {
 	instructions: string | undefined;
 	/** The server's tool names the block describes: the ones declared when it was described. */
 	tools: ReadonlySet<string>;
-	/** The described tools whose contract the block only names (`indexed`); `contractOf` returns each on demand. */
-	indexed: ReadonlySet<string>;
 	/** Described before the server's catalog was known, so the block holds no contract yet. */
 	pending: boolean;
 }
@@ -106,13 +103,6 @@ const shownDescription = (tool: McpTool) => (tool.description?.trim() ? tool.des
  * What the block says of a tool: its description and schemas. Other fields the catalog keeps (`title` beside a
  * description, `execution`) are not part of it, so they neither renew the block nor undo a thin declaration.
  */
-/**
- * The block's line for indexed tools: they are declared and callable, and how to read a contract before the first
- * call. `server` is the configured name the `mcp` tool takes.
- */
-export const indexLine = (server: string, tools: readonly string[]): string =>
-	`Contracts on demand: ${tools.join(", ")}. Declared and callable; before a first call, read the contract with mcp {intent:"tools", server:"${server}", tool:"<name>"}; a refused call also returns it.`;
-
 const sameContract = (left: McpTool, right: McpTool) =>
 	left === right ||
 	(shownDescription(left) === shownDescription(right) &&
@@ -273,13 +263,7 @@ export class McpPresentation {
 	 * description stays while the server reconnects, fails or drops, until `rebuild` or `forget`, and is taken again
 	 * when the connected server's contract changes (`changedContract`).
 	 */
-	describe(
-		name: string,
-		tools: readonly string[],
-		instructions: string | undefined,
-		ready: boolean,
-		tierOf?: (tool: string, serverContractChars: number) => ResolvedContractTier,
-	): DescribedServer {
+	describe(name: string, tools: readonly string[], instructions: string | undefined, ready: boolean): DescribedServer {
 		const known = this.#frozen.get(name);
 		const generated = this.#latest.get(name);
 		const renewed =
@@ -288,27 +272,13 @@ export class McpPresentation {
 				: false;
 		if (known && !(known.pending && ready) && !renewed) return known;
 		const offered = generated ? tools.filter((tool) => generated.tools.has(tool)) : [];
-		const whole = generated ? this.#contract(generated, offered, instructions) : undefined;
-		// The tier needs the size of the whole contract, so the block is built twice only when some tool is indexed.
-		const indexed = tierOf && whole ? offered.filter((tool) => tierOf(tool, whole.text.length) === "indexed") : [];
-		const resident = generated
-			? indexed.length
-				? this.#contract(
-						generated,
-						offered.filter((tool) => !indexed.includes(tool)),
-						instructions,
-					)
-				: whole
-			: undefined;
-		const text = resident?.text || instructions?.trim() || undefined;
-		const contract = indexed.length ? [...(text ? [text] : []), indexLine(name, indexed)].join("\n") : text;
+		const resident = generated ? this.#contract(generated, offered, instructions) : undefined;
 		const described: Described = {
 			generated,
 			file: resident?.file,
-			contract,
+			contract: resident?.text || instructions?.trim() || undefined,
 			instructions,
 			tools: new Set(tools),
-			indexed: new Set(indexed),
 			pending: !ready,
 		};
 		this.#frozen.set(name, described);
@@ -378,22 +348,5 @@ export class McpPresentation {
 	/** The latest TypeScript block of one tool, for validation failures. */
 	signature(name: string, tool: string): string | undefined {
 		return this.#latest.get(name)?.blocks.get(tool);
-	}
-
-	/**
-	 * One tool's contract on its own, as an indexed tool is read on demand: its TypeScript block with the shared docs and
-	 * types it uses, else its plain form. Undefined when the latest catalog lacks the tool.
-	 */
-	contractOf(name: string, tool: string): string | undefined {
-		const generated = this.#latest.get(name);
-		const block = generated?.blocks.get(tool);
-		if (block) return `// ${generated!.calls.get(tool) ?? tool}\n${block}`;
-		const entry = generated?.tools.get(tool);
-		return entry ? jsonToolBlock(generated!.calls.get(tool) ?? tool, entry) : undefined;
-	}
-
-	/** The tools the prompt's block of the server indexes instead of describing. */
-	indexedTools(name: string): ReadonlySet<string> {
-		return this.#frozen.get(name)?.indexed ?? new Set();
 	}
 }

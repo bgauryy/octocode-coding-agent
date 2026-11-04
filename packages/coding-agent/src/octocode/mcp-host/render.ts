@@ -3,6 +3,7 @@
  * `installMcpRenderPort()` is the composition root for it; it is idempotent.
  */
 
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/host.ts";
 import { formatToolCallWithArgs, getTextOutput } from "../../core/tools/render-utils.ts";
 import type { Theme } from "../../theme/theme.ts";
@@ -12,6 +13,7 @@ import { skillNameOfRead } from "../skill/catalog.ts";
 import { skillHeader } from "../skill/render.ts";
 
 const render: McpHostPorts["render"] = {
+	instruction: renderInstruction,
 	toolHeader: (theme, context, name, summary, options) => toolHeader(theme as Theme, context, name, summary, options),
 	resultBlock: (theme, context, options) =>
 		resultBlock(theme as Theme, context, options as Parameters<typeof resultBlock>[2]),

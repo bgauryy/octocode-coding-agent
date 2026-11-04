@@ -16,6 +16,10 @@ export interface EnvironmentSettingsApi {
 	getBashBackgroundAfterSeconds(): number;
 	/** Most bytes of a foreground bash result that reach the model; at least 1024. */
 	getBashOutputMaxBytes(): number;
+	/** Whether bash commands keep provider API keys in their environment; off unless set. */
+	getBashInheritProviderKeys(): boolean;
+	/** Most bytes the saved full output of a foreground bash command holds; 0 lifts the cap. */
+	getBashSpillMaxBytes(): number;
 	/** Whether the agent tool may declare its `external` type; off unless set. */
 	getExternalAgents(): boolean;
 	getNpmCommand(): string[] | undefined;

@@ -6,6 +6,7 @@ import { showLoadedResources } from "../../../src/modes/interactive/interactive-
 import { rebindCurrentSession } from "../../../src/modes/interactive/interactive-mode/session-binding.ts";
 import { handleReloadCommand } from "../../../src/modes/interactive/interactive-mode/session-commands.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
+import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
 import { initTheme } from "../../../src/theme/theme.ts";
 import { createHarness, createTestUiContext } from "../harness.ts";
 
@@ -58,7 +59,7 @@ type RebindContext = {
 };
 
 type ReloadCommandContext = {
-	hideThinkingBlock: boolean;
+	uiStore: UiStore;
 	session: {
 		isStreaming: boolean;
 		isCompacting: boolean;
@@ -102,8 +103,16 @@ type ReloadCommandContext = {
 
 type ReloadCommandContextOverrides = Omit<
 	Partial<ReloadCommandContext>,
-	"session" | "settingsManager" | "keybindings" | "editorContainer" | "ui" | "defaultEditor" | "themeController"
+	| "uiStore"
+	| "session"
+	| "settingsManager"
+	| "keybindings"
+	| "editorContainer"
+	| "ui"
+	| "defaultEditor"
+	| "themeController"
 > & {
+	hideThinkingBlock?: boolean;
 	session?: Partial<ReloadCommandContext["session"]>;
 	settingsManager?: Partial<ReloadCommandContext["settingsManager"]>;
 	keybindings?: Partial<ReloadCommandContext["keybindings"]>;
@@ -116,7 +125,7 @@ type ReloadCommandContextOverrides = Omit<
 function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {}): ReloadCommandContext {
 	const editor = overrides.editor ?? {};
 	return {
-		hideThinkingBlock: overrides.hideThinkingBlock ?? false,
+		uiStore: createUiStore({ view: { hideThinking: overrides.hideThinkingBlock ?? false } }),
 		session: {
 			isStreaming: false,
 			isCompacting: false,
@@ -423,17 +432,17 @@ describe("regression #5943: session_start transient UI", () => {
 				reload: async (options) => {
 					events.push("reload");
 					await options?.beforeSessionStart?.();
-					events.push(`start:${context.hideThinkingBlock}`);
+					events.push(`start:${context.uiStore.getState().view.hideThinking}`);
 				},
 			},
 			rebuildChatFromMessages: () => {
-				events.push(`rebuild:${context.hideThinkingBlock}`);
+				events.push(`rebuild:${context.uiStore.getState().view.hideThinking}`);
 			},
 		});
 
 		await handleReloadCommand(createFakeHost(context));
 
-		expect(context.hideThinkingBlock).toBe(true);
+		expect(context.uiStore.getState().view.hideThinking).toBe(true);
 		expect(events).toEqual(["reload", "rebuild:true", "start:true"]);
 	});
 

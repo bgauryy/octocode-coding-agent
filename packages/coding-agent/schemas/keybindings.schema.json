@@ -323,6 +323,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Resume a session"
     },
+    "app.session.loadEarlier": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Load earlier transcript entries"
+    },
     "app.tree.foldOrUp": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Fold tree branch or move up"

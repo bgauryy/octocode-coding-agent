@@ -6,6 +6,7 @@ import type { Mail } from "../mail.ts";
 import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
 import { interruptRefusal, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
+import type { Vouches } from "./vouches.ts";
 import { spilledMessage } from "./spilled-message.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
@@ -50,9 +51,12 @@ export interface SendHost {
 	parentId(): string | undefined;
 	/** Subagents this session started that have finished: id → where their report went. */
 	readonly finished: ReadonlyMap<string, string>;
+	/** Whether subagent `id` of this session has yet to report. */
+	reporting(id: string): boolean;
 	resumer(): Resumer | undefined;
 	messageHook(): MessageHook | undefined;
 	signed(id: number, recipient: string, text: string): string | undefined;
+	signedByParent: Vouches["signedByParent"];
 	readonly mail: Pick<Mail, "createdForUser">;
 }
 
@@ -137,7 +141,7 @@ export async function resumeWith(
 
 /** The refusal for a finished subagent that no longer lingers. */
 export function finishedText(host: SendHost, to: string): string {
-	return `${to} has finished and takes no more messages; ${host.finished.get(to)} To continue its work, start a new agent and give it the context it needs (cite its report as report:${to}).`;
+	return `${to} has finished and takes no more messages; ${host.finished.get(to)} To continue its work, resume it with the agent tool (resume: ${to}); if it ran isolated, start a new agent and give it the context it needs (cite its report as report:${to}).`;
 }
 
 /**
@@ -202,6 +206,11 @@ export async function sendMessage(
 			members.filter((member) => member.role === to).length < 2;
 		if (!(finished && host.resumer()) && !relay) {
 			if (finished) return { error: finishedText(host, to) };
+			// Between `agent` naming it and its joining the team, or between its leaving and its report: it is not gone.
+			if (host.reporting(to))
+				return {
+					error: `${to} is running but cannot read messages yet: it is still starting, or already writing its report. Nothing was sent; send it again on your next step.`,
+				};
 			// An answer its asker can no longer read: the question closes, so it stops waiting on this agent.
 			if (options.replyTo === undefined || to !== answered?.from) return { error: targets };
 			db.refs.closeQuestion(options.replyTo, from);
@@ -241,9 +250,13 @@ export async function sendMessage(
 	if (notReady) return { error: notReady };
 	const delivered = stored();
 	if (typeof delivered !== "string") return delivered;
-	// Only the user's messages are signed, and only for a child this session started: any other recipient reads them as unverified.
+	// The user's messages and this session's own are signed, and only for a child this session started: any other recipient, or any other writer of the row, reads as unverified.
 	const sign =
-		from === USER_SENDER ? (id: number, recipient: string) => host.signed(id, recipient, delivered) : undefined;
+		from === USER_SENDER
+			? (id: number, recipient: string) => host.signed(id, recipient, delivered)
+			: from === host.me()?.id
+				? (id: number, recipient: string) => host.signedByParent({ id, from, to: recipient, text: delivered })
+				: undefined;
 	const flags = {
 		replyRequired,
 		wake: outside(from) || options.wake === true,

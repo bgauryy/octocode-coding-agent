@@ -11,6 +11,8 @@ export const ACP_MCP_MANIFEST_ENV = "OCTOCODE_INTERNAL_ACP_MCP_MANIFEST";
 
 /** Set in a subagent: the session id of the Octocode session that started it, whose backlog claims the subagent may update. */
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
+/** Set in a subagent: its parent Octocode's pid. The child leaves and shuts down when that process is gone (a crashed parent). */
+export const PARENT_PID_ENV = "OCTOCODE_PARENT_PID";
 export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
 /** Set in a subagent started for one backlog item (`agent` `item`): the only item it may update. */
 export const BACKLOG_ITEM_ENV = "OCTOCODE_BACKLOG_ITEM";
@@ -43,6 +45,13 @@ export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
 /** Set for a child of a `lean: true` profile: a short subagent prompt replaces the native policy (`instructions/lean.ts`). */
 export const LEAN_ENV = "OCTOCODE_LEAN";
 /**
+ * What the operator of a run took away with `--exclude-tools` (comma-separated) and `--no-mcp` (`1`). The run sets them for
+ * the processes below it, and a child's launch turns them back into flags (`subagents/process/operator-limits.ts`); they
+ * are not a user setting, so neither is in `CHILD_OWNED_ENV`: a chain keeps them to its end.
+ */
+export const OPERATOR_EXCLUDE_TOOLS_ENV = "OCTOCODE_OPERATOR_EXCLUDE_TOOLS";
+export const OPERATOR_NO_MCP_ENV = "OCTOCODE_OPERATOR_NO_MCP";
+/**
  * Set when the parent chose the child's skills: they ride in its task, so its prompt carries no skills section and its
  * `skill` tool stays declared even with none; children of one profile then share the cached prompt whatever their skills.
  */
@@ -50,7 +59,7 @@ export const SKILLS_IN_TASK_ENV = "OCTOCODE_SKILLS_IN_TASK";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
 export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 
-/** A subagent's own handoff folder (`<workspace>/.octa/code/temp/agents/<id>`): long results go there as files, not into its report. */
+/** A subagent's own handoff folder (`<workspace>/.octocode/code/temp/agents/<id>`): long results go there as files, not into its report. */
 export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
 /** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
 export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";

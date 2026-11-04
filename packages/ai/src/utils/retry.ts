@@ -1,128 +1,64 @@
 import type { AssistantMessage } from "../types.ts";
 import { createAbortError, sleepUnlessAborted } from "./abort.ts";
+import { clearsWithWaiting, isRetryableAssistantError } from "./retry-classes.ts";
 
-function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
-	return new RegExp(patterns.join("|"), "i");
+export {
+	isRateLimitedText,
+	isRetryableAssistantError,
+	isRetryableErrorText,
+	isTerminalProviderLimitError,
+} from "./retry-classes.ts";
+
+/** A failure that clears by waiting gets at least this many retries, because a token bucket refills meanwhile and an outage ends. */
+export const RATE_LIMIT_MIN_RETRIES = 6;
+/** Wall-clock time from the first failure during which a failure that clears by waiting may use retries beyond the configured ones. */
+export const RATE_LIMIT_WINDOW_MS = 180_000;
+/** Spread added on top of a provider-requested delay, so sessions given the same `retry-after` do not return together. */
+const RETRY_AFTER_SPREAD_MS = 1000;
+
+/** Retries allowed for this failure: the configured budget, raised for a failure that clears by waiting unless retries are off. */
+export function retryBudget(maxRetries: number, errorText: string): number {
+	if (maxRetries <= 0 || !clearsWithWaiting(errorText)) return maxRetries;
+	return Math.max(maxRetries, RATE_LIMIT_MIN_RETRIES);
 }
-
-const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
-	// OpenCode Go/free-tier limits returned as 429 JSON error types by OpenCode's
-	// Zen API. These are subscription/account limits, not transient throttles.
-	"GoUsageLimitError",
-	"FreeUsageLimitError",
-
-	// OpenCode Go subscription-limit text asks users to enable available-balance
-	// usage after rolling/weekly/monthly limits are reached.
-	"Monthly usage limit reached",
-	"available balance",
-
-	// Generic quota/budget/billing exhaustion. `insufficient_quota` is OpenAI's
-	// quota/billing error code; the other strings cover common gateway wording.
-	"insufficient_quota",
-	"out of budget",
-	"quota exceeded",
-	"billing",
-
-	// Sign in with ChatGPT: the subscription's shared usage limit, which resets
-	// after hours rather than seconds.
-	"subscription_sharing_usage_limit_exceeded",
-]);
 
 /**
- * Whether provider error text names an account, subscription or billing limit that resets after hours rather than
- * seconds. Every retry path (the session retry and each provider adapter) treats such an error as final.
+ * Whether retry number `attempt` (1-indexed) may run, `elapsedMs` after the first failure. The configured attempts are
+ * always allowed; the window bounds only the ones a failure that clears by waiting adds on top, and it is wall clock,
+ * so time spent inside each failed request counts as much as time spent sleeping.
  */
-export function isTerminalProviderLimitError(errorText: string): boolean {
-	return TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN.test(errorText);
+export function mayRetry(attempt: number, maxRetries: number, errorText: string, elapsedMs: number): boolean {
+	if (attempt > retryBudget(maxRetries, errorText)) return false;
+	return attempt <= maxRetries || elapsedMs < RATE_LIMIT_WINDOW_MS;
 }
 
-const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
-	// Generic provider load, HTTP status, and server-side transient failures.
-	"overloaded",
-	"server_busy",
-	"servers are currently busy",
-	"currently experiencing high demand",
-	"model is at capacity",
-	"rate.?limit",
-	"too many requests",
-	// A status code standing alone: not digits inside a larger number ("max_tokens: 150000") or an index ("1500").
-	"(?<![\\d.])(?:429|500|502|503|504|520|524)(?![\\d.])",
-	// Also matches "The service is temporarily unavailable" (#10965).
-	"service.?(?:is.?)?(?:temporarily.?)?unavailable",
-	"server.?error",
-	"internal.?error",
-
-	// Wrapper/provider text for transient upstream failures, including OpenRouter
-	// "Provider returned error" responses (#2264) and gateway wording such as
-	// "The upstream provider returned an error" (#10842).
-	"provider.?returned.?(?:an.?)?error",
-	"exceeded request buffer limit while retrying upstream",
-	// Gateway failure relaying the upstream response stream, sent as an OpenAI
-	// Responses `response.failed` event without an error code (#10920).
-	"unable to forward upstream",
-	// Other gateway upstream failures relayed as `response.failed` error codes (#10920).
-	"upstream.?request.?failed",
-	"upstream_stream_read_error",
-	"stream was interrupted",
-	"http/?2 stream failed",
-
-	// Network, proxy, and fetch transport failures. This includes OpenAI Codex
-	// raw-fetch failures such as "upstream connect", "connection refused", and
-	// "reset before headers" (#733), plus OpenRouter connection drops (#3317).
-	"network.?error",
-	"connection.?error",
-	"connection.?refused",
-	"connection.?lost",
-	"other side closed",
-	"fetch failed",
-	// node-fetch system errors, e.g. the Google ADC OAuth token refresh used by
-	// google-vertex. The reason is often empty (#10996).
-	"request to \\S+ failed, reason:",
-	"getaddrinfo",
-	"ENOTFOUND",
-	"EAI_AGAIN",
-	"upstream.?connect",
-	"reset before headers",
-	"socket hang up",
-	"socket connection was closed",
-	// Whole words only, so a name such as "timeout_tool" in a request error does not read as a transient failure.
-	"\\btimed? out\\b",
-	"\\btimeout\\b",
-	"\\bterminated\\b",
-
-	// WebSocket transports can report close/error text instead of HTTP/fetch text.
-	"websocket.?closed",
-	"websocket.?error",
-
-	// Premature stream endings from SDKs and transports. Anthropic can throw
-	// "stream ended without ..." and "Anthropic stream ended before message_stop"
-	// (#4433); Bedrock/Smithy can throw an HTTP/2 no-response error (#3594).
-	"ended without",
-	"stream ended before message_stop",
-	"stream ended before a terminal response event",
-	"http2 request did not get a response",
-	// Node ERR_HTTP2_STREAM_CANCEL: the HTTP/2 session died before the request was
-	// sent, e.g. after the Bedrock SDK's 5-minute session timeout (#10379).
-	"pending stream has been canceled",
-
-	// Provider-requested retry delay cap failures should flow through the outer
-	// retry policy so callers can surface/abort the backoff (#1123).
-	"retry delay",
-
-	// Explicit retry guidance emitted mid-stream by OpenAI Responses and Bedrock
-	// stream exceptions (#6019).
-	"you can retry your request",
-	"try your request again",
-	"please retry your request",
-
-	// gRPC based providers (e.g. NVIDIA NIM)
-	"ResourceExhausted",
-
-	// Sign in with ChatGPT: usage or user data temporarily unavailable. Usage
-	// failures can arrive mid-stream without an HTTP 503 in the message.
-	"subscription_sharing_usage_unavailable",
-	"subscription_sharing_user_unavailable",
-]);
+/**
+ * Delay before retry number `attempt`. A failure that clears by waiting waits up to half again the backoff, so parallel
+ * subagents hit by one outage or quota spread their retries, and never less than the provider's `retry-after`; the
+ * result is capped by `maxAgentDelayMs`, and an attempt past the configured ones is pulled into what is left of the
+ * window. Any other error keeps the exact exponential backoff.
+ */
+export function retryDelayFor(
+	policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs" | "maxRetries">,
+	attempt: number,
+	failure: Pick<AssistantMessage, "errorMessage" | "retryAfterMs">,
+	elapsedMs: number,
+	random: () => number = Math.random,
+): number {
+	const backoffMs = retryDelayMs(policy, attempt);
+	if (!clearsWithWaiting(failure.errorMessage ?? "")) return backoffMs;
+	const cap =
+		policy.maxAgentDelayMs === undefined ? Number.POSITIVE_INFINITY : Math.max(backoffMs, policy.maxAgentDelayMs);
+	const spread = Math.round(backoffMs + (backoffMs / 2) * random());
+	const requested = failure.retryAfterMs;
+	const asked = requested !== undefined && requested > 0 ? requested : 0;
+	const providerDelay = asked > 0 ? asked + Math.round(RETRY_AFTER_SPREAD_MS * random()) : 0;
+	const delayMs = Math.min(Math.max(spread, providerDelay), cap);
+	if (attempt <= policy.maxRetries) return delayMs;
+	// The window never pulls a retry in below what the provider asked for: an earlier retry would only fail again.
+	const leftMs = Math.max(0, RATE_LIMIT_WINDOW_MS - elapsedMs);
+	return Math.max(Math.min(delayMs, leftMs), Math.min(asked, cap));
+}
 
 /**
  * Retry policy: bounded attempts with exponential backoff (`baseDelayMs * 2^(attempt-1)`).
@@ -173,15 +109,32 @@ export function parseRetryAfterMs(headers: Headers | undefined): number | undefi
 	return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
-/** A provider asked for a retry delay above the limit; the request fails instead of waiting. */
-export class RetryDelayExceededError extends Error {}
+/**
+ * A provider asked for a retry delay above the limit; the request fails instead of waiting. It keeps the response's
+ * status and headers, so the session retry above it can still read how long the provider asked it to wait.
+ */
+export class RetryDelayExceededError extends Error {
+	readonly status: number | undefined;
+	readonly headers: Headers | undefined;
+
+	constructor(message: string, response?: { status?: number; headers?: Headers }) {
+		super(message);
+		this.status = response?.status;
+		this.headers = response?.headers;
+	}
+}
 
 /** Returns `delayMs`, or throws {@link RetryDelayExceededError} when it exceeds `maxRetryDelayMs` (default 60 s; zero or less disables the limit). */
-export function validateRetryDelayMs(delayMs: number, maxRetryDelayMs?: number, detail?: string): number {
+export function validateRetryDelayMs(
+	delayMs: number,
+	maxRetryDelayMs?: number,
+	detail?: string,
+	response?: { status?: number; headers?: Headers },
+): number {
 	const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
 	if (maxDelayMs > 0 && delayMs > maxDelayMs) {
 		const message = `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s)`;
-		throw new RetryDelayExceededError(detail ? `${message}. ${detail}` : message);
+		throw new RetryDelayExceededError(detail ? `${message}. ${detail}` : message, response);
 	}
 	return delayMs;
 }
@@ -211,7 +164,7 @@ export interface RetryCallbacks {
  *   too, so callers do not need to care when cancellation happened.
  * - A non-retryable error (per {@link isRetryableAssistantError}, including quota/
  *   billing exhaustion) is returned immediately so deterministic errors fail fast.
- * - Otherwise retries up to `maxRetries` times with exponential backoff, emitting
+ * - Otherwise retries by the same policy as an agent turn ({@link mayRetry}, {@link retryDelayFor}), emitting
  *   `onRetryScheduled` before each sleep, `onRetryAttemptStart` after each sleep before
  *   the retried call starts, and `onRetryFinished` once at the end (whether the loop
  *   ends in success, exhausted retries, or an aborted backoff).
@@ -225,9 +178,10 @@ export async function retryAssistantCall(
 	signal: AbortSignal | undefined,
 	callbacks?: RetryCallbacks,
 ): Promise<AssistantMessage> {
-	const maxAttempts = policy?.enabled ? policy.maxRetries : 0;
+	const maxRetries = policy?.enabled ? policy.maxRetries : 0;
 
 	let attempt = 0;
+	let firstFailureAt: number | undefined;
 	let lastRetry: { attempt: number; errorMessage: string } | undefined;
 	for (;;) {
 		const response = await produce();
@@ -245,15 +199,18 @@ export async function retryAssistantCall(
 		}
 
 		// Non-retryable, or budget exhausted: return the final error message.
-		if (attempt >= maxAttempts || !isRetryableAssistantError(response)) {
+		const errorText = response.errorMessage ?? "";
+		const elapsedMs = firstFailureAt === undefined ? 0 : Date.now() - firstFailureAt;
+		if (!isRetryableAssistantError(response) || !mayRetry(attempt + 1, maxRetries, errorText, elapsedMs)) {
 			if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
 			return response;
 		}
 
 		attempt++;
+		firstFailureAt ??= Date.now();
 		lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
-		const delayMs = retryDelayMs(policy!, attempt);
-		await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage);
+		const delayMs = retryDelayFor(policy!, attempt, response, elapsedMs);
+		await callbacks?.onRetryScheduled?.(attempt, retryBudget(maxRetries, errorText), delayMs, lastRetry.errorMessage);
 
 		// Normalize aborts during retry backoff to the same AssistantMessage shape as
 		// provider stream aborts, so callers do not need to care when cancellation happened.
@@ -269,20 +226,4 @@ export async function retryAssistantCall(
 		}
 		await callbacks?.onRetryAttemptStart?.();
 	}
-}
-
-/**
- * Classifies whether a failed assistant message looks like a transient provider
- * or transport error, so callers can decide if the last assistant turn should be
- * restarted.
- *
- * This does not implement retry policy. Callers should first handle context
- * overflow separately, then apply their own retry budget, backoff, and reporting
- * before restarting the assistant turn.
- */
-export function isRetryableAssistantError(message: AssistantMessage): boolean {
-	if (message.stopReason !== "error" || !message.errorMessage) return false;
-	const errorMessage = message.errorMessage;
-	if (isTerminalProviderLimitError(errorMessage)) return false;
-	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

@@ -142,6 +142,16 @@ describe("repeated-call loop guard", () => {
 		);
 	});
 
+	it("says the loop guard ended the run, since the model gets no turn to", async () => {
+		const { call, before, ctx } = guard();
+		for (let i = 0; i < LOOP_HALT_AT; i++) await call("web", { url: "u" });
+		expect((await before("web", { url: "u" }))?.terminate).toBe(true);
+		expect(ctx.ui.notes.at(-1)).toMatchObject({
+			type: "error",
+			message: expect.stringContaining(`Loop guard ended this run: ${LOOP_HALT_AT} identical web calls`),
+		});
+	});
+
 	it(`refuses the same call and ends the run after ${LOOP_HALT_AT} identical outcomes`, async () => {
 		const { call, before, fake, ctx } = guard();
 		for (let i = 0; i < LOOP_HALT_AT - 1; i++) await call("web", { url: "u" });

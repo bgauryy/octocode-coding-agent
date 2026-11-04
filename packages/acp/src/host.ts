@@ -38,6 +38,8 @@ interface AcpCustomMessage {
 	content: string | (TextContent | ImageContent)[];
 	display: boolean;
 	timestamp: number;
+	/** What the extension recorded with it; an external message's facts are at `external`. */
+	details?: unknown;
 }
 
 /** A host message: the model's own kinds, the injected kind, and host-only kinds the projection ignores. */
@@ -52,6 +54,7 @@ export type AcpWorkerEvent =
 	| { type: "message_start"; message: AcpMessage }
 	| { type: "message_update"; assistantMessageEvent: { type: string; contentIndex?: number; delta?: string } }
 	| { type: "message_end"; message: AcpMessage }
+	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; finalError?: string }
 	| { type: "compaction_start"; reason: "manual" | "threshold" | "overflow" }
 	| {
@@ -97,7 +100,10 @@ export interface AcpWorkerClient {
 	stop(): Promise<void>;
 	getState(): Promise<AcpWorkerState>;
 	persistSession(): Promise<void>;
-	/** Resolves with the host's disposition of the prompt; `handled` means a command consumed it. */
+	/**
+	 * Resolves with the host's disposition of the prompt; `handled` means a command consumed it. A prompt refused because
+	 * the worker has no usable provider credentials rejects with an error whose `authRequired` is true.
+	 */
 	prompt(
 		message: string,
 		images?: ImageContent[],
@@ -109,6 +115,8 @@ export interface AcpWorkerClient {
 	onClose(listener: (error: Error) => void): () => void;
 	onExtensionUIRequest(listener: (request: AcpUiRequest) => void): () => void;
 	respondToExtensionUIRequest(response: AcpUiResponse): Promise<void>;
+	/** The slash commands a prompt can run in this session. */
+	getCommands(): Promise<Array<{ name: string; description?: string; argumentHint?: string }>>;
 }
 
 /** What the broker passes to start a worker. */

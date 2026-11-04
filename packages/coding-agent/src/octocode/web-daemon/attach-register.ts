@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { serialQueue } from "../../../../common/src/serial-queue.ts";
 import { openBacklog } from "../backlog/context.ts";
 import type { WorkspaceRuntime } from "../workspace/runtime.ts";
 import { startAttachServer, type AttachEndpoint } from "./attach-server.ts";
@@ -19,12 +20,7 @@ export function registerSessionAttach(
 ): SessionAttach {
 	const env = options.env ?? process.env;
 	let endpoint: AttachEndpoint | undefined;
-	let pending: Promise<unknown> = Promise.resolve();
-	const enqueue = <T>(action: () => Promise<T>): Promise<T> => {
-		const next = pending.then(action);
-		pending = next.catch(() => undefined);
-		return next;
-	};
+	const enqueue = serialQueue();
 	const stop = () =>
 		enqueue(async () => {
 			const previous = endpoint;

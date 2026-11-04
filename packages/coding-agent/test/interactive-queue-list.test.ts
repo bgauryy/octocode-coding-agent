@@ -6,7 +6,7 @@ import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { QueueListComponent } from "../src/modes/interactive/components/queue-list.ts";
 import { showQueueManager } from "../src/modes/interactive/interactive-mode/queue-list.ts";
 import { initTheme } from "../src/theme/theme.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { bindQueueState, createFakeHost, fakeQueueService, heldStore } from "./interactive-mode-host.ts";
 
 const KEY = { up: "\x1b[A", down: "\x1b[B", shiftUp: "\x1b[1;2A", enter: "\r", esc: "\x1b" };
 
@@ -92,7 +92,7 @@ function fixture(
 	const editorText = { value: "" };
 	const ui = {
 		session,
-		compactionQueuedMessages: compaction,
+		uiStore: heldStore(compaction),
 		editor: { getText: () => editorText.value, setText: (text: string) => (editorText.value = text) },
 		pendingMessagesContainer: new Container(),
 		getAppKeyDisplay: () => "alt+up",
@@ -110,12 +110,14 @@ function fixture(
 		ui: Object.assign(new TuiMainScreen(new VirtualTerminal()), { requestRender: vi.fn() }),
 	};
 	const host = createFakeHost(ui);
+	const { source, sync } = fakeQueueService(session);
+	bindQueueState(host, source);
 	const list = () => mounted?.component;
 	const press = (...keys: string[]) => {
 		for (const key of keys) list()?.handleInput(key);
 	};
 	const texts = () => session.getQueuedInputs().map((item) => item.text);
-	return { host, ui, session, list, press, texts, editorText, displace: () => mounted?.dispose?.() };
+	return { host, ui, session, sync, list, press, texts, editorText, displace: () => mounted?.dispose?.() };
 }
 
 describe("queued-messages list", () => {
@@ -244,14 +246,14 @@ describe("queued-messages list", () => {
 	});
 
 	test("refreshes on queue changes: delivered rows vanish and the list closes when empty", () => {
-		const { host, session, list } = fixture([{ text: "a" }, { text: "b" }]);
+		const { host, session, list, sync } = fixture([{ text: "a" }, { text: "b" }]);
 		showQueueManager(host, "last");
 		session.deliverNext();
-		host.updatePendingMessagesDisplay();
+		sync();
 		expect(list()?.render(80).join("\n")).toContain("1 next turn");
 		expect(list()?.selectedIndex).toBe(0);
 		session.deliverNext();
-		host.updatePendingMessagesDisplay();
+		sync();
 		expect(list()).toBeUndefined();
 	});
 
@@ -266,19 +268,19 @@ describe("queued-messages list", () => {
 		session.isCompacting = true;
 		showQueueManager(host);
 		press("e");
-		expect(ui.compactionQueuedMessages.map((m) => m.text)).toEqual(["two"]);
+		expect(ui.uiStore.getState().queue.compaction.map((m) => m.text)).toEqual(["two"]);
 		press("1", KEY.enter);
-		expect(ui.compactionQueuedMessages.map((m) => m.text)).toEqual(["one1", "two"]);
+		expect(ui.uiStore.getState().queue.compaction.map((m) => m.text)).toEqual(["one1", "two"]);
 		press("s");
-		expect(ui.compactionQueuedMessages).toEqual([
+		expect(ui.uiStore.getState().queue.compaction).toEqual([
 			{ text: "two", mode: "steer" },
 			{ text: "one1", mode: "followUp" },
 		]);
 	});
 
 	test("the pending-area hint names Up", () => {
-		const { host, ui } = fixture([{ text: "a" }]);
-		host.updatePendingMessagesDisplay();
+		const { ui, sync } = fixture([{ text: "a" }]);
+		sync();
 		const lines = ui.pendingMessagesContainer.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
 		expect(lines.join("\n")).toContain("↑ to manage · alt+up restores the last · Esc restores all");
 	});

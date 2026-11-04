@@ -27,7 +27,6 @@ function setup(env: Record<string, string> = {}) {
 	vi.stubEnv("OCTOCODE_HOME", tmp("octo-api-reg-"));
 	const dir = apiDir();
 	fs.mkdirSync(dir, { recursive: true });
-	vi.stubEnv("OCTOCODE_API", "");
 	vi.stubEnv("OCTOCODE_API_HTTP", "");
 	for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
 	const { api } = fakeHost();
@@ -121,7 +120,7 @@ describe("/api", () => {
 	});
 
 	it("starts from the environment at session start and reports a failure: a warning with a UI, stderr without one", async () => {
-		const { wired, ctx, dir } = setup({ OCTOCODE_API: "1", OCTOCODE_API_HTTP: "0" });
+		const { wired, ctx, dir } = setup({ OCTOCODE_API_HTTP: "0" });
 		await wired.start(ctx);
 		expect(wired.api.instance?.http?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
 		await wired.stop();
@@ -144,7 +143,7 @@ describe("/api", () => {
 	});
 
 	it("says why a bad OCTOCODE_API_HTTP keeps the API off, and still binds for /api on", async () => {
-		const { wired, ctx, run, notes } = setup({ OCTOCODE_API: "1", OCTOCODE_API_HTTP: "abc" });
+		const { wired, ctx, run, notes } = setup({ OCTOCODE_API_HTTP: "abc" });
 		await wired.start(ctx);
 		expect(wired.api.instance).toBeUndefined();
 		expect(notes.at(-1)).toMatchObject({
@@ -157,12 +156,17 @@ describe("/api", () => {
 		else expect(bound?.socket).toMatch(/\.sock$/);
 	});
 
-	it("stays off after /api off even when OCTOCODE_API=1", async () => {
-		const { wired, ctx, run } = setup({ OCTOCODE_API: "1" });
+	it("stays off after /api off, across a session switch, until /api on", async () => {
+		const { wired, ctx, run } = setup();
 		await wired.start(ctx);
-		expect(wired.api.instance).toBeDefined();
+		if (process.platform === "win32") return;
+		expect(wired.api.instance?.socket).toMatch(/\.sock$/);
 		await run("off");
 		expect(wired.api.instance).toBeUndefined();
+		await wired.start(ctx);
+		expect(wired.api.instance).toBeUndefined();
+		await run("on");
+		expect(wired.api.instance).toBeDefined();
 	});
 });
 

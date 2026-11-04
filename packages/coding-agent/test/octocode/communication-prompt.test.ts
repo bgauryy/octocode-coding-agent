@@ -42,6 +42,38 @@ describe("communication prompt contracts", () => {
 		}
 	});
 
+	it("gives the main session one protocol, conditional on the tools it names, and children none of it", () => {
+		const main = { octocode: false, profiles: [], canDelegate: true };
+		const prompt = octocodePrompt(main);
+		for (const line of [
+			"One protocol reaches every agent: `agent` type `message`, `to` a name.",
+			"Your subagents: id or role.",
+			"Another Octocode process: its process name",
+			"In a linked worktree with finished work: `to` `coordinator`",
+			"Never merge into the main checkout yourself.",
+			"A merge request in the main checkout: review it, `coordinate` `merge` its `branch`",
+		])
+			expect(prompt.split(line)).toHaveLength(2);
+		// The outside-agent line only where that type is declared.
+		expect(prompt).not.toContain("`agent` type `external`");
+		expect(octocodePrompt({ ...main, canExternal: true })).toContain("An outside agent: `agent` type `external`.");
+		// Without the agent tool it names nothing.
+		const withoutAgent = octocodePrompt({ ...main, canUseAgent: false });
+		expect(withoutAgent).not.toContain("One protocol");
+		expect(withoutAgent).not.toContain("coordinator");
+		// Children cannot reach another process and do not land merges.
+		for (const child of [
+			octocodePrompt({ octocode: false, profiles: [], canDelegate: false }),
+			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnly: true, canSave: false }),
+		]) {
+			expect(child).not.toContain("One protocol");
+			expect(child).not.toContain("coordinator");
+		}
+		// Every byte is in every request: the section stays this small.
+		const section = prompt.slice(prompt.indexOf("- One protocol"), prompt.indexOf("- Across parent trees"));
+		expect(Buffer.byteLength(section)).toBeLessThan(800);
+	});
+
 	it("uses the flat agent contract and exact ids for cross-tree routing", () => {
 		const fake = fakeHost();
 		registerCollab(fake.api, {} as Team);

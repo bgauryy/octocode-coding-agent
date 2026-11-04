@@ -22,6 +22,8 @@ const rpcIo = vi.hoisted(() => ({
 
 vi.mock("../src/core/output-guard.js", () => ({
 	flushRawStdout: vi.fn(async () => {}),
+	isRawStdoutWritePending: vi.fn(() => false),
+	onRawStdoutFailure: vi.fn(() => () => {}),
 	takeOverStdout: vi.fn(),
 	waitForRawStdoutBackpressure: vi.fn(async () => {}),
 	writeRawStdout: (line: string) => {
@@ -269,6 +271,38 @@ describe("RPC prompt response semantics", () => {
 			await cleanup();
 		}
 	});
+
+	it.each([false, true])(
+		"answers a failed command with a failure (waitForCompletion: %s)",
+		async (waitForCompletion) => {
+			const { lineHandler, cleanup } = await startRpcMode({
+				withAuth: false,
+				responseDelayMs: 0,
+				extensionsResult: await createTestExtensionsResult([
+					(api) => {
+						api.registerCommand("broken", {
+							handler: async () => {
+								throw new Error("no such revision");
+							},
+						});
+					},
+				]),
+			});
+
+			try {
+				const id = "failed";
+				lineHandler(JSON.stringify({ id, type: "prompt", message: "/broken", waitForCompletion }));
+				await vi.waitFor(() => {
+					expect(getPromptResponses(rpcIo.outputLines, id)).toEqual([
+						{ id, type: "response", command: "prompt", success: false, error: "no such revision" },
+					]);
+				});
+				expect(parseOutputLines(rpcIo.outputLines).filter((line) => line.type === "extension_error")).toHaveLength(1);
+			} finally {
+				await cleanup();
+			}
+		},
+	);
 
 	it("emits one success response when prompt is queued during streaming", async () => {
 		const { lineHandler, cleanup } = await startRpcMode({ withAuth: true, responseDelayMs: 100 });

@@ -133,7 +133,7 @@ describe("browser screenshot results", () => {
 		const cwd = tmp();
 		const root = captureFolder(cwd);
 		const names = ["a.png", "b.png", "c.png"];
-		names.forEach((name) => writeFileSync(join(root, name), png(16, 16)));
+		names.forEach((name, index) => writeFileSync(join(root, name), png(16 + index, 16)));
 		const { run } = harness("screenshot", () => ({
 			content: [{ type: "text", text: "OK" }],
 			structuredContent: { root, artifacts: names.map((path) => ({ label: path, path })) },

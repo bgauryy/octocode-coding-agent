@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
 import { normalizePath } from "../../common/src/paths.ts";
 import { readJsonFile } from "../../common/src/json.ts";
@@ -21,10 +21,20 @@ export {
 // Package Asset Paths (shipped with executable)
 // =============================================================================
 
-/** `src/` when running from a source checkout, otherwise `dist/`. */
+/**
+ * Where the running code's assets are: `dist/` for code built into `dist/`, even inside a source checkout, so a build
+ * never runs with text from a later edit of `src/`; `src/` for code running from source.
+ */
+export function assetRootName(packageDir: string, runningFile: string, hasSource: boolean): "src" | "dist" {
+	return hasSource && !runningFile.startsWith(join(packageDir, "dist") + sep) ? "src" : "dist";
+}
+
 function getSourceOrDistDir(): string {
 	const packageDir = getPackageDir();
-	return join(packageDir, existsSync(join(packageDir, "src")) ? "src" : "dist");
+	return join(
+		packageDir,
+		assetRootName(packageDir, fileURLToPath(import.meta.url), existsSync(join(packageDir, "src"))),
+	);
 }
 
 /**

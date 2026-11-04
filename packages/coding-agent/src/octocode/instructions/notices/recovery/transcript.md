@@ -1,0 +1,1 @@
+{{#if archive}}If the archive does not have it, the full transcript is {{transcript}} (JSONL, one entry per line).{{else}}The full transcript before this summary is {{transcript}} (JSONL, one entry per line): search it for an exact message, error or tool result instead of guessing.{{/if}}

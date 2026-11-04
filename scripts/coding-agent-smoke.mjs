@@ -36,7 +36,6 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_TELEMETRY: "0",
 		OCTOCODE_MCP: "0",
-		OCTOCODE_API: "0",
 	};
 	for (const name of ["SystemRoot", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"]) {
 		if (process.env[name]) env[name] = process.env[name];
@@ -79,9 +78,8 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 import { RpcClient, runRpcMode, runPrintMode, main } from "${codingAgentName}";
 import { McpClient, StdioTransport } from "${codingAgentName}/mcp";
 import { McpOAuthProvider } from "${codingAgentName}/mcp/oauth";
-import { createInMemoryTransportPair } from "${codingAgentName}/mcp/testing";
 for (const entry of [RpcClient, runRpcMode, runPrintMode, main]) assert.equal(typeof entry, "function");
-for (const entry of [McpClient, StdioTransport, McpOAuthProvider, createInMemoryTransportPair]) assert.equal(typeof entry, "function");
+for (const entry of [McpClient, StdioTransport, McpOAuthProvider]) assert.equal(typeof entry, "function");
 `,
 		);
 		execFileSync(runtime, [entry], { cwd: directory, env, stdio: ["inherit", "pipe", "pipe"], timeout: 30_000 });

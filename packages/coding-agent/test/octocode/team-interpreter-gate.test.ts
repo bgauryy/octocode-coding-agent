@@ -262,19 +262,26 @@ describe("the reservation gate for inline interpreter code", () => {
 			"python - <<'EOF'\nx\nEOF",
 			"deno eval 'x'",
 		]) {
-			const refused = await peer.gate(command);
+			// Held back because the line names the reserved path; the refusal names it.
+			const refused = await peer.gate(`${command}\n# src/a.ts`);
 			expect(refused, command).toMatchObject({
 				block: true,
-				reason: expect.stringContaining(`reserved by ${owner.team.id}`),
+				reason: expect.stringContaining(`src/a.ts is reserved by ${owner.team.id}`),
 			});
-			expect(refused?.reason).toContain("script file under .octa/code/temp/");
+			expect(refused?.reason).toContain("names a path another agent has reserved");
+			expect(refused?.reason).toContain("script file under .octocode/code/temp/");
+			// The same code that names no reserved path runs.
+			expect(await peer.gate(`${command}\n# src/other.ts`), command).toBeUndefined();
 			// The next step it names must work for that interpreter: Node has the permission flag, the others the read tools.
 			expect(refused?.reason).toContain(
 				command.startsWith("node") ? "--permission --no-experimental-sqlite --allow-fs-read=*" : "read tools",
 			);
 		}
 		// Node that only lacks the read-only flags runs with them added.
-		expect(await peer.ran("node -e 'x'")).toBe("node --permission --no-experimental-sqlite --allow-fs-read=* -e 'x'");
+		expect(await peer.ran("node -e 'x'")).toBe("node -e 'x'");
+		expect(await peer.ran("node -e 'x'\n# src/a.ts")).toBe(
+			"node --permission --no-experimental-sqlite --allow-fs-read=* -e 'x'\n# src/a.ts",
+		);
 		// Commands that run no inline code are unchanged; the holder's own interpreter runs.
 		expect(await peer.gate("python3 script.py")).toBeUndefined();
 		expect(await peer.gate("cat src/b.ts")).toBeUndefined();
@@ -307,14 +314,14 @@ describe("the reservation gate for inline interpreter code", () => {
 			"V='NODE_OPTIONS=--allow-fs-write=*'; env $V node --permission -e 'x'",
 			"env $V node --permission -e 'x'",
 		]) {
-			expect(await peer.gate(command), command).toMatchObject({
+			expect(await peer.gate(`${command}\n# src/a.ts`), command).toMatchObject({
 				block: true,
 				reason: expect.stringContaining(`reserved by ${owner.team.id}`),
 			});
 		}
 		// Only `--no-experimental-sqlite` is missing: the gate adds the whole set, and Node takes a repeated flag.
-		expect(await peer.ran("node --permission --allow-fs-read=* -e 'x'")).toBe(
-			"node --permission --no-experimental-sqlite --allow-fs-read=* --permission --allow-fs-read=* -e 'x'",
+		expect(await peer.ran("node --permission --allow-fs-read=* -e 'x'\n# src/a.ts")).toBe(
+			"node --permission --no-experimental-sqlite --allow-fs-read=* --permission --allow-fs-read=* -e 'x'\n# src/a.ts",
 		);
 	});
 
@@ -327,7 +334,7 @@ describe("the reservation gate for inline interpreter code", () => {
 		const command = "node --permission --no-experimental-sqlite --allow-fs-read=* -e 'console.log(1)'";
 		expect(await peer.gate(command)).toBeUndefined();
 		vi.stubEnv("NODE_OPTIONS", "--allow-fs-write=*");
-		expect(await peer.gate(command)).toMatchObject({
+		expect(await peer.gate(`${command}\n# src/a.ts`)).toMatchObject({
 			block: true,
 			reason: expect.stringContaining(`reserved by ${owner.team.id}`),
 		});
@@ -362,7 +369,10 @@ describe("the reservation gate for inline interpreter code", () => {
 		await owner.lock(["src/a.ts"]);
 		// The classifier lets `node -p 1` run as written; `node -p 2` goes through the interpreter rule, which adds the flags.
 		expect(await peer.ran("node -p 1")).toBe("node -p 1");
-		expect(await peer.ran("node -p 2")).toBe("node --permission --no-experimental-sqlite --allow-fs-read=* -p 2");
-		expect(await peer.gate("python3 -c 2")).toMatchObject({ block: true });
+		expect(await peer.ran("node -p 2\n# src/a.ts")).toBe(
+			"node --permission --no-experimental-sqlite --allow-fs-read=* -p 2\n# src/a.ts",
+		);
+		expect(await peer.gate("python3 -c 2\n# src/a.ts")).toMatchObject({ block: true });
+		expect(await peer.gate("python3 -c 2")).toBeUndefined();
 	});
 });

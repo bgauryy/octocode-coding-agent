@@ -5,6 +5,7 @@
  * a summary of the branch being left so context isn't lost.
  */
 
+import { renderInstruction } from "../prompt-template.ts";
 import type { AgentMessage, StreamFn } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
@@ -248,14 +249,11 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 // Summary Generation
 // ============================================================================
 
-const BRANCH_SUMMARY_PREAMBLE = `The user explored a different conversation branch before returning here.
-Summary of that exploration:
+const BRANCH_SUMMARY_PREAMBLE = `${renderInstruction("workflows/compaction/branch-preamble.md")}\n\n`;
 
-`;
-
-const BRANCH_SUMMARY_PROMPT = `Create a structured summary of this conversation branch for context when returning later.
-
-${SUMMARY_CHECKPOINT_FORMAT}`;
+const BRANCH_SUMMARY_PROMPT = renderInstruction("workflows/compaction/branch-summary.md", {
+	format: SUMMARY_CHECKPOINT_FORMAT,
+});
 
 /**
  * Generate a summary of abandoned branch entries.

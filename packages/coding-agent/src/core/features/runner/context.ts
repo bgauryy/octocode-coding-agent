@@ -107,6 +107,10 @@ export function createExtensionContext(host: RunnerHost): ExtensionContext {
 			host.assertActive();
 			host.bindings.abortFn(reason);
 		},
+		failRun: (reason) => {
+			host.assertActive();
+			host.bindings.failRunFn(reason);
+		},
 		hasPendingMessages: () => {
 			host.assertActive();
 			return host.bindings.hasPendingMessagesFn();
@@ -114,6 +118,10 @@ export function createExtensionContext(host: RunnerHost): ExtensionContext {
 		isMessageQueued: (details) => {
 			host.assertActive();
 			return host.bindings.isMessageQueuedFn(details);
+		},
+		replaceQueuedMessage: (details, content) => {
+			host.assertActive();
+			return host.bindings.replaceQueuedMessageFn(details, content);
 		},
 		shutdown: () => {
 			host.assertActive();

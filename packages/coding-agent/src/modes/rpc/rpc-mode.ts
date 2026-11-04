@@ -11,31 +11,40 @@
  * - Extension UI: Extension UI requests are emitted, client responds with extension_ui_response
  */
 
+import { VERSION } from "../../config.ts";
+import type { AgentSessionEvent } from "../../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
 import {
 	flushRawStdout,
+	onRawStdoutFailure,
 	takeOverStdout,
 	waitForRawStdoutBackpressure,
 	writeRawStdout,
 } from "../../core/output-guard.ts";
+import { createEventOutput, waitForEventBackpressure } from "../event-output.ts";
 import { handleTerminationSignals } from "../termination-signals.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
 import { validateRpcCommand } from "./rpc-command-schema.ts";
 import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mode/commands.ts";
 import { error } from "./rpc-mode/responses.ts";
-import type { RpcSessionIdentity } from "./session-identity.ts";
+import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./session-identity.ts";
 import { ACP_WORKER_ENV } from "../../../../common/src/env.ts";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
+interface RpcModeOptions {
+	/** `--no-dialogs`: no one answers dialogs here, so the session runs with no UI and asks get the headless refusal. */
+	noDialogs?: boolean;
+}
+
 /**
  * Run in RPC mode.
  * Listens for JSON commands on stdin, outputs events and responses on stdout.
  */
-export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<never> {
+export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcModeOptions = {}): Promise<never> {
 	takeOverStdout();
 	const acpOwnsSession = process.env[ACP_WORKER_ENV] === "1";
 	delete process.env[ACP_WORKER_ENV];
@@ -46,6 +55,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	const output = (obj: RpcResponse | RpcExtensionUIRequest | object) => {
 		writeRawStdout(serializeJsonLine(obj));
 	};
+	const outputEvent = createEventOutput<AgentSessionEvent>((event) => output(toJsonEvent(event)));
 
 	// Pending extension UI requests waiting for response
 	const pendingExtensionRequests: PendingExtensionRequests = new Map();
@@ -66,16 +76,14 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
 		unsubscribe = session.subscribe((event) => {
-			output(toJsonEvent(event));
+			outputEvent(event);
 			if (event.type === "agent_settled") {
 				void checkShutdownRequested();
 			}
 		});
-		unsubscribeBackpressure = session.agent.subscribe(async () => {
-			await waitForRawStdoutBackpressure();
-		});
+		unsubscribeBackpressure = session.agent.subscribe((event) => waitForEventBackpressure(event));
 		await session.bindExtensions({
-			uiContext: createExtensionUIContext(output, pendingExtensionRequests),
+			uiContext: options.noDialogs ? undefined : createExtensionUIContext(output, pendingExtensionRequests),
 			mode: "rpc",
 			commandContextActions: {
 				waitForIdle: () => session.waitForIdle(),
@@ -206,6 +214,19 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	removeSignalHandlers = handleTerminationSignals((signal, signalExitCode) => {
 		void shutdown(signalExitCode, signal);
 	});
+	// The driver went away: release the session and exit. `shutdown` itself forces an exit when called twice, and a
+	// failed write reports on every record still queued, so only the first failure may start it.
+	onRawStdoutFailure((failure) => {
+		if (shuttingDown) return;
+		console.error(`octocode: stopping, stdout failed: ${failure.message}`);
+		void shutdown(1);
+	});
+	output({
+		type: "rpc_ready",
+		protocolVersion: RPC_PROTOCOL_VERSION,
+		version: VERSION,
+		sessionId: session.sessionId,
+	} satisfies RpcReady);
 	if (acpOwnsSession)
 		output({ type: "rpc_session_identity", sessionId: session.sessionId } satisfies RpcSessionIdentity);
 	try {

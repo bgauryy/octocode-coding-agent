@@ -34,7 +34,7 @@ export class SummaryMessageComponent extends CollapsibleMessageComponent {
 		const hint = expanded ? "" : theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
 		const dim = (line: string) => theme.fg("dim", sanitizeTerminalText(line));
 		const head =
-			theme.fg("customMessageLabel", `\x1b[1m[${label}]\x1b[22m`) +
+			theme.fg("customMessageLabel", theme.bold(`[${label}]`)) +
 			` ${theme.fg("customMessageText", sanitizeTerminalText(title))}`;
 		content.addChild(new Text(meta.length === 0 ? head + hint : head, 0, 0));
 		meta.forEach((line, index) => {

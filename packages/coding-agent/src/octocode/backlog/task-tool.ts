@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { type BacklogTask, TASK_STATES, type TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { type Static, Type } from "typebox";
@@ -50,14 +51,10 @@ function assertCurrentOp(op: unknown): void {
  */
 function taskPrompt(subagent: boolean) {
 	return {
-		promptSnippet: "Work with several steps; skip it for one step or a few calls",
+		promptSnippet: renderInstruction("tools/steps/snippet.md"),
 		description:
 			"Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, it needs item.",
-		promptGuidelines: [
-			"Set a step ongoing when you start it and done when finished. " +
-				"Leave unfinished steps todo (they persist with the session and show on resume); drop only a step you decided against." +
-				(subagent ? " Your open steps pass to your parent when you end." : ""),
-		],
+		promptGuidelines: [renderInstruction("tools/steps/guidelines.md", { subagent })],
 	};
 }
 

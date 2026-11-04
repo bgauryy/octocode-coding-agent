@@ -1,5 +1,5 @@
 import type { ToolInvocation } from "../../core/features/types.ts";
-import type { ActionClass, AskReason } from "./mode.ts";
+import type { ActionClass, AskReason, PermissionMode } from "./mode.ts";
 
 /** What an ask shows: the effect card, any reasons that tighten it, and exactly what it would do. */
 export interface PermissionRequest {
@@ -23,6 +23,8 @@ export interface PermissionRequest {
 	 * involved (a command the user typed) and the card shows no such line.
 	 */
 	purpose?: string;
+	/** `purpose` was derived from the arguments (`derivedReason`), not written by the agent. */
+	reasonDerived?: boolean;
 	/** The assistant call this check belongs to: where `purpose` falls back to. */
 	toolCallId?: string;
 	/** The folder the call runs in (a snapshot's repository, the card's measurements). */
@@ -35,5 +37,9 @@ export interface PermissionRequest {
 	grant?: { key: string; label: string };
 	/** Issued by another tool (`parentToolCallId` set). */
 	nested?: boolean;
+	/** The mode whose rules judge this call, when a stricter constraint than the session's mode holds it (plan). */
+	asMode?: PermissionMode;
+	/** Called once when this call will wait for the user, so whoever is behind it can be told. */
+	onAsk?: () => void;
 	signal?: AbortSignal;
 }

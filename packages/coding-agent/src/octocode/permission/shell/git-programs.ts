@@ -54,8 +54,15 @@ const PROGRAM_VARIABLES = new Set([
 	"SSH_ASKPASS",
 	"GIT_PROXY_COMMAND",
 ]);
-/** Variables naming where git finds programs or hooks to copy: any value. */
-const LOCATION_VARIABLES = new Set(["GIT_EXEC_PATH", "GIT_TEMPLATE_DIR"]);
+/** Variables naming where git finds programs or hooks to copy, or the state it reads and writes instead of this checkout's: any value. */
+const LOCATION_VARIABLES = new Set([
+	"GIT_EXEC_PATH",
+	"GIT_TEMPLATE_DIR",
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_COMMON_DIR",
+	"GIT_OBJECT_DIRECTORY",
+]);
 /** Configuration files: harmless only as `/dev/null`. Any other `GIT_CONFIG*` but `GIT_CONFIG_NOSYSTEM` sets keys (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, `GIT_CONFIG_PARAMETERS`). */
 const CONFIG_FILES = new Set(["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"]);
 
@@ -75,7 +82,7 @@ export function programSetting(text: string): string | undefined {
 	if (!match) return undefined;
 	const [, name, quoted] = match;
 	const value = plainValue(quoted);
-	const because = `\`${name}=…\` makes git run a program or load configuration the guard cannot judge`;
+	const because = `\`${name}=…\` makes git run a program, load configuration or use other state the guard cannot judge`;
 	if (PROGRAM_VARIABLES.has(name)) return value !== undefined && HARMLESS_PROGRAMS.has(value) ? undefined : because;
 	if (LOCATION_VARIABLES.has(name)) return because;
 	if (CONFIG_FILES.has(name)) return value === "/dev/null" ? undefined : because;

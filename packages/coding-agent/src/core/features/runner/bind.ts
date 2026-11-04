@@ -18,8 +18,10 @@ export function createRunnerBindings(cwd: string): RunnerBindings {
 		getSignalFn: () => undefined,
 		waitForIdleFn: async () => {},
 		abortFn: () => {},
+		failRunFn: () => {},
 		hasPendingMessagesFn: () => false,
 		isMessageQueuedFn: () => false,
+		replaceQueuedMessageFn: () => false,
 		getContextUsageFn: () => undefined,
 		compactFn: () => {},
 		getSystemPromptFn: () => "",
@@ -51,6 +53,7 @@ export function bindRunnerCore(
 	host.runtime.getSessionName = actions.getSessionName;
 	host.runtime.setLabel = actions.setLabel;
 	host.runtime.getActiveTools = actions.getActiveTools;
+	host.runtime.getHiddenDeclarations = actions.getHiddenDeclarations;
 	host.runtime.getAllTools = actions.getAllTools;
 	host.runtime.getSettings = actions.getSettings;
 	host.runtime.setActiveTools = actions.setActiveTools;
@@ -74,8 +77,10 @@ export function bindRunnerCore(
 	host.bindings.getSignalFn = contextActions.getSignal;
 	host.bindings.getTurnIdFn = contextActions.getTurnId ?? (() => undefined);
 	host.bindings.abortFn = contextActions.abort;
+	host.bindings.failRunFn = contextActions.failRun ?? (() => {});
 	host.bindings.hasPendingMessagesFn = contextActions.hasPendingMessages;
 	host.bindings.isMessageQueuedFn = contextActions.isMessageQueued;
+	host.bindings.replaceQueuedMessageFn = contextActions.replaceQueuedMessage ?? (() => false);
 	host.bindings.shutdownHandler = contextActions.shutdown;
 	host.bindings.getContextUsageFn = contextActions.getContextUsage;
 	host.bindings.compactFn = contextActions.compact;

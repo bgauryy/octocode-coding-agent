@@ -1,6 +1,8 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { CheckIn, type CheckInConfig } from "./check-in.ts";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
 import type { Message } from "./model.ts";
@@ -25,6 +27,10 @@ interface DeliveryHost {
 	heartbeat(db: TeamStore): boolean;
 	/** Settles the relay requests children left for this agent's process (`Relays.take`). */
 	relays(db: TeamStore): void;
+	/** Whether a subagent of this session has not filed its report yet: its report may still answer what it was asked (`Mail.reportDeadLetters`). */
+	reporting(id: string): boolean;
+	/** The check-in's setting, read when a step ends. */
+	checkIn(): CheckInConfig;
 }
 
 /**
@@ -34,6 +40,7 @@ interface DeliveryHost {
  */
 export class Delivery {
 	private readonly inbox = new Inbox();
+	private readonly checkIn: CheckIn;
 	private failedTicks = 0;
 	/** When an idle agent was handed a waking message that has not reached the model yet; undefined when none is outstanding. */
 	private wakeHandedAt: number | undefined;
@@ -48,20 +55,34 @@ export class Delivery {
 		this.host = host;
 		this.mail = mail;
 		this.pace = pace;
+		this.checkIn = new CheckIn(mail);
 	}
 
-	/** Two-phase delivery: hand what is waiting to Octocode (the inbox records it once the model sees it), then the heartbeat. */
-	deliver(db: TeamStore | undefined): void {
-		if (!this.host.id() || !db) return;
+	/**
+	 * Two-phase delivery: hand what is waiting to Octocode (the inbox records it once the model sees it), then the heartbeat.
+	 * `stepEnded`: called at the end of a step that ran tools, with the next request about to be made.
+	 */
+	deliver(db: TeamStore | undefined, stepEnded = false): void {
+		const me = this.host.id();
+		if (!me || !db) return;
+		this.checkIn.begin();
 		try {
 			db.quick(() => this.deliverNow(db));
 			this.failedTicks = 0;
 		} catch (error) {
 			// A locked or closed database is retried on the next tick; say so once if it lasts long enough for leases to lapse.
 			if (++this.failedTicks === FAILED_TICKS_NOTICE)
-				this.mail.notice(
-					`Team database unavailable (${errorMessage(error)}): your reservations may lapse and messages wait until it recovers.`,
-				);
+				this.mail.notice(renderInstruction("notices/mail/team-db-unavailable.md", { error: errorMessage(error) }));
+		}
+		if (stepEnded) this.sendCheckIn(db, me);
+	}
+
+	/** Fails open: a busy database or an unreadable setting costs this ping, and the next step tries again. */
+	private sendCheckIn(db: TeamStore, me: string): void {
+		try {
+			db.quick(() => this.checkIn.due(db, me, this.host.parentId(), this.host.checkIn()));
+		} catch {
+			// Nothing depends on a ping.
 		}
 	}
 
@@ -85,6 +106,7 @@ export class Delivery {
 	/** The agent left: records what the model saw if it can, and forgets the rest (`id` is the id it left under). */
 	reset(db: TeamStore | undefined, id: string | undefined): void {
 		this.inbox.reset(db, id);
+		this.checkIn.reset();
 		this.wakeHandedAt = undefined;
 		this.wakeReported = false;
 		this.pace.reset();
@@ -108,7 +130,7 @@ export class Delivery {
 			);
 		}
 		this.checkWake();
-		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id);
+		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id, (recipient) => this.host.reporting(recipient));
 		this.mail.pruneForUser(db);
 	}
 

@@ -2,19 +2,20 @@ import {
 	animationClock,
 	type Component,
 	Loader,
-	MOTION,
 	mixColors,
+	MOTION,
+	SEPARATOR,
 	shimmerText,
 	stripTerminalSequences,
-	type TUI,
 	truncateToWidth,
+	type TUI,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import { formatDuration } from "../../../octocode/shared/format.ts";
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { hintText, keyText, rawKeyHint } from "./keybinding-hints.ts";
 import { styledLine } from "./styled-line.ts";
 
 /** Longer details are thoughts or targets, not a verb: they stay plain. */
@@ -118,7 +119,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		const key = withHint ? interruptKey() : "";
 		const paintedSuffix = (hint: boolean) =>
 			theme.fg("dim", ` (${this.elapsed()}`) +
-			(hint ? theme.fg("dim", " · ") + theme.fg("muted", key) + theme.fg("dim", " to interrupt") : "") +
+			(hint ? theme.fg("dim", SEPARATOR) + rawKeyHint(key, "interrupt") : "") +
 			theme.fg("dim", ")");
 		let suffix = paintedSuffix(Boolean(key));
 		if (key && width - visibleWidth(prefix) - visibleWidth(suffix) < MIN_DETAIL_COLUMNS) suffix = paintedSuffix(false);
@@ -161,7 +162,7 @@ export class RetryStatusIndicator extends StatusIndicator {
 
 	constructor(ui: TUI, attempt: number, maxAttempts: number, delayMs: number) {
 		const retryMessage = (seconds: number) =>
-			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s… (${interruptKey()} to cancel)`;
+			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s…${SEPARATOR}${hintText([[interruptKey(), "cancel"]])}`;
 		super(
 			"retry",
 			ui,
@@ -192,7 +193,7 @@ type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
 export class CompactionStatusIndicator extends StatusIndicator {
 	constructor(ui: TUI, reason: CompactionStatusReason, colorFn?: (text: string) => string) {
-		const cancelHint = `(${interruptKey()} to cancel)`;
+		const cancelHint = `· ${hintText([[interruptKey(), "cancel"]])}`;
 		const label =
 			reason === "manual"
 				? `Compacting context… ${cancelHint}`
@@ -214,7 +215,7 @@ export class BranchSummaryStatusIndicator extends StatusIndicator {
 			ui,
 			(spinner) => theme.fg("accent", spinner),
 			(text) => theme.fg("muted", text),
-			`Summarizing branch… (${interruptKey()} to cancel)`,
+			`Summarizing branch…${SEPARATOR}${hintText([[interruptKey(), "cancel"]])}`,
 		);
 	}
 }

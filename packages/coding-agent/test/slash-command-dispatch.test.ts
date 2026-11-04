@@ -13,7 +13,9 @@ function mode() {
 		editor: { setText: vi.fn() },
 		showError: vi.fn(),
 		showWarning: vi.fn(),
-		session: { extensionRunner: { getRegisteredCommands: () => [], createCommandContext: () => ({}) } },
+		session: {
+			extensionRunner: { getRegisteredCommands: () => [], createCommandContext: () => ({}), hasHandlers: () => false },
+		},
 	});
 	setupEditorSubmitHandler(createFakeHost(instance));
 	return instance;

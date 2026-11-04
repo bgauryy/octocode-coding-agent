@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../shared/permission-updates.ts";
 import type { FileInputReplacement } from "../shared/claude-file.ts";
 import type { ToolInvocation } from "../../core/features/types.ts";
@@ -5,7 +6,6 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { notify } from "../shared/commands.ts";
 import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "../../../../common/src/env.ts";
 import { interactive } from "../shared/interactive.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { SourceDecision } from "./source-policy/rules.ts";
 import type { AuditEntry } from "./audit.ts";
 import {
@@ -13,6 +13,7 @@ import {
 	type ActionClass,
 	type ActionCount,
 	type AskReason,
+	carryMode,
 	decide,
 	kindOf,
 	PERMISSION_CYCLE,
@@ -20,11 +21,11 @@ import {
 	type PermissionMode,
 	parseGrants,
 	reasonAsks,
-	startMode,
+	sessionStartMode,
 } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
-import { type CheckHost, checkPermission } from "./ask/check.ts";
-import { modeSummary, selectAnswer } from "./ask/text.ts";
+import { type CheckHost, checkPermission, selectedFileQueries } from "./ask/check.ts";
+import { modeSummary, revertedNotice, selectAnswer } from "./ask/text.ts";
 import { PermissionTrail } from "./ask/trail.ts";
 import type { ActionEvent, Asker, Dialog, PermissionResolver, PrepareReplacement, Verdict } from "./ask/types.ts";
 
@@ -54,6 +55,7 @@ export class Permission {
 	readonly #seenProfiles = new Set<string>();
 	readonly #trail: PermissionTrail;
 	#mode: PermissionMode = "manual";
+	#started = false;
 	#warned = false;
 	#answeredSourceAsks = new WeakSet<ToolInvocation>();
 	#unprojectedSourcePolicy?: (toolName: string) => SourceDecision;
@@ -75,25 +77,8 @@ export class Permission {
 	}
 	replacementSourceDecision(invocation: ToolInvocation, cwd: string, indices?: number[]): SourceDecision | undefined {
 		const source = this.sourceDecision(invocation, cwd);
-		const input = invocation.input;
-		if (
-			source?.decision !== "ask" ||
-			!indices ||
-			invocation.toolName !== "file" ||
-			!isRecord(input) ||
-			!Array.isArray(input.queries)
-		)
-			return source;
-		return this.sourceDecision(
-			{
-				...invocation,
-				input: {
-					...input,
-					queries: input.queries.filter((_query, index) => indices.includes(index)),
-				},
-			},
-			cwd,
-		);
+		const narrowed = source?.decision === "ask" ? selectedFileQueries(invocation, indices) : undefined;
+		return narrowed ? this.sourceDecision(narrowed, cwd) : source;
 	}
 	get hasSourcePolicy(): boolean {
 		return this.#sourcePolicy !== undefined;
@@ -181,17 +166,24 @@ export class Permission {
 	}
 
 	/**
-	 * Session start: re-applies the start mode (the exported one, else full), drops the grants and the tallies, and, in a
-	 * run with no UI, says on stderr that full mode runs everything and where the record is.
+	 * Session start: settles the mode (`sessionStartMode`; a `reason` says a replaced runtime came before this one), drops
+	 * the grants and the tallies, and, in a run with no UI, says on stderr that full mode runs everything and where the record is.
 	 */
-	start(ctx: ExtensionContext): void {
-		const { mode, warning } = startMode(this.#env);
+	start(ctx: ExtensionContext, reason?: Parameters<typeof sessionStartMode>[2]): void {
+		const { mode, reverted, warning } = sessionStartMode(this.#env, this.#started ? this.#mode : undefined, reason);
+		this.#started = true;
 		this.#mode = mode;
+		carryMode(this.#env, mode);
+		if (reverted) {
+			if (interactive(ctx, this.#isSubagent)) notify(ctx.ui, revertedNotice(mode, reverted), "warning");
+			else this.#stderr(`octocode: ${revertedNotice(mode, reverted)}\n`);
+		}
 		this.clearGrants();
 		this.#trail.reset(ctx);
 		if (warning && !this.#warned && interactive(ctx, this.#isSubagent)) notify(ctx.ui, warning, "warning");
 		if (warning) this.#warned = true;
-		if (mode === "full" && !ctx.hasUI && !this.#isSubagent) {
+		// An RPC or ACP worker has dialogs but `full` raises none, so its driver needs the same line a headless run gets.
+		if (mode === "full" && (!ctx.hasUI || ctx.mode === "rpc") && !this.#isSubagent) {
 			this.#stderr(
 				`octocode: permission mode full: every action runs without asking and is recorded in ${ctx.sessionManager.getSessionFile() ?? "this session (not saved to a file)"}; /permissions log lists them.\n`,
 			);
@@ -241,6 +233,7 @@ export class Permission {
 		const from = this.#mode;
 		const narrows = this.#narrows(mode);
 		this.#mode = mode;
+		carryMode(this.#env, mode);
 		if (narrows) this.clearGrants();
 		else this.#invalidate();
 		this.paint(ctx);
@@ -248,10 +241,11 @@ export class Permission {
 		if (interactive(ctx, this.#isSubagent))
 			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, mode === "full" ? "warning" : "info");
 		// Hidden and turn-neutral: during a run Octocode appends it after the current turn's results, so the model reads it next.
+		const summary = modeSummary(mode);
 		void this.#api.sendMessage(
 			{
 				customType: PERMISSION_ID,
-				content: `[${PERMISSION_ID}] mode is now ${mode}: ${modeSummary(mode)}`,
+				content: renderInstruction("notices/permission-mode.md", { id: PERMISSION_ID, mode, summary }),
 				display: false,
 				details: { mode },
 			},
@@ -292,6 +286,16 @@ export class Permission {
 		this.#seenProfiles.clear();
 		this.#invalidate();
 		for (const listener of this.#revoked) listener();
+	}
+
+	/** Removes the external-message grants alone and says how many: nothing delegated rests on them, so nothing stops. */
+	clearMessageGrants(): number {
+		const action = "message.external";
+		const keys = [...this.#grants.keys()].filter((key) => key.startsWith(`${action}\0`));
+		for (const key of keys) this.#grants.delete(key);
+		const count = keys.length + (this.#kinds.delete(action) ? 1 : 0);
+		if (count > 0) this.#invalidate();
+		return count;
 	}
 
 	/** Delegated runs must stop when their session grants or permission scope are revoked. */

@@ -14,6 +14,7 @@ import { SessionManager } from "../core/session-manager.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { type RpcEvent, RpcClient } from "../modes/rpc/rpc-client.ts";
 import type { RpcExtensionUIRequest } from "../modes/rpc/rpc-types.ts";
+import { processTitle, setProcessTitle } from "../octocode/processes/title.ts";
 import { homeFolderMessage, refusedFolderMessage } from "../octocode/trust/messages.ts";
 import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 
@@ -25,6 +26,7 @@ const WORKER_EVENTS: ReadonlySet<string> = new Set<AcpWorkerEvent["type"]>([
 	"message_start",
 	"message_update",
 	"message_end",
+	"auto_retry_start",
 	"auto_retry_end",
 	"compaction_start",
 	"compaction_end",
@@ -71,6 +73,7 @@ function createWorker(launch: AcpWorkerLaunch): AcpWorkerClient {
 				if (isDialog(request)) listener(request);
 			}),
 		respondToExtensionUIRequest: (response) => client.respondToExtensionUIRequest(response),
+		getCommands: () => client.getCommands(),
 	};
 }
 
@@ -116,6 +119,8 @@ export const acpServerHost: AcpServerHost = {
 
 /** Runs `--mode acp`: the one place the inbound broker receives its host. */
 export async function runAcpMain(args: string[], parsed: AcpLaunchOptions): Promise<void> {
+	// The broker has no session to be named for, and it is not a main session: each of its workers is `octocode-rpc-<id>`.
+	setProcessTitle(processTitle("acp", String(process.pid)));
 	const { acpWorkerArguments, runAcpMode } = await import("../../../acp/src/server/acp-mode.ts");
 	await runAcpMode(acpServerHost, acpWorkerArguments(args, parsed));
 }

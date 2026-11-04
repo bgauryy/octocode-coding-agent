@@ -1,6 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { isPluginMcpServerName, mcpNamespace } from "../../common/src/mcp-names.ts";
-import { contractConfigError, type McpContractTier } from "./contract-tiers.ts";
 /**
  * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
  *
@@ -59,13 +58,6 @@ interface McpServerConfigBase {
 	 * overrides for a few tools exposes only those.
 	 */
 	toolExposure?: Record<string, McpExposure>;
-	/**
-	 * Where the model reads the contracts of declared tools (`contract-tiers.ts`): `resident` in every request's cached
-	 * block, `indexed` on demand, `auto` chosen from recorded usage. Default: `auto`.
-	 */
-	contract?: McpContractTier;
-	/** Contract tier of single tools, overriding `contract`; keys as in `toolExposure`. */
-	toolContract?: Record<string, McpContractTier>;
 	/** Set to false to keep the entry without connecting. Default: true. */
 	enabled?: boolean;
 	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. */
@@ -213,17 +205,6 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
 	return config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
-/** Contract tier of one tool: an exact `toolContract` key, then the first matching pattern, then `contract`. */
-export function getMcpToolContract(config: McpServerConfig, toolName: string): McpContractTier {
-	const overrides = config.toolContract ?? {};
-	const exact = overrides[toolName];
-	if (exact !== undefined) return exact;
-	for (const [pattern, tier] of Object.entries(overrides)) {
-		if (pattern.includes("*") && toolPatternRegExp(pattern).test(toolName)) return tier;
-	}
-	return config.contract ?? "auto";
-}
-
 /** The error for an exposure value that is not `direct` or `hidden`. */
 const exposureError = (): string => `must be one of ${MCP_EXPOSURES.map((exposure) => `"${exposure}"`).join(", ")}`;
 
@@ -240,8 +221,6 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 			if (!isMcpExposure(entry)) return `server "${name}": toolExposure "${tool}" ${exposureError()}`;
 		}
 	}
-	const contractError = contractConfigError(name, value.contract, value.toolContract);
-	if (contractError) return contractError;
 	if (enabled !== undefined && typeof enabled !== "boolean") return `server "${name}": enabled must be a boolean`;
 	if (defaultActive !== undefined && typeof defaultActive !== "boolean")
 		return `server "${name}": defaultActive must be a boolean`;

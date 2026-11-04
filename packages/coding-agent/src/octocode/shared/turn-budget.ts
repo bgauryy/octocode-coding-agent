@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import type { ToolResultMessage } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../core/features/index.ts";
@@ -6,7 +7,7 @@ import { capResultText, saveFullOutput } from "./spill.ts";
 /** Space reserved for the recovery pointer when a turn exhausts its text budget. */
 const RECOVERY_CHARS = 1024;
 /** What a result after the budget ran out shows: its text is in the archive the first omitted result names. */
-const OMITTED = "[Omitted: this turn's text budget is used up. Its text is in the file named earlier in this turn.]";
+const omittedText = (): string => renderInstruction("notices/turn-budget-omitted.md");
 
 /** Bounds one assistant message's tool text; overflow records remain recoverable from the first omitted result's archive. */
 export class TurnBudget {
@@ -33,12 +34,13 @@ export class TurnBudget {
 			const record = `${JSON.stringify({ tool, text })}\n`;
 			if (this.archive) {
 				fs.appendFileSync(this.archive, record);
-				this.charge(OMITTED.length);
-				return OMITTED;
+				const omitted = omittedText();
+				this.charge(omitted.length);
+				return omitted;
 			}
 			const file = saveFullOutput(record, "turn-overflow");
 			if (!file) throw new Error("Could not save tool output beyond the turn budget");
-			const note = `\n[Turn text budget reached. This result and all later omitted tool text in this turn are saved as JSON lines at ${file}.]`;
+			const note = `\n${renderInstruction("notices/turn-budget-reached.md", { file })}`;
 			const gap = "\n[…]\n";
 			const available = Math.min(
 				text.length,

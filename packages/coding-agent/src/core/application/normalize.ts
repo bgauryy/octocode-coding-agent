@@ -7,6 +7,7 @@ import {
 	type ContentAnnotation,
 } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
+import { DISPLAY_OUTPUT_MAX_BYTES, readOutputFile } from "../../utils/output-files.ts";
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
 
@@ -125,21 +126,39 @@ export function normalizeApplicationContent(
 	});
 }
 
+/**
+ * The complete output of a truncated user shell command: what an older session recorded, else this process's own spill.
+ * A path from a transcript grants no read authority (`readOutputFile`), so after a restart only the trimmed output shows.
+ */
+function completeShellOutput(source: Record<string, unknown>): string | undefined {
+	const recorded = string(source.fullOutput);
+	if (recorded !== undefined || source.truncated !== true) return recorded;
+	const file = string(source.fullOutputPath);
+	try {
+		return file ? readOutputFile(file, DISPLAY_OUTPUT_MAX_BYTES)?.replace(/\r/g, "") : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export function normalizeApplicationMessage(value: unknown, id: string, assets: ApplicationAssets): ApplicationMessage {
 	const source = asRecord(value);
+	const fullOutput = source.role === "bashExecution" ? completeShellOutput(source) : undefined;
 	const bashContent =
 		source.role === "bashExecution"
 			? [
 					{ type: "text", text: `$ ${string(source.command) ?? ""}` },
-					{ type: "text", text: string(source.fullOutput) ?? string(source.output) ?? "" },
-					...(source.truncated === true && typeof source.fullOutput !== "string"
+					{ type: "text", text: fullOutput ?? string(source.output) ?? "" },
+					...(source.truncated === true && fullOutput === undefined
 						? [
 								{
 									type: "unsupported",
 									providerType: "shell-output-unavailable",
 									text:
 										string(source.fullOutputUnavailable) ??
-										"Full shell output is unavailable; the displayed output is truncated",
+										(string(source.fullOutputPath)
+											? `The displayed output is truncated; the full output was saved at ${string(source.fullOutputPath)}`
+											: "Full shell output is unavailable; the displayed output is truncated"),
 								},
 							]
 						: []),

@@ -109,7 +109,13 @@ export function loadSkillsFromDirInternal(
 
 	const root = rootDir ?? dir;
 	const ig = ignoreMatcher ?? ignore();
-	addIgnoreRules(ig, dir, root);
+	addIgnoreRules(ig, dir, root, (file, error) =>
+		diagnostics.push({
+			type: "warning",
+			message: `Could not read this ignore file, so the skills it ignores load: ${error instanceof Error ? error.message : String(error)}`,
+			path: file,
+		}),
+	);
 
 	try {
 		const canonicalDir = realpathSync(dir);

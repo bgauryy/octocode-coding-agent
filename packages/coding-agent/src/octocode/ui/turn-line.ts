@@ -2,7 +2,9 @@ import { GLYPH, Text } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { setToolInterruptShown } from "../../core/application/interrupted-tools.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { formatDuration } from "../shared/format.ts";
+import { formatCost, formatDuration } from "../shared/format.ts";
+import { modelLookup } from "../shared/util.ts";
+import { TurnRun } from "./turn-run.ts";
 
 /** The session entry (`api.appendEntry`, never sent to the model) that carries one turn's summary line. */
 export const TURN_LINE_TYPE = "octocode-turn";
@@ -10,12 +12,26 @@ export const TURN_LINE_TYPE = "octocode-turn";
 /** A turn shorter than this, with no tool, is not worth a line. */
 const MIN_TURN_MS = 3_000;
 
-/** `✻ Worked for 1m02s · 5 tools`, or undefined when the entry holds no usable duration. */
+const count = (value: unknown): number => (typeof value === "number" && value > 0 ? value : 0);
+
+/**
+ * `✻ Worked 1m02s · 5 tools · 3 agents · ≈$4.12 · cache 61%`, or undefined when the entry holds no usable duration.
+ * A part that is zero or unknown is left out, so an old entry holding only `{ms, tools}` still reads.
+ */
 export function turnLineText(data: unknown): string | undefined {
 	if (!isRecord(data) || typeof data.ms !== "number" || !Number.isFinite(data.ms)) return undefined;
-	const tools =
-		typeof data.tools === "number" && data.tools > 0 ? ` · ${data.tools} tool${data.tools === 1 ? "" : "s"}` : "";
-	return `${GLYPH.turn} Worked for ${formatDuration(data.ms)}${tools}`;
+	const tools = count(data.tools);
+	const agents = count(data.agents);
+	const cost = formatCost({ cost: count(data.cost), unpriced: data.unpriced === true });
+	const cache = Math.round(count(data.cache));
+	const parts = [
+		`Worked ${formatDuration(data.ms)}`,
+		tools ? `${tools} tool${tools === 1 ? "" : "s"}` : "",
+		agents ? `${agents} agent${agents === 1 ? "" : "s"}` : "",
+		cost === "cost n/a" ? "" : cost,
+		cache ? `cache ${cache}%` : "",
+	];
+	return `${GLYPH.turn} ${parts.filter(Boolean).join(" · ")}`;
 }
 
 /**
@@ -28,26 +44,54 @@ export function turnLineText(data: unknown): string | undefined {
  */
 export function registerTurnLine(api: ExtensionAPI): void {
 	let startedAt = 0;
-	let tools = 0;
+	const run = new TurnRun();
 	api.registerEntryRenderer(TURN_LINE_TYPE, (entry, _options, theme) => {
 		const text = turnLineText(entry.data);
 		return text ? new Text(theme.fg("dim", text), 1, 0) : undefined;
 	});
-	api.on("agent_start", async () => {
-		startedAt = Date.now();
-		tools = 0;
+	// A run is every segment from the first start to `agent_settled`: retries, auto-continues, compaction resumes and
+	// queued follow-ups start more segments inside it.
+	api.on("agent_start", async (_event, ctx) => {
+		if (startedAt === 0) {
+			startedAt = Date.now();
+			run.begin(ctx.sessionManager.getEntries());
+		}
 		setToolInterruptShown(false);
 	});
 	api.on("tool_execution_start", async (event) => {
-		if (!event.parentToolCallId) tools += 1;
+		if (!event.parentToolCallId) run.tool();
 	});
 	api.on("tool_execution_end", async (event, ctx) => {
 		if (!event.parentToolCallId && event.isError && ctx.signal?.aborted) setToolInterruptShown(true);
 	});
+	api.on("message_end", async (event, ctx) => {
+		if (startedAt !== 0) run.message(event.message, modelLookup(ctx));
+	});
+	api.on("session_compact", async (event, ctx) => {
+		if (startedAt === 0) return;
+		run.entry(event.compactionEntry, modelLookup(ctx));
+		run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
+	});
+	api.on("session_tree", async (event, ctx) => {
+		if (startedAt !== 0) run.entry(event.summaryEntry, modelLookup(ctx));
+	});
 	api.on("agent_end", async (_event, ctx) => {
+		if (startedAt !== 0) run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
+	});
+	api.on("agent_settled", async (event, ctx) => {
+		// A queued steer or follow-up starts the next segment of this run; an abort drops the queue's turn to the user.
+		if (startedAt === 0 || (ctx.hasPendingMessages() && !event.aborted)) return;
 		const ms = Date.now() - startedAt;
-		if (!ctx.hasUI || startedAt === 0 || (ms < MIN_TURN_MS && tools === 0)) return;
-		api.appendEntry(TURN_LINE_TYPE, { ms, tools });
 		startedAt = 0;
+		const { tools, agents, cost, unpriced, cache } = run.totals();
+		if (!ctx.hasUI || (ms < MIN_TURN_MS && tools === 0)) return;
+		api.appendEntry(TURN_LINE_TYPE, {
+			ms,
+			tools,
+			...(agents ? { agents } : {}),
+			...(cost > 0 ? { cost } : {}),
+			...(unpriced ? { unpriced } : {}),
+			...(cache ? { cache } : {}),
+		});
 	});
 }

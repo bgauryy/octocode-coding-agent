@@ -1,4 +1,5 @@
 import { archiveMutation } from "../shared/archive-operation.ts";
+import os from "node:os";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../../../../common/src/env.ts";
 import { mutatedPaths } from "../shared/file-input.ts";
@@ -15,14 +16,16 @@ import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to
  * investigate and report, and this refuses what would change the repository whatever mode the session is in. It
- * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octa/code/temp/` and to Markdown docs under
+ * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octocode/code/temp/`, to the throwaway folder
+ * `.octocode/tmp/` and to Markdown docs under
  * `.octocode/` except where a later session loads the folder as configuration (`LOADED_BY_LATER_SESSIONS`: skills,
  * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
  * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
- * refuses what the parse shows as a change inside the workspace (`shell/mutation.ts`); it is not a sandbox, so a
- * program that writes by itself (`node script.js`) is not seen. A browser MCP call that leaves the isolated browser
- * (the real profile, another program as the browser, cookie or download CDP, an upload from outside the workspace;
+ * refuses what the parse shows as a change inside the workspace or the home folder (`shell/mutation.ts`), and any git call
+ * but a listed read (`shell/git-forms.ts`); it is not a sandbox, so a program that writes by itself (`node script.js`) is not seen. A browser MCP call that leaves the isolated browser
+ * (the real profile, another program as the browser, download CDP, an upload from outside the workspace;
  * `browser-escalation.ts`) is refused too, though the profile may grant `browser.control` for the package's own tools.
+ * Cookie access, by CDP or the `cookies` tool, is not refused: it is a `browser.cookies` ask that reaches the user.
  */
 
 /** Whether this process is a read-only subagent: the parent set the flag from the profile; a session that merely inherits it is not one. */
@@ -47,12 +50,15 @@ const LOADED_BY_LATER_SESSIONS = new Set(
 		"settings.json",
 		"system.md",
 		"append_system.md",
+		// The workspace state folder (`.octocode/code/`: transcripts, workspace id, exports); its `temp/` is allowed first.
+		"code",
 	].map((name) => name.toLowerCase()),
 );
 
 /**
- * Whether a read-only child may write `target` (canonical): its scratch folder, `.octa/code/temp/`, a topic's
- * `.octocode/<topic>/tmp/`, or a Markdown doc under `.octocode/` outside the folders later sessions load.
+ * Whether a read-only child may write `target` (canonical): its scratch folder, `.octocode/code/temp/`, the workspace's
+ * throwaway folder `.octocode/tmp/` (`octocodeTmpDir`, which retention expires), a topic's `.octocode/<topic>/tmp/`,
+ * or a Markdown doc under `.octocode/` outside the folders later sessions load.
  */
 function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
 	const scratch = env[AGENT_SCRATCH_ENV];
@@ -63,8 +69,8 @@ function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean 
 	if (canonicalPath(dir) !== dir || !isWithin(target, dir)) return false;
 	const [entry = "", second] = path.relative(canonicalPath(dir), target).split(path.sep);
 	if (LOADED_BY_LATER_SESSIONS.has(entry.toLowerCase())) return false;
-	// A skill keeps its run scratch (ledgers, probes) in `.octocode/<topic>/tmp/`.
-	if (second?.toLowerCase() === "tmp") return true;
+	// Throwaway files go in `.octocode/tmp/`; a skill keeps its run scratch (ledgers, probes) in `.octocode/<topic>/tmp/`.
+	if (entry.toLowerCase() === "tmp" || second?.toLowerCase() === "tmp") return true;
 	return target.toLowerCase().endsWith(".md");
 }
 
@@ -76,8 +82,16 @@ function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean 
 const mayCreateDirectory = (target: string, cwd: string, env: NodeJS.ProcessEnv): boolean =>
 	mayWrite(target, cwd, env) || mayWrite(path.join(target, "notes.md"), cwd, env);
 
+/**
+ * Whether a write lands in the home folder: its dotfiles and tool settings run in later sessions (`~/.zshrc`,
+ * `~/.claude/settings.json`), which is the same reach as a hook in the repository. The temporary folder stays writable
+ * even where it lives under home (`TMPDIR=~/tmp`).
+ */
+const underHome = (target: string): boolean =>
+	isWithin(target, canonicalPath(os.homedir())) && !isWithin(target, canonicalPath(os.tmpdir()));
+
 const refusal = (what: string): string =>
-	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octa/code/temp/\`, a topic's \`.octocode/<topic>/tmp/\` or a Markdown doc under \`.octocode/\` (not in a folder later sessions load, such as skills, agents or prompts). The file tool creates missing folders.`;
+	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octocode/code/temp/\`, \`.octocode/tmp/\`, a topic's \`.octocode/<topic>/tmp/\` or a Markdown doc under \`.octocode/\` (not in a folder later sessions load, such as skills, agents or prompts). The file tool creates missing folders.`;
 
 /** The refusal for a call a read-only child must not make, or undefined when it may (or this is not a read-only child). */
 export function readOnlyRoleRefusal(
@@ -112,7 +126,7 @@ export function readOnlyRoleRefusal(
 	const directories = new Set(effect.directories);
 	const changed = effect.writes.find((file) => {
 		const target = canonicalPath(shellPath(cwd, file));
-		if (!isWithin(target, canonicalPath(root))) return false;
+		if (!isWithin(target, canonicalPath(root)) && !underHome(target)) return false;
 		return directories.has(file) ? !mayCreateDirectory(target, cwd, env) : !mayWrite(target, cwd, env);
 	});
 	if (changed !== undefined)
@@ -121,6 +135,10 @@ export function readOnlyRoleRefusal(
 		);
 	if (effect.opaque.length > 0)
 		return refusal(`\`${effect.opaque[0]}\` (it changes files or repository state without naming a path)`);
+	if (effect.unread.length > 0)
+		return refusal(
+			`\`${effect.unread[0]}\` (this role's git is status, log, diff, show, blame, grep, ls-files, ls-tree, rev-parse, rev-list, describe, shortlog, cat-file and show-ref, and branch, tag, remote, stash, worktree and notes when they only list; without \`-c\`, \`--git-dir\` or \`--work-tree\`)`,
+		);
 	if (effect.afterDirectoryChange)
 		return refusal(
 			"A write to a relative path after a `cd` the guard cannot follow (it follows only `cd /abs/dir` or `cd ./dir` joined by `&&`: not a bare name, `..`, a variable, `cd -`, `||` or a loop); write with absolute paths or use `cd /absolute/dir && …`",

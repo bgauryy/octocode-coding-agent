@@ -618,6 +618,38 @@ describe("a lingering background subagent", () => {
 		}
 	}, 30_000);
 
+	it("marks the earlier report superseded when a message resumes the run, and says so in the session's queue", async () => {
+		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
+		const t = setup();
+		try {
+			const rewrites: Array<{ details: object; content: string }> = [];
+			Object.assign(t.ctx, {
+				replaceQueuedMessage: (details: object, content: string) => {
+					rewrites.push({ details, content });
+					return true;
+				},
+			});
+			await t.f.emit("session_start", { type: "session_start", reason: "startup" }, t.ctx);
+			const id = await t.start("linger first");
+			await vi.waitFor(() => expect(t.reports()).toHaveLength(1), { timeout: 10_000 });
+			expect(rewrites).toEqual([]);
+			await t.team.send(id, "linger second", { replyRequired: false });
+			expect(rewrites).toHaveLength(1);
+			expect(rewrites[0].details).toBe(
+				t.f.sent.find((entry) => String(entry.message.content).includes("LINGER"))?.message.details,
+			);
+			expect(rewrites[0].content).toContain(`${id} was resumed after it wrote this report`);
+			await vi.waitFor(() => expect(t.reports()).toHaveLength(2), { timeout: 10_000 });
+			// The new run's own report is not marked, and neither is it rewritten by the resume before it.
+			expect(t.reports()[1]).not.toContain("was resumed");
+			expect(rewrites).toHaveLength(1);
+		} finally {
+			await t.control.stopAll();
+			t.team.stop();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	}, 30_000);
+
 	it("ends early on coordinate stop, and is off by default", async () => {
 		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
 		try {

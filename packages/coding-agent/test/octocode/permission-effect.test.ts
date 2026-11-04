@@ -176,9 +176,12 @@ describe("the purpose", () => {
 });
 
 describe("the audit", () => {
-	it("records one entry per effectful call in full, with no dialog for any class and the reasons it was run with", async () => {
+	it("records one entry per effectful call in full, with no dialog for any class full allows and the reasons it was run with", async () => {
 		const { permission, ctx, cwd, shown, audit } = setup("full");
-		for (const action of ACTION_CLASSES)
+		// Classes that ask in every mode (browser cookie access) are covered by the mode matrix test.
+		const allowed = ACTION_CLASSES.filter((action) => decide("full", action) === "allow");
+		expect(allowed.length).toBeGreaterThan(0);
+		for (const action of allowed)
 			expect(await permission.check(ctx, { action, title: "Do it?", what: ["x"], cwd, purpose: "p" }), action).toEqual({
 				allowed: true,
 				via: "mode",
@@ -193,12 +196,12 @@ describe("the audit", () => {
 			cwd,
 		});
 		expect(shown).toEqual([]);
-		expect(audit()).toHaveLength(ACTION_CLASSES.length + 1);
+		expect(audit()).toHaveLength(allowed.length + 1);
 		expect(
 			audit()
 				.map((entry) => entry.action)
-				.slice(0, ACTION_CLASSES.length),
-		).toEqual([...ACTION_CLASSES]);
+				.slice(0, allowed.length),
+		).toEqual(allowed);
 		expect(audit().at(-1)).toMatchObject({
 			mode: "full",
 			action: "shell",
@@ -333,6 +336,16 @@ describe("a run with no UI in full", () => {
 		expect(summary).toMatch(/permission summary: shell × 1, shell.destructive × 1, net.private × 1/);
 		expect(summary).toContain("⚠ shell.destructive: rm -rf build");
 		expect(summary).toContain("⚠ net.private: http://10.0.0.1");
+	});
+
+	it("prints the banner for an RPC or ACP worker, whose driver has no other sign, and not for the terminal", () => {
+		const { permission, ctx, err } = setup("full");
+		err.length = 0;
+		permission.start(Object.assign(ctx, { hasUI: true, mode: "rpc" }));
+		expect(err.join("")).toContain("octocode: permission mode full");
+		err.length = 0;
+		permission.start(Object.assign(ctx, { hasUI: true, mode: "tui" }));
+		expect(err).toEqual([]);
 	});
 
 	it("prints no summary when nothing ran, no banner or summary outside full, and nothing with a UI", async () => {

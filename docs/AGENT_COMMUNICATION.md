@@ -1,13 +1,14 @@
 # Agent communication and worker lifecycle
 
-Internal Team mail, worker RPC, the native process API and ACP have distinct delivery contracts. The [communication RFC](RFC_COMMUNICATION_PROTOCOL.md) maps them and proposes shared versioned contracts plus an optional A2A adapter; A2A is not currently implemented.
+Internal Team mail, worker RPC, the native process API and ACP have distinct delivery contracts. The [communication RFC](RFC_COMMUNICATION_PROTOCOL.md) maps them and proposes shared versioned contracts plus an optional A2A adapter; A2A is not currently implemented. The [agent-to-agent RFC](RFC_AGENT_TO_AGENT.md) puts one verb for the model over them: `agent` type `message`, `to` a name, for teammates and for another Octocode process, with a merge workflow from a linked worktree to its main checkout.
 
 ## External processes
 
 | Goal                                             | Interface and owner                                                                    | Lifecycle                                                                                                |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | An editor or script launches Octocode            | [Inbound ACP](../packages/coding-agent/docs/acp.md), `packages/acp/src/server/`        | The client owns the broker; the broker owns one RPC worker per session.                                  |
-| A local process talks to a running Octocode host | [Local session API](../packages/coding-agent/docs/session-api.md), `src/octocode/api/` | Discover an opted-in instance, guard its conversation ID, send and observe results.                      |
+| A local process talks to a running Octocode host | [Local session API](../packages/coding-agent/docs/session-api.md), `src/octocode/api/` | Discover an instance (every top-level session serves one by default), guard its conversation ID, send and observe results.                      |
+| A session's model reaches another running Octocode | `agent` type `message`, `to` its process name or `coordinator`; `src/octocode/external/peers.ts` over the local session API | Does not wait for the receiver's run; an answer is a message back; the receiver's [permission mode](../packages/coding-agent/docs/permissions.md#external-messages) decides whether it arrives. |
 | Octocode launches an external coding agent       | Native `agent`, `type: "external"`, `transport: "acp"`; `src/octocode/external/`       | The connection owns its peer process tree and returns each prompt's reply.                               |
 | Octocode attaches to an existing peer            | Native `agent`, `type: "external"`, `transport: "octocode"`                            | Uses the peer's local API and an idle-only guarded message; disconnect does not terminate the peer host. |
 | An embedding host controls a native worker       | [RPC](../packages/coding-agent/docs/rpc.md), `src/modes/rpc/`                           | The host owns process lifetime, request correlation and explicit cancellation.                           |

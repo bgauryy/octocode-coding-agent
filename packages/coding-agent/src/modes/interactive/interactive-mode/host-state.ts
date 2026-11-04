@@ -14,6 +14,7 @@ import type {
 	TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import type * as TuiLayouts from "@octocodeai/octocode-tui";
+import type { UiStore } from "../state/store.ts";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts";
 import type {
@@ -37,13 +38,12 @@ import type { ThemedText } from "../components/themed-text.ts";
 import type { ToolExecutionComponent } from "../components/tool-execution.ts";
 import type { ProgramStatusReporter } from "../program-status-reporter.ts";
 import type { InteractiveThemeController } from "../theme/theme-controller.ts";
-import type { ActiveEditor, CompactionQueuedMessage, InteractiveModeOptions } from "./types.ts";
+import type { ActiveEditor, InteractiveModeOptions } from "./types.ts";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 
 /** Mode state the collaborators read, and write unless it is readonly. */
 export interface InteractiveModeState {
 	activeSelectorDispose: (() => void) | undefined;
-	activeSelectorToken: object | undefined;
 	activeStatusIndicator: StatusIndicator | undefined;
 	activeWorkingIndicatorEmbedded: boolean;
 	anthropicSubscriptionWarningShown: boolean;
@@ -55,7 +55,6 @@ export interface InteractiveModeState {
 	builtInHeader: Component | undefined;
 	changelogMarkdown: string | undefined;
 	readonly chatContainer: Container;
-	compactionQueuedMessages: CompactionQueuedMessage[];
 	customFooter: (Component & { dispose?(): void }) | undefined;
 	customHeader: (Component & { dispose?(): void }) | undefined;
 	readonly defaultEditor: CustomEditor;
@@ -83,14 +82,14 @@ export interface InteractiveModeState {
 	fullscreenLayoutRoot: Component | undefined;
 	readonly headerContainer: Container;
 	hiddenThinkingLabel: string;
-	hideThinkingBlock: boolean;
 	readonly idleStatus: IdleStatus;
 	installChangeWarningShown: boolean;
-	isBashMode: boolean;
 	isInitialized: boolean;
 	isShuttingDown: boolean;
 	readonly keybindings: KeybindingsManager;
 	lastEscapeTime: number;
+	/** Esc presses before this time (ms epoch) are part of the burst that aborted something and never open the tree. */
+	escapeQuietUntil: number;
 	lastSigintTime: number;
 	lastStatusSpacer: Spacer | undefined;
 	lastStatusText: ThemedText | undefined;
@@ -121,7 +120,7 @@ export interface InteractiveModeState {
 	streamingComponent: AssistantMessageComponent | undefined;
 	streamingMessage: AssistantMessage | undefined;
 	readonly themeController: InteractiveThemeController;
-	toolOutputExpanded: boolean;
+	readonly uiStore: UiStore;
 	transcriptScrollView: TuiLayouts.ScrollView | undefined;
 	readonly ui: TUI;
 	unsubscribe: (() => void) | undefined;

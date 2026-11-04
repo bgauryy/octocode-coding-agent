@@ -149,9 +149,9 @@ export function showLoadedResources(
 				label: "MCP",
 				count: () => mcp.getState().length,
 				source: mcp,
-				summary: () => mcp.getState().map(mcpSummary).join(theme.fg("dim", SEPARATOR)),
+				summary: () => mcp.getState().map(mcpListed).join(theme.fg("dim", SEPARATOR)),
 				cells: () => ({
-					sources: mcp.getState().map(mcpSummary).join(theme.fg("dim", SEPARATOR)),
+					sources: mcp.getState().map(mcpListed).join(theme.fg("dim", SEPARATOR)),
 					tail: theme.fg("dim", sanitizeTerminalText(mcpSources(mcp.getState()))),
 				}),
 				expandedSummary: () => {
@@ -322,16 +322,33 @@ const warningTitle = (name: string) => `${GLYPH.warning} ${name}`;
 
 type McpStatus = ReturnType<typeof getMcpSessionStatus>[number];
 
-/** The session's MCP statuses as a state source: the snapshot is refreshed once per published change. */
+/** A server that failed or dropped is news and stays in the collapsed row; connecting and connected are routine. */
+const mcpFailed = (server: McpStatus): boolean =>
+	server.enabled && (server.state === "failed" || server.state === "disconnected");
+
+/** What the collapsed row draws: which servers exist, which apply and which failed, never routine connection state. */
+const mcpListing = (servers: readonly McpStatus[]): string =>
+	servers
+		.map((server) => `${server.name}:${server.enabled}:${server.state === "unselected"}:${mcpFailed(server)}`)
+		.join("\n");
+
+/**
+ * The session's MCP statuses as a state source. `getState` is live, so ctrl+o details show current states, but only a
+ * change to the listing (a server appearing, or a selection) repaints the row: a connection state that moves on after
+ * the row scrolled above the viewport would make the renderer clear and redraw the whole scrollback, banner included.
+ */
 function mcpStatusSource(events: EventBus): StateSource<readonly McpStatus[]> {
-	let servers = getMcpSessionStatus(events);
 	return {
-		getState: () => servers,
-		subscribe: (listener) =>
-			events.on(MCP_STATUS_EVENT, () => {
-				servers = getMcpSessionStatus(events);
+		getState: () => getMcpSessionStatus(events),
+		subscribe: (listener) => {
+			let listed = mcpListing(getMcpSessionStatus(events));
+			return events.on(MCP_STATUS_EVENT, (servers) => {
+				const next = mcpListing(servers as readonly McpStatus[]);
+				if (next === listed) return;
+				listed = next;
 				listener();
-			}),
+			});
+		},
 	};
 }
 
@@ -353,6 +370,13 @@ const MCP_LABEL: Readonly<Record<string, string>> = {
 	connecting: `connecting${ELLIPSIS}`,
 	"needs-auth": "needs sign-in",
 };
+
+/** The collapsed row's entry: `name`, or `○ name disabled` / `✗ name failed` for a server that does not apply or failed. Connection state is in the details. */
+function mcpListed(server: McpStatus): string {
+	if (server.enabled && server.state !== "unselected" && !mcpFailed(server))
+		return theme.fg("muted", sanitizeTerminalText(server.name));
+	return mcpSummary(server);
+}
 
 /** `● name state`: the shared mark and colour for the server's state, then a connected server's tool count. */
 function mcpSummary(server: McpStatus): string {

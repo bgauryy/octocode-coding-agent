@@ -4,6 +4,7 @@
  */
 
 import { animationClock, setCapabilityOverrides, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
 import { setRegisteredThemes } from "../../../theme/theme.ts";
@@ -21,7 +22,6 @@ type SessionBindingHost = Pick<
 	| "bindCurrentSessionExtensions"
 	| "chatContainer"
 	| "clearStatusIndicator"
-	| "compactionQueuedMessages"
 	| "createExtensionUIContext"
 	| "defaultEditor"
 	| "editor"
@@ -32,7 +32,7 @@ type SessionBindingHost = Pick<
 	| "handleFatalRuntimeError"
 	| "handleReloadCommand"
 	| "handleResumeSession"
-	| "hideThinkingBlock"
+	| "uiStore"
 	| "loadedResourcesContainer"
 	| "outputPad"
 	| "pendingMessagesContainer"
@@ -155,7 +155,7 @@ export function applyRuntimeSettings(host: SessionBindingHost): void {
 	host.footer.setSession(host.session);
 	host.footer.setAutoCompactEnabled(host.session.autoCompactionEnabled);
 	host.footerDataProvider.setCwd(host.sessionManager.getCwd());
-	host.hideThinkingBlock = host.settingsManager.getHideThinkingBlock();
+	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
 	host.outputPad = host.settingsManager.getOutputPad();
 	host.ui.setShowHardwareCursor(host.settingsManager.getShowHardwareCursor());
 	const clearOnShrink = host.settingsManager.getClearOnShrink();
@@ -208,9 +208,9 @@ export function renderCurrentSessionState(host: SessionBindingHost): void {
 	// Live rows subscribe to the outgoing session's event bus; stop them before dropping them.
 	disposeLoadedResources(host.loadedResourcesContainer);
 	host.loadedResourcesContainer.clear();
+	disposeTranscript(host.chatContainer);
 	host.chatContainer.clear();
 	host.pendingMessagesContainer.clear();
-	host.compactionQueuedMessages = [];
 	host.streamingComponent = undefined;
 	host.streamingMessage = undefined;
 	host.pendingTools.clear();

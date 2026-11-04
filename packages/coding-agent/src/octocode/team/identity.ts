@@ -136,6 +136,36 @@ export function modelRoute(
 }
 
 /**
+ * The row `parent`'s process holds for a child it reserved paths for, until the child's own process takes it over
+ * (`claimMember`). It names the parent's process: while that runs the reservations are not an abandoned owner's, and
+ * when it ends they go with it.
+ */
+export function heldChildMember(
+	parent: Member,
+	child: { id: string; role: string; goal: string },
+	now: number,
+): Member {
+	const goal = storedText(child.goal, LINE_MAX);
+	return {
+		id: child.id,
+		role: child.role,
+		parentId: parent.id,
+		pid: parent.pid,
+		...(parent.started ? { started: parent.started } : {}),
+		status: "working",
+		...(goal ? { goal } : {}),
+		joinedAt: now,
+		updatedAt: now,
+		toolCalls: 0,
+		input: 0,
+		cacheRead: 0,
+		output: 0,
+		cost: 0,
+		unpriced: false,
+	};
+}
+
+/**
  * The row a process joins the team with. A subagent's parent chose its name, role and goal and passed them in the
  * environment; a main session is `main`, named by the caller, with the goal it gives when it joins (if any).
  */

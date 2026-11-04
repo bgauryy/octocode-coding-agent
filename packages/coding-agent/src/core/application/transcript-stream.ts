@@ -94,12 +94,19 @@ export class TranscriptStream {
 	}
 }
 
+/** One chunk a view is sent: its end, saying how much of a rare huge chunk it leaves out. The transcript keeps it whole. */
+const VIEW_DELTA_CHARS = 64_000;
+const viewDelta = (delta: string): string =>
+	delta.length <= VIEW_DELTA_CHARS
+		? delta
+		: `[${delta.length - VIEW_DELTA_CHARS} characters not shown here; the transcript has them]\n${delta.slice(-VIEW_DELTA_CHARS)}`;
+
 /** The display event for a provider update of a streaming message. */
 export function messageDelta(message: ApplicationMessage, update: { type: string; delta?: unknown }): ApplicationEvent {
 	return {
 		type: "message.delta",
 		messageId: message.id,
-		delta: update.type === "text_delta" && typeof update.delta === "string" ? update.delta.slice(-64000) : "",
+		delta: update.type === "text_delta" && typeof update.delta === "string" ? viewDelta(update.delta) : "",
 		text: message.text,
 		content: message.content,
 		full: message.full,

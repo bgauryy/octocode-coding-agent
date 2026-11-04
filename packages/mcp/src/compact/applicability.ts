@@ -6,7 +6,10 @@ import type { JsonSchema } from "./types.ts";
  * applies ("Only with operation: a, b.", "Not with operation: c.", "Required with operation: a.", "Required except with
  * operation: c."). Repeated per field that is a lot of prose; this pre-pass reads the notes and rebuilds the schema as the
  * shared fields plus one variant per operation group, which `schemaToTs` renders as `Shared & ({ operation: "a"; ... } | ...)`.
- * A field whose notes cannot be read keeps its text, and an object without readable notes is left as it is.
+ * Fields that share a rule may state it once, in the object's own description ("For a, b: required except with
+ * operation: c."): that reads as the same note on each field it names, so a field the rule requires reads as required
+ * where it is, not as optional with the rule in a comment. A field whose notes cannot be read keeps its text, a note of
+ * the object that cannot be read stays on the object, and an object without readable notes is left as it is.
  */
 
 const NOTE_KINDS = "Only with|Not with|Required with|Required except with";
@@ -45,6 +48,65 @@ function readNotes(
 	return { rules, rest: rest.replace(/\s{2,}/g, " ").trim() };
 }
 
+interface ObjectNote {
+	/** The note as the object's description writes it. */
+	text: string;
+	fields: string[];
+	/** The note as a field's description would write it (`NOTE_KINDS`). */
+	fieldNote: string;
+	key: string;
+	values: string[];
+}
+
+const OBJECT_NOTE =
+	/(?:^|\s)For ([\w$-]+(?:, [\w$-]+)*): (only with|not with|required with|required except with) ([\w$-]+): ([\w$-]+(?:, [\w$-]+)*)\./g;
+
+const REQUIRED_NOTE = /Required (?:except )?with [\w$-]+: [\w$-]+(?:, [\w$-]+)*\./;
+
+/** The notes of an object's description about its own fields. */
+function objectNotes(node: Node, properties: Node): ObjectNote[] {
+	if (typeof node.description !== "string") return [];
+	return [...node.description.matchAll(OBJECT_NOTE)].flatMap(([text, list, kind, key, values]) => {
+		const fields = list.split(", ");
+		if (!fields.every((field) => field !== key && isNode(properties[field]))) return [];
+		const fieldNote = `${kind[0].toUpperCase()}${kind.slice(1)} ${key}: ${values}.`;
+		return [{ text, fields, fieldNote, key, values: values.split(", ") }];
+	});
+}
+
+/** `properties` with each of `notes` written on the fields it names. */
+function withFieldNotes(properties: Node, notes: readonly ObjectNote[]): Node {
+	const result = { ...properties };
+	for (const { fields, fieldNote } of notes)
+		for (const field of fields) {
+			const property = result[field] as Node;
+			const description = typeof property.description === "string" ? `${property.description} ` : "";
+			result[field] = { ...property, description: `${description}${fieldNote}` };
+		}
+	return result;
+}
+
+/**
+ * Fields a description says some value of another field requires ("Required with operation: a." on the field, "For a,
+ * b: required except with operation: c." on its object), each with the note that says so.
+ */
+export function conditionallyRequired(schema: unknown, seen = new Set<unknown>()): { field: string; note: string }[] {
+	if (typeof schema !== "object" || schema === null || seen.has(schema)) return [];
+	seen.add(schema);
+	if (Array.isArray(schema)) return schema.flatMap((item) => conditionallyRequired(item, seen));
+	const node = schema as Node;
+	const properties = isNode(node.properties) ? node.properties : {};
+	const found = objectNotes(node, properties)
+		.filter((note) => note.fieldNote.startsWith("Required"))
+		.flatMap(({ fields, text }) => fields.map((field) => ({ field, note: text.trim() })));
+	for (const [field, property] of Object.entries(properties)) {
+		const description = isNode(property) ? property.description : undefined;
+		const note = typeof description === "string" ? REQUIRED_NOTE.exec(description)?.[0] : undefined;
+		if (note) found.push({ field, note });
+	}
+	return [...found, ...Object.values(node).flatMap((value) => conditionallyRequired(value, seen))];
+}
+
 const stripped = (property: Node, rest: string): Node => {
 	const { description: _description, ...others } = property;
 	return rest ? { ...others, description: rest } : others;
@@ -61,14 +123,22 @@ const stringEnum = (property: unknown): string[] | undefined =>
 const mentions = (property: unknown, key: string) =>
 	isNode(property) && typeof property.description === "string" && property.description.includes(` with ${key}: `);
 
+/**
+ * Whether a field with these rules exists on `operation`. A field whose only rule is "Required with" exists only where
+ * it is required: the Octocode server refuses `number` on a `commit` and `keywords` on a `resolve`, and states a field
+ * that is also optional elsewhere with a second rule (`repo`: "Not with operation: list. Required with operation: get.").
+ * Reading it the other way would offer the model a call the server refuses; this way it can only leave out a field.
+ */
 const allows = (rules: readonly Rule[], operation: string) =>
-	rules.every((rule) =>
-		rule.kind === "only"
-			? rule.values.includes(operation)
-			: rule.kind === "not"
-				? !rule.values.includes(operation)
-				: true,
-	);
+	rules.every((rule) => rule.kind === "required") && rules.length > 0
+		? rules.some((rule) => rule.values.includes(operation))
+		: rules.every((rule) =>
+				rule.kind === "only"
+					? rule.values.includes(operation)
+					: rule.kind === "not"
+						? !rule.values.includes(operation)
+						: true,
+			);
 
 interface Reading {
 	property: Node;
@@ -79,22 +149,34 @@ interface Reading {
 
 function restructure(node: Node): Node {
 	if (node.anyOf || node.oneOf || node.allOf || !isNode(node.properties)) return node;
-	const properties = node.properties;
-	const keys = Object.keys(properties);
+	const stated = node.properties;
+	const keys = Object.keys(stated);
+	const notes = objectNotes(node, stated);
 	let key: string | undefined;
 	let most = 0;
 	for (const candidate of keys) {
-		if (!stringEnum(properties[candidate])) continue;
-		const count = keys.filter((other) => other !== candidate && mentions(properties[other], candidate)).length;
+		if (!stringEnum(stated[candidate])) continue;
+		const count = keys.filter(
+			(other) =>
+				other !== candidate &&
+				(mentions(stated[other], candidate) ||
+					notes.some((note) => note.key === candidate && note.fields.includes(other))),
+		).length;
 		if (count > most) {
 			most = count;
 			key = candidate;
 		}
 	}
 	if (key === undefined) return node;
-	const discriminator = properties[key] as Node;
+	const discriminator = stated[key] as Node;
 	const operations = stringEnum(discriminator) as string[];
 	const values = new Set(operations);
+	const moved = notes.filter((note) => note.key === key && note.values.every((value) => values.has(value)));
+	const properties = withFieldNotes(stated, moved);
+	const { description: stating, ...object } = node;
+	const description = moved
+		.reduce((text, note) => text.replace(note.text, ""), typeof stating === "string" ? stating : "")
+		.trim();
 	const parentRequired = new Set(Array.isArray(node.required) ? node.required.map(String) : []);
 
 	const readings = new Map<string, Reading>();
@@ -149,9 +231,9 @@ function restructure(node: Node): Node {
 		const signature = varying.map(([field, reading]) => (reading.allowed[index] ? field : "")).join("|");
 		groups.set(signature, [...(groups.get(signature) ?? []), index]);
 	});
-	const { description, default: fallback, enum: _enum, ...discriminatorRest } = discriminator;
+	const { description: own, default: fallback, enum: _enum, ...discriminatorRest } = discriminator;
 	const discriminatorOf = (names: string[], order: number): Node => ({
-		...(order === 0 ? { ...discriminatorRest, ...(description === undefined ? {} : { description }) } : {}),
+		...(order === 0 ? { ...discriminatorRest, ...(own === undefined ? {} : { description: own }) } : {}),
 		...(typeof fallback === "string" && names.includes(fallback) ? { default: fallback } : {}),
 		enum: names,
 	});
@@ -204,11 +286,52 @@ function restructure(node: Node): Node {
 		return { type: "object", properties: own, required, anyOf };
 	});
 	return {
-		...node,
+		...object,
+		...(description ? { description } : {}),
 		properties: sharedProperties,
 		required: sharedRequired,
 		anyOf: variants,
 	};
+}
+
+/** The property a dotted field path (`queries.symbolName`, as `fieldDocs` addresses it) names; array items add no segment. */
+function fieldAt(schema: unknown, path: readonly string[]): Node | undefined {
+	let node = schema;
+	for (const segment of path) {
+		while (isNode(node) && isNode(node.items)) node = node.items;
+		node = isNode(node) && isNode(node.properties) ? node.properties[segment] : undefined;
+	}
+	return isNode(node) ? node : undefined;
+}
+
+const NOTE = new RegExp(`(?:^|\\s)(?:${NOTE_KINDS}) [\\w$-]+: [\\w$-]+(?:, [\\w$-]+)*\\.`, "g");
+
+/**
+ * A rule the server's own text leaves out, stated in a field override's words: `lspSearch` says `symbolName` is "required
+ * except with" three operations, and also refuses it on them, which only an override can say. The note goes onto the
+ * field's description in a copy of the schema, where `structureApplicability` reads it, and off the doc the model reads.
+ * Notes the description already holds stay as they are.
+ */
+export function withOverrideNotes(
+	schema: JsonSchema,
+	fieldDocs: Record<string, string> | undefined,
+): { schema: JsonSchema; fieldDocs: Record<string, string> | undefined } {
+	if (!fieldDocs) return { schema, fieldDocs };
+	let copy: JsonSchema | undefined;
+	const docs = { ...fieldDocs };
+	for (const [path, text] of Object.entries(fieldDocs)) {
+		const segments = path.split(".");
+		const upstream = fieldAt(schema, segments)?.description;
+		const added = [...text.matchAll(NOTE)]
+			.map(([note]) => note.trim())
+			.filter((note) => !(typeof upstream === "string" && upstream.includes(note)));
+		if (!added.length || !fieldAt(schema, segments)) continue;
+		copy ??= structuredClone(schema);
+		const field = fieldAt(copy, segments) as Node;
+		field.description = [upstream, ...added].filter((part) => typeof part === "string").join(" ");
+		docs[path] = added.reduce((rest, note) => rest.replace(note, ""), text).trim();
+	}
+	return { schema: copy ?? schema, fieldDocs: docs };
 }
 
 const cache = new WeakMap<object, JsonSchema>();

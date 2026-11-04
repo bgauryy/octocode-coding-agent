@@ -1,0 +1,1 @@
+- After a compaction, resume, long run or surprising result, and before reporting, reorient (OODA) from the latest `<summary>` and the {{#if main}}`[After compaction]` or `[Resumed]` notes{{else}}`[After compaction]` notes or your parent's follow-up{{/if}}, then current state.

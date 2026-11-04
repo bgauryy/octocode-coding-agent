@@ -22,11 +22,14 @@ export const ACTION_CLASSES = [
 	"web",
 	"browser",
 	"browser.control",
+	"browser.cookies",
 	"net.private",
 	"upload.outside",
 	"mcp.write",
 	"mcp.destructive",
 	"agent.spawn",
+	"message.external",
+	"worktree.merge",
 ] as const;
 export type ActionClass = (typeof ACTION_CLASSES)[number];
 
@@ -84,6 +87,12 @@ const MATRIX: Record<ActionClass, { rules: [Rule, Rule, Rule]; noun: string; why
 		noun: "taking control of the browser",
 		why: "it takes control of a browser: running custom code against it, moving its cookies or replaying a request",
 	},
+	"browser.cookies": {
+		rules: ["ask", "ask", "ask"],
+		noun: "browser cookie access",
+		why: "it reads, sets or moves the browser's cookies, which can hold logins",
+		all: "browser cookie access",
+	},
 	"net.private": {
 		rules: ["ask", "ask", "allow"],
 		noun: "opening a private or local address",
@@ -113,6 +122,18 @@ const MATRIX: Record<ActionClass, { rules: [Rule, Rule, Rule]; noun: string; why
 		why: "a subagent acts on its own with tools of its own",
 		all: "subagents",
 	},
+	"message.external": {
+		rules: ["ask", "ask", "allow"],
+		noun: "this external message",
+		why: "another process on this machine, not you, wants to reach the agent, and nothing verifies who it is",
+		all: "external messages",
+	},
+	"worktree.merge": {
+		rules: ["ask", "ask", "ask"],
+		noun: "the worktree merge",
+		why: "it changes the main checkout's history, and only you may ask for that; a message from another process grants nothing",
+		all: "worktree merges",
+	},
 };
 
 /** Why `action` asks, as the prompt's reason line says it. */
@@ -120,15 +141,24 @@ export const actionWhy = (action: ActionClass): string => MATRIX[action].why;
 
 /**
  * Reasons tighten a call. They are not action classes and never a session grant. A provenance hit, a hook ask and a
- * profile that declares permissions ask in manual and workspace; full runs them and records the reason. A reason forces
+ * profile that declares permissions ask in manual and workspace; full runs them and records the reason. A source policy's
+ * ask and an agent's save of a global or pinned memory ask in every mode. A reason forces
  * one ask on the call's effect. It does not replace that effect, and a session grant of the effect does not answer it.
  */
-export const ASK_REASONS = ["hook.ask", "provenance", "profile.permissions", "source.ask", "shell.target"] as const;
+export const ASK_REASONS = [
+	"hook.ask",
+	"provenance",
+	"profile.permissions",
+	"source.ask",
+	"shell.target",
+	"memory.wide",
+] as const;
 export type AskReason = (typeof ASK_REASONS)[number];
 
 const REASON_RULES: Record<AskReason, [Rule, Rule, Rule]> = {
 	"shell.target": ["ask", "ask", "allow"],
 	"source.ask": ["ask", "ask", "ask"],
+	"memory.wide": ["ask", "ask", "ask"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],
 	"profile.permissions": ["ask", "ask", "allow"],
@@ -168,10 +198,13 @@ export const PROFILE_DECLARABLE: readonly ActionClass[] = ["browser.control", "n
 
 /**
  * Classes a parent may hand a subagent, which cannot ask anyone: every class with a session kind (what the user allowed
- * for the session), plus the profile-declarable ones. Destructive shell and MCP never pass down.
+ * for the session), plus the profile-declarable ones. Destructive shell and MCP never pass down, and neither do the
+ * classes only a top-level session can meet: a child has no API to receive on and no merge to land.
  */
 export const SPAWN_GRANTABLE: ReadonlySet<ActionClass> = new Set([
-	...ACTION_CLASSES.filter((action) => kindOf(action) !== undefined),
+	...ACTION_CLASSES.filter(
+		(action) => kindOf(action) !== undefined && action !== "message.external" && action !== "worktree.merge",
+	),
 	...PROFILE_DECLARABLE,
 ]);
 
@@ -209,6 +242,33 @@ export function startMode(env: NodeJS.ProcessEnv): { mode: PermissionMode; warni
 			warning: `${PERMISSION_ENV}=${chosen.invalid} is not manual, workspace or full; starting in manual.`,
 		};
 	return { mode: chosen.value };
+}
+
+/**
+ * The mode the session running in a process left it in, by that process's environment object. `/new`, `/resume`, `/fork`
+ * and `/reload` build a new runtime and so a new `Permission`, so a choice the user made has to outlive the instance
+ * that holds it.
+ */
+const carriedModes = new WeakMap<NodeJS.ProcessEnv, PermissionMode>();
+export const carryMode = (env: NodeJS.ProcessEnv, mode: PermissionMode): void => void carriedModes.set(env, mode);
+
+/**
+ * The mode a session starts in. The first start in a process takes the start mode. A later one, on the instance that
+ * holds `current` or on one a `/new`, `/resume`, `/fork` or `/reload` builds (`reason`), takes the stricter of the mode the
+ * session was in and the start mode: with nothing exported a chosen mode stays, and an exported one bounds a wider
+ * choice, returned as `reverted` for a notice.
+ */
+export function sessionStartMode(
+	env: NodeJS.ProcessEnv,
+	current: PermissionMode | undefined,
+	reason: "startup" | "reload" | "new" | "resume" | "fork" | undefined,
+): { mode: PermissionMode; reverted?: PermissionMode; warning?: string } {
+	const { mode: starting, warning } = startMode(env);
+	const warned = warning === undefined ? {} : { warning };
+	const previous = current ?? (reason !== undefined && reason !== "startup" ? carriedModes.get(env) : undefined);
+	if (previous === undefined) return { mode: starting, ...warned };
+	const mode = PERMISSION_MODES[Math.min(PERMISSION_MODES.indexOf(previous), PERMISSION_MODES.indexOf(starting))];
+	return { mode, ...(mode === previous ? {} : { reverted: previous }), ...warned };
 }
 
 /**

@@ -136,6 +136,8 @@ export async function forwardMessage(
 	const { added, departed, already } = db.refs.forward(id, by, recipients, {
 		wake: stored.replyRequired || outside(by),
 		...(trimmed ? { note: trimmed } : {}),
+		// A parent's note is read as steering, so its forward carries the signature its own messages do.
+		...(by === host.me()?.id ? { sign: (recipient: string) => host.signedByParent(message(recipient)) } : {}),
 	});
 	if (added.length === 0)
 		return {
@@ -148,6 +150,17 @@ export async function forwardMessage(
 				.join(" "),
 		};
 	return { sent: added, id, ...(departed.length > 0 ? { departed } : {}) };
+}
+
+/** Closes the questions this session put to `child`; housekeeping, so an unreadable database leaves them as they were. */
+export function closeQuestionsTo(host: ReferenceHost, child: string): void {
+	const me = host.me()?.id;
+	if (!me) return;
+	try {
+		host.store().refs.closeQuestionsTo(me, child);
+	} catch {
+		/* The report is delivered either way. */
+	}
 }
 
 /**

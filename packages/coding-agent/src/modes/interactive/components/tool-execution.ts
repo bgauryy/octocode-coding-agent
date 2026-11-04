@@ -21,11 +21,9 @@ import { theme } from "../../../theme/theme.ts";
 import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
 import { GenericToolContent } from "./tool-execution/content.ts";
 import { reasonRow } from "./tool-execution/reason.ts";
+import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
-
-/** The SGR a theme token resolves to when it sets no background. */
-const DEFAULT_BG = "\x1b[49m";
 
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
@@ -93,6 +91,11 @@ export class ToolExecutionComponent extends Container {
 		}
 
 		this.updateDisplay();
+	}
+
+	/** Releases the row's clock subscriptions (mark animation, elapsed-time tick) when it leaves the transcript. */
+	dispose(): void {
+		releaseToolRowState(this.rendererState);
 	}
 
 	private getCallRenderer(): ToolDefinition<any, any>["renderCall"] | undefined {
@@ -264,7 +267,7 @@ export class ToolExecutionComponent extends Container {
 				renderContainer.setBgFn(bgFn);
 				renderContainer.setPaddingX(this.outputPad);
 				// Vertical padding frames a background band; a theme without tool backgrounds would only get blank rows.
-				renderContainer.setPaddingY(theme.getBgAnsi("toolPendingBg") === DEFAULT_BG ? 0 : 1);
+				renderContainer.setPaddingY(theme.paintsBackground("toolPendingBg") ? 1 : 0);
 			}
 			renderContainer.clear();
 

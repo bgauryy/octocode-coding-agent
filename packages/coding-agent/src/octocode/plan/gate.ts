@@ -1,9 +1,13 @@
 import { archiveRead } from "../shared/archive-operation.ts";
 import type { ToolCallEvent, ToolInfo } from "../../core/features/index.ts";
 import { LOCAL_RESEARCH_TOOLS, OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
 import type { McpServerStatus } from "../../../../mcp/src/status.ts";
 
 const reads = new Set(["askUser", "skill", "web"]);
+/** The `mcp` tool's intents that report on this session's servers or bring a dead one back; its tools stay gated. Unknown intents, and `stop`, are not reads. */
+const mcpReads = new Set<unknown>(["list", "tools", "restart"]);
+const mcpRead = (input: Record<string, unknown>): boolean => mcpReads.has(input.intent);
 
 /**
  * Decides whether a shell command only reads. The permission layer depends on planning, so the host injects the
@@ -32,9 +36,10 @@ export function planningRefusal(
 		if (readOnlyShell(event.input, shell)) return undefined;
 		return "Plan mode blocks this bash command: only read-only shell commands (ls, cat, rg, git log, git diff...) run in the foreground, with no redirects, installs, builds, test runners, interpreters or background jobs. Use native research tools for the rest; only the user can leave with /plan --off or approve the displayed revision.";
 	}
+	const mcpFeature = definition?.sourceInfo.owner === "builtin" && definition.sourceInfo.path === "builtin:mcp";
+	if (mcpFeature && event.toolName === MCP_MANAGE_TOOL_NAME && mcpRead(event.input)) return undefined;
 	if (
-		definition?.sourceInfo.owner === "builtin" &&
-		definition.sourceInfo.path === "builtin:mcp" &&
+		mcpFeature &&
 		LOCAL_RESEARCH_TOOLS.includes(event.toolName) &&
 		servers.some(
 			(server) =>

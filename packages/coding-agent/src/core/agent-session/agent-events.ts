@@ -18,6 +18,7 @@ import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import { replaceMessageInPlace } from "./messages.ts";
 import type { SessionRetry } from "./retry.ts";
+import { recordRunMessage } from "./run-outcome.ts";
 import type { SessionToolCalls } from "./tool-calls.ts";
 
 export interface AgentEventsHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
@@ -50,6 +51,8 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 
 	// Handle session persistence
 	if (event.type === "message_end") {
+		// Before the append, which can throw: the run's outcome must not depend on the disk.
+		if (event.message.role === "assistant") recordRunMessage(run.outcome, event.message);
 		let entryId: string | undefined;
 		// Check if this is a custom message from extensions
 		if (event.message.role === "custom") {
@@ -94,7 +97,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 	// extension and listener dispatch above also picks up messages that turn_end
 	// handlers queued.
 	if (event.type === "turn_end") {
-		host.inputs.flushPendingCustomMessages();
+		host.inputs.flushDuringRun(run.outcome);
 	}
 }
 

@@ -18,6 +18,7 @@ import { sharedAgentDb } from "../../config/database.ts";
 import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../config/workspace.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { forkHint } from "./shared-file.ts";
 import {
 	assertValidSessionId,
 	createSessionHeader,
@@ -57,9 +58,20 @@ export function assertCompleteSessionTail(file: string): boolean {
 		if (size > 0 && readSync(fd, tail, 0, tail.length, start) === tail.length) {
 			if (parseSessionEntryLine(tail.toString("utf8"))) return true;
 		}
-		throw new Error("Session has an incomplete final record; recover the transcript before writing.");
+		throw new Error(`Session has an incomplete final record. ${forkHint(file)}`);
 	} finally {
 		closeSync(fd);
+	}
+}
+
+/** Whether `file` ends in part of a record, so it cannot be appended to. A read-only check for a UI to offer a fork. */
+export function hasTornTail(file: string): boolean {
+	try {
+		if (statSync(file).size === 0) return false;
+		assertCompleteSessionTail(file);
+		return false;
+	} catch {
+		return existsSync(file);
 	}
 }
 
@@ -320,7 +332,13 @@ export function forkSessionFile(
 		const old = transcripts.stamp(agent.db, sourcePath.storedId);
 		if (!old) throw new Error(`No saved transcript for session ${sourcePath.storedId}`);
 		resolvedSourcePath = old.file;
-		sourceEntries = transcripts.records(agent.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry);
+		// The file is the record: its database copy is stale exactly when a mirror rebuild failed. The copy serves when
+		// the file is gone, or no longer holds this session.
+		const onDisk = loadEntriesFromFile(old.file);
+		sourceEntries =
+			onDisk[0]?.type === "session" && onDisk[0].id === sourcePath.storedId
+				? onDisk
+				: transcripts.records(agent.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry);
 	}
 	const resolvedTargetCwd = resolvePath(targetCwd);
 	if (sourceEntries.length === 0) {

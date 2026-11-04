@@ -7,7 +7,7 @@ import chalk from "chalk";
 import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
-import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
+import { assertValidSessionId, SessionManager, type SessionInfo } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
@@ -21,6 +21,7 @@ type ResolvedSession =
 	| { type: "local"; path: string } // Found in current project
 	| { type: "global"; path: string; cwd: string } // Found in different project
 	| { type: "stored"; id: string; path: string } // An indexed transcript in another or unavailable checkout
+	| { type: "ambiguous"; arg: string; candidates: SessionInfo[] } // A prefix of several session ids
 	| { type: "not_found"; arg: string }; // Not found anywhere
 
 /**
@@ -70,17 +71,33 @@ async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: 
 	}
 
 	const stored = storedTranscriptPath(sessionArg, sessionDir);
-	const localMatch = (await SessionManager.list(cwd, sessionDir)).find((session) => session.id.startsWith(sessionArg));
-	if (!stored && localMatch) return { type: "local", path: localMatch.path };
+	const localMatches = (await SessionManager.list(cwd, sessionDir)).filter((session) =>
+		session.id.startsWith(sessionArg),
+	);
+	if (!stored && localMatches.length > 1) return { type: "ambiguous", arg: sessionArg, candidates: localMatches };
+	if (!stored && localMatches[0]) return { type: "local", path: localMatches[0].path };
 
 	const all = await SessionManager.listAll(sessionDir);
 	const exact = all.find((session) => session.id === sessionArg);
 	if (exact) return { type: "global", path: exact.path, cwd: exact.cwd };
 	// An exact historical ID wins over any similarly named live session.
 	if (stored) return { type: "stored", id: sessionArg, path: stored };
-	const globalMatch = all.find((session) => session.id.startsWith(sessionArg));
-	if (globalMatch) return { type: "global", path: globalMatch.path, cwd: globalMatch.cwd };
+	const globalMatches = all.filter((session) => session.id.startsWith(sessionArg));
+	if (globalMatches.length > 1) return { type: "ambiguous", arg: sessionArg, candidates: globalMatches };
+	if (globalMatches[0]) return { type: "global", path: globalMatches[0].path, cwd: globalMatches[0].cwd };
 	return { type: "not_found", arg: sessionArg };
+}
+
+/** Session ids start with a timestamp, so short prefixes collide; picking one would append to the wrong conversation. */
+function refuseAmbiguousPrefix(arg: string, candidates: readonly SessionInfo[]): never {
+	console.error(chalk.red(`Error: '${arg}' matches ${candidates.length} sessions. Use more of the id:`));
+	for (const candidate of candidates) console.error(`  ${candidate.id}  ${candidate.cwd}`);
+	process.exit(1);
+}
+
+/** Stdin is the prompt or the command stream in these modes, and a run that cannot ask must not treat it as an answer. */
+function isInteractiveStart(parsed: Args): boolean {
+	return resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY) === "interactive";
 }
 
 /** Prompt user for yes/no confirmation */
@@ -173,7 +190,7 @@ async function confirmSessionNotRunning(
 ): Promise<void> {
 	const runningPid = sessionFile ? sessionFileRunningPid(sessionFile) : undefined;
 	if (runningPid === undefined) return;
-	if (resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY) !== "interactive") {
+	if (!isInteractiveStart(parsed)) {
 		console.error(
 			chalk.red(
 				`Error: Another Octocode process (pid ${runningPid}) has this session open: ${sessionFile}. Close it, or fork the session with --fork.`,
@@ -229,6 +246,9 @@ export async function createSessionManager(
 			case "stored":
 				return forkSessionOrExit({ storedId: resolved.id }, cwd, sessionDir, parsed.sessionId);
 
+			case "ambiguous":
+				return refuseAmbiguousPrefix(resolved.arg, resolved.candidates);
+
 			case "not_found":
 				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
 				process.exit(1);
@@ -246,6 +266,14 @@ export async function createSessionManager(
 
 			case "global":
 			case "stored": {
+				if (!isInteractiveStart(parsed)) {
+					console.error(
+						chalk.red(
+							`Error: Session '${parsed.session}' was saved in another project folder: ${resolved.path}. Nothing was opened. Fork it into this folder with --fork ${parsed.session}.`,
+						),
+					);
+					process.exit(1);
+				}
 				console.log(chalk.yellow(`Saved session found at ${resolved.path}`));
 				const shouldFork = await promptConfirm("Fork this session into current directory?");
 				if (!shouldFork) {
@@ -259,6 +287,9 @@ export async function createSessionManager(
 				);
 			}
 
+			case "ambiguous":
+				return refuseAmbiguousPrefix(resolved.arg, resolved.candidates);
+
 			case "not_found":
 				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
 				process.exit(1);
@@ -266,6 +297,14 @@ export async function createSessionManager(
 	}
 
 	if (parsed.resume) {
+		if (!isInteractiveStart(parsed)) {
+			console.error(
+				chalk.red(
+					"Error: --resume opens a session picker, which needs a terminal. Use --session <id>, --continue, or --fork <id> to copy a session from another folder.",
+				),
+			);
+			process.exit(1);
+		}
 		try {
 			const selectedPath = await selectSession(
 				(onProgress, signal) => SessionManager.list(cwd, sessionDir, onProgress, signal),

@@ -33,10 +33,17 @@ import {
 import { outputDir } from "../../shared/home.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
-import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
+import {
+	AGENT_GOAL_ENV,
+	AGENT_ID_ENV,
+	AGENT_ROLE_ENV,
+	PARENT_ID_ENV,
+	PARENT_PID_ENV,
+	PARENT_WAITS_ENV,
+} from "../../team/store/env.ts";
 import type { AgentProfile } from "../profiles.ts";
 import type { ResultContract } from "../result-schema.ts";
-import { CHILD_OWNED_ENV } from "./child-env.ts";
+import { CHILD_OWNED_ENV, NESTING_ENV, nestingOf } from "./child-env.ts";
 import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
 import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 
@@ -60,6 +67,10 @@ export interface Identity {
 	sessionId?: string;
 	role?: string;
 	parentId?: string;
+	/** A foreground run: its parent is blocked in the `agent` call and reads its messages only with its report. */
+	parentWaits?: boolean;
+	/** This run was resumed by a peer's message its parent's process relayed: no parent decided it, so it is no budget grant. */
+	peerResumed?: boolean;
 	goal?: string;
 	/** Works with its sibling subagents (messages them directly), not only for its parent. */
 	collaborate?: boolean;
@@ -86,6 +97,8 @@ export interface Identity {
 	permission?: { mode: PermissionMode; grants: readonly ActionClass[] };
 	/** The parent can ask a person: the child sends its approval dialogs to the parent (`OCTOCODE_PERMISSION_RELAY`) instead of denying them. */
 	relay?: boolean;
+	/** Paths the parent reserved for it (a task's `paths`), as given: its assignment names them, and a follow-up takes them again. */
+	reservedPaths?: readonly string[];
 	/** The identity text the parent appended to the child's latest task (`identityBlock`); the child re-reads it after a compaction (`identity-reminder.ts`). */
 	assignment?: string;
 }
@@ -122,11 +135,13 @@ export function subagentProcessEnv(
 		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),
 		...(identity?.skillsInTask ? { [SKILLS_IN_TASK_ENV]: "1" } : {}),
 		[SUBAGENT_ENV]: "1",
+		[NESTING_ENV]: String(nestingOf(base) + 1),
 		...(rolePromptFile ? { [ROLE_PROMPT_FILE_ENV]: rolePromptFile } : {}),
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),
 		...(mcpServersFile ? { [MCP_SESSION_SERVERS_FILE_ENV]: mcpServersFile } : {}),
 		...(identity ? { [AGENT_ID_ENV]: identity.id } : {}),
 		...(identity?.parentId ? { [PARENT_ID_ENV]: identity.parentId } : {}),
+		...(identity?.parentWaits ? { [PARENT_WAITS_ENV]: "1" } : {}),
 		...(identity?.role ? { [AGENT_ROLE_ENV]: identity.role } : {}),
 		...(identity?.goal ? { [AGENT_GOAL_ENV]: identity.goal } : {}),
 		...(identity?.isolation

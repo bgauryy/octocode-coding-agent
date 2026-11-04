@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { reportContract } from "../../src/octocode/instructions/report.ts";
 import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode/shared/archive.ts";
@@ -150,7 +150,7 @@ const reportOf = (text: string) =>
 describe("subagent scratch sweep", () => {
 	it("keeps old folders whose owning Octocode process is alive (another session's background subagent) and removes the rest", async () => {
 		const s = setup();
-		const root = path.join(s.cwd, ".octa", "code", "temp", "agents");
+		const root = path.join(s.cwd, ".octocode", "code", "temp", "agents");
 		// Past the default OCTOCODE_CLEANUP_DAYS (30).
 		const old = (Date.now() - 31 * 24 * 3_600_000) / 1000;
 		const folder = (name: string, owner?: number) => {
@@ -283,11 +283,11 @@ describe("agent tool with a scripted child", () => {
 		expect(facts.parent).toBe(s.team.id);
 		expect(facts.cwd).toBe(fs.realpathSync(s.cwd));
 		// Each subagent gets a handoff folder in the workspace, which ignores itself in git.
-		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octa", "code", "temp", "agents", facts.id));
+		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octocode", "code", "temp", "agents", facts.id));
 		// Its saved conversation keeps the handoff folder available for an explicit resume.
 		expect(fs.existsSync(result.details.session.file)).toBe(true);
 		expect(path.dirname(result.details.session.file)).toBe(path.join(facts.scratch, "session"));
-		expect(fs.readFileSync(path.join(s.cwd, ".octa", "code", ".gitignore"), "utf8")).toBe("*\n");
+		expect(fs.readFileSync(path.join(s.cwd, ".octocode", "code", ".gitignore"), "utf8")).toBe("*\n");
 		expect(facts.args).toEqual(
 			expect.arrayContaining([
 				"--mode",
@@ -326,7 +326,7 @@ describe("agent tool with a scripted child", () => {
 		const late = await s.team.send(facts.id, "one more thing");
 		// The finished receipt points to the retained folder that owns its saved conversation.
 		expect("error" in late && late.error).toContain(
-			`${facts.id} has finished and takes no more messages; its report (or failure) already reached you (files it handed back, and its full report when cut, are in ${facts.scratch}). To continue`,
+			`${facts.id} has finished and takes no more messages; its report (or failure) reached you or arrives when your turn ends (files it handed back, and its full report when cut, are in ${facts.scratch}). To continue`,
 		);
 		expect(updates.some((update) => update.content.some((part) => part.type === "image"))).toBe(true);
 
@@ -589,7 +589,15 @@ describe("agent tool with a scripted child", () => {
 	it("keeps a long report short in context and saves it whole as a doc", async () => {
 		const result = await s.run({ task: "long report" });
 		const text = result.content[0].text as string;
-		const file = path.join(fs.realpathSync(s.cwd), ".octa", "code", "temp", "agents", result.details.id, "report.md");
+		const file = path.join(
+			fs.realpathSync(s.cwd),
+			".octocode",
+			"code",
+			"temp",
+			"agents",
+			result.details.id,
+			"report.md",
+		);
 		const savedReport = fs.readFileSync(file, "utf8");
 		const sha256 = createHash("sha256").update(savedReport).digest("hex");
 		const version = path.join(path.dirname(file), `report-${sha256}.md`);
@@ -602,7 +610,7 @@ describe("agent tool with a scripted child", () => {
 		expect(fs.readFileSync(file, "utf8")).toMatch(/the end$/);
 		// A short report is not written to disk.
 		const short = await s.run({ task: "report" });
-		expect(fs.existsSync(path.join(s.cwd, ".octa", "code", "temp", "agents", short.details.id, "report.md"))).toBe(
+		expect(fs.existsSync(path.join(s.cwd, ".octocode", "code", "temp", "agents", short.details.id, "report.md"))).toBe(
 			false,
 		);
 		expect(short.details.reportArtifact).toEqual({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
@@ -660,6 +668,154 @@ describe("agent tool with a scripted child", () => {
 			delete process.env[MAX_SUBAGENTS_ENV];
 		}
 		await expect(s.run({ task: "report" })).resolves.toMatchObject({ details: { status: "done" } });
+	});
+
+	it("names the loop guard in the report of a child it ended", async () => {
+		const result = await s.run({ task: "loop halted" });
+		expect(result).toMatchObject({ isError: true, details: { status: "failed", outcome: "failed" } });
+		expect(fencedParts(result.content[0].text)?.body).toMatch(
+			/^Subagent ended without a final answer .*Its last error: Loop guard ended this run/,
+		);
+	});
+
+	describe("background calls past the limit", () => {
+		beforeEach(() => {
+			process.env[MAX_SUBAGENTS_ENV] = "1";
+		});
+		afterEach(() => {
+			delete process.env[MAX_SUBAGENTS_ENV];
+		});
+
+		it("return at once with an id and a queued status, and run first come first served", async () => {
+			const first = await s.run({ task: "slow one", background: true });
+			expect(first.content[0].text).toMatch(/^Started /);
+			// Far past the limit, as a batch fans out: every call returns without waiting for a slot.
+			const queued = await Promise.all(
+				[1, 2, 3].map(() => s.run({ task: "report from the background", background: true })),
+			);
+			for (const result of queued) {
+				expect(result.content[0].text).toMatch(
+					/^Queued [a-z]+-[a-z]+ \(general: check things\) in the background: \d+ subagents are ahead of it or running, and it starts when a slot frees\./,
+				);
+				expect(result.details).toMatchObject({ status: "background", queued: true });
+				expect(result.details.id).toBeTruthy();
+			}
+			expect(s.control.background()).toBe(4);
+			expect(new Set(queued.map((result) => result.details.id)).size).toBe(3);
+			// Nothing of a queued run started: its slot is still taken.
+			expect(s.sent).toHaveLength(0);
+
+			expect(s.control.stop(first.details.id, "user")).toBeUndefined();
+			await s.control.settle();
+			const reported = s.sent.map((entry) => entry.message.details?.id);
+			expect(reported).toEqual(expect.arrayContaining(queued.map((result) => result.details.id)));
+			expect(s.control.background()).toBe(0);
+		}, 30_000);
+
+		it("gives up a queued run on a stop without touching a slot, and survives the end of its turn", async () => {
+			const first = await s.run({ task: "slow one", background: true });
+			const turn = new AbortController();
+			const queued = await s.run({ task: "report from the background", background: true }, turn.signal);
+			const stopped = await s.run({ task: "report from the background", background: true });
+			// The turn that made the call ends: a queued run is the session's, not the turn's.
+			turn.abort();
+			expect(s.control.stop(stopped.details.id, "user")).toBeUndefined();
+			await vi.waitFor(() => expect(s.sent.map((entry) => entry.message.details?.id)).toContain(stopped.details.id));
+			expect(s.control.background()).toBe(2);
+			expect(s.control.stop(first.details.id, "user")).toBeUndefined();
+			await s.control.settle();
+			const report = s.sent.find((entry) => entry.message.details?.id === queued.details.id);
+			expect(report?.message.details).toMatchObject({ status: "done" });
+			// Every slot came back: the next run starts at once.
+			const next = await s.run({ task: "report from the background", background: true });
+			expect(next.content[0].text).toMatch(/^Started /);
+			await s.control.settle();
+		}, 30_000);
+
+		it("still makes a foreground call wait, its row saying why", async () => {
+			const first = await s.run({ task: "slow one", background: true });
+			const updates: Array<{ details: { status: string } }> = [];
+			const foreground = s.run({ task: "report" }, undefined, (update) => updates.push(update as never));
+			await vi.waitFor(() => expect(updates[0]).toMatchObject({ details: { status: "waiting" } }));
+			expect(s.control.stop(first.details.id, "user")).toBeUndefined();
+			await expect(foreground).resolves.toMatchObject({ details: { status: "done" } });
+		}, 30_000);
+	});
+
+	it("tells a resumed session about a child recorded as running that ended with it, once and without a turn", async () => {
+		const entries = [
+			{
+				type: "message",
+				message: {
+					role: "toolResult",
+					toolName: "agent",
+					toolCallId: "c1",
+					content: [{ type: "text", text: "Started gone-1" }],
+					details: { id: "gone-1", profile: "general", goal: "work", status: "background", runId: "r1", startedAt: 1 },
+				},
+			},
+		];
+		s.ctx.sessionManager.getEntries = () => entries as never;
+		await s.emit("session_start", { type: "session_start", reason: "resume" }, s.ctx);
+		const notes = s.sent.filter((entry) => String(entry.message.content).startsWith("[Resume]"));
+		expect(notes).toHaveLength(1);
+		expect(notes[0]).toMatchObject({
+			message: { display: false, content: expect.stringContaining("gone-1 (general") },
+			options: { triggerTurn: false, deliverAs: "followUp" },
+		});
+		// A new session has no record of it: only a resume or a restart is told.
+		s.sent.length = 0;
+		await s.emit("session_start", { type: "session_start", reason: "new" }, s.ctx);
+		expect(s.sent.filter((entry) => String(entry.message.content).startsWith("[Resume]"))).toHaveLength(0);
+	});
+
+	describe("the opt-in subagents limits", () => {
+		const limit = (subagents: { maxChildren?: number; maxCost?: number }) => {
+			const settings = s.api.getSettings();
+			vi.spyOn(s.api, "getSettings").mockReturnValue({ ...settings, subagents });
+		};
+
+		it("starts anything with no limit configured", async () => {
+			for (let i = 0; i < 3; i++) await expect(s.run({ task: "report" })).resolves.toBeTruthy();
+		});
+
+		it("refuses past maxChildren with the running total, leaving what runs alone", async () => {
+			limit({ maxChildren: 1 });
+			const running = await s.run({ task: "slow one", background: true });
+			await expect(s.run({ task: "report" })).rejects.toThrow(
+				new RegExp(
+					`started 1 subagents, and subagents\\.maxChildren is 1\\. Running now, and left running: ${running.details.id}`,
+				),
+			);
+			expect(s.control.background()).toBe(1);
+			expect(s.control.stop(running.details.id, "user")).toBeUndefined();
+			await s.control.settle();
+		}, 30_000);
+
+		it("counts children started by one batch, not only those already recorded", async () => {
+			limit({ maxChildren: 2 });
+			const results = await Promise.allSettled([1, 2, 3].map(() => s.run({ task: "report", background: true })));
+			expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+			expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+			await s.control.settle();
+		}, 30_000);
+
+		it("refuses past maxCost with the session's total, counting what a running child spent", async () => {
+			limit({ maxCost: 0.5 });
+			s.ctx.sessionManager.getEntries = () =>
+				[
+					{
+						type: "message",
+						message: {
+							role: "assistant",
+							provider: "faux",
+							model: "model",
+							usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.75 } },
+						},
+					},
+				] as never;
+			await expect(s.run({ task: "report" })).rejects.toThrow(/spent \$0\.75, and subagents\.maxCost is \$0\.50/);
+		});
 	});
 
 	it("lets a child whose step a team interrupt stopped continue with the message, not end as cancelled", async () => {
@@ -776,7 +932,7 @@ describe("agent tool with a scripted child", () => {
 		);
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
 		const answer = s.sent[0];
-		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(answer.message.content).toMatch(
 			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\) · cite as report:[a-z]+-[a-z]+:\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
 		);
@@ -831,6 +987,13 @@ describe("agent tool with a scripted child", () => {
 		// No fixed sleep: flush pending callbacks; settle cannot resolve before the kill below.
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(settled).toBe(false);
+		// Declining stops nothing.
+		const accept = s.ctx.ui.confirm;
+		s.ctx.ui.confirm = async () => false;
+		await kill.handler(id, s.ctx);
+		expect(s.ctx.ui.notes.at(-1)!.message).toBe("Nothing stopped.");
+		expect(settled).toBe(false);
+		s.ctx.ui.confirm = accept;
 		await kill.handler(id, s.ctx);
 		expect(s.ctx.ui.notes.at(-1)).toEqual({ message: `Stopping ${id}…`, type: "info" });
 		await waiting;
@@ -840,7 +1003,7 @@ describe("agent tool with a scripted child", () => {
 		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
 			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
 		);
-		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
 	it("lets the parent agent stop only the background subagents it started, with coordinate stop", async () => {
@@ -862,7 +1025,7 @@ describe("agent tool with a scripted child", () => {
 			{ timeout: 10_000 },
 		);
 		// The parent asked for the stop: the report is queued without waking it for another turn.
-		expect(s.sent.at(-1)!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(s.sent.at(-1)!.options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 		await expect(stop(id)).rejects.toThrow(/No background subagent/);
 		// A subagent has no children to stop: `stop` is not offered to it at all (a stray call is still refused).
 		const child = fakeHost();
@@ -1628,12 +1791,12 @@ describe("background report delivery", () => {
 		]);
 		queue.add(report("d", false));
 		queue.flush();
-		expect(f.sent.at(-1)!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(f.sent.at(-1)!.options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
 	it("delivers without a turn a report whose file the parent already read since it was written", () => {
 		const cwd = tmp();
-		const scratch = path.join(cwd, ".octa", "code", "temp", "agents", "general-abcdef");
+		const scratch = path.join(cwd, ".octocode", "code", "temp", "agents", "general-abcdef");
 		fs.mkdirSync(scratch, { recursive: true });
 		const file = path.join(scratch, "report.md");
 		fs.writeFileSync(file, "report");
@@ -1641,7 +1804,7 @@ describe("background report delivery", () => {
 		fs.utimesSync(file, past, past);
 		const read = new ReadReports();
 		read.track("general-abcdef", scratch);
-		read.observe("read", { path: ".octa/code/temp/agents/general-abcdef/report.md" }, cwd);
+		read.observe("read", { path: ".octocode/code/temp/agents/general-abcdef/report.md" }, cwd);
 		expect(read.consume("general-abcdef")).toBe(true);
 		// Rewritten after the read: the parent has not seen the final version.
 		read.track("general-abcdef", scratch);
@@ -1660,7 +1823,7 @@ describe("background report delivery", () => {
 		const s = setup();
 		const result = await s.run({ task: "long report" });
 		const { id } = result.details as { id: string };
-		const scratch = path.join(s.cwd, ".octa", "code", "temp", "agents", id);
+		const scratch = path.join(s.cwd, ".octocode", "code", "temp", "agents", id);
 		expect(fs.existsSync(path.join(scratch, "report.md"))).toBe(true);
 		const late = await s.team.send(id, "more");
 		expect("error" in late && late.error).toContain(`(files it handed back, and its full report when cut, are in`);
@@ -1782,7 +1945,7 @@ describe("a child bound to a backlog item", () => {
 			{ relation: "output", target: { resource: "files", repositoryKey: backlog.store.repo, path: ref } },
 		]);
 		expect(notes().at(-1)!.text).toBe(
-			`The isolated change is saved on ${ref}, not merged yet. Merge it with \`/agents merge ${id}\`.`,
+			`The isolated change is saved on ${ref}, not merged yet. Merge it with \`agent\` type \`coordinate\`, action \`merge\`, id \`${id}\` (the user: \`/agents merge ${id}\`).`,
 		);
 
 		await s.commands.get("agents").handler(`merge ${id}`, s.ctx);

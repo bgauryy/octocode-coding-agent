@@ -6,6 +6,7 @@ import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import * as extensionDialogs from "../src/modes/interactive/interactive-mode/extension-dialogs.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const CTRL_G = "\x07";
@@ -28,6 +29,7 @@ function openEditorDialog(command: string) {
 		keybindings,
 		programStatus: { setBlocked: vi.fn() },
 		settingsManager: { getExternalEditorCommand: () => command },
+		uiStore: createUiStore(),
 		extensionSelector: undefined,
 		extensionInput: undefined,
 		extensionEditor: undefined,

@@ -12,7 +12,7 @@ import { teamWorkspace } from "../../team/store/workspace.ts";
 import type { ReportArtifact } from "../../shared/report-artifact.ts";
 
 /**
- * `<team workspace>/.octa/code/temp/agents`: one folder per subagent for the files it hands back. The team workspace
+ * `<team workspace>/.octocode/code/temp/agents`: one folder per subagent for the files it hands back. The team workspace
  * (`teamWorkspace`, which follows `OCTOCODE_TEAM_WORKSPACE`) is where `agentScratch` writes, so names and the sweep see
  * the same folders.
  */

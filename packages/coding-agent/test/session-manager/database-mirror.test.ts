@@ -49,11 +49,11 @@ describe("durable workspace transcripts", () => {
 		manager.branch(first);
 		manager.appendCustomEntry("agent_report", { outcome: "done" });
 		const file = manager.getSessionFile()!;
-		expect(file).toContain(join(".octa", "code", "sessions"));
+		expect(file).toContain(join(".octocode", "code", "sessions"));
 		const id = manager.getSessionId();
 		expect(records(id)).toEqual(jsonl(file));
 		expect(transcripts.stamp(sharedAgentDb().db, id)?.workspace_id).toBe(
-			readFileSync(join(cwd, ".octa/code/workspace/id"), "utf8").trim(),
+			readFileSync(join(cwd, ".octocode/code/workspace/id"), "utf8").trim(),
 		);
 		expect((await SessionManager.listAll()).some((s) => s.id === id)).toBe(true);
 
@@ -117,7 +117,7 @@ describe("durable workspace transcripts", () => {
 		const memory = SessionManager.inMemory(cwd);
 		memory.appendMessage(message("private"));
 		memory.appendCompaction("private summary", memory.getLeafId(), 4);
-		expect(existsSync(join(cwd, ".octa"))).toBe(false);
+		expect(existsSync(join(cwd, ".octocode"))).toBe(false);
 		const disk = SessionManager.create(cwd);
 		disk.appendThinkingLevelChange("high");
 		expect(existsSync(dbFile)).toBe(false);
@@ -128,16 +128,79 @@ describe("durable workspace transcripts", () => {
 	it("keeps the file authoritative across a database failure and replays it on the next write", () => {
 		writeFileSync(dbFile, "unrelated file");
 		const log = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
 		try {
 			const session = SessionManager.create(cwd);
 			session.appendMessage(message("complete file first"));
 			expect(log.mock.calls.some(([line]) => String(line).includes("Database mirror pending"))).toBe(true);
 			closeSharedAgentDb();
 			rmSync(dbFile);
+			vi.setSystemTime(Date.now() + 10 * 60_000);
 			session.appendMessage(message("recovered"));
 			expect(records(session.getSessionId())).toEqual(jsonl(session.getSessionFile()!));
 		} finally {
+			vi.useRealTimers();
 			log.mockRestore();
 		}
+	});
+
+	it("backs off full rebuilds after one fails, while every append still reaches the file", () => {
+		const log = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		const session = SessionManager.create(cwd);
+		session.appendMessage(message("mirrored"));
+		const file = session.getSessionFile()!;
+		const agent = sharedAgentDb();
+		// A record the mirror never saw breaks the stamp, so while the database refuses commits each append needs a whole-file rebuild.
+		appendFileSync(
+			file,
+			`${JSON.stringify({ type: "custom", customType: "direct", id: "direct01", parentId: session.getLeafId(), timestamp: new Date(0).toISOString() })}\n`,
+		);
+		const transaction = vi.spyOn(agent, "transaction").mockImplementation(() => {
+			throw new Error("database is busy");
+		});
+		const start = Date.now();
+		vi.useFakeTimers({ now: start, toFake: ["Date"] });
+		try {
+			session.appendMessage(message("first attempt fails"));
+			expect(transaction).toHaveBeenCalledTimes(1);
+			session.appendMessage(message("inside the backoff"));
+			session.appendMessage(message("still inside it"));
+			expect(transaction).toHaveBeenCalledTimes(1);
+			vi.setSystemTime(start + 6_000);
+			session.appendMessage(message("after the backoff"));
+			expect(transaction).toHaveBeenCalledTimes(2);
+			transaction.mockRestore();
+			vi.setSystemTime(start + 60_000);
+			session.appendMessage(message("the database is back"));
+			expect(records(session.getSessionId())).toEqual(jsonl(file));
+		} finally {
+			vi.useRealTimers();
+			transaction.mockRestore();
+			log.mockRestore();
+		}
+		expect(jsonl(file).filter((record) => (record as { type: string }).type === "message")).toHaveLength(6);
+	});
+
+	it("forks a stored id from the file when it exists, not from a stale database copy", () => {
+		const session = SessionManager.create(cwd);
+		session.appendMessage(message("mirrored"));
+		const file = session.getSessionFile()!;
+		const id = session.getSessionId();
+		const late = {
+			type: "message",
+			id: "late0001",
+			parentId: session.getLeafId(),
+			timestamp: new Date().toISOString(),
+			message: message("only in the file"),
+		};
+		appendFileSync(file, `${JSON.stringify(late)}\n`);
+		expect(records(id).some((record) => (record as { id?: string }).id === "late0001")).toBe(false);
+		const fork = SessionManager.forkFrom({ storedId: id }, cwd);
+		expect(fork.getEntry("late0001")).toBeDefined();
+		const gone = SessionManager.create(cwd);
+		gone.appendMessage(message("the database keeps this"));
+		const goneId = gone.getSessionId();
+		rmSync(gone.getSessionFile()!);
+		expect(SessionManager.forkFrom({ storedId: goneId }, cwd).buildSessionContext().messages).toHaveLength(1);
 	});
 });

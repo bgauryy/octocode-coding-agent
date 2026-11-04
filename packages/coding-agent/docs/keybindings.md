@@ -43,6 +43,31 @@ Examples: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `super+k`, `ctrl+sup
 
 `shift+ctrl+<letter>` bindings such as `shift+ctrl+t` need a terminal that reports Shift together with Ctrl, typically through the Kitty keyboard protocol; other terminals send them as `ctrl+<letter>`. `alt` bindings such as Windows' `alt+t` need the terminal to send Alt as Meta.
 
+## Shift+Enter and new lines
+
+`Enter` submits; `shift+enter` (and `ctrl+j`) insert a new line (`tui.input.newLine`). A terminal can only deliver Shift+Enter if it reports the modifier, so Octocode asks for it at startup: it pushes the Kitty keyboard protocol flags (`CSI > 7 u`) and, if the terminal answers the device attributes query without answering the Kitty one, enables xterm `modifyOtherKeys` (`CSI > 4;2 m`). Both are switched off again on exit. The input parser reads `ESC[13;2u` (also with event type and lock modifiers) and `ESC[27;2;13~` as `shift+enter`.
+
+| Terminal                                                         | Shift+Enter                                                                                                       | Setup                                                    |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Kitty, Ghostty, WezTerm, iTerm2 (3.5+), Alacritty (0.13+), foot  | Works                                                                                                             | none                                                     |
+| Terminal.app                                                     | Works on macOS through a native modifier check when the helper loads; otherwise it sends a plain `\r` and submits | use `ctrl+j`, or end the line with `\` and press `Enter` |
+| VS Code integrated terminal                                      | Works when the terminal reports modified keys; if it submits instead, add the keybinding below                    | see below                                                |
+| tmux                                                             | Works when `extended-keys` is `on` or `always`; see [tmux](tmux.md)                                               | `set -g extended-keys on`                                |
+| Windows Terminal, other terminals that send `\r` for Shift+Enter | Cannot be told apart from `Enter`                                                                                 | `ctrl+j`, `alt+enter` is follow-up, or `\` then `Enter`  |
+
+Fallbacks that work everywhere: `ctrl+j`, and typing `\` right before `Enter`, which removes the backslash and inserts a new line.
+
+For VS Code, add to `keybindings.json`:
+
+```json
+{
+	"key": "shift+enter",
+	"command": "workbench.action.terminal.sendSequence",
+	"args": { "text": "\u001b[13;2u" },
+	"when": "terminalFocus"
+}
+```
+
 ## Actions
 
 ### Terminal UI
@@ -136,20 +161,21 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 ### Sessions
 
-| Keybinding id                   | Default          | Description                            |
-| ------------------------------- | ---------------- | -------------------------------------- |
-| `app.session.new`               | None             | Start a new session (`/new`)           |
-| `app.session.tree`              | None             | Open session tree navigator (`/tree`)  |
-| `app.session.fork`              | None             | Fork current session (`/fork`)         |
-| `app.session.resume`            | None             | Open session resume picker (`/resume`) |
-| `app.session.togglePath`        | `ctrl+p`         | Toggle path display                    |
-| `app.session.toggleSort`        | `ctrl+s`         | Toggle sort mode                       |
-| `app.session.toggleNamedFilter` | `ctrl+n`         | Toggle named-only filter               |
-| `app.session.rename`            | `ctrl+r`         | Rename session                         |
+| Keybinding id                   | Default          | Description                             |
+| ------------------------------- | ---------------- | --------------------------------------- |
+| `app.session.new`               | None             | Start a new session (`/new`)            |
+| `app.session.tree`              | None             | Open session tree navigator (`/tree`)   |
+| `app.session.fork`              | None             | Fork current session (`/fork`)          |
+| `app.session.resume`            | None             | Open session resume picker (`/resume`)  |
+| `app.session.loadEarlier`       | `alt+pageUp`     | Load the previous 200 entries that a resume, `/tree` or `/fork` left out |
+| `app.session.togglePath`        | `ctrl+p`         | Toggle path display                     |
+| `app.session.toggleSort`        | `ctrl+s`         | Toggle sort mode                        |
+| `app.session.toggleNamedFilter` | `ctrl+n`         | Toggle named-only filter                |
+| `app.session.rename`            | `ctrl+r`         | Rename session                          |
 | `app.session.delete`            | `ctrl+d`         | Delete the marked sessions, or this one |
-| `app.session.mark`              | `ctrl+x`         | Mark the session for deletion          |
-| `app.session.actions`           | `ctrl+o`         | Open the picker's action menu          |
-| `app.session.deleteNoninvasive` | `ctrl+backspace` | Delete session when query is empty     |
+| `app.session.mark`              | `ctrl+x`         | Mark the session for deletion           |
+| `app.session.actions`           | `ctrl+o`         | Open the picker's action menu           |
+| `app.session.deleteNoninvasive` | `ctrl+backspace` | Delete session when query is empty      |
 
 ### Models and Thinking
 

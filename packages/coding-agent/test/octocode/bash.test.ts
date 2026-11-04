@@ -454,7 +454,7 @@ describe("bash tool", () => {
 		await until(() => sent.length === 1);
 		expect(jobs.jobs.size).toBe(0);
 		const { message, options } = sent[0];
-		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(message.content).toMatch(
 			/^\[exit 2 · [^\n]*\]\nBackground bash bash-1 failed with exit code 2 after \d+s: echo started/,
 		);
@@ -530,7 +530,7 @@ describe("bash tool", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/No background bash job "nope"/);
 		expect(sent[0].message.details).toEqual({ id: "bash-1", log: first.log, quiet: true });
 		// The user stopped it: the model learns of it without a turn being started for it (`quiet`).
-		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 		await fire("session_shutdown", {}, ctx);
 		await second.done;
 		await new Promise((resolve) => setTimeout(resolve, 20));
@@ -541,7 +541,7 @@ describe("bash tool", () => {
 			details: { id: "bash-2", log: second.log },
 		});
 		expect(sent[1].message.content).toMatch(/bash-2 stopped \(session end\)/);
-		expect(sent[1].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[1].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
 	it("starts a background job and stops it at session end", async () => {
@@ -646,7 +646,7 @@ describe("bash tool", () => {
 			);
 			await jobs.settle();
 			await vi.waitFor(() => expect(sent).toHaveLength(1), { timeout: 5_000 });
-			expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+			expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 			expect(sent[0].message.details).toMatchObject({ id: "bash-1", quiet: true });
 		} finally {
 			delete process.env.OCTOCODE_SUBAGENT;
@@ -666,7 +666,7 @@ describe("bash tool", () => {
 			);
 			// No settle(): the run has not given its final answer, so a woken turn would be a queued follow-up after it.
 			await until(() => sent.length === 1);
-			expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+			expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 			expect(sent[0].message.details).toMatchObject({ id: "bash-1", quiet: true });
 		} finally {
 			delete process.env.OCTOCODE_SUBAGENT;

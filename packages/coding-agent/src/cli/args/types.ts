@@ -32,6 +32,10 @@ export interface Args {
 	removedFlags?: string[];
 	noMcp?: boolean;
 	print?: boolean;
+	/** `--no-stdin`: never read piped stdin, so a pipe the parent leaves open cannot hold the run. */
+	noStdin?: boolean;
+	/** `--no-dialogs`: nobody answers RPC dialogs, so the session behaves as headless and asks get its refusal. */
+	noDialogs?: boolean;
 	export?: string;
 	noSkills?: boolean;
 	skills?: string[];

@@ -16,6 +16,7 @@ import { getBranchEntries, type SessionState } from "./state.ts";
 import { assertCompleteSessionTail, loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
 import { buildBranchedEntries, indexSessionEntries } from "./tree.ts";
 import { CURRENT_SESSION_VERSION, type FileEntry, type NewSessionOptions, type SessionEntry } from "./types.ts";
+import { blockWrites, liftWriteBlock } from "./write-recovery.ts";
 
 /** Create the session directory when persisting, then open the session file, load preloaded entries or start a new session. */
 export function initializeSession(
@@ -40,6 +41,7 @@ export function initializeSession(
 
 /** Switch the state to a session file, loading it when it exists and starting a new session at that path otherwise. */
 export function setSessionFile(state: SessionState, sessionFile: string, preloadedFileEntries?: FileEntry[]): void {
+	writeHeldEntries(state);
 	const resolvedFile = resolvePath(sessionFile);
 	if (existsSync(resolvedFile)) {
 		// Take the size before reading: records another process appends after it are merged on the next write
@@ -74,7 +76,14 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		startNewSession(state);
 		state.sessionFile = explicitPath; // preserve explicit path from --session flag
 	}
+	clearWriteState(state);
+}
+
+/** Forget what a failed or held write left: the session's file or transcript was just replaced. */
+function clearWriteState(state: SessionState): void {
 	state.persistenceFailure = undefined;
+	state.failedWrite = undefined;
+	state.unwritten.length = 0;
 }
 
 /**
@@ -88,7 +97,7 @@ export function recoverSession(state: SessionState): SessionRepair | undefined {
 	if (!existsSync(state.sessionFile)) {
 		state.flushed = false;
 		state.fileSize = undefined;
-		state.persistenceFailure = undefined;
+		clearWriteState(state);
 		return undefined;
 	}
 	const repair = repairSessionFile(state.sessionFile);
@@ -100,6 +109,7 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	if (options?.id !== undefined) {
 		assertValidSessionId(options.id);
 	}
+	writeHeldEntries(state);
 	state.sessionId = options?.id ?? createSessionId();
 	const timestamp = new Date().toISOString();
 	state.fileEntries = [createSessionHeader(state.sessionId, timestamp, state.cwd, options?.parentSession)];
@@ -109,7 +119,7 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	state.leafId = null;
 	state.flushed = false;
 	state.fileSize = undefined;
-	state.persistenceFailure = undefined;
+	clearWriteState(state);
 
 	if (state.persist) {
 		state.sessionFile = getSessionFilePath(state.sessionDir, timestamp, state.sessionId);
@@ -148,10 +158,11 @@ export function rewriteSessionFile(state: SessionState): void {
 	const file = state.sessionFile;
 	if (!state.persist || !file) return;
 	withSessionFileLock(file, () => {
-		if (state.fileSize !== undefined && existsSync(file)) mergeForeignEntries(state, file);
+		if (state.fileSize !== undefined && existsSync(file)) mergeForeignEntries(state, file, state.unwritten);
 		const content = state.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
 		atomicWriteFileSync(file, content, { mode: 0o600 });
 		state.fileSize = Buffer.byteLength(content);
+		state.unwritten.length = 0;
 		mirrorTranscript(state, file, "replace");
 	});
 }
@@ -162,6 +173,7 @@ function flushNewSessionFile(state: SessionState, file: string): void {
 		writeNewSessionFile(file, state.fileEntries);
 		state.fileSize = statSync(file).size;
 		state.flushed = true;
+		state.unwritten.length = 0;
 		mirrorTranscript(state, file, "replace");
 	});
 }
@@ -169,15 +181,14 @@ function flushNewSessionFile(state: SessionState, file: string): void {
 /** Explicitly persist an empty session for clients that expose reloadable IDs before the first prompt. */
 export function materializeSession(state: SessionState): void {
 	if (!state.persist || !state.sessionFile) throw new Error("Session persistence is disabled");
-	if (state.persistenceFailure) throw state.persistenceFailure;
+	liftWriteBlock(state);
 	if (state.flushed) return;
 	try {
 		flushNewSessionFile(state, state.sessionFile);
 	} catch (error) {
 		// Another process held the lock past the wait: nothing was written, so a later write may retry.
 		if (isSessionLockTimeout(error)) throw error;
-		state.persistenceFailure = error instanceof Error ? error : new Error(String(error));
-		throw state.persistenceFailure;
+		throw blockWrites(state, error);
 	}
 }
 
@@ -193,9 +204,47 @@ function hasConversation(state: SessionState): boolean {
 	);
 }
 
-export function persistEntry(state: SessionState, entry: SessionEntry): void {
+/** The file's size, or undefined when even that cannot be read. */
+function fileSizeNow(file: string): number | undefined {
+	try {
+		return statSync(file).size;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Append `pending` in order, each with its mirror update; a record leaves `unwritten` once it is written. */
+function appendRecords(state: SessionState, file: string, pending: readonly SessionEntry[]): void {
+	let tailChecked = false;
+	for (const entry of pending) {
+		const before = statSync(file, { bigint: true });
+		if (!tailChecked && assertCompleteSessionTail(file)) {
+			appendFileSync(file, "\n", { flush: true });
+			state.fileSize = (state.fileSize ?? 0) + 1;
+		}
+		tailChecked = true;
+		const line = `${JSON.stringify(entry)}\n`;
+		try {
+			appendFileSync(file, line, { flush: true });
+		} catch (error) {
+			state.failedWrite = { from: state.fileSize, after: fileSizeNow(file), line, entry };
+			throw error;
+		}
+		state.fileSize = (state.fileSize ?? 0) + Buffer.byteLength(line);
+		const held = state.unwritten.indexOf(entry);
+		if (held >= 0) state.unwritten.splice(held, 1);
+		mirrorTranscript(state, file, {
+			previousSize: Number(before.size),
+			previousMtime: String(before.mtimeNs),
+			entry,
+		});
+	}
+}
+
+/** Write the held entries, then `entry` when given. */
+export function persistEntry(state: SessionState, entry?: SessionEntry): void {
 	if (!state.persist || !state.sessionFile) return;
-	if (state.persistenceFailure) throw state.persistenceFailure;
+	liftWriteBlock(state);
 
 	if (!state.flushed) {
 		if (!hasConversation(state)) return;
@@ -203,27 +252,25 @@ export function persistEntry(state: SessionState, entry: SessionEntry): void {
 	} else {
 		const file = state.sessionFile;
 		withSessionFileLock(file, () => {
-			mergeForeignEntries(state, file, entry);
-			const before = statSync(file, { bigint: true });
-			if (assertCompleteSessionTail(file)) {
-				appendFileSync(file, "\n", { flush: true });
-				state.fileSize = (state.fileSize ?? 0) + 1;
-			}
-			const line = `${JSON.stringify(entry)}\n`;
-			appendFileSync(file, line, { flush: true });
-			state.fileSize = (state.fileSize ?? 0) + Buffer.byteLength(line);
-			mirrorTranscript(state, file, {
-				previousSize: Number(before.size),
-				previousMtime: String(before.mtimeNs),
-				entry,
-			});
+			const pending = entry && !state.unwritten.includes(entry) ? [...state.unwritten, entry] : [...state.unwritten];
+			mergeForeignEntries(state, file, pending);
+			appendRecords(state, file, pending);
 		});
 	}
 }
 
-/** Append an entry as the new leaf and persist it; a failed write rolls the entry back and blocks further writes. */
+/** A message the session cannot produce again: dropping one would record a tool call or a reply as never finished. */
+function cannotRegenerate(entry: SessionEntry): boolean {
+	return entry.type === "message" && (entry.message.role === "toolResult" || entry.message.role === "assistant");
+}
+
+/**
+ * Append an entry as the new leaf and persist it. A failed write rolls the entry back and blocks further writes until
+ * one can succeed (`write-recovery.ts`). A lock another process held past the wait wrote nothing: a message that cannot
+ * be regenerated then stays in memory and goes first at the next write; anything else is rolled back for the caller to retry.
+ */
 export function appendEntry(state: SessionState, entry: SessionEntry): void {
-	if (state.persistenceFailure) throw state.persistenceFailure;
+	liftWriteBlock(state);
 	const previousLeaf = state.leafId;
 	state.fileEntries.push(entry);
 	state.byId.set(entry.id, entry);
@@ -231,16 +278,28 @@ export function appendEntry(state: SessionState, entry: SessionEntry): void {
 	try {
 		persistEntry(state, entry);
 	} catch (error) {
+		if (isSessionLockTimeout(error) && cannotRegenerate(entry)) {
+			state.unwritten.push(entry);
+			return;
+		}
 		state.fileEntries.pop();
 		state.byId.delete(entry.id);
 		state.leafId = previousLeaf;
-		// Another process held the lock past the wait: nothing was written, so a later write may retry.
 		if (isSessionLockTimeout(error)) throw error;
-		state.persistenceFailure = new Error(
-			`Session persistence failed: ${String(error)}. Further writes are blocked; reload or recover the transcript before continuing.`,
-			{ cause: error },
-		);
-		throw state.persistenceFailure;
+		throw blockWrites(state, error);
+	}
+}
+
+/**
+ * One more try at the entries held back by a lock, for a moment no later write will follow (the session is being
+ * replaced or is quitting). Never throws: a failure leaves them unsaved, and a resume warns about any unanswered call.
+ */
+export function writeHeldEntries(state: SessionState): void {
+	if (state.unwritten.length === 0 || state.persistenceFailure) return;
+	try {
+		persistEntry(state);
+	} catch (error) {
+		if (!isSessionLockTimeout(error)) blockWrites(state, error);
 	}
 }
 
@@ -249,6 +308,7 @@ export function appendEntry(state: SessionState, entry: SessionEntry): void {
  * Returns the new session file path, or undefined if not persisting.
  */
 export function createBranchedSession(state: SessionState, leafId: string): string | undefined {
+	writeHeldEntries(state);
 	const previousSessionFile = state.sessionFile;
 	const previousSessionId = state.sessionId;
 	const path = getBranchEntries(state, leafId);
@@ -265,6 +325,7 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 
 	state.fileEntries = [header, ...entries];
 	state.sessionId = newSessionId;
+	clearWriteState(state);
 	if (state.persist) {
 		state.sessionFile = newSessionFile;
 		state.fileSize = undefined;

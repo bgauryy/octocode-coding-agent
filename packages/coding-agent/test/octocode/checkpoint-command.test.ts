@@ -35,6 +35,11 @@ describe("/rewind arguments", () => {
 			expect(fs.readFileSync(file, "utf8")).toBe("two");
 			expect(forget).not.toHaveBeenCalled();
 			expect(fake.sent).toEqual([]);
+			// With nobody to ask, a bare /rewind changes nothing: the count must be typed.
+			await commands.get("rewind")!.handler("", ctx);
+			expect(ctx.ui.notes.at(-1)?.message).toMatch(/needs|asks for confirmation/);
+			expect(rewind).not.toHaveBeenCalled();
+			expect(fs.readFileSync(file, "utf8")).toBe("two");
 			// The valid command still restores the untouched checkpoint and reports its result headlessly.
 			await commands.get("rewind")!.handler(" 1 ", ctx);
 			expect(rewind).toHaveBeenCalledExactlyOnceWith([1]);

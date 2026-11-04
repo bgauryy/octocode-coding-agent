@@ -163,7 +163,8 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 	it("holds the server's instructions and each enabled tool's description and schema", async () => {
 		const request = await firstRequest({ toolExposure: { purge: "hidden" } });
 		const mcps = request.sections.mcps;
-		expect(mcps.startsWith('<mcps>\n<mcp name="docs" tools="mcp__docs__*">\n// MCP server "docs"')).toBe(true);
+		expect(mcps.startsWith("<mcps>\nEach block is one MCP server:")).toBe(true);
+		expect(mcps).toContain('<mcp name="docs" tools="mcp__docs__*">\n/** ');
 		expect(mcps.match(/<mcp /g)).toHaveLength(1);
 		// The server's purpose is in the first list the model reads, once: the block does not repeat it.
 		expect(request.sections.tools).toContain("\n- mcp__docs__*: Product docs\n");
@@ -226,11 +227,11 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 			expect(mcps, left).not.toContain(left);
 	});
 
-	it("names an indexed tool on one line, keeps it declared and returns its contract on demand", async () => {
+	it("describes every declared tool in full, and ignores a server's leftover contract settings", async () => {
 		const call = (name: string, args: Record<string, unknown>) =>
 			fauxAssistantMessage([fauxToolCall(name, { reason: "scripted e2e step", ...args })], { stopReason: "toolUse" });
 		const request = await firstRequest(
-			{ toolExposure: { purge: "hidden" }, toolContract: { publish: "indexed" } },
+			{ toolExposure: { purge: "hidden" }, toolContract: { publish: "indexed" }, contract: "indexed" },
 			{},
 			[
 				call("mcp__docs__publish", { page: "draft" }),
@@ -241,27 +242,13 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 		);
 		const mcps = request.sections.mcps;
 		expect(mcps).toContain("Title words to search for.");
-		expect(mcps).not.toContain("Publish a draft page");
-		expect(mcps).toContain(
-			'Contracts on demand: publish. Declared and callable; before a first call, read the contract with mcp {intent:"tools", server:"docs"',
-		);
+		expect(mcps).toContain("Publish a draft page so readers see it.");
 		expect(docsTools(request)).toContain("mcp__docs__publish");
-		const [refused, contract, published] = request.results;
+		const [refused, inspected, published] = request.results;
 		expect(refused).toMatchObject({ tool: "mcp__docs__publish", isError: true });
-		expect(refused.text).toContain("Expected signature (TypeScript):");
-		expect(refused.text).toContain("Id of the draft.");
-		expect(contract).toMatchObject({ tool: "mcp", isError: false });
-		expect(contract.text).toMatch(/Publish a draft page so readers see it\.[\s\S]*id: string/);
+		expect(inspected).toMatchObject({ tool: "mcp", isError: false });
+		expect(inspected.text).toMatch(/Publish a draft page so readers see it\./);
 		expect(published).toMatchObject({ tool: "mcp__docs__publish", text: "publish ok", isError: false });
-	});
-
-	it("describes every tool in full with mcpContractTiers off, whatever toolContract says", async () => {
-		const request = await firstRequest(
-			{ toolExposure: { purge: "hidden" }, toolContract: { publish: "auto" }, contract: "auto" },
-			{ settings: { mcpContractTiers: "off" } },
-		);
-		expect(request.sections.mcps).toContain("Publish a draft page so readers see it.");
-		expect(request.sections.mcps).not.toContain("Contracts on demand");
 	});
 
 	it("describes every tool in plain form with mcpPresentation json, and still declares them thin", async () => {

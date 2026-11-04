@@ -82,7 +82,7 @@ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
 type SendMessageHandler = <T = unknown>(
 	message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },
 ) => void | Promise<void>;
 
 type SendUserMessageHandler = (
@@ -164,6 +164,7 @@ export interface ExtensionActions {
 	getSessionName: GetSessionNameHandler;
 	setLabel: SetLabelHandler;
 	getActiveTools: GetActiveToolsHandler;
+	getHiddenDeclarations: () => string[];
 	getAllTools: GetAllToolsHandler;
 	getSettings: GetSettingsHandler;
 	setActiveTools: SetActiveToolsHandler;
@@ -192,8 +193,10 @@ export interface ExtensionContextActions {
 	getSignal: () => AbortSignal | undefined;
 	getTurnId?: () => string | undefined;
 	abort: (reason?: "interrupted" | "internal") => void;
+	failRun?: (reason: string) => void;
 	hasPendingMessages: () => boolean;
 	isMessageQueued: (details: object) => boolean;
+	replaceQueuedMessage?: (details: object, content: string) => boolean;
 	shutdown: () => void;
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (options?: CompactOptions) => void;

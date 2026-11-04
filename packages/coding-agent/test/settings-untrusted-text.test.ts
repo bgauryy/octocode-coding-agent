@@ -19,7 +19,7 @@ const HOSTILE = "A\x1b]52;c;cHduZWQ=\x07B\x1b[2JC\u009b2JD\x1b]0;title\x07E\u202
 /** Every escape, C1 control or bidi override except SGR colours and the TUI's own cursor markers. */
 function unsafe(lines: string[]): string[] {
 	return lines
-		.map((line) => line.replace(/\x1b\[[0-9;:]*m/g, "").replace(/\x1b_octo:[^\x07]*\x07/g, ""))
+		.map((line) => line.replace(/\x1b\[[0-9;:]*m/g, "").replace(/\x1b_octo:[^\x1b]*\x1b\\/g, ""))
 		.filter((line) => /[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e]/u.test(line));
 }
 

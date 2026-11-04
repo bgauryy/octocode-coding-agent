@@ -1,3 +1,4 @@
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../core/application/index.ts";
 import * as path from "node:path";
 import type { Container, EditorComponent, TUI } from "@octocodeai/octocode-tui";
@@ -21,6 +22,7 @@ import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { createShareTrailingEntries } from "./session-share.ts";
 import { theme } from "../../theme/theme.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface BugReportContext {
 	session: AgentSession;
@@ -181,7 +183,7 @@ function buildBundle(session: AgentSession, options: BugReportOptions, summary: 
 }
 
 async function upload(context: BugReportContext, bundle: BugReportBundle): Promise<string | undefined> {
-	const loader = showLoader(context, "Uploading bug report...");
+	const loader = showLoader(context, `Uploading bug report${ELLIPSIS}`);
 	try {
 		const result = await uploadBugReport(bundle, { signal: loader.signal });
 		restoreEditor(context, loader);
@@ -289,8 +291,4 @@ function restoreEditor(context: BugReportContext, component: Overlay): void {
 	context.editorContainer.addChild(context.editor);
 	context.ui.setFocus(context.editor);
 	context.ui.requestRender();
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : "Unknown error";
 }

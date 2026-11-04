@@ -215,6 +215,97 @@ describe("StdioTransport", () => {
 		10_000,
 	);
 
+	describe.skipIf(process.platform === "win32")("a server that exits while something else holds its pipes", () => {
+		/**
+		 * Answers `initialize`; at `tools/call` starts `sleep`, which inherits stderr (from its own group when `detached`),
+		 * prints its pid, then exits. `answerFirst` answers the call just before exiting.
+		 */
+		const dyingServer = ({ detached = false, answerFirst = false }) => `
+			const { spawn } = require("node:child_process");
+			const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+			require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+				const m = JSON.parse(line);
+				if (m.method === "initialize")
+					return send({ id: m.id, result: { protocolVersion: m.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "dying", version: "1" } } });
+				if (m.method !== "tools/call") return;
+				const holder = spawn("sleep", ["30"], { stdio: ["ignore", "ignore", "inherit"], detached: ${detached} });
+				process.stderr.write("holder " + holder.pid + "\\n", () => {
+					if (!${answerFirst}) process.exit(1);
+					process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: "answered" }] } }) + "\\n", () => process.exit(0));
+				});
+			});`;
+		const holderOf = (transport: StdioTransport) => Number(/holder (\d+)/.exec(transport.stderr)?.[1]);
+		const alive = (pid: number) => {
+			try {
+				process.kill(pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+		const connect = async (script: string) => {
+			const transport = new StdioTransport({ command: process.execPath, args: ["-e", script], closeTimeoutMs: 100 });
+			const client = new McpClient({ name: "stdio-test", version: "1.0.0", requestTimeoutMs: 20_000 });
+			let closes = 0;
+			client.onClose(() => closes++);
+			await client.connect(transport);
+			return { transport, client, closes: () => closes };
+		};
+
+		it("fails the call in flight at once, closes the client and stops the holder in its group", async () => {
+			const { transport, client, closes } = await connect(dyingServer({}));
+			const startedAt = Date.now();
+			await expect(client.callTool("x", {})).rejects.toThrow("MCP connection closed");
+			expect(Date.now() - startedAt).toBeLessThan(5_000);
+			expect(client.connectionState).toBe("closed");
+			expect(closes()).toBe(1);
+			const holder = holderOf(transport);
+			for (let i = 0; i < 100 && alive(holder); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(alive(holder)).toBe(false);
+			await client.close();
+		});
+
+		it("closes even when the holder left the group, and lets close() finish by releasing the pipes", async () => {
+			const { transport, client } = await connect(dyingServer({ detached: true }));
+			const startedAt = Date.now();
+			await expect(client.callTool("x", {})).rejects.toThrow("MCP connection closed");
+			expect(Date.now() - startedAt).toBeLessThan(5_000);
+			expect(client.connectionState).toBe("closed");
+			const holder = holderOf(transport);
+			try {
+				await client.close();
+				expect(Date.now() - startedAt).toBeLessThan(5_000);
+			} finally {
+				if (alive(holder)) process.kill(holder, "SIGKILL");
+			}
+		});
+
+		it("still delivers the answer the server wrote just before it exited", async () => {
+			const { client } = await connect(dyingServer({ answerFirst: true }));
+			expect(await client.callTool("x", {})).toEqual({ content: [{ type: "text", text: "answered" }] });
+			await new Promise((resolve) => setTimeout(resolve, 600));
+			expect(client.connectionState).toBe("closed");
+			await client.close();
+		});
+
+		it("does not wait for a launcher's surviving server, whose stdin Node already destroyed", async () => {
+			// Like `npx`: the launcher exits and the server it started keeps the pipes, with no way left to send it a request.
+			const transport = new StdioTransport({
+				command: "/bin/sh",
+				args: ["-c", "sleep 60 & echo server $! >&2; exit 0"],
+				closeTimeoutMs: 100,
+			});
+			const closed = new Promise<void>((resolve) => transport.onClose(resolve));
+			await transport.start();
+			await closed;
+			await expect(transport.send({ jsonrpc: "2.0", id: 1, method: "ping" })).rejects.toThrow("closed");
+			const server = Number(/server (\d+)/.exec(transport.stderr)?.[1]);
+			for (let i = 0; i < 100 && alive(server); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(alive(server)).toBe(false);
+			await transport.close();
+		});
+	});
+
 	it.skipIf(process.platform === "win32")(
 		"kills a server that ignores shutdown, including its children",
 		async () => {

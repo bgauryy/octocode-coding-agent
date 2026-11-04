@@ -7,6 +7,7 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import { pickSession } from "../src/modes/interactive/interactive-mode/session-picker.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const PENDING = Symbol("pending");
@@ -38,7 +39,7 @@ function createHost(extra: object = {}) {
 		extensionSelector: undefined,
 		extensionInput: undefined,
 		extensionEditor: undefined,
-		activeSelectorToken: undefined,
+		uiStore: createUiStore(),
 		activeSelectorDispose: undefined,
 		toggleToolOutputExpansion: vi.fn(),
 		sessionManager: {

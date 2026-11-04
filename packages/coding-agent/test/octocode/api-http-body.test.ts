@@ -61,7 +61,7 @@ describe("HTTP API request body decoding", () => {
 		const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "echo", params: { text } }));
 		const response = await sendBody(server, transport, body, body.indexOf(Buffer.from(character)) + offset);
 		expect(response).toEqual({ status: 200, body: { jsonrpc: "2.0", id: 1, result: { text } } });
-		expect(dispatch).toHaveBeenCalledWith("echo", { text }, {});
+		expect(dispatch).toHaveBeenCalledWith("echo", { text }, { transport: "http" });
 	});
 
 	it("rejects an oversized multibyte body by its byte length before dispatch", async () => {

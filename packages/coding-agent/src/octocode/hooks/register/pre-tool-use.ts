@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import { rewriteClaudeBash } from "../../shared/claude-bash.ts";
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import { validateFileInput } from "../../shared/file-input.ts";
@@ -180,7 +181,11 @@ export const preToolUseGate =
 			.join("\n\n");
 		if (context && !ctx.signal?.aborted) {
 			await api.sendMessage(
-				{ customType: CONTEXT_TYPE, content: capContext(`Context from PreToolUse hooks:\n${context}`), display: false },
+				{
+					customType: CONTEXT_TYPE,
+					content: capContext(renderInstruction("notices/hooks/context.md", { source: "PreToolUse", text: context })),
+					display: false,
+				},
 				{ triggerTurn: false },
 			);
 		}

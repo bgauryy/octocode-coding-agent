@@ -6,7 +6,7 @@ These features originated in `packages/octocode-pi-extension` in the sibling `oc
 
 ## Run from source
 
-Use Node.js 24.15 or newer **within Node 24**: the sibling Octocode dependencies currently require `^24.15.0`. This checkout depends on built packages at `../octocode/packages/octocode`, `../octocode/packages/octocode-mcp` and `../octocode/packages/octocode-native`, including their CLI artifacts and native platform binaries.
+Use Node.js 24.15 or newer **within Node 24**: the sibling Octocode dependencies currently require `^24.15.0`. `.node-version` pins that line. This checkout depends on built packages at `../octocode/packages/octocode`, `../octocode/packages/octocode-mcp` and `../octocode/packages/octocode-native`, including their CLI artifacts and native platform binaries. Check out the sibling repository at the ref in [`.github/octocode-ref`](.github/octocode-ref), currently the `octocode-20.0.0` branch: its default branch does not have these packages. CI reads the same file.
 
 From this repository's root:
 
@@ -25,7 +25,7 @@ yarn start research --help
 yarn start native --help
 ```
 
-Local dependencies make this a development checkout. `@octocodeai/octocodecode` is the only package published to npm; everything else compiles into its one bundle file. `yarn run publish:dry` rehearses a release and `yarn run publish` runs it: both write the published manifest into the tarball with the exact npm versions in `octocodeRelease`, add this repository's `docs/` as `docs/project/`, install that tarball from npm and run a real session against a scripted model, and refuse to publish if anything fails. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
+Local dependencies make this a development checkout. `@octocodeai/octocodecode` is the only package published to npm; everything else compiles into its one bundle file. `yarn run publish:dry` rehearses a release and `yarn run publish` runs it: both write the published manifest into the tarball with the exact npm versions in `octocodeRelease`, add this repository's `docs/` as `docs/project/` without its dated reviews and RFCs, install that tarball from npm and run a real session against a scripted model, and refuse to publish if anything fails. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
 
 ## Validate a registry release candidate
 
@@ -76,6 +76,8 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 | [webview](packages/webview/README.md)           | Browser workspace, board, Markdown/code rendering and UI state       |
 | [contracts](packages/contracts/README.md)         | Shared entity contracts, schemas and workspace protocols             |
 | [telemetry](packages/telemetry/README.md)       | Telemetry contracts and adapters                                     |
+| [db](packages/db/README.md)                     | Private agent database: schema, connections, queries and retention  |
+| [common](packages/common/README.md)             | Private host-free utilities, compiled into coding-agent              |
 
 ## Development
 

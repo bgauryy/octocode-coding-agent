@@ -150,6 +150,8 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 					if (item.messageStart.role !== ConversationRole.ASSISTANT) {
 						throw new Error("Unexpected assistant message start but got user message start instead");
 					}
+					// Usage arrives in the metadata event after the message, so a stream dropped before it has recorded nothing.
+					output.usage.lowerBound = true;
 					stream.push({ type: "start", partial: output });
 				} else if (item.contentBlockStart) {
 					handleContentBlockStart(item.contentBlockStart, blocks, output, stream);
@@ -165,6 +167,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 						output.errorMessage = errorMessage;
 					}
 				} else if (item.metadata) {
+					delete output.usage.lowerBound;
 					handleMetadata(item.metadata, model, output);
 				} else if (item.internalServerException) {
 					throw item.internalServerException;
@@ -192,6 +195,8 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 
 			// A stream can settle without stopping every block, so finalize here too.
 			for (const block of output.content) finalizeStreamingBlock(block);
+			// A stream that ended properly is the whole count, even without a metadata event.
+			delete output.usage.lowerBound;
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {

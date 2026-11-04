@@ -41,7 +41,7 @@ const write = (file: string, text = "x") => {
 function workspace(name: string, ids: string[], pid: number | null = null) {
 	const root = fs.realpathSync(tmp(`octocode-purge-${name}-`));
 	const identity = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(root, ".octa", "code");
+	const state = path.join(root, ".octocode", "code");
 	for (const id of ids) {
 		write(path.join(state, "sessions", `${id}.jsonl`), `${JSON.stringify({ type: "session", id, cwd: root })}\n`);
 		write(path.join(state, "session-data", id, "output", "o.txt"));

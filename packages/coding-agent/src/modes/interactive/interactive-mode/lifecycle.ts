@@ -65,7 +65,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 	// dispatch and re-sends the signal if only its own listeners remain.
 
 	if (options?.fromSignal) {
-		// Signal-triggered shutdown (SIGTERM/SIGHUP). Emit extension cleanup
+		// Signal-triggered shutdown (SIGINT/SIGTERM/SIGHUP). Emit extension cleanup
 		// (session_shutdown) BEFORE touching the terminal. Extension teardown
 		// such as removing sockets does not write to the tty, so it must not be
 		// skipped if a later terminal-restore write fails on a dead or stalled
@@ -106,16 +106,24 @@ export async function checkShutdownRequested(host: LifecycleHost): Promise<void>
 	await host.shutdown();
 }
 
+/**
+ * Ctrl+Z stopped the UI: a Ctrl+C typed in the shell meanwhile (a SIGINT) must not start a shutdown. SIGTERM and SIGHUP
+ * (the terminal closed) still shut a suspended session down.
+ */
+let suspended = false;
+
 export function registerSignalHandlers(host: LifecycleHost): void {
 	host.unregisterSignalHandlers();
 
-	const signals: NodeJS.Signals[] = ["SIGTERM"];
+	// SIGINT here is an external signal (`kill -INT`, an IDE stop button): in raw mode Ctrl+C is a key, not a signal.
+	const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 	if (process.platform !== "win32") {
 		signals.push("SIGHUP");
 	}
 
 	for (const signal of signals) {
 		const handler = () => {
+			if (suspended && signal === "SIGINT") return;
 			// SIGHUP no longer hard-exits: graceful shutdown emits session_shutdown
 			// first, then attempts terminal restore. A genuinely dead terminal
 			// surfaces as an EIO on the restore writes, which the stdout/stderr
@@ -174,6 +182,7 @@ export function handleCtrlZ(host: LifecycleHost): void {
 
 	// Set up handler to restore TUI when resumed
 	const onResume = () => {
+		suspended = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		host.ui.start();
@@ -182,12 +191,15 @@ export function handleCtrlZ(host: LifecycleHost): void {
 	process.once("SIGCONT", onResume);
 
 	try {
-		// Stop the TUI (restore terminal to normal mode)
-		host.ui.stop();
+		// Stop the TUI (restore terminal to normal mode). A suspend is not an exit: the fullscreen UI leaves the
+		// alternate screen without writing the transcript into the shell, and enters it again on resume.
+		suspended = true;
+		host.ui.stop({ preserveScreen: host.ui.mode === "fullscreen" });
 
 		// Send SIGTSTP to process group (pid=0 means all processes in group)
 		process.kill(0, "SIGTSTP");
 	} catch (error) {
+		suspended = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		// Never suspended: a later SIGCONT must not restart the TUI.

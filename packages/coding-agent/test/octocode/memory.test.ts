@@ -299,7 +299,7 @@ describe("memory injection selection", () => {
 		expect(injection.ids).toEqual([pinned.id, strong.id]);
 		expect(injection.content.split("\n")[0]).toBe(MEMORY_HEADER);
 		expect(injection.content).toContain(
-			`M${strong.id} (project, fact, 0d) (agent-written) Checkpoint rewind flow — "Rewind restores`,
+			`M${strong.id} (project, fact, 0d) (agent-written) "Checkpoint rewind flow" — "Rewind restores`,
 		);
 	});
 

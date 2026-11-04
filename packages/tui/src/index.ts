@@ -110,6 +110,7 @@ export { Key, type KeyId } from "./keys/key-id.ts";
 export { isKittyProtocolActive, setKittyProtocolActive } from "./keys/state.ts";
 export { isKeyRelease, isKeyRepeat, type KeyEventType } from "./keys/sequences.ts";
 export { decodeKittyPrintable, parseKey } from "./keys/parse.ts";
+export { splitDoubleEscape } from "./keys/double-escape.ts";
 // LaTeX rendering
 export { type RenderLatexOptions, renderLatex } from "./latex.ts";
 // Native platform integration
@@ -218,6 +219,7 @@ export { TuiMainScreen } from "./tui-main-screen.ts";
 export { wrapTextWithAnsi } from "./utils/wrap.ts";
 export { visibleWidth } from "./utils/width.ts";
 export { truncateToWidth } from "./utils/truncate.ts";
+export { closeOpenStyles } from "./utils/ansi-tracker.ts";
 export { getOsc8LinkAtColumn, sliceByColumn } from "./utils/columns.ts";
 export { stripTerminalSequences } from "./utils.ts";
 export { type VisualTruncateResult, VisualLinePreview, truncateToVisualLines } from "./components/visual-truncate.ts";

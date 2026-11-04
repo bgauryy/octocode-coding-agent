@@ -4,17 +4,23 @@ import { deleteAllKittyPlacements, isImageLine } from "../terminal-image.ts";
 import {
 	BEGIN_SYNCHRONIZED_OUTPUT,
 	DISABLE_AUTOWRAP,
+	DISABLE_MOUSE,
 	ENABLE_AUTOWRAP,
 	END_SYNCHRONIZED_OUTPUT,
 	EXIT_ALT_SCREEN,
 } from "./constants.ts";
+import { sameRowAfterErase, trimTrailingBlanks } from "../tui/trailing-blanks.ts";
 import { deleteKittyImagesFor, prepareKittyScreen } from "./kitty-cache.ts";
+import { planScrollShift } from "./scroll-shift.ts";
 import type { CachedKittyImage } from "./types.ts";
 
 /** What one alternate-screen frame write depends on. */
 interface AltScreenFrame {
 	screen: string[];
+	/** What each row holds before this frame writes: the previous screen, after any in-place scroll. */
 	previousScreen: string[];
+	/** Scrolls a block of rows in place so the frame rewrites only the rows the scroll does not explain. */
+	scrollSequence: string;
 	preparedKittyScreen: { lines: string[]; evictedImageDeletion: string };
 	imageProtocol: ImageProtocol;
 	fullRedraw: boolean;
@@ -33,6 +39,7 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 	const {
 		screen,
 		previousScreen,
+		scrollSequence,
 		preparedKittyScreen,
 		imageProtocol,
 		fullRedraw,
@@ -57,6 +64,7 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 		else if (imageProtocol === "kitty") buffer += deleteAllKittyPlacements();
 	}
 	buffer += preparedKittyScreen.evictedImageDeletion;
+	buffer += scrollSequence;
 
 	// WezTerm erases intersecting Kitty image cells when a later row write touches a covered row.
 	// Draw image placements after every clear and text write so nothing later intersects them; preserve
@@ -79,8 +87,9 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 		}
 	} else {
 		for (let row = 0; row < height; row++) {
-			if (!fullRedraw && !imagesNeedRedraw && screen[row] === previousScreen[row]) continue;
-			buffer += `\x1b[${row + 1};1H\x1b[2K${preparedKittyScreen.lines[row] ?? ""}`;
+			if (!fullRedraw && !imagesNeedRedraw && sameRowAfterErase(screen[row] ?? "", previousScreen[row] ?? "")) continue;
+			const line = preparedKittyScreen.lines[row] ?? "";
+			buffer += `\x1b[${row + 1};1H\x1b[2K${isImageLine(line) ? line : trimTrailingBlanks(line)}`;
 		}
 	}
 
@@ -148,13 +157,15 @@ export function renderAltScreenOutput(options: {
 	const { screen, imageProtocol, uploadedKittyImages } = options;
 	const { fullRedraw, imagesNeedRedraw, redrawImages, isWezTerm } = planAltScreenRedraw(options);
 	const hadUploadedKittyImages = uploadedKittyImages.size > 0;
+	const shift = !fullRedraw && !redrawImages ? planScrollShift(screen, options.previousScreen) : undefined;
 	const preparedKittyScreen =
 		redrawImages && imageProtocol === "kitty"
 			? prepareKittyScreen(uploadedKittyImages, screen)
 			: { lines: screen, evictedImageDeletion: "" };
 	const buffer = buildAltScreenFrame({
 		screen,
-		previousScreen: options.previousScreen,
+		previousScreen: shift?.basis ?? options.previousScreen,
+		scrollSequence: shift?.sequence ?? "",
 		preparedKittyScreen,
 		imageProtocol,
 		fullRedraw,
@@ -168,6 +179,11 @@ export function renderAltScreenOutput(options: {
 		showHardwareCursor: options.showHardwareCursor,
 	});
 	return { buffer, fullRedraw };
+}
+
+/** What a process that ends without stopping the UI must still write: mouse off, autowrap on, leave the alternate screen, show the cursor. */
+export function buildAltScreenForcedExit(mouseEnabled: boolean): string {
+	return `${mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${EXIT_ALT_SCREEN}\x1b[?25h`;
 }
 
 /** Leave the alternate screen and print the final document into the normal screen's scrollback. */

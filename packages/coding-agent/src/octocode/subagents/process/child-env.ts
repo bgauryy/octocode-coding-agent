@@ -19,7 +19,14 @@ import {
 } from "../../../../../common/src/env.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processAlive } from "../../shared/process.ts";
-import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
+import {
+	AGENT_GOAL_ENV,
+	AGENT_ID_ENV,
+	AGENT_ROLE_ENV,
+	PARENT_ID_ENV,
+	PARENT_PID_ENV,
+	PARENT_WAITS_ENV,
+} from "../../team/store/env.ts";
 import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
 
 /**
@@ -27,7 +34,8 @@ import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
  * run is bound by. `subagentProcessEnv` clears them from the environment a child starts from before setting its own, and
  * a process that finds them without being that child (`dropForeignChildEnv`) clears them to start as a top-level session.
  * The permission mode (`OCTOCODE_PERMISSION`) is left out on purpose: it is also a user setting, and what a child
- * inherited only makes a nested session stricter.
+ * inherited only makes a nested session stricter. A read-only role's reach is not inherited, so that role may not run
+ * `octocode` (`shell/mutation.ts`), and how deep the chain is stays counted (`NESTING_ENV`).
  */
 export const CHILD_OWNED_ENV: readonly string[] = [
 	SUBAGENT_ENV,
@@ -48,6 +56,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	AGENT_ID_ENV,
 	AGENT_ROLE_ENV,
 	PARENT_ID_ENV,
+	PARENT_WAITS_ENV,
 	AGENT_GOAL_ENV,
 	AGENT_SCRATCH_ENV,
 	PARENT_SESSION_ENV,
@@ -56,6 +65,29 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	BACKLOG_ITEM_ENV,
 	SUBAGENT_ASSIGNMENT_ENV,
 ];
+
+/**
+ * How many `agent` tasks stand above this process, across any `octocode` a child's shell started in between. Not in
+ * `CHILD_OWNED_ENV`, on purpose: a nested session clears the rest and runs as top-level, with its own slots and no budget
+ * from above, so this is what still counts the chain.
+ */
+export const NESTING_ENV = "OCTOCODE_AGENT_NESTING";
+/** How deep a task may start: a child, and a child of the one session that child's shell may start. */
+const MAX_NESTING = 2;
+
+/** The nesting a process with this environment is at. */
+export const nestingOf = (env: NodeJS.ProcessEnv): number => {
+	const depth = Number(env[NESTING_ENV]);
+	return Number.isInteger(depth) && depth > 0 ? depth : 0;
+};
+
+/** Why this process may not start another task, when the chain above it is at the limit. */
+export function nestingRefusal(env: NodeJS.ProcessEnv = process.env): string | undefined {
+	const depth = nestingOf(env);
+	return depth < MAX_NESTING
+		? undefined
+		: `Refused: this session runs ${depth} agent tasks deep (a task's shell started it), the most that may start another. Do the work here, or report what you need to the session that started you.`;
+}
 
 /**
  * A child names the Octocode that started it in `OCTOCODE_PARENT_PID` (`<pid> <start time>`), and that process starts it

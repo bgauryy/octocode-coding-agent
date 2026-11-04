@@ -35,7 +35,7 @@ describe("session session manager defaults", () => {
 			model: model,
 		});
 
-		const expectedSessionDir = join(realpathSync(cwd), ".octa", "code", "sessions");
+		const expectedSessionDir = join(realpathSync(cwd), ".octocode", "code", "sessions");
 		const sessionDir = session.sessionManager.getSessionDir();
 		const sessionFile = session.sessionManager.getSessionFile();
 

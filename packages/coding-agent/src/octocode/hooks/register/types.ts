@@ -34,6 +34,8 @@ interface HookNotice {
 
 /** What `/hooks` and `/status` show about hooks. */
 export interface HooksView {
+	/** The `hooks` prompt section for the hooks this session runs, or "" when it runs none. */
+	promptSection(): string;
 	suspend?(): Promise<void>;
 	hasFilePermissionRequest(input: Record<string, unknown>, cwd: string): boolean;
 	fileInputCommitted(id: string, input: Record<string, unknown>, cwd?: string): void;

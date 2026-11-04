@@ -75,7 +75,7 @@ export class MessageRefs {
 		id: number,
 		by: string,
 		to: string[],
-		options: { note?: string; wake: boolean },
+		options: { note?: string; wake: boolean; sign?: (recipient: string) => string | undefined },
 	): { added: string[]; departed: string[]; already: string[] } {
 		return this.transaction(() => {
 			const live = this.reachable();
@@ -91,6 +91,7 @@ export class MessageRefs {
 						wake: options.wake ? WAKE.wake : WAKE.none,
 						forwardedBy: by,
 						note: options.note,
+						proof: options.sign?.(recipient),
 					});
 					result.added.push(recipient);
 				}
@@ -235,6 +236,16 @@ export class MessageRefs {
 	/** The questions members of this team read and have not answered, oldest first (what `Member.pending` counts). */
 	openQuestions(): OpenQuestion[] {
 		return deliveries.openQuestions(this.db, this.team).map(toOpenQuestion);
+	}
+
+	/** Closes the questions `asker` put to `recipient` and settles their unreported dead letters: its report answered them. */
+	closeQuestionsTo(asker: string, recipient: string, now = Date.now()): void {
+		deliveries.closeQuestionsTo(this.db, asker, recipient, now);
+	}
+
+	/** When `a` and `b` last exchanged a message, in either direction; 0 when no such message is kept. */
+	lastExchange(a: string, b: string): number {
+		return deliveries.lastExchange(this.db, this.team, a, b);
 	}
 
 	/** Closes `recipient`'s open question `id` without an answer: its asker can no longer be reached. */

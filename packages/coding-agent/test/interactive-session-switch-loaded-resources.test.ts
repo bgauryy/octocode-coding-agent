@@ -2,7 +2,7 @@ import { Container } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { LoadedRow } from "../src/modes/interactive/interactive-mode/loaded-row.ts";
 import { renderCurrentSessionState } from "../src/modes/interactive/interactive-mode/session-binding.ts";
-import { createFakeHost } from "./interactive-mode-host.ts";
+import { createFakeHost, heldStore } from "./interactive-mode-host.ts";
 
 /** A state source that counts live listeners, like the MCP status row's event-bus subscription. */
 function countingSource() {
@@ -35,7 +35,7 @@ describe("session switch rendering", () => {
 			loadedResourcesContainer,
 			chatContainer: new Container(),
 			pendingMessagesContainer: new Container(),
-			compactionQueuedMessages: [],
+			uiStore: heldStore(),
 			pendingTools: new Map(),
 			renderInitialMessages: () => {},
 		});

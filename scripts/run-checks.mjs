@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { nearLimitNotice } from "./near-limit-files.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const yarn = join(repoRoot, readFileSync(join(repoRoot, ".yarnrc.yml"), "utf8").match(/^yarnPath:\s*(\S+)\s*$/m)[1]);
@@ -41,6 +42,13 @@ function run(name) {
 }
 
 const results = await Promise.all(names.map(run));
+// Advice only: reading the tree must never change what the checks decided.
+try {
+	const notice = nearLimitNotice(repoRoot);
+	if (notice) console.log(`\n${notice}`);
+} catch {
+	// The checks above still stand.
+}
 const failed = names.filter((_, index) => !results[index]);
 if (failed.length > 0) {
 	console.error(`\n${failed.length}/${names.length} checks failed: ${failed.join(", ")}`);

@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { tildePath } from "../shared/home.ts";
@@ -25,7 +26,35 @@ export const FORK_NOTE_TYPE = "octocode-agent-fork";
 export function forkNote(entries: readonly unknown[]): string | undefined {
 	const stopped = sessionChildren(entries).filter((child) => child.status === "background");
 	if (stopped.length === 0) return undefined;
-	return `[Fork] These subagents were running when this session was forked; they stopped with the session it was forked from, which receives their reports: ${stopped.map(describeChild).join("; ")}. To continue one here, call \`agent\` type \`task\` with \`resume\` set to its id.`;
+	return renderInstruction("notices/subagents/children-forked.md", { children: stopped.map(describeChild).join("; ") });
+}
+
+/**
+ * For a resumed or restarted session: the children its entries started without a report, that do not run now and left no
+ * report waiting. A killed parent writes no report, and its children notice and exit within a second, so without this
+ * the transcript still says "its report arrives as a message" and the model plans around children that no longer exist.
+ * A child named by an earlier note is not named again.
+ */
+export function resumeNote(
+	entries: readonly unknown[],
+	pending: ReadonlySet<string>,
+	running: ReadonlySet<string>,
+): string | undefined {
+	const told = entries.flatMap((entry) => {
+		const note = entry as { type?: unknown; customType?: unknown; content?: unknown };
+		return note.type === "custom_message" && note.customType === FORK_NOTE_TYPE && typeof note.content === "string"
+			? [note.content]
+			: [];
+	});
+	const gone = sessionChildren(entries).filter(
+		(child) =>
+			child.status === "background" &&
+			!running.has(child.id) &&
+			!pending.has(child.id) &&
+			!told.some((note) => note.includes(`${child.id} (`)),
+	);
+	if (gone.length === 0) return undefined;
+	return renderInstruction("notices/subagents/children-ended.md", { children: gone.map(describeChild).join("; ") });
 }
 
 /** `general-bg (general, goal "…", stopped, transcript ~/…, report ~/…)`. */
@@ -102,7 +131,8 @@ export function resumedTask<T extends { profile?: string; headless?: boolean; mo
 export function resumeText(resumed: { restart?: string } | undefined, task: string): { text: string; prefix: string } {
 	if (!resumed) return { text: task, prefix: "" };
 	const { restart } = resumed;
-	if (restart === undefined) return { text: task, prefix: "Follow-up from your parent:\n" };
-	const more = task.trim() && task.trim() !== restart.trim() ? `\n\nFollow-up from your parent:\n${task}` : "";
+	const followUp = `${renderInstruction("notices/subagents/follow-up.md")}\n`;
+	if (restart === undefined) return { text: task, prefix: followUp };
+	const more = task.trim() && task.trim() !== restart.trim() ? `\n\n${followUp}${task}` : "";
 	return { text: `${restart}${more}`, prefix: "" };
 }

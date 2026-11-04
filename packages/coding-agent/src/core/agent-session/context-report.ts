@@ -75,7 +75,7 @@ export function contextReport(
 		estimatedTotal,
 		difference: usage?.tokens === null || usage?.tokens === undefined ? null : usage.tokens - estimatedTotal,
 		contributors,
-		note: "Current usage is the session estimate anchored to available provider receipts, not exact tokenization. Contributors estimate the committed projection; the next request's hooks, deferred tool loading and provider transformations can change it. Unknown usage after compaction stays unknown. Skill bodies already present in messages are counted once; skill listings remain in instruction sections.",
+		note: "Current usage is the session estimate anchored to available provider receipts, not exact tokenization. Contributors estimate the committed projection; the next request's hooks and provider transformations can change it. Unknown usage after compaction stays unknown. Skill bodies already present in messages are counted once; skill listings remain in instruction sections.",
 	};
 }
 

@@ -13,15 +13,10 @@ export interface McpServerPreset {
 	 * of the upstream text it replaces (`presetOverridesFor`), so a text the server rewrote gets none.
 	 */
 	compactOverrides?: (input: CompactServerInput) => DescriptionOverrides | undefined;
-	/**
-	 * Tools (as the server names them) whose contracts start resident before usage is recorded; the preset's other `auto`
-	 * tools start indexed (`contractTier`). Omit: every tool starts resident.
-	 */
-	coreTools?: readonly string[];
 	/** Warnings raised while preparing launches since the last call, for the host to show the user. */
 	takeWarnings?: () => string[];
-	/** Stops what the preset started outside its server (a proxy, say); called on session shutdown, so it must be idempotent. */
-	dispose?: () => void | Promise<void>;
+	/** Stops what the preset started outside its server (a proxy, say); called on session shutdown with the session's folder, so it must be idempotent. */
+	dispose?: (cwd?: string) => void | Promise<void>;
 }
 
 export function findMcpPreset(

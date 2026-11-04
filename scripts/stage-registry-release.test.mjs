@@ -11,7 +11,7 @@ test("prepare keeps exact candidate bytes for a later fixture verification and r
 	const output = join(root, "candidate");
 	const map = join(root, "reviewed.json");
 	const packages = Object.fromEntries(
-		["@octocodeai/octocode-native", "octocode", "octocode-mcp"].map((name) => [
+		["@octocodeai/octocode-native", "@octocodeai/octocode-chrome-devtools", "octocode", "octocode-mcp"].map((name) => [
 			name,
 			{
 				version: "20.2.0",

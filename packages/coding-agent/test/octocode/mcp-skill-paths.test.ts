@@ -26,7 +26,7 @@ describe("configured Octocode skill roots", () => {
 			env: {
 				KEEP: "value",
 				WORKSPACE_ROOT: "/explicit/workspace",
-				ALLOWED_PATHS: `${dir},${fs.realpathSync(dir)}/.octa/code/session-data,${fs.realpathSync(dir)}/.octa/code/temp/sessions,${canonical}`,
+				ALLOWED_PATHS: `${dir},${fs.realpathSync(dir)}/.octocode/code/session-data,${fs.realpathSync(dir)}/.octocode/code/temp/sessions,${canonical}`,
 			},
 		});
 		expect(original.config).toEqual({
@@ -49,8 +49,8 @@ describe("configured Octocode skill roots", () => {
 		const allowed = (prepared.config as unknown as { env: { ALLOWED_PATHS: string } }).env.ALLOWED_PATHS.split(",");
 		expect(allowed.slice(0, 3)).toEqual([
 			"/workspace",
-			"/workspace/.octa/code/session-data",
-			"/workspace/.octa/code/temp/sessions",
+			"/workspace/.octocode/code/session-data",
+			"/workspace/.octocode/code/temp/sessions",
 		]);
 		expect(allowed).toContain(fs.realpathSync(extra));
 	});

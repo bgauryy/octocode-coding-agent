@@ -1,6 +1,7 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { type Ask, asksLabel, asksNote, askWaitMs, UserQuestions } from "../../src/octocode/team/asks.ts";
+import { describe, expect, it, vi } from "vitest";
+import { type Ask, asksLabel, asksNote, askWaitMs, childAsks, UserQuestions } from "../../src/octocode/team/asks.ts";
+import { WaitingApprovals } from "../../src/octocode/team/session/approvals.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describeMembers } from "../../src/octocode/team/routing.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -146,5 +147,32 @@ describe("ask counts and the askUser windows", () => {
 		const listing = describeMembers(members, "main-aaaaaa", Date.now(), asks);
 		expect(listing).toContain("  1 ask (1 answered in 40s) to its parent");
 		expect(listing.match(/to its parent/g)).toHaveLength(1);
+	});
+
+	it("names each question still waiting on the parent, with its age and start", () => {
+		const members = [member("main-aaaaaa"), member("child-0001", "main-aaaaaa")];
+		const open = { ...ask(7), text: "which schema?\nmore detail", askedAt: 0 };
+		delete open.answer;
+		const listing = describeMembers(members, "main-aaaaaa", 90_000, new Map([["child-0001", [open]]]));
+		expect(listing).toContain("  1 ask (1 unanswered) to its parent");
+		expect(listing).toContain("#7 waiting on its parent (1m ago): which schema?");
+		expect(listing).not.toContain("more detail");
+	});
+
+	it("shows a running child's last output, which only the process running it knows", () => {
+		const members = [member("child-0001", "main-aaaaaa")];
+		const approvals = new WaitingApprovals();
+		expect(describeMembers(members, undefined, 90_000)).not.toContain("last output");
+		approvals.noteOutput("child-0001", 60_000);
+		const { members: overlaid } = approvals.overlay({ members });
+		expect(describeMembers(overlaid, undefined, 90_000)).toContain("last output 30s ago");
+	});
+
+	it("childAsks reads only this parent's children", () => {
+		const members = [member("main-aaaaaa"), member("child-0001", "main-aaaaaa"), member("peer-0001", "other-main")];
+		const read = vi.fn(() => [ask(1)]);
+		expect([...childAsks(members, "main-aaaaaa", read).keys()]).toEqual(["child-0001"]);
+		expect(read).toHaveBeenCalledTimes(1);
+		expect(childAsks(members, undefined, read).size).toBe(0);
 	});
 });

@@ -359,14 +359,14 @@ describe("/backlog html", () => {
 	});
 
 	it.each(["html"])(
-		"command %s writes <repo>/.octa/code/backlog.html atomically with every item, opens it with a UI and says where it is",
+		"command %s writes <repo>/.octocode/code/backlog.html atomically with every item, opens it with a UI and says where it is",
 		async (command) => {
 			const open = vi.fn(async () => undefined);
 			const t = setup(open);
 			populate(t.store);
 			const ctx = fakeCtx({ cwd: t.cwd });
 			await t.command.handler(command, ctx);
-			const file = path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html");
+			const file = path.join(fs.realpathSync(t.cwd), ".octocode", "code", "backlog.html");
 			expect(open).toHaveBeenCalledExactlyOnceWith(file);
 			expect(ctx.ui.notes.at(-1)!.message).toContain(file);
 			expect(ctx.ui.notes.at(-1)!.message).toMatch(/snapshot, not live/);
@@ -390,7 +390,7 @@ describe("/backlog html", () => {
 		stderr.mockRestore();
 		expect(open).not.toHaveBeenCalled();
 		expect(headless.ui.notes.at(-1)!.message).toMatch(/^Wrote .*backlog\.html/);
-		expect(fs.existsSync(path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html"))).toBe(true);
+		expect(fs.existsSync(path.join(fs.realpathSync(t.cwd), ".octocode", "code", "backlog.html"))).toBe(true);
 
 		const failing = setup(async () => {
 			throw new Error("spawn xdg-open ENOENT");
@@ -407,7 +407,7 @@ describe("/backlog html", () => {
 		const open = vi.fn(async () => undefined);
 		const t = setup(open);
 		t.store.add({ title: "one", state: "todo", createdBy: "user" });
-		const file = path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html");
+		const file = path.join(fs.realpathSync(t.cwd), ".octocode", "code", "backlog.html");
 		await t.command.handler("html", fakeCtx({ cwd: t.cwd }));
 		const before = fs.readFileSync(file, "utf8");
 		sharedAgentDb().db.prepare("UPDATE backlog SET why = ? WHERE seq = 1").run(`key ${SECRET}`);
@@ -439,7 +439,9 @@ describe("/backlog html", () => {
 		t.store.add({ title: "one", state: "todo", createdBy: "user" });
 		const ctx = fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { selects: ["Open as HTML", undefined] } });
 		await t.command.handler("tui", ctx);
-		expect(open).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(t.cwd), ".octa", "code", "backlog.html"));
+		expect(open).toHaveBeenCalledExactlyOnceWith(
+			path.join(fs.realpathSync(t.cwd), ".octocode", "code", "backlog.html"),
+		);
 	});
 
 	it("opens from the board with a configured HTML action key", async () => {

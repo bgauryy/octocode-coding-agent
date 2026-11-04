@@ -2,7 +2,10 @@ import type { AgentSession } from "../../../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts";
 import { getPromptCommands } from "../../../core/prompt-templates.ts";
 import { getSkillCommands } from "../../../core/skill-commands.ts";
+import { VERSION } from "../../../config.ts";
+import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
 import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "../rpc-types.ts";
+import { RPC_PROTOCOL_VERSION } from "../session-identity.ts";
 import { error, success } from "./responses.ts";
 import type { RpcOutput } from "./ui-context.ts";
 import { handlePrompt } from "./prompt.ts";
@@ -79,6 +82,8 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "plan", await host.session.controlPlan(command));
 		case "get_state": {
 			const state: RpcSessionState = {
+				protocolVersion: RPC_PROTOCOL_VERSION,
+				version: VERSION,
 				model: host.session.model,
 				thinkingLevel: host.session.thinkingLevel,
 				isStreaming: host.session.isStreaming,
@@ -172,7 +177,9 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		// =================================================================
 
 		case "set_auto_retry": {
-			host.session.setAutoRetryEnabled(command.enabled);
+			// A session's choice: `setAutoRetryEnabled` writes global settings, which would change every later session of the
+			// user. Durable so that a later settings write by this session (a model change, say) does not undo it.
+			host.session.settingsManager.applyOverrides({ retry: { enabled: command.enabled } }, { durable: true });
 			return success(id, "set_auto_retry");
 		}
 
@@ -233,6 +240,14 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		}
 
 		case "switch_session": {
+			// Two processes appending to one session overwrite each other's history; no one is here to confirm the risk.
+			const runningPid = sessionFileRunningPid(command.sessionPath);
+			if (runningPid !== undefined && runningPid !== process.pid)
+				return error(
+					id,
+					"switch_session",
+					`Another Octocode process (pid ${runningPid}) has this session open: ${command.sessionPath}. Close it, or fork the session with --fork.`,
+				);
 			const result = await runtimeHost.switchSession(command.sessionPath);
 			return success(id, "switch_session", result);
 		}

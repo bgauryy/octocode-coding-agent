@@ -1,5 +1,6 @@
 import type { ApplicationContentBlock, ApplicationEvent, ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
+import { disposeTranscript } from "./transcript-dispose.ts";
 import type { ApplicationService } from "../../../core/application/index.ts";
 import { Spacer, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
@@ -19,17 +20,15 @@ type Host = Pick<
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "hiddenThinkingLabel"
-	| "hideThinkingBlock"
+	| "uiStore"
 	| "outputPad"
 	| "pendingTools"
 	| "session"
 	| "settingsManager"
 	| "streamingComponent"
-	| "toolOutputExpanded"
 	| "ui"
 	| "getRegisteredToolDefinition"
 	| "sessionManager"
-	| "updatePendingMessagesDisplay"
 	| "renderSessionEntries"
 >;
 
@@ -67,13 +66,12 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		if (message.role === "user") {
 			if (previous) return;
 			addApplicationUserMessage(host, message);
-			host.updatePendingMessagesDisplay();
 		} else if (message.role === "assistant") {
 			let component = assistants.get(message.id);
 			if (!component) {
 				component = new AssistantMessageComponent(
 					undefined,
-					host.hideThinkingBlock,
+					host.uiStore.getState().view.hideThinking,
 					host.getMarkdownThemeWithSettings(),
 					host.hiddenThinkingLabel,
 					host.outputPad,
@@ -127,6 +125,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				assistants.clear();
 				host.pendingTools.clear();
 				host.streamingComponent = undefined;
+				disposeTranscript(host.chatContainer);
 				host.chatContainer.clear();
 				renderRebuild(host);
 				for (const error of event.errors ?? []) showError(error.message);

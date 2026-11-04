@@ -36,7 +36,7 @@ describe("buildSystemPrompt", () => {
 			contextFiles: [],
 			skills: [],
 		});
-		expect(prompt).not.toContain("Use bash for file operations");
+		expect(prompt).not.toContain("Search and read files with bash");
 	});
 
 	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
@@ -44,7 +44,7 @@ describe("buildSystemPrompt", () => {
 		(reader) => {
 			const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [reader], contextFiles: [], skills: [testSkill] });
 			// The reader is a declared tool with its own description: the skill hint names none.
-			expect(prompt).toContain("Load a skill's file when the task matches its description.");
+			expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
 			expect(prompt).not.toContain("localFetch");
 			expect(prompt).toContain("/skills/test-skill/SKILL.md");
 			expect(prompt).not.toContain("Use the read tool");
@@ -59,11 +59,11 @@ describe("buildSystemPrompt", () => {
 			skills: [testSkill],
 		});
 		expect(prompt).toContain(
-			"Use the skill tool with a skill's name to load it when the task matches its description.",
+			"Use the skill tool, one call per name, to load every skill whose description matches the task; several can apply.",
 		);
 		// The skill tool's description owns how a loaded skill's relative paths resolve.
 		expect(prompt).not.toContain("resolve it against the skill directory");
-		expect(prompt).not.toMatch(/Load a skill's file|Use bash to load|localFetch|localGetFileContent/);
+		expect(prompt).not.toMatch(/Load the file of every skill|Use bash to load|localFetch|localGetFileContent/);
 		// The tool needs no file reader.
 		expect(
 			buildSystemPrompt({ cwd: "/tmp", selectedTools: ["skill"], contextFiles: [], skills: [testSkill] }),
@@ -78,7 +78,7 @@ describe("buildSystemPrompt", () => {
 			contextFiles: [],
 			skills: [testSkill],
 		});
-		expect(prompt).toContain("Load a skill's file when the task matches its description.");
+		expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
 		expect(prompt).not.toContain("skill tool");
 	});
 
@@ -108,7 +108,7 @@ describe("buildSystemPrompt", () => {
 		const prompt = buildSystemPrompt({
 			cwd: "/tmp",
 			selectedTools: ["bash"],
-			sections: { octocode_communication: "# Communication\n- Lead with the result." },
+			sections: { communication: "# Communication\n- Lead with the result." },
 		});
 		expect(prompt).not.toContain("Be concise in your responses");
 		expect(prompt).not.toContain("Refer to files by their paths");
@@ -186,7 +186,7 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain("- bash: Execute bash commands");
-			expect(prompt).toContain("Use bash for file operations like ls, rg, find");
+			expect(prompt).toContain("Search and read files with bash (rg, fd, ls, sed -n)");
 		});
 
 		test("instructs models to resolve Octocode docs under an absolute base path", () => {
@@ -271,7 +271,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<skills>");
 			expect(prompt).toContain("<available_skills>");
 			expect(prompt).toContain("<name>test-skill</name>");
-			expect(prompt).toContain("Use bash to load a skill's file");
+			expect(prompt).toContain("Use bash to load the file of every skill");
 		});
 
 		test("omits skills without read or bash", () => {
@@ -305,15 +305,17 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<tools>\n- run: Run a task\n");
 			expect(prompt).not.toContain("- read: ");
 			expect(prompt).not.toContain("Use read for files.");
-			expect(prompt).not.toContain("Use bash for file operations");
+			expect(prompt).not.toContain("Search and read files with bash");
 			expect(prompt).toContain("- Prefer run.");
 		});
 
 		test("keeps skills without naming a hidden reader", () => {
-			expect(build(["read", "bash"])).toContain("\nLoad a skill's file when the task matches its description.");
-			expect(build(["read"])).toContain("Use bash to load a skill's file");
+			expect(build(["read", "bash"])).toContain(
+				"\nLoad the file of every skill whose description matches the task; several can apply.",
+			);
+			expect(build(["read"])).toContain("Use bash to load the file of every skill");
 			// Octocode ships no `read` tool: a tool registered under that name is not a skill loader.
-			expect(build([])).toContain("Use bash to load a skill's file");
+			expect(build([])).toContain("Use bash to load the file of every skill");
 			expect(build([])).not.toContain("Use the read tool");
 		});
 	});

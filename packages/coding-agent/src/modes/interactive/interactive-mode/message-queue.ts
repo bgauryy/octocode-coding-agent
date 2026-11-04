@@ -3,24 +3,19 @@
  * area, restoring queued text to the editor, and flushing the compaction queue.
  */
 
-import { Spacer, TruncatedText } from "@octocodeai/octocode-tui";
-import { stripAnsi } from "../../../utils/ansi.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import { theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { refreshQueueList } from "./queue-list.ts";
 import { recallLastQueuedMessage } from "./queue-manager.ts";
+import type { CompactionQueuedMessage } from "./types.ts";
 
 /** Interactive-mode members used by the message queues. */
 type MessageQueueHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "clearAllQueues"
-	| "compactionQueuedMessages"
 	| "editor"
 	| "getAllQueuedMessages"
-	| "getAppKeyDisplay"
 	| "isExtensionCommand"
 	| "pendingBashComponents"
 	| "pendingMessagesContainer"
@@ -33,7 +28,7 @@ type MessageQueueHost = Pick<
 	| "showExtensionSelector"
 	| "showStatus"
 	| "ui"
-	| "updatePendingMessagesDisplay"
+	| "uiStore"
 >;
 
 export async function queueInteractiveMessage(
@@ -58,8 +53,6 @@ export async function queueInteractiveMessage(
 			`${accepted ? "Message failed" : "Message was not queued; restored to editor"}: ${errorMessage(error)}`,
 		);
 	}
-	host.updatePendingMessagesDisplay();
-	host.ui.requestRender();
 }
 
 /** While compaction runs, executes extension commands at once and queues other input; returns whether it did. */
@@ -89,7 +82,9 @@ export async function handleFollowUp(host: MessageQueueHost): Promise<void> {
 	const text = (host.editor.getExpandedText?.() ?? host.editor.getText()).trim();
 	if (!text) return;
 
-	if (await handleInputDuringCompaction(host, text, "followUp")) return;
+	// No await unless compaction runs: the editor is cleared before the next key, so keys typed in the same tick
+	// start a new message instead of joining the one being queued.
+	if (host.session.isCompacting && (await handleInputDuringCompaction(host, text, "followUp"))) return;
 
 	// Alt+Enter queues a follow-up message (waits until agent finishes)
 	// This handles extension commands (execute immediately), prompt template expansion, and queueing
@@ -116,11 +111,17 @@ export function getAllQueuedMessages(host: MessageQueueHost): { steering: string
 	return {
 		steering: [
 			...host.session.getSteeringMessages(),
-			...host.compactionQueuedMessages.filter((msg) => msg.mode === "steer").map((msg) => msg.text),
+			...host.uiStore
+				.getState()
+				.queue.compaction.filter((msg) => msg.mode === "steer")
+				.map((msg) => msg.text),
 		],
 		followUp: [
 			...host.session.getFollowUpMessages(),
-			...host.compactionQueuedMessages.filter((msg) => msg.mode === "followUp").map((msg) => msg.text),
+			...host.uiStore
+				.getState()
+				.queue.compaction.filter((msg) => msg.mode === "followUp")
+				.map((msg) => msg.text),
 		],
 	};
 }
@@ -131,54 +132,13 @@ export function getAllQueuedMessages(host: MessageQueueHost): { steering: string
  */
 export function clearAllQueues(host: MessageQueueHost): { steering: string[]; followUp: string[] } {
 	const { steering, followUp } = getApplicationPort(host.session).invoke("clearQueue");
-	const compactionSteering = host.compactionQueuedMessages.filter((msg) => msg.mode === "steer").map((msg) => msg.text);
-	const compactionFollowUp = host.compactionQueuedMessages
-		.filter((msg) => msg.mode === "followUp")
-		.map((msg) => msg.text);
-	host.compactionQueuedMessages = [];
+	const held = host.uiStore.getState().takeHeldMessages();
+	const compactionSteering = held.filter((msg) => msg.mode === "steer").map((msg) => msg.text);
+	const compactionFollowUp = held.filter((msg) => msg.mode === "followUp").map((msg) => msg.text);
 	return {
 		steering: [...steering, ...compactionSteering],
 		followUp: [...followUp, ...compactionFollowUp],
 	};
-}
-
-export function updatePendingMessagesDisplay(host: MessageQueueHost): void {
-	host.pendingMessagesContainer.clear();
-	const { steering: steeringMessages, followUp: followUpMessages } = host.getAllQueuedMessages();
-	if (steeringMessages.length > 0 || followUpMessages.length > 0) {
-		host.pendingMessagesContainer.addChild(new Spacer(1));
-		const total = steeringMessages.length + followUpMessages.length;
-		host.pendingMessagesContainer.addChild(
-			new TruncatedText(
-				theme.fg(
-					"accent",
-					`${total} queued · ${steeringMessages.length} next turn · ${followUpMessages.length} after run`,
-				),
-				1,
-				0,
-			),
-		);
-		const previews = [
-			...steeringMessages.map((text) => ({ label: "Next turn", text })),
-			...followUpMessages.map((text) => ({ label: "After run", text })),
-		];
-		for (const [index, message] of previews.slice(0, 3).entries()) {
-			const preview = stripAnsi(message.text)
-				.replace(/[\r\n\t\u2028\u2029]+/g, " ")
-				.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
-			const text = `${theme.fg("muted", `${index + 1}. ${message.label}: `)}${theme.fg("text", preview)}`;
-			host.pendingMessagesContainer.addChild(new TruncatedText(text, 1, 0));
-		}
-		if (total > 3)
-			host.pendingMessagesContainer.addChild(new TruncatedText(theme.fg("muted", `… ${total - 3} more queued`), 1, 0));
-		const dequeueHint = host.getAppKeyDisplay("app.message.dequeue");
-		const hintText = theme.fg(
-			"muted",
-			`↳ ↑ to manage · ${dequeueHint} restores the last · Esc restores all${host.session.isCompacting ? " · waiting for compaction" : ""}`,
-		);
-		host.pendingMessagesContainer.addChild(new TruncatedText(hintText, 1, 0));
-	}
-	refreshQueueList(host);
 }
 
 export function restoreQueuedMessagesToEditor(
@@ -188,7 +148,6 @@ export function restoreQueuedMessagesToEditor(
 	const { steering, followUp } = host.clearAllQueues();
 	const allQueued = [...steering, ...followUp];
 	if (allQueued.length === 0) {
-		host.updatePendingMessagesDisplay();
 		if (options?.abort) {
 			void getApplicationPort(host.session).invoke("abort");
 		}
@@ -198,7 +157,6 @@ export function restoreQueuedMessagesToEditor(
 	const currentText = options?.currentText ?? host.editor.getText();
 	const combinedText = [queuedText, currentText].filter((t) => t.trim()).join("\n\n");
 	host.editor.setText(combinedText);
-	host.updatePendingMessagesDisplay();
 	if (options?.abort) {
 		void getApplicationPort(host.session).invoke("abort");
 	}
@@ -206,10 +164,9 @@ export function restoreQueuedMessagesToEditor(
 }
 
 export function queueCompactionMessage(host: MessageQueueHost, text: string, mode: "steer" | "followUp"): void {
-	host.compactionQueuedMessages.push({ text, mode });
+	host.uiStore.getState().holdMessage({ text, mode });
 	host.editor.addToHistory?.(text);
 	host.editor.setText("");
-	host.updatePendingMessagesDisplay();
 	host.showStatus("Queued message for after compaction");
 }
 
@@ -223,12 +180,29 @@ export function isExtensionCommand(host: MessageQueueHost, text: string): boolea
 	return !!extensionRunner.getCommand(commandName);
 }
 
-export async function flushCompactionQueue(host: MessageQueueHost, options?: { willRetry?: boolean }): Promise<void> {
-	if (host.compactionQueuedMessages.length === 0) return;
-	const pending = new Set(host.compactionQueuedMessages);
-	host.compactionQueuedMessages = [];
-	host.updatePendingMessagesDisplay();
-	let started = options?.willRetry ?? false;
+/** Sends the messages typed during compaction. Messages carried over a session switch wait for the user. */
+export function flushCompactionQueue(host: MessageQueueHost, options?: { willRetry?: boolean }): Promise<void> {
+	return deliverHeldMessages(host, host.uiStore.getState().takeHeldMessages(false), options?.willRetry ?? false);
+}
+
+/** Enter in an empty editor: sends the messages carried over a session switch, in their order and kinds. */
+export async function sendCarriedMessages(host: MessageQueueHost): Promise<void> {
+	if (host.uiStore.getState().queue.compaction.every((message) => !message.carried)) return;
+	if (host.session.isCompacting) {
+		host.showStatus("Compaction is running; press Enter again when it ends to send the queued messages");
+		return;
+	}
+	await deliverHeldMessages(host, host.uiStore.getState().takeHeldMessages(true), false);
+}
+
+async function deliverHeldMessages(
+	host: MessageQueueHost,
+	messages: CompactionQueuedMessage[],
+	willRetry: boolean,
+): Promise<void> {
+	const pending = new Set(messages);
+	if (pending.size === 0) return;
+	let started = willRetry;
 	try {
 		for (const message of pending) {
 			if (host.isExtensionCommand(message.text)) {
@@ -267,12 +241,11 @@ export async function flushCompactionQueue(host: MessageQueueHost, options?: { w
 			pending.delete(message);
 		}
 	} catch (error) {
-		host.compactionQueuedMessages = [...pending, ...host.compactionQueuedMessages];
+		host.uiStore.getState().editHeldMessages((held) => held.unshift(...pending));
 		host.showError(
 			`Could not send ${pending.size} queued message${pending.size === 1 ? "" : "s"}; kept for editing: ${errorMessage(error)}`,
 		);
 	}
-	host.updatePendingMessagesDisplay();
 }
 
 /** Move pending bash components from pending area to chat */

@@ -23,6 +23,8 @@ export interface ChildIdentity {
 	isolation?: { path: string; repo: string; cwd: string };
 	/** The backlog item the parent started it for: the only one it may update. */
 	item?: string;
+	/** Paths the parent reserved for it until it reports. */
+	reservedPaths?: readonly string[];
 	/** The run mode: true for a background run, false for a foreground run; omitted, the identity names none. */
 	background?: boolean;
 }
@@ -42,6 +44,7 @@ export function identityBlock(identity: ChildIdentity, archive?: { library: stri
 		parentId: identity.parentId,
 		scratch: identity.scratch ? shortPath(identity.scratch) : undefined,
 		item: identity.item,
+		reserved: identity.reservedPaths?.map((entry) => `\`${entry}\``).join(", "),
 		runMode: identity.background !== undefined,
 		background: identity.background === true,
 		archive: Boolean(archive),

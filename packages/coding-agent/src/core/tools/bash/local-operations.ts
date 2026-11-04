@@ -48,8 +48,11 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 			if (child.pid) trackDetachedChildPid(child.pid);
 			let timedOut = false;
 			let timeoutHandle: NodeJS.Timeout | undefined;
+			// Stops the wait once the command was killed: a writer that left its group outlives the kill.
+			const killed = new AbortController();
 			const onAbort = () => {
 				signalTree(child.pid, "SIGKILL");
+				killed.abort();
 			};
 
 			try {
@@ -57,7 +60,7 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 				if (timeoutMs !== undefined) {
 					timeoutHandle = setTimeout(() => {
 						timedOut = true;
-						signalTree(child.pid, "SIGKILL");
+						onAbort();
 					}, timeoutMs);
 				}
 				// Stream stdout and stderr.
@@ -70,7 +73,7 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 				}
 				// Handle shell spawn errors and wait for the process to terminate without hanging
 				// on inherited stdio handles held by detached descendants.
-				const exitCode = await waitForChildProcess(child);
+				const exitCode = await waitForChildProcess(child, killed.signal);
 				if (signal?.aborted) {
 					throw new Error("aborted");
 				}

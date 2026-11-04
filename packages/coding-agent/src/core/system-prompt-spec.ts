@@ -1,8 +1,8 @@
-import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../../common/src/mcp-names.ts";
+import { instructionSource } from "./prompt-template.ts";
 
 /**
- * The one declaration of every known system prompt section: its order, cache tier, owner and what a custom prompt
- * (`SYSTEM.md`, SDK `customPrompt`) does to it. Producers fill section contents through `BuildSystemPromptOptions`
+ * Every known system prompt section: its order, cache tier, owner and what a custom prompt (`SYSTEM.md`, SDK
+ * `customPrompt`) does to it, as the table in `instructions/sections/index.md` declares them. Producers fill section contents through `BuildSystemPromptOptions`
  * (their defaults) or `before_agent_start` `sections`/`baseSections`; only `composeSystemPromptSections` orders them.
  */
 
@@ -18,41 +18,37 @@ export interface SystemPromptSectionSpec {
 	owner: string;
 	/** Under a custom prompt: `replace` takes the custom text, `drop` leaves the default out, `keep` is unchanged. */
 	underCustomPrompt: "replace" | "drop" | "keep";
+	/** Sections rendered together from `sections/<name>.md`: `policy` or `lean`. */
+	group?: string;
 }
 
 type SystemPromptSectionTier = SystemPromptSectionSpec["tier"];
 
-const section = (
-	name: string,
-	tier: SystemPromptSectionTier,
-	owner: string,
-	underCustomPrompt: SystemPromptSectionSpec["underCustomPrompt"] = "keep",
-): SystemPromptSectionSpec => ({ name, tier, owner, underCustomPrompt });
+/** The rows of the map's table, past its header and divider. */
+function parseSectionMap(markdown: string): SystemPromptSectionSpec[] {
+	return markdown
+		.split("\n")
+		.filter((line) => line.startsWith("|"))
+		.slice(2)
+		.map((line) => {
+			const [name, tier, underCustomPrompt, group, owner] = line
+				.split("|")
+				.slice(1, -1)
+				.map((cell) => cell.trim());
+			return {
+				name,
+				tier: tier as SystemPromptSectionTier,
+				owner,
+				underCustomPrompt: underCustomPrompt as SystemPromptSectionSpec["underCustomPrompt"],
+				...(group === "-" ? {} : { group }),
+			};
+		});
+}
 
-/** Every known section in prompt order. Unknown extension sections take the two slots named in `composeSystemPromptSections`. */
-export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSectionSpec[] = [
-	section("preamble", "base", "core/system-prompt", "replace"),
-	section("tools", "base", "core/system-prompt (tool promptSnippet)"),
-	// A custom prompt keeps the tools' guidelines; only the default floor and bash-search lines give way to it.
-	section("rules", "base", "core/system-prompt (tool promptGuidelines)"),
-	section("docs", "base", "core/system-prompt", "drop"),
-	section(MCPS_SECTION, "base", "mcp/section"),
-	section("addendum", "session", "core/system-prompt (APPEND_SYSTEM.md)"),
-	section("cwd", "session", "core/system-prompt"),
-	section("octocode_work", "session", "octocode/instructions/policy"),
-	section("octocode_research", "session", "octocode/instructions/policy"),
-	section("octocode_delegation", "session", "octocode/instructions/policy"),
-	section("octocode_safety", "session", "octocode/instructions/policy"),
-	section("octocode_communication", "session", "octocode/instructions/policy"),
-	section("octocode_lean", "session", "octocode/instructions/lean"),
-	// After the policy, not before it: a long AGENTS.md then sits with the closing instructions, and the role still ends the session tier.
-	section("project_context", "session", "core/system-prompt (AGENTS.md)"),
-	section("skills", "session", "core/skills"),
-	section("role", "session", "octocode/turn (subagent role)"),
-	section("environment", "volatile", "core/system-prompt (currentEnvironment)"),
-	section("planning", "volatile", "octocode/plan"),
-	section(MCP_STATUS_SECTION, "volatile", "mcp/section"),
-];
+/** Every known section in prompt order, from `instructions/sections/index.md`. Unknown extension sections take the two slots named in `composeSystemPromptSections`. */
+export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSectionSpec[] = parseSectionMap(
+	instructionSource("sections/index.md"),
+);
 
 const SPECS = new Map(SYSTEM_PROMPT_SECTIONS.map((spec) => [spec.name, spec]));
 
@@ -75,7 +71,7 @@ export function assertSystemPromptSectionName(name: string): void {
 
 /**
  * Order raw section contents by the spec and wrap every section but `preamble` in a tag of its name, so the model can
- * match later updates to it. Unknown names in `extensionBase` follow the known base sections, in their given order;
+ * match later updates to it. The preamble stays bare: a custom prompt's text must begin the prompt byte for byte. Unknown names in `extensionBase` follow the known base sections, in their given order;
  * other unknown names end the session tier, before the volatile one. Empty contents are left out.
  */
 export function composeSystemPromptSections(

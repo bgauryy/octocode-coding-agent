@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -91,15 +92,10 @@ function branchMessage(entry: SessionEntry): unknown {
 }
 
 /**
- * The files saved from the messages compaction `at` summarized: the entries from where the compaction before it began
- * keeping (else right after it) up to where it begins keeping (else up to it). Those it kept are summarized by the next one.
+ * The messages compaction `at` summarized: the entries from where the compaction before it began keeping (else right
+ * after it) up to where it begins keeping (else up to it). Those it kept are summarized by the next one.
  */
-function stretchPaths(
-	branch: readonly SessionEntry[],
-	at: number,
-	before: number | undefined,
-	cleared: ReadonlyMap<string, string>,
-): string[] {
+function stretchMessages(branch: readonly SessionEntry[], at: number, before: number | undefined): unknown[] {
 	const indexOf = (id: unknown, fallback: number): number => {
 		const index = typeof id === "string" ? branch.findIndex((entry) => entry.id === id) : -1;
 		return index >= 0 ? index : fallback;
@@ -109,29 +105,39 @@ function stretchPaths(
 			? 0
 			: Math.min(indexOf((branch[before] as { firstKeptEntryId?: unknown }).firstKeptEntryId, before + 1), at);
 	const to = Math.min(indexOf((branch[at] as { firstKeptEntryId?: unknown }).firstKeptEntryId, at), at);
-	return savedResultPaths(branch.slice(from, Math.max(from, to)).map(branchMessage), cleared);
+	return branch.slice(from, Math.max(from, to)).map(branchMessage);
 }
 
 /**
- * The paths earlier summaries carried: those of the latest compaction on the branch that recorded them, then the files
- * saved during each later stretch that a compaction without a record (Octocode's default summary, which has no
- * `details.savedResults`) summarized, found in its messages as for an Octocode summary.
+ * What earlier summaries carried under the `details` key: the list of the latest compaction on the branch that recorded
+ * one, then the messages of each later stretch that a compaction without a record (Octocode's default summary, which has
+ * no such details) summarized, oldest first, to be read as for an Octocode summary.
  */
-export function carriedSavedResults(branch: readonly SessionEntry[]): string[] {
+export function carriedRecords(
+	branch: readonly SessionEntry[],
+	key: string,
+): { recorded: unknown[]; stretches: unknown[][] } {
 	const compactions = branch.flatMap((entry, index) => (entry.type === "compaction" ? [index] : []));
-	const cleared = clearedResults(branch);
-	const unrecorded: string[][] = [];
-	let recorded: string[] = [];
+	const stretches: unknown[][] = [];
 	for (let at = compactions.length - 1; at >= 0; at--) {
 		const entry = branch[compactions[at]] as SessionEntry & { details?: unknown };
-		const carried = isRecord(entry.details) ? entry.details[SAVED_RESULTS_DETAILS] : undefined;
-		if (Array.isArray(carried)) {
-			recorded = carried.filter((item): item is string => typeof item === "string");
-			break;
-		}
-		unrecorded.unshift(stretchPaths(branch, compactions[at], compactions[at - 1], cleared));
+		const carried = isRecord(entry.details) ? entry.details[key] : undefined;
+		if (Array.isArray(carried)) return { recorded: carried as unknown[], stretches };
+		stretches.unshift(stretchMessages(branch, compactions[at], compactions[at - 1]));
 	}
-	return [...new Set([...recorded, ...unrecorded.flat()])];
+	return { recorded: [], stretches };
+}
+
+/** The paths earlier summaries carried (`carriedRecords`), and the files saved during each stretch without a record. */
+export function carriedSavedResults(branch: readonly SessionEntry[]): string[] {
+	const { recorded, stretches } = carriedRecords(branch, SAVED_RESULTS_DETAILS);
+	const cleared = clearedResults(branch);
+	return [
+		...new Set([
+			...recorded.filter((item): item is string => typeof item === "string"),
+			...stretches.flatMap((messages) => savedResultPaths(messages, cleared)),
+		]),
+	];
 }
 
 /**
@@ -170,6 +176,7 @@ export function savedResultsBlock(files: readonly string[]): string {
 	const list = lines.join("\n");
 	const spilled = list.length > SAVED_RESULTS_INLINE_CHARS ? saveFullOutput(`${list}\n`, "saved-results") : undefined;
 	if (spilled === undefined)
-		return `\n\n${OPEN}\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${list}\n${CLOSE}`;
-	return `\n\n<saved-results count="${files.length}">\nTool results and subagent conversations this summary leaves out are saved whole in ${files.length} files, listed one per line in ${shortPath(spilled)}; read or search that list for the one you need.\n${CLOSE}`;
+		return `\n\n${OPEN}\n${renderInstruction("notices/recovery/saved-results.md", { listed: "" })}\n${list}\n${CLOSE}`;
+	const listed = renderInstruction("notices/recovery/file-list.md", { count: files.length, file: shortPath(spilled) });
+	return `\n\n<saved-results count="${files.length}">\n${renderInstruction("notices/recovery/saved-results.md", { listed })}\n${CLOSE}`;
 }

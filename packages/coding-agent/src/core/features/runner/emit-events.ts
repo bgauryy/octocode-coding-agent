@@ -84,6 +84,7 @@ function isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEve
 	return (
 		event.type === "session_before_switch" ||
 		event.type === "session_before_fork" ||
+		event.type === "session_before_quit" ||
 		event.type === "session_before_compact" ||
 		event.type === "session_before_tree"
 	);

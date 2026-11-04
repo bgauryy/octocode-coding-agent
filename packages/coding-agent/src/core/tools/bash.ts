@@ -1,3 +1,4 @@
+import { renderInstruction } from "../prompt-template.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Static, Type } from "typebox";
 import { getShellEnv } from "../../utils/shell.ts";
@@ -21,7 +22,9 @@ export { type BashToolDetails } from "./bash/outcome.ts";
 const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 
 export const bashToolSystemPromptContribution = {
-	snippet: "Execute bash commands (ls, grep, find, etc.)",
+	get snippet(): string {
+		return renderInstruction("tools/bash/core-snippet.md");
+	},
 	guidelines: [],
 } as const;
 
@@ -97,6 +100,8 @@ export interface BashToolOptions {
 	spawnHook?: BashSpawnHook;
 	/** Most bytes of a result that reach the model (the `bashOutputMaxBytes` setting). Default: 20 KB */
 	maxOutputBytes?: number;
+	/** Most bytes the saved full output holds (the `bash.spillMaxBytes` setting); 0 lifts the cap. Default: 1 GiB */
+	spillMaxBytes?: number;
 }
 
 export type BashRenderState = {
@@ -152,6 +157,7 @@ function createShellToolDefinition(
 				...bashBudget(options?.maxOutputBytes, maxOutputTokens),
 				tempFilePrefix: config.tempFilePrefix,
 				smartTrim: true,
+				spillMaxBytes: options?.spillMaxBytes,
 			});
 			let acceptingOutput = true;
 			let updateTimer: NodeJS.Timeout | undefined;
@@ -232,6 +238,7 @@ function createShellToolDefinition(
 					truncation: snapshot.truncation,
 					fullOutputPath: snapshot.fullOutputPath,
 					lastLineBytes: output.getLastLineBytes(),
+					spillDroppedBytes: output.spillDroppedBytes,
 				});
 				return body ? `${header}\n${body}` : header;
 			};
@@ -318,7 +325,9 @@ const bashToolConfig: ShellToolConfig = {
 	label: "bash",
 	shellName: "bash",
 	prompt: "$",
-	promptSnippet: bashToolSystemPromptContribution.snippet,
+	get promptSnippet(): string {
+		return bashToolSystemPromptContribution.snippet;
+	},
 	promptGuidelines: bashToolSystemPromptContribution.guidelines,
 	tempFilePrefix: "octocode-bash",
 };

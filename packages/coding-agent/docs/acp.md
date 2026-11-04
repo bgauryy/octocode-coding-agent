@@ -20,10 +20,10 @@ Both adapters use the official [TypeScript SDK](https://agentclientprotocol.com/
 
 | Surface                                                    | Advertised and implemented behavior                                                                               |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Base protocol                                              | Initialize, new session, text/resource-link prompts, ordered updates, permission requests and prompt cancellation |
+| Base protocol                                              | Initialize, new session, text/resource-link prompts, ordered updates, permission requests, prompt cancellation (`session/cancel` or `$/cancel_request` on the prompt) |
 | Session capabilities                                       | `loadSession: true`; `sessionCapabilities` includes `list`, `resume` and `close`                                  |
 | Prompt capabilities                                        | `image` and `embeddedContext`; supported formats and bounds are listed below                                      |
-| MCP capabilities                                           | Stdio plus `http` and `sse` for client-supplied MCP servers                                                       |
+| MCP capabilities                                           | Stdio and `http` for client-supplied MCP servers; legacy `sse` is refused                                         |
 | Authentication                                             | Host-configured credentials; `authMethods: []`, no protocol authentication/logout flow                            |
 | Client filesystem, terminals and elicitation               | Not requested by the agent; native host tools and permission policy own execution                                 |
 | Optional mode/configuration, deletion, fork and remote ACP | Not exposed; see current limits below                                                                             |
@@ -34,7 +34,7 @@ Capability negotiation is part of compatibility: clients must check the response
 
 Configure the client's executable as `octocode` and its argument list as `["--mode", "acp"]`. Use the installed executable's absolute path if the client does not inherit your shell's `PATH`. The client supplies an absolute, existing session directory in `session/new.cwd`; each session runs in its own Octocode RPC subprocess using that directory.
 
-Workers use the usual settings, model selection, provider credentials, resource discovery and project-trust rules. Ordinary runtime flags such as `--provider` and `--model` are forwarded to each worker. There is no ACP login flow or in-protocol model picker; configure credentials and the model before connecting. ACP does not automatically trust a workspace.
+Workers use the usual settings, model selection, provider credentials, resource discovery and project-trust rules. Ordinary runtime flags such as `--provider` and `--model` are forwarded to each worker. There is no ACP login flow or in-protocol model picker; configure credentials and the model before connecting. ACP does not automatically trust a workspace. A prompt refused because the model has no usable credentials fails with the typed auth-required error (`-32000`) and the fix in its message; the session stays usable. A worker in the default `full` permission mode says on stderr that every action runs without asking.
 
 ACP owns conversation selection. Extension commands in an ACP worker cannot create, switch or fork its native conversation. An uncaught command refusal fails the ACP prompt and leaves the conversation available for subsequent prompts. Use `session/new`, `session/load` or `session/resume` from the client; protocol session forking remains unsupported. Ordinary RPC extension controls remain available outside ACP-owned workers.
 
@@ -52,15 +52,17 @@ Prompts and session selection arrive over the protocol. Positional prompt text, 
 | `session/prompt`                        | One active prompt per session; different sessions can run independently; response waits for the accepted turn to settle |
 | `session/update`                        | Assistant text and tool lifecycle updates with bounded textual tool results                                             |
 | `session/request_permission`            | Explicit native permission dialogs with single-use allow/reject choices                                                 |
-| `session/cancel`                        | Cancels the turn and pending permission waits; an unresponsive worker is stopped after a bounded wait                   |
-| `session/close`                         | Cancels ongoing work, stops that session's worker and frees its slot; other sessions continue                           |
+| `session/cancel`                        | Cancels the turn and pending permission waits, and the prompt answers `cancelled`; an unknown session is ignored; an unresponsive worker is stopped after a bounded wait |
+| `session/close`                         | Cancels ongoing work, stops that session's worker and frees its slot; other sessions continue; closing an unknown session succeeds |
 | Disconnect / stdin EOF / output failure | Stops the connection's workers and releases owned resources before the broker exits                                     |
 
 The adapter does not replay a prompt after worker failure or timeout. Already streamed output can be partial; a failure does not imply that no tools ran. ACP owns disposable worker process trees. Shutdown allows ten seconds for native cleanup before forced termination; the existing tree helper also bounds its post-kill wait. Detached descendant discovery depends on platform process enumeration. Native transcript IDs identify sessions across connections; only active worker handles belong to the current connection. Load and resume require the transcript's original cwd and use the current client MCP definitions. Load replay includes user/assistant text, stored images, visible extension messages (including external API input), and bounded textual tool results. A compaction replays as one completed tool call (`Context compacted`) whose text is the summary a person reads: the tokens summarized, the summary body, where the archive and transcript are, and the kept user messages, without the tags and recovery instructions written for the model. Hidden extension context, reasoning and binary tool results are not projected.
 
 During a prompt, a compaction (manual, automatic or overflow recovery) shows as a tool call with kind `other` that is `in_progress` while it runs and ends `completed` with the same summary text, or `failed` with the error message or `Compaction cancelled.`. A failed compaction does not change the prompt's stop reason; a turn that cannot continue still fails through its own error. Reloading or resuming an idle session on the same connection replaces its worker with the supplied MCP definitions; a busy session is refused without cancelling its work.
 
-Live and restored textual tool results use the same size limit and explicit truncation notice. A tool call's title is the tool's name and, when the call states one, its `reason` (`bash: Run the focused tests`); its other arguments are not projected.
+A provider retry shows as an `agent_thought_chunk` naming the wait and the attempt, outside the reply text; its `_meta["octocode/autoRetry"]` holds `attempt`, `maxAttempts` and `delayMs`.
+
+Live and restored textual tool results use the same size limit and explicit truncation notice. A tool call's title is the tool's name and, when the call states one, its `reason` (`bash: Run the focused tests`); `name` is the tool's name and `kind` its ACP category (`execute`, `edit`, `read`, `search`, `fetch`, otherwise `other`). Its other arguments are not projected.
 
 A prompt that invokes a command waits for the work that command dispatches, including nested extension messages. A command that starts no work completes immediately. Work started through the local API or native team delivery also streams updates to the connected ACP client. An overlapping ACP prompt is refused without stopping that work or closing the session; the client can cancel the observed work with `session/cancel` and send another prompt after it settles. A prompt the live worker rejects, such as a built-in command that exists only in the interactive terminal (`/context`), fails that `session/prompt` with a JSON-RPC error carrying the worker's message (code -32603); the session and worker stay open and accept the next prompt. A lost response or a worker that exits ends the session, as described above.
 
@@ -69,6 +71,10 @@ Startup-triggered work uses the persistent session ID. A restored worker opens i
 Startup hooks can await native permission replies. The client may receive updates or permission requests before `session/new` or `session/load` completes; their canonical session ID already accepts cancellation and close. Unsupported startup dialogs are cancelled. New ACP prompts are refused until startup finishes, and disconnect also cleans up workers whose startup has not completed.
 
 The `--session-dir` and session-directory environment overrides are resolved once against the broker's launch directory and shared with workers. For workspace-specific settings that use a relative session directory, request `session/list` with that workspace's `cwd`: an unfiltered list cannot enumerate arbitrary relative directories in other workspaces. Load and resume resolve the configured directory against the requested workspace.
+
+## Errors
+
+A session that does not exist or is not active on the connection is `-32002` with `data.sessionId`. A folder the user has not trusted is `-31000`, with the fix in `data.command`: ACP reserves `-32768` to `-32000`, and `-32002` would tell a client the session is gone. Malformed JSON is `-32700`, a request before `initialize` `-32600`, an unknown method or one this agent did not advertise (`authenticate`, `session/fork`) `-32601`, bad parameters such as a relative `cwd` or an invalid list cursor `-32602`. A worker that cannot start is `-32603` with the worker's own words, such as another process having that session open.
 
 ## Prompt content
 
@@ -102,13 +108,15 @@ The command and arguments execute without a shell. Client environment and HTTP h
 
 Registration is verified during session startup. A successfully registered server may still fail to connect; ordinary MCP connection diagnostics remain in effect. Host MCP configuration and its precedence remain documented in [MCP](mcp.md) and the [configuration map](../../../CONFIGURATIONS.md).
 
+After a session starts, the adapter sends `available_commands_update` with the commands a prompt can run there: native commands, prompt templates and skills. Built-in terminal commands are not listed, because a prompt cannot run them.
+
 ## Current limits
 
 For outbound calls (`agent` with `type: "external"` and `transport: "acp"`), each turn retains up to 1 MiB of update data plus a 64 KiB text tail; connection stderr keeps a 64 KiB tail. Overflow is saved through the existing private session artifact lifecycle with credential-pattern redaction, capped at 32 MiB per archive. Truncation records identify the archive, whether it is complete, omitted bytes and write failures. Final stop reasons and uncertain-execution errors remain available even when evidence cannot be archived. These are outbound capture limits, separate from the inbound client's rendering limits. A peer's `available_commands_update` (its own slash-command catalog) is never retained in replies, and `config_option_update` refreshes the connection's model instead of appearing as an update.
 
 Credential matching spans text deltas and stderr chunks. The redactor holds unfinished logical lines, including credential introducers that continue over a newline, up to 64 KiB per stream. PEM private-key blocks are redacted through their matching footer or capture end; oversized blocks remain withheld through the footer. Longer unfinished units are omitted until a safe boundary and counted explicitly. Captures track up to eight unfinished text streams with identities bounded to 1,024 UTF-8 bytes. Archived text notifications retain their metadata and point to separate redacted `text_stream` records; readers must use those records to recover retained text. A partial capture, buffered text, redaction omission or write failure makes `archiveComplete` false. This is pattern-based redaction, not a guarantee that arbitrary confidential content will be recognized.
 
-The adapter does not expose session fork/delete, additional workspace roots, client filesystem or terminal delegation, protocol model/mode/configuration changes, steering, slash-command discovery, plans, usage updates or rich diffs. Nonempty `additionalDirectories` are rejected during session creation, load and resume. Close an individual session to free a slot, or disconnect to release all of the connection's sessions.
+The adapter does not expose session fork/delete, additional workspace roots, client filesystem or terminal delegation, protocol model/mode/configuration changes, steering, plans, usage updates or rich diffs. Nonempty `additionalDirectories` are rejected during session creation, load and resume. Close an individual session to free a slot, or disconnect to release all of the connection's sessions.
 
 Generic UI dialogs and terminal custom components are not supported. A native feature that requires one of those interactions may be unavailable through ACP even though its tool is registered. Existing native application policy is not an operating-system sandbox.
 
@@ -116,31 +124,33 @@ The [design RFC](../../../docs/RFC_ACP_EXPOSURE.md) tracks architecture and [dat
 
 ## Talk to an already running session
 
-Enable the [local session API](session-api.md) with `OCTOCODE_API=1` when a terminal session or an ACP worker must receive messages from other local processes. Use `octocode-api list`, `status`, `send`, `watch` and `abort` to discover it and exchange messages. For ACP workers, match the API's `status.sessionId` to the ACP session ID; the ACP client retains the broker's stdin and stdout.
+ACP cannot do this: its [one transport](https://agentclientprotocol.com/protocol/v1/transports) has the client launch the agent and own its stdio, so it starts a process rather than reaching one. The [agent-to-agent RFC](../../../docs/RFC_AGENT_TO_AGENT.md) has the comparison.
+
+A terminal session and an ACP worker both serve the [local session API](session-api.md) by default, on an owner-only socket. Use `octocode-api list`, `status`, `send`, `watch` and `abort` to discover one and exchange messages; `--to` takes its instance ID, process name (`octocode-rpc-c0ea9f3e`), session ID or pid, so an ACP session ID works as it is. The ACP client retains the broker's stdin and stdout. A broker names itself `octocode-acp-<pid>`; its workers are the sessions.
+
+A message sent this way reaches the worker's model marked as external, and the connected client sees it as an `agent_message_chunk` whose `_meta["octocode/external"]` holds the caller's claim and transport.
 
 The API guide owns runnable examples, session guards, idempotency keys, timeouts, event replay and cancellation semantics. API-started work is also visible to a connected ACP client.
 
 ## Connect from Octocode to another agent
 
-Use the native `agent` tool with this envelope, replacing the executable and workspace with real absolute paths:
+Call the native `agent` tool with `type` `external` and these flat fields (the `external` type is declared only when the `externalAgents` setting is on), replacing the executable and workspace with real absolute paths:
 
 ```json
 {
 	"type": "external",
-	"input": {
-		"action": "connect",
-		"transport": "acp",
-		"id": "peer",
-		"vendor": "octocode",
-		"command": "/absolute/path/to/octocode",
-		"args": ["--mode", "acp"],
-		"cwd": "/absolute/path/to/workspace"
-	},
+	"externalAction": "connect",
+	"transport": "acp",
+	"connection": "peer",
+	"vendor": "octocode",
+	"command": "/absolute/path/to/octocode",
+	"args": ["--mode", "acp"],
+	"cwd": "/absolute/path/to/workspace",
 	"reason": "Exchange messages with the requested peer"
 }
 ```
 
-Then send `agent` input `{"type":"external","input":{"action":"prompt","id":"peer","text":"Reply with ACK.","timeoutMs":120000},"reason":"Check the peer reply"}`. Reuse `peer` for subsequent messages to preserve its context; finish with action `disconnect`. `cancel` stops active work; for an ACP peer it also stops the owned process, so connect again before another prompt. `list` shows connections, discoverable local instances and `acpAgents`: known ACP adapters found as executable files on `PATH` (`claude-agent-acp`, `codex-acp`, `gemini --acp`, `opencode acp`) with the `vendor`, `command` and `args` to connect them. Discovery starts nothing, so a listed agent may still be signed out or refuse its default model. A connect result reports the peer's `model` and up to 100 `models` its model config option accepts (`modelsMore` counts the rest), read from the `session/new` or `session/load` response; adapters that only send the unstable `models` field are shown but cannot be switched. Pass one as `model` on connect to apply it with `session/set_config_option` before the connection is returned; a value the peer does not offer fails the connection and names what it offers. `list` and prompt results keep the current `model`. For an existing Octocode process, connect with `transport: "octocode"` and its exact discovered `instanceId` instead of a command. This reuses the local API and does not launch another process.
+Then call `agent` with `{"type":"external","externalAction":"prompt","connection":"peer","promptText":"Reply with ACK.","timeoutMs":120000,"reason":"Check the peer reply"}`. Reuse `peer` for subsequent messages to preserve its context; finish with `externalAction` `disconnect`. `cancel` stops active work; for an ACP peer it also stops the owned process, so connect again before another prompt. `list` shows connections, discoverable local instances and `acpAgents`: known ACP adapters found as executable files on `PATH` (`claude-agent-acp`, `codex-acp`, `gemini --acp`, `opencode acp`) with the `vendor`, `command` and `args` to connect them. Discovery starts nothing, so a listed agent may still be signed out or refuse its default model. A connect result reports the peer's `model` and up to 100 `models` its model config option accepts (`modelsMore` counts the rest), read from the `session/new` or `session/load` response; adapters that only send the unstable `models` field are shown but cannot be switched. Pass one as `model` on connect to apply it with `session/set_config_option` before the connection is returned; a value the peer does not offer fails the connection and names what it offers. `list` and prompt results keep the current `model`. For an existing Octocode process, connect with `transport: "octocode"` and `instanceId` set to its instance ID or process name instead of a command; `cwd` defaults to its folder. This reuses the local API and does not launch another process.
 
 A prompt can carry `refs`, such as `["msg#41", "report:<agent-id>"]`, instead of the model copying that content into `text`. Octocode resolves them locally with the resolver subagent tasks use, then appends a `## Referenced content` block to `text`. The shared [handoff limits](native-features.md#communication-and-results) apply. A peer is not assumed to read local artifact paths, so a report that exceeds the complete inline limit is refused with a request for a focused summary; no inaccessible excerpt is sent. Each item is fenced with its producer, time and sha256, and secrets are redacted. This happens before the message-send hooks and the permission dialog, so you approve the exact text the peer receives. If any reference cannot be resolved, the call fails with `execution: "not-sent"` and names each failing reference. The model sees the reply's `text`, `stopReason` and `messageId`, plus `remoteMessageId` for an Octocode peer. ACP protocol updates repeat the text and carry tool output, so they are saved to a content-hashed JSONL file named in `updatesSaved`. The tool result's details keep them whole. A failure's `partial` reply is handled the same way.
 
@@ -155,20 +165,18 @@ Use the separately installed [Codex ACP adapter](https://github.com/agentclientp
 ```json
 {
 	"type": "external",
-	"input": {
-		"action": "connect",
-		"transport": "acp",
-		"id": "codex-peer",
-		"vendor": "codex",
-		"command": "/absolute/path/to/codex-acp",
-		"args": [],
-		"cwd": "/absolute/path/to/workspace"
-	},
+	"externalAction": "connect",
+	"transport": "acp",
+	"connection": "codex-peer",
+	"vendor": "codex",
+	"command": "/absolute/path/to/codex-acp",
+	"args": [],
+	"cwd": "/absolute/path/to/workspace",
 	"reason": "Exchange messages with the requested Codex session"
 }
 ```
 
-Send subsequent `prompt` actions to `codex-peer`, then `disconnect` when finished. The adapter normally uses its bundled Codex binary. A launcher can set `CODEX_PATH` to a selected binary and `CODEX_HOME` to its configured home before starting the adapter. Adapter-specific settings belong to that launcher or Codex configuration; they are not Octocode `connect` fields.
+Send subsequent `externalAction: "prompt"` calls to `codex-peer`, then `disconnect` when finished. The adapter normally uses its bundled Codex binary. A launcher can set `CODEX_PATH` to a selected binary and `CODEX_HOME` to its configured home before starting the adapter. Adapter-specific settings belong to that launcher or Codex configuration; they are not Octocode `connect` fields.
 
 The [2026-10-25 live check](../../../docs/FEATURE_VALIDATION.md#real-codex-and-octocodecode-exchange--2026-10-25) verified real model replies and retained context with adapter **2.0.0** and Codex **0.163.0-alpha.11.2**. It also verified a return message through a test-only MCP callback into Octocode's local API. That callback was explicitly configured for one session and message; it is not a built-in Octocode MCP server or unsolicited ACP delivery.
 
@@ -176,7 +184,7 @@ Codex's read-only shell sandbox refused direct access to the local API socket in
 
 ## Verify the transports
 
-Run the ACP package's broker/client tests from the repository root with `yarn workspace @octocodeai/octocode-acp test`. CLI, RPC and local-API integration tests remain in coding-agent.
+Run the ACP package's broker/client tests from the repository root with `yarn workspace @octocodeai/octocode-acp test`. CLI, RPC and local-API integration tests remain in coding-agent. From `packages/coding-agent`, `yarn vitest run --config vitest.e2e.config.ts test/octocode/e2e-acp-conformance.test.ts test/octocode/e2e-reach-process.test.ts` drives real brokers and workers on a scripted model with a plain JSON-RPC client: malformed input, permissions, cancellation, load, resume, list, close, client MCP servers, and reaching a running process by name.
 
 From `packages/coding-agent`, the offline reliability runner launches real subprocesses with controlled ACP peers, checks stateful and concurrent conversations, injects uncertain failures and verifies cleanup:
 

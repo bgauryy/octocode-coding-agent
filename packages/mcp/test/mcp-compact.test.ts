@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { octocodeCompactOverrides } from "../src/presets/octocode/compact-overrides.ts";
 import {
 	catalogHash,
 	checkFidelity,
@@ -141,7 +142,7 @@ describe("renderServer on the Octocode catalog", () => {
 		expect(checkFidelity(octocode, text)).toEqual({ ok: true, problems: [] });
 		expect(text.length).toBeLessThan(json * 0.8);
 		expect(text).toContain("declare namespace octocode {");
-		expect(text).toContain("call a tool as mcp__octocode__<function>");
+		expect(text).not.toContain("catalog ");
 	});
 
 	it("is deterministic and hashes independently of key and tool order", () => {
@@ -249,12 +250,28 @@ describe("server-level compaction", () => {
 		const lsp = toolBlock(text, "lspSearch") ?? "";
 		// The server's flat schema states in each field's doc which operations take or need it; the file groups them.
 		expect(lsp).not.toMatch(/Required except with operation/);
-		expect(lsp).toMatch(
-			/operation\?: "definition" \| "typeDefinition" \| "implementation";(?:\n[^\n]*)*?\n\t+line: number;/,
-		);
+		expect(lsp).toMatch(/operation\?: "definition" \| "typeDefinition" \| "implementation";/);
+		expect(lsp).not.toContain("required except with operation");
+		// A rule the schema's item states for several fields reads as required on the operations it binds, and nowhere else.
+		expect(lsp).toMatch(/operation\?: "hover";[^}]*symbolName: string;\n\t+line: number;/);
 		expect(lsp).toMatch(/operation\?: "documentSymbols" \| "diagnostic";\n\t+path: string;\n\t+\} \|/);
+		expect(lsp).toMatch(/operation\?: "workspaceSymbol";\n\t+(\/\*\*[^\n]*\*\/ )?symbolQuery: string;/);
+		// The server refuses these on the other operations, so no shared optional field offers them there. Its schema says
+		// so for `symbolQuery`, `number` and the like; the shipped overrides say it for `symbolName` and `line`.
+		expect(lsp).not.toContain("symbolQuery?: string;");
+		const shipped = toolBlock(renderServer(octocode, octocodeCompactOverrides(octocode)), "lspSearch") ?? "";
+		expect(shipped).not.toContain("symbolName?: string;");
+		expect(shipped).not.toContain("line?: number;");
+		expect(shipped).not.toContain("Not with operation");
+		expect(shipped).toMatch(/operation\?: "documentSymbols" \| "diagnostic";\n\t+path: string;\n\t+\} \|/);
+		const history = toolBlock(text, "ghGetHistoryItem") ?? "";
+		for (const field of ["number?: number;", "ref?: string;", "baseRef?: string;", "headRef?: string;"])
+			expect(history, field).not.toContain(field);
+		const artifact = toolBlock(text, "artifactSearch") ?? "";
+		for (const field of ["keywords?: string[];", "packageName?: string;"]) expect(artifact, field).not.toContain(field);
 		const ast = toolBlock(text, "astSearch") ?? "";
-		expect(ast).toMatch(/\boperation: "syntaxTree";(?:\n[^\n]*)*?\*\/ line\?: number;/);
+		expect(ast).toMatch(/\boperation: "syntaxTree";/);
+		expect(ast).not.toContain("For line, namedOnly");
 		expect(ast).not.toMatch(/\boperation\?:/);
 		expect(ast).not.toMatch(/Only with operation/);
 		expect(checkFidelity(octocode, text).problems).toEqual([]);
@@ -320,11 +337,11 @@ describe("checkFidelity", () => {
 		expect(checkFidelity(catalog, text).problems).toContain('pick: loses "b"');
 	});
 
-	it("fails overrides that add URLs, exceed limits or name unknown tools", () => {
+	it("fails overrides that add URLs or name unknown tools, whatever their length", () => {
 		const overrides = { tools: { pick: `See https://evil.example ${"x".repeat(700)}`, ghost: "Nope." } };
 		const problems = checkFidelity(catalog, renderServer(catalog, overrides), overrides).problems.join("\n");
 		expect(problems).toContain("adds URL https://evil.example");
-		expect(problems).toContain("exceeds 600");
+		expect(problems).not.toContain("chars");
 		expect(problems).toContain("unknown tool ghost");
 	});
 

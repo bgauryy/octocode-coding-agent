@@ -56,7 +56,7 @@ describe("layout", () => {
 			skills: path.join(root, ".octocode", "skills"),
 			agents: path.join(root, ".octocode", "agents"),
 			hooks: path.join(root, ".octocode", "hooks.json"),
-			tmp: path.join(root, ".octa", "code", "temp"),
+			tmp: path.join(root, ".octocode", "code", "temp"),
 		});
 	});
 });
@@ -98,11 +98,11 @@ describe("session folders", () => {
 			});
 			setCurrentSession(name, b, second);
 			expect(withSessionStorage(second, () => sessionOutputDir("bash"))).toBe(
-				path.join(b, ".octa/code/temp/sessions", name, "bash"),
+				path.join(b, ".octocode/code/temp/sessions", name, "bash"),
 			);
 			expect(await late).toEqual([
-				path.join(a, ".octa/code/temp/sessions", name, "output"),
-				path.join(a, ".octa/code/session-data", name, "archive"),
+				path.join(a, ".octocode/code/temp/sessions", name, "output"),
+				path.join(a, ".octocode/code/session-data", name, "archive"),
 			]);
 		} finally {
 			setCurrentSession(undefined);

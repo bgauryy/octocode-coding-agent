@@ -1,10 +1,14 @@
 import { type TSchema, Type } from "typebox";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { toolHint } from "./util.ts";
 
 /**
- * The `reason` argument every native tool call carries: why the call is made, in the model's words. The registry
- * wrapper adds it to each native tool's parameters (`withReason`) and removes it before the tool runs (`withoutReason`);
- * permission requests and tool rows read it from the call's input (`callReason`).
+ * The `reason` argument every native tool call carries: why the call is made, in the model's words. It is the first
+ * property of each native tool's declared schema and stays in `required` so the model sees it is expected
+ * (`withReason`), but the call never fails for it: before validation `settleReason` fills a missing or empty one, from
+ * a nested value the model wrote, else from the call's arguments (`derivedReason`). The registry wrapper removes it
+ * before a tool that does not declare it runs (`withoutReason`); permission requests and tool rows read it from the
+ * call's input (`callReason`).
  */
 const REASON_DESCRIPTION = "Why this call, one sentence";
 
@@ -18,12 +22,14 @@ type SchemaShape = {
 	items?: TSchema;
 };
 
-/** The first direct object argument or object array item's text reason, in argument order. */
+const filled = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+
+/** The first direct object argument or object array item's non-empty text reason, in argument order. */
 function nestedReason(input: Record<string, unknown>): string | undefined {
 	for (const value of Object.values(input)) {
-		if (isRecord(value) && typeof value.reason === "string") return value.reason;
+		if (isRecord(value) && filled(value.reason)) return value.reason;
 		if (!Array.isArray(value)) continue;
-		for (const item of value) if (isRecord(item) && typeof item.reason === "string") return item.reason;
+		for (const item of value) if (isRecord(item) && filled(item.reason)) return item.reason;
 	}
 	return undefined;
 }
@@ -38,35 +44,6 @@ export function callReason(input: unknown): string | undefined {
 	return typeof reason === "string" ? reason.trim() || undefined : undefined;
 }
 
-/** Add an optional call-reason slot to a direct object argument or to an array's object items. */
-function withNestedReason(property: TSchema): TSchema {
-	const schema = property as unknown as SchemaShape;
-	if (schema.type === "object" && isRecord(schema.properties) && !("reason" in schema.properties)) {
-		return {
-			...property,
-			// No description: the required top-level `reason` is the one the model reads; this slot only lets `liftNestedReason` accept a value it wrote here.
-			properties: { ...schema.properties, reason: Type.Optional(Type.String()) },
-		};
-	}
-	if (schema.type === "array" && schema.items) {
-		const items = withNestedReason(schema.items);
-		return items === schema.items ? property : { ...property, items };
-	}
-	return property;
-}
-
-function withNestedReasons(properties: Record<string, unknown>): Record<string, unknown> {
-	let changed = false;
-	const mapped = Object.fromEntries(
-		Object.entries(properties).map(([name, property]) => {
-			const nested = withNestedReason(property as TSchema);
-			changed ||= nested !== property;
-			return [name, nested];
-		}),
-	);
-	return changed ? mapped : properties;
-}
-
 /** Whether the tool declared its own top-level `reason`, which its `execute` retains. */
 export function declaresReason(parameters: TSchema): boolean {
 	const properties = (parameters as unknown as SchemaShape).properties;
@@ -74,32 +51,71 @@ export function declaresReason(parameters: TSchema): boolean {
 }
 
 /**
- * The parameters with a required `reason` added. A tool that declares `reason` itself keeps its own definition.
- * Direct object arguments and object array items also accept an optional `reason`; `liftNestedReason` copies the first
- * one to the required top level before validation. Parameters without object properties are unchanged.
+ * The parameters with `reason` first and required. A tool that declares `reason` itself keeps its own definition,
+ * moved first. Parameters without object properties are unchanged, and so are parameters that already start with a
+ * required `reason`.
  */
 export function withReason<T extends TSchema>(parameters: T): T {
 	const schema = parameters as unknown as SchemaShape;
-	if (!isRecord(schema.properties)) return parameters;
-	const properties = withNestedReasons(schema.properties);
-	if ("reason" in schema.properties) {
-		return properties === schema.properties ? parameters : { ...parameters, properties };
-	}
+	const properties = schema.properties;
+	if (!isRecord(properties)) return parameters;
+	const required = schema.required ?? [];
+	if (Object.keys(properties)[0] === "reason" && required.includes("reason")) return parameters;
+	const { reason: declared, ...others } = properties;
 	return {
 		...parameters,
-		properties: { ...properties, reason: reasonSchema() },
-		required: [...(schema.required ?? []), "reason"],
+		properties: { reason: declared ?? reasonSchema(), ...others },
+		required: required.includes("reason") ? required : [...required, "reason"],
 	};
 }
 
+/** `value` without a nested `reason` the `declared` schema has no slot for: a direct object argument or an array's object items. */
+function withoutUndeclaredNested(value: unknown, declared: TSchema): unknown {
+	const schema = declared as unknown as SchemaShape;
+	if (schema.type === "object" && isRecord(schema.properties) && !("reason" in schema.properties)) {
+		return isRecord(value) && "reason" in value ? withoutReason(value) : value;
+	}
+	const itemSchema = schema.items;
+	if (schema.type === "array" && itemSchema && Array.isArray(value)) {
+		const items = value.map((item) => withoutUndeclaredNested(item, itemSchema));
+		return items.some((item, index) => item !== value[index]) ? items : value;
+	}
+	return value;
+}
+
 /**
- * Copy the first nested reason to the top level when that property is absent. The top level wins; nested values stay
- * in place because they can also be meaningful per-item arguments (for example a file change or coordinate lock).
+ * What a call with no stated reason says it is for: the tool name and the most telling argument (`toolHint`, from the
+ * first `queries` item when the call has none of its own), else the tool name alone. Never empty.
  */
-export function liftNestedReason<T>(params: T): T {
-	if (!isRecord(params) || "reason" in params) return params;
-	const reason = nestedReason(params);
-	return reason === undefined ? params : { ...params, reason };
+export function derivedReason(toolName: string, input: unknown): string {
+	const queries = isRecord(input) && Array.isArray(input.queries) ? input.queries[0] : undefined;
+	const hint = toolHint(input) || toolHint(queries);
+	return hint ? `${toolName} ${hint}` : toolName;
+}
+
+/** Whether `input`'s reason is the one `derivedReason` makes from the rest of the arguments, not words the model wrote. */
+export function hasDerivedReason(toolName: string, input: unknown): boolean {
+	return isRecord(input) && filled(input.reason) && input.reason === derivedReason(toolName, withoutReason(input));
+}
+
+/**
+ * The call's arguments with the reason settled before validation, so a call never fails for it. A top-level non-empty
+ * text wins. Else the first nested one is lifted, else `derivedReason` fills it. A nested `reason` the model wrote
+ * where `declared` has no slot is removed: it is not the tool's input and would fail strict arguments. Parameters
+ * without object properties are returned unchanged.
+ */
+export function settleReason<T>(params: T, toolName: string, declared: TSchema): T {
+	const shape = declared as unknown as SchemaShape;
+	if (!isRecord(params) || !isRecord(shape.properties)) return params;
+	const changes: Record<string, unknown> = {};
+	for (const [name, property] of Object.entries(shape.properties)) {
+		if (name === "reason" || !(name in params)) continue;
+		const value = withoutUndeclaredNested(params[name], property as TSchema);
+		if (value !== params[name]) changes[name] = value;
+	}
+	const cleaned = Object.keys(changes).length > 0 ? { ...params, ...changes } : params;
+	if (filled(params.reason)) return cleaned;
+	return { ...cleaned, reason: nestedReason(params) ?? derivedReason(toolName, cleaned) };
 }
 
 /** The arguments without `reason`, for a tool that does not declare it. Top level only: nested per-query `reason` fields are the tool's own input, unlike the identity key in `loop-guard.ts`. */

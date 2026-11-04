@@ -25,6 +25,44 @@ describe("aborting a running tool", () => {
 		expect(outcome.result.content).toEqual([{ type: "text", text: ABANDONED_MESSAGE }]);
 	});
 
+	describe("a tool that needs longer than the default grace to stop", () => {
+		/** Takes `stopMs` to finish after the abort, then returns what it has. */
+		const slowToStop = (stopMs: number, abortGraceMs?: number): AgentTool<any> => ({
+			...toolWith(
+				(_id, _args, signal) =>
+					new Promise<AgentToolResult<any>>((resolve) => {
+						signal?.addEventListener("abort", () =>
+							setTimeout(
+								() => resolve({ content: [{ type: "text", text: "partial output" }], details: undefined }),
+								stopMs,
+							),
+						);
+					}),
+			),
+			...(abortGraceMs === undefined ? {} : { abortGraceMs }),
+		});
+		const abortedRun = (tool: AgentTool<any>) => {
+			const controller = new AbortController();
+			setTimeout(() => controller.abort(), 10);
+			return runToolCall(call, { tools: [tool], assistantMessage, context, signal: controller.signal });
+		};
+
+		it("keeps its own result when it declares the grace it needs", async () => {
+			const outcome = await abortedRun(slowToStop(150, 1000));
+			expect(outcome.result.content).toEqual([{ type: "text", text: "partial output" }]);
+		});
+
+		it("is abandoned without a declared grace", async () => {
+			const outcome = await abortedRun(slowToStop(150));
+			expect(outcome.result.content).toEqual([{ type: "text", text: ABANDONED_MESSAGE }]);
+		});
+
+		it("is abandoned when it overruns the grace it declared", async () => {
+			const outcome = await abortedRun(slowToStop(400, 100));
+			expect(outcome.result.content).toEqual([{ type: "text", text: ABANDONED_MESSAGE }]);
+		});
+	});
+
 	it("ignores late updates, results and rejections from the abandoned tool without unhandled rejections", async () => {
 		const unhandled: unknown[] = [];
 		const onUnhandled = (reason: unknown) => unhandled.push(reason);

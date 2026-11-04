@@ -97,6 +97,7 @@ describe.skipIf(process.platform === "win32")("API CLI subprocess", () => {
 			"message.send",
 			{
 				text: "--please inspect",
+				caller: { pid: expect.any(Number), cwd: process.cwd() },
 				from: "codex",
 				mode: "followUp",
 				key: "k1",
@@ -108,6 +109,26 @@ describe.skipIf(process.platform === "win32")("API CLI subprocess", () => {
 		);
 		const waited = await run(home, ["send", "--wait", "hello"]).done;
 		expect(waited).toEqual({ code: 0, stdout: "reply from the agent\n", stderr: "" });
+	});
+
+	it.each([
+		["error", { id: "x1", text: "", stopReason: "error", errorMessage: "401: Invalid API key" }],
+		["aborted", { id: "x1", text: "partial", stopReason: "aborted" }],
+		["length", { id: "x1", text: "cut", stopReason: "length" }],
+	])("--wait exits 1 and puts the result on stderr when a run ends in %s", async (_name, result) => {
+		const { home } = await fixture(async () => result);
+		const waited = await run(home, ["send", "--wait", "hello"]).done;
+		expect(waited.code).toBe(1);
+		expect(waited.stdout).toBe("");
+		expect(JSON.parse(waited.stderr)).toEqual(result);
+	});
+
+	it("--wait treats a finished run as a success, and without --wait a receipt is never judged", async () => {
+		const { home } = await fixture(async (_method, params) =>
+			params.wait ? { id: "x1", text: "fine", stopReason: "stop" } : { id: "x1", queued: "turn", stopReason: "error" },
+		);
+		expect(await run(home, ["send", "--wait", "hello"]).done).toEqual({ code: 0, stdout: "fine\n", stderr: "" });
+		expect((await run(home, ["send", "hello"]).done).code).toBe(0);
 	});
 
 	it("rejects misspelled, misplaced and invalid numeric flags without contacting an agent", async () => {

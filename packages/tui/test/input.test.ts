@@ -41,11 +41,11 @@ describe("Input component", () => {
 		input.setValue("a\x1b]52;c;eA==\x07b\u009b2Jc\nd\te");
 
 		assert.strictEqual(input.getValue(), "a]52;c;eA==b2Jc d    e");
-		// Only the input's own cursor markers (`ESC _ octo:… BEL`) remain.
+		// Only the input's own cursor markers (`ESC _ octo:… ESC \`) remain.
 		const drawn = input
 			.render(80)
 			.join("")
-			.replace(/\x1b_octo:[^\x07]*\x07/g, "");
+			.replace(/\x1b_octo:[^\x1b]*\x1b\\/g, "");
 		assert.ok(!/[\x00-\x1f\x7f-\x9f]/.test(drawn), JSON.stringify(drawn));
 	});
 

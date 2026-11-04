@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { handleClipboardPaste } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const mocks = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ test("Finder file paths take precedence over their icon image", async () => {
 	const context = {
 		editor: { insertTextAtCursor },
 		showError: vi.fn(),
+		uiStore: createUiStore(),
 		ui: { requestRender: vi.fn() },
 	};
 	await handleClipboardPaste(createFakeHost(context));
@@ -88,6 +90,7 @@ test.each([
 			insertTextAtCursor,
 		},
 		showError: vi.fn(),
+		uiStore: createUiStore(),
 		ui: { requestRender: vi.fn() },
 	};
 	await handleClipboardPaste(createFakeHost(context));
@@ -109,8 +112,8 @@ test("bash mode shell-quotes file paths and inserts them as arguments", async ()
 			getText: () => "catDEST",
 			insertTextAtCursor,
 		},
-		isBashMode: true,
 		showError: vi.fn(),
+		uiStore: createUiStore({ editor: { bashMode: true } }),
 		ui: { requestRender: vi.fn() },
 	};
 	await handleClipboardPaste(createFakeHost(context));

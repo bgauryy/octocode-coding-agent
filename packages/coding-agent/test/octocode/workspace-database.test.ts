@@ -54,7 +54,7 @@ it("isolates worktree boards and retains named history after a checkout goes awa
 		expect(delegated.store.get("B1")?.title).toBe("Main");
 
 		const copy = path.join(root, "forged");
-		fs.cpSync(path.join(main, ".octa"), path.join(copy, ".octa"), { recursive: true });
+		fs.cpSync(path.join(main, ".octocode"), path.join(copy, ".octocode"), { recursive: true });
 		expect(() => registeredWorkspace(copy, agent)).toThrow(/different directory/);
 		git("worktree", "remove", "--force", linked);
 		expect(

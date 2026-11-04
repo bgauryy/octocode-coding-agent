@@ -22,7 +22,11 @@ export interface OklchColorValue {
 
 /** A concrete color. Every color can be converted to sRGB, so color math never fails. */
 export type Color = IndexedColor | RgbColorValue | OklchColorValue;
-export type TerminalColorMode = "256color" | "truecolor";
+/**
+ * How much color the terminal gets: `"none"` writes no color sequence at all (NO_COLOR, `TERM=dumb`), while text
+ * attributes (bold, dim, underline, inverse) still apply.
+ */
+export type TerminalColorMode = "none" | "256color" | "truecolor";
 export type ColorMixSpace = "oklch" | "srgb";
 
 export interface OklchChannels {
@@ -296,7 +300,16 @@ function rgbToAnsi256(color: RgbColor): number {
 	return cubeIndex;
 }
 
+/**
+ * Whether the environment asks for no ANSI color: a non-empty `NO_COLOR` (https://no-color.org) or `TERM=dumb`.
+ * Bold, dim, underline and inverse stay allowed, and motion is a separate choice.
+ */
+export function isColorDisabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+	return Boolean(env.NO_COLOR) || env.TERM?.toLowerCase() === "dumb";
+}
+
 function colorAnsi(color: Color, mode: TerminalColorMode, background: boolean): string {
+	if (mode === "none") return "";
 	if (color.kind === "indexed") return `\x1b[${background ? 48 : 38};5;${color.index}m`;
 
 	const rgb = colorToRgb(color);

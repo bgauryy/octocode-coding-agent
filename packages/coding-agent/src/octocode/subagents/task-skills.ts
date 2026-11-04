@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { formatSkillsForPrompt } from "../../core/skills.ts";
 import type { SlashCommandInfo } from "../../core/slash-commands.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
@@ -7,18 +8,18 @@ import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import type { Run } from "./claim.ts";
 import { type AgentProfile, profileTools } from "./profiles.ts";
 
-/** A lean child reads inlined skills only: each body is cut here so one skill cannot fill a small model's context. */
-const MAX_INLINE_SKILL_BYTES = 64 * 1024;
-
 /**
- * Where a child's skills come from. `names` absent: it inherits this session's catalog, listed in its prompt. Otherwise
- * the named skills (the task's `skills`, else the profile's) ride in its task (`inTask`): listed for its `skill` tool,
- * or inlined whole for a lean child, which has no skill tool (`inline`). A lean child gets none unless some are named.
+ * Where a child's skills come from. `names` absent: it inherits this session's catalog, listed in its prompt, and its
+ * profile's skills (`roleSkills`) are inlined in its role section (`withRoleSkills`), so a role never narrows what the
+ * child can load. Otherwise the named skills (the task's `skills`, or a lean profile's) ride in its task (`inTask`):
+ * listed for its `skill` tool, or inlined whole for a lean child, which has no skill tool (`inline`). A lean child gets
+ * none unless some are named.
  */
 export interface TaskSkillPlan {
 	names?: string[];
 	inTask: boolean;
 	inline: boolean;
+	roleSkills?: string[];
 }
 
 export function taskSkillPlan(
@@ -31,8 +32,38 @@ export function taskSkillPlan(
 	// failing the start. Skills the task names are the caller's choice and still fail when unknown.
 	const loadable = commands && new Set(commands.filter((c) => c.source === "skill").map((c) => c.name));
 	const fromRole = loadable ? profile?.skills?.filter((name) => loadable.has(name)) : profile?.skills;
-	const names = requested ?? fromRole ?? (inline ? [] : undefined);
-	return names === undefined ? { inTask: false, inline } : { names, inTask: true, inline };
+	const names = requested ?? (inline ? (fromRole ?? []) : undefined);
+	if (names !== undefined) return { names, inTask: true, inline };
+	return fromRole?.length ? { inTask: false, inline, roleSkills: fromRole } : { inTask: false, inline };
+}
+
+type SnapshotSkill = ReturnType<typeof adoptSkillResourceSnapshot>["skills"][number];
+
+/** One SKILL.md as a child reads it inlined: its body and where its references resolve. */
+function inlineSkillBlock(skill: SnapshotSkill): string {
+	const text = stripFrontmatter(fs.readFileSync(skill.filePath, "utf8")).trim();
+	return `<skill name="${skill.name}" location="${skill.filePath}">\n${renderInstruction("system/skill-references.md", { dir: skill.baseDir })}\n\n${text}\n</skill>`;
+}
+
+/**
+ * The profile a child starts with: its role prompt followed by the role's skills, inlined. The role section is cached and
+ * the same for every child of the profile, so siblings share the text and none spends a turn loading it. A skill the
+ * snapshot does not hold, or that its model may not invoke, is left out.
+ */
+export function withRoleSkills<T extends AgentProfile | undefined>(
+	profile: T,
+	names: readonly string[] | undefined,
+	snapshot: SkillResourceSnapshot,
+): T {
+	if (!profile || !names?.length) return profile;
+	const skills = adoptSkillResourceSnapshot(snapshot).skills;
+	const blocks = names.flatMap((name) => {
+		const skill = skills.find((candidate) => candidate.name === name && !candidate.disableModelInvocation);
+		return skill ? [inlineSkillBlock(skill)] : [];
+	});
+	if (blocks.length === 0) return profile;
+	const text = renderInstruction("subagent/role-skills.md", { blocks: blocks.join("\n\n") }).trim();
+	return { ...profile, prompt: profile.prompt ? `${profile.prompt}\n\n${text}` : text };
 }
 
 /**
@@ -43,15 +74,15 @@ export function taskSkillText(snapshot: SkillResourceSnapshot, inline: boolean):
 	// Lean children must read the same captured file and reference root as a normal child adopting this snapshot.
 	const skills = adoptSkillResourceSnapshot(snapshot).skills.filter((skill) => !skill.disableModelInvocation);
 	if (skills.length === 0) return "";
-	if (!inline) return `## Skills${formatSkillsForPrompt(skills, "skill")}`;
-	const blocks = skills.map((skill) => {
-		const bytes = fs.readFileSync(skill.filePath);
-		const cut = bytes.length > MAX_INLINE_SKILL_BYTES;
-		const text = stripFrontmatter(bytes.subarray(0, MAX_INLINE_SKILL_BYTES).toString("utf8")).trim();
-		const more = cut ? `\n\n[Cut at ${MAX_INLINE_SKILL_BYTES / 1024} KB; the rest is in ${skill.filePath}.]` : "";
-		return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${text}${more}\n</skill>`;
+	if (!inline)
+		return renderInstruction("subagent/task-skills.md", {
+			catalog: formatSkillsForPrompt(skills, "skill"),
+			blocks: "",
+		});
+	return renderInstruction("subagent/task-skills.md", {
+		catalog: "",
+		blocks: skills.map(inlineSkillBlock).join("\n\n"),
 	});
-	return `## Skills\nFollow these skills where they apply to your task.\n\n${blocks.join("\n\n")}`;
 }
 
 /** What else fixes a child's prompt prefix: its tool selection, lean or read-only mode, and the MCP servers it registers. */

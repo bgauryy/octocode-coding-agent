@@ -67,6 +67,7 @@ export function projectEditHunk(query: Record<string, unknown>, path: string, gu
 	const file = resolveToolPath(cwd, path);
 	const inspection = guard.inspect(file, "edit", path);
 	if (inspection.refusal) return refuse(inspection.refusal);
+	if (inspection.unread) return refuse(`${path} was not read in this session`);
 	if (!inspection.current || inspection.stale) return refuse(`${path} has no current verified read`);
 	let data: Buffer;
 	try {

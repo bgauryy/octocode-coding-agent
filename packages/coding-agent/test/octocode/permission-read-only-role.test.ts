@@ -21,7 +21,7 @@ function child(mode: "full" | "workspace", readOnly = true) {
 	execSync("git init -q", { cwd });
 	fs.mkdirSync(path.join(cwd, "src"));
 	fs.writeFileSync(path.join(cwd, "src/a.ts"), "original");
-	const scratch = path.join(cwd, ".octa/code/temp/agents/rev-1");
+	const scratch = path.join(cwd, ".octocode/code/temp/agents/rev-1");
 	fs.mkdirSync(scratch, { recursive: true });
 	const env = {
 		[SUBAGENT_ENV]: "1",
@@ -69,6 +69,8 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 		expect(await attempt("file", write("src/new.ts"))).toMatch(/read-only role/);
 		expect(await attempt("file", write(path.join(cwd, ".octocode/skills/x/SKILL.md")))).toMatch(/read-only role/);
 		expect(await attempt("file", write(".octocode/hooks.json", "{}"))).toMatch(/read-only role/);
+		// The workspace state folder sits inside `.octocode/`: Markdown there is not a doc.
+		expect(await attempt("file", write(".octocode/code/session-data/x.md"))).toMatch(/read-only role|state folder/);
 		expect(await attempt("file", { patch: "*** Begin Patch\n*** Add File: src/p.ts\n+x\n*** End Patch" })).toMatch(
 			/read-only role/,
 		);
@@ -108,8 +110,11 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 		expect(await attempt("bash", { command: "echo x > .octocode/agents/evil.md" })).toMatch(/read-only role/);
 		expect(read(".octocode/agents/evil.md")).toBeUndefined();
 		expect(await attempt("file", write(".octocode/review/notes.md"))).toBeUndefined();
-		expect(await attempt("file", write(".octa/code/temp/agents/x/report.md"))).toBeUndefined();
+		expect(await attempt("file", write(".octocode/code/temp/agents/x/report.md"))).toBeUndefined();
 		expect(await attempt("file", write(".octocode/topic/tmp/run/ledger.jsonl", "{}"))).toBeUndefined();
+		// The throwaway folder the parent's delegation policy names for throwaway files (`octocodeTmpDir`).
+		expect(await attempt("file", write(".octocode/tmp/run.log", "x"))).toBeUndefined();
+		expect(await attempt("bash", { command: "echo x > .octocode/tmp/out.txt" })).toBeUndefined();
 	});
 
 	it("resolves `..` after a symlink for shell writes: a link outside the workspace can lead back into it", async () => {
@@ -167,7 +172,7 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 		for (const command of [
 			`cd ${cwd} && mkdir -p .octocode/tool-errors`,
 			`cd ${cwd} && mkdir .octocode/audit .octocode/audit/tmp`,
-			`cd ${cwd} && mkdir -p .octa/code/temp/agents/rev-9`,
+			`cd ${cwd} && mkdir -p .octocode/code/temp/agents/rev-9`,
 		])
 			expect(await attempt("bash", { command }), command).toBeUndefined();
 		if (mode === "full") expect(fs.statSync(path.join(cwd, ".octocode/tool-errors")).isDirectory()).toBe(true);
@@ -211,17 +216,19 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 
 	it("resolves relative shell writes after a literal cd, and refuses what resolves outside the allowed paths", async () => {
 		const { attempt, read, cwd } = child(mode);
-		expect(await attempt("bash", { command: `cd ${cwd} && mkdir -p .octa/code/temp/agents/rev-2` })).toBeUndefined();
-		expect(await attempt("bash", { command: `cd ${cwd}/.octa/code/temp && echo ok > note.txt` })).toBeUndefined();
-		expect(await attempt("bash", { command: `cd ${cwd}; mkdir -p .octa/code/temp/agents/rev-3` })).toBeUndefined();
+		expect(
+			await attempt("bash", { command: `cd ${cwd} && mkdir -p .octocode/code/temp/agents/rev-2` }),
+		).toBeUndefined();
+		expect(await attempt("bash", { command: `cd ${cwd}/.octocode/code/temp && echo ok > note.txt` })).toBeUndefined();
+		expect(await attempt("bash", { command: `cd ${cwd}; mkdir -p .octocode/code/temp/agents/rev-3` })).toBeUndefined();
 		if (mode === "full") {
-			expect(fs.existsSync(path.join(cwd, ".octa/code/temp/agents/rev-2"))).toBe(true);
-			expect(read(".octa/code/temp/note.txt")).toBe("ok\n");
+			expect(fs.existsSync(path.join(cwd, ".octocode/code/temp/agents/rev-2"))).toBe(true);
+			expect(read(".octocode/code/temp/note.txt")).toBe("ok\n");
 		}
 		for (const command of [
 			`cd ${cwd} && echo changed > src/a.ts`,
 			`cd ${cwd}/src && touch c.ts`,
-			`cd ${cwd}/.octa/code/temp && echo changed > ../../src/a.ts`,
+			`cd ${cwd}/.octocode/code/temp && echo changed > ../../src/a.ts`,
 			`cd ${cwd} && cd ./src && rm a.ts`,
 			`cd ${cwd}; echo changed > src/a.ts`,
 			`cd ${cwd} && sh -c 'rm src/a.ts'`,
@@ -236,13 +243,12 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 	it("names the cd when a relative write follows one it cannot follow, and the way out", async () => {
 		const { attempt } = child(mode);
 		for (const command of [
-			"cd $REPO && mkdir -p .octa/code/temp/x",
-			"cd - && mkdir -p .octa/code/temp/x",
-			"cd /nonexistent || mkdir -p .octa/code/temp/x",
-			"cd ~/work && echo x > notes.txt",
+			"cd $REPO && mkdir -p .octocode/code/temp/x",
+			"cd - && mkdir -p .octocode/code/temp/x",
+			"cd /nonexistent || mkdir -p .octocode/code/temp/x",
 			// A bare name goes through CDPATH; `..` is followed differently by the shell and by the path check.
-			"cd .octa/code/temp && echo x > note.txt",
-			"cd ./.octa/code/temp/.. && mkdir -p .octa/code/temp/x",
+			"cd .octocode/code/temp && echo x > note.txt",
+			"cd ./.octocode/code/temp/.. && mkdir -p .octocode/code/temp/x",
 		]) {
 			const reason = await attempt("bash", { command });
 			expect(reason, command).toMatch(/relative path after a `cd` the guard cannot follow/);
@@ -256,12 +262,12 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 		const { attempt, cwd, read } = child(mode);
 		const outside = fs.realpathSync(tmp());
 		fs.mkdirSync(path.join(outside, "a/b"), { recursive: true });
-		fs.symlinkSync(path.join(outside, "a/b"), path.join(cwd, ".octa/code/temp/l"));
-		// For the shell `.octa/code/temp/l/../../..` is the workspace root; for the path check it is `<outside>/..`.
+		fs.symlinkSync(path.join(outside, "a/b"), path.join(cwd, ".octocode/code/temp/l"));
+		// For the shell `.octocode/code/temp/l/../../..` is the workspace root; for the path check it is `<outside>/..`.
 		for (const command of [
-			"cd .octa/code/temp/l/../../.. && echo X > src/a.ts",
-			"cd ./.octa/code/temp/l/../../.. && echo X > src/a.ts",
-			"cd ./.octa/code/temp/l && cd ../../../.. && echo X > src/a.ts",
+			"cd .octocode/code/temp/l/../../.. && echo X > src/a.ts",
+			"cd ./.octocode/code/temp/l/../../.. && echo X > src/a.ts",
+			"cd ./.octocode/code/temp/l && cd ../../../.. && echo X > src/a.ts",
 		])
 			expect(await attempt("bash", { command }), command).toMatch(/relative path after a `cd` the guard cannot follow/);
 		expect(read("src/a.ts")).toBe("original");
@@ -282,13 +288,13 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 
 	it("says to join a cd with `&&` when a `;` leaves the starting directory as a candidate", async () => {
 		const { attempt, cwd } = child(mode);
-		const reason = await attempt("bash", { command: `cd ${cwd}/.octa/code/temp; echo x > note.txt` });
+		const reason = await attempt("bash", { command: `cd ${cwd}/.octocode/code/temp; echo x > note.txt` });
 		expect(reason).toMatch(/Changing note\.txt from the shell \(a `cd` joined by `;`[^)]*join it with `&&`\)/);
 		// An absolute target, and a plain refusal, carry no such hint.
-		expect(await attempt("bash", { command: `cd ${cwd}/.octa/code/temp; echo x > ${cwd}/src/a.ts` })).not.toMatch(
+		expect(await attempt("bash", { command: `cd ${cwd}/.octocode/code/temp; echo x > ${cwd}/src/a.ts` })).not.toMatch(
 			/join it with/,
 		);
-		expect(await attempt("bash", { command: `cd ${cwd}/.octa/code/temp && echo x > note.txt` })).toBeUndefined();
+		expect(await attempt("bash", { command: `cd ${cwd}/.octocode/code/temp && echo x > note.txt` })).toBeUndefined();
 	});
 
 	it("names what the guard could not resolve, or what the command changes, so the command can be rewritten", async () => {

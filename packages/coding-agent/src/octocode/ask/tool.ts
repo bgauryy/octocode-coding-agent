@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { withDialog } from "../shared/locks.ts";
@@ -90,17 +91,24 @@ export function formatAnswers(result: AskResult): string {
 	return [status, ...(answered.length > 0 ? ["Answered before that:", ...answered] : []), recovery].join("\n");
 }
 
-export function registerAskUser(api: ExtensionAPI): void {
+/** Where a forwarded question is read from: the team's stored message, with its access check. */
+type StoredQuestion = (id: number) => { from: string; text: string } | { error: string };
+
+export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuestion): void {
 	api.registerTool(
 		timedTool({
 			name: "askUser",
 			label: "Ask user",
-			promptSnippet:
-				"When you need the user's answer to continue: a decision, a preference, approval of a step you propose, a fact tools cannot discover, or what only they can confirm (what they see), including a subagent's question",
+			promptSnippet: renderInstruction("tools/ask-user/snippet.md"),
 			description:
 				"Put one or more questions to the user and get the answers this turn; use it instead of ending a reply or report with a question. Batch related, self-contained questions. " +
 				"Decisions: 2-4 options (none for free text), each clear on its own, the recommendation your evidence and project instructions support, first, labelled ' (Recommended)'; the UI adds a write-in, so never add \"Other\".",
 			parameters: Type.Object({
+				forward: Type.Optional(
+					Type.Number({
+						description: "A child's message number: its question, word for word, above your first question",
+					}),
+				),
 				questions: Type.Array(
 					Type.Object({
 						question: Type.String({ description: "Question with the context to answer it" }),
@@ -145,6 +153,14 @@ export function registerAskUser(api: ExtensionAPI): void {
 						};
 					});
 				if (questions.length === 0) throw new Error("Ask at least one question with text.");
+				if (params.forward !== undefined) {
+					const stored = storedQuestion?.(params.forward) ?? { error: "no message store in this session" };
+					if ("error" in stored) throw new Error(`Cannot forward message #${params.forward}: ${stored.error}.`);
+					questions[0] = {
+						...questions[0],
+						question: `${stored.from} asks (message #${params.forward}):\n${stored.text}\n\n${questions[0].question}`,
+					};
+				}
 				const result: AskResult = signal?.aborted
 					? { answers: [], cancelled: true, reason: "aborted" }
 					: !ctx.hasUI

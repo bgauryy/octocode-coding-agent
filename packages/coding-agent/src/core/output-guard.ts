@@ -9,6 +9,9 @@ let stdoutTakeoverState: StdoutTakeoverState | undefined;
 const RAW_STDOUT_RETRY_DELAY_MS = 10;
 
 let rawStdoutWriteTail: Promise<void> = Promise.resolve();
+let pendingRawStdoutWrites = 0;
+let rawStdoutFailed = false;
+let rawStdoutFailureHandler: ((error: Error) => void) | undefined;
 
 function getRawStdoutWrite(): StdoutTakeoverState["rawStdoutWrite"] {
 	if (stdoutTakeoverState) {
@@ -83,9 +86,33 @@ export function isStdoutTakenOver(): boolean {
 }
 
 export function writeRawStdout(text: string): void {
-	void writeRawStdoutAsync(text).catch(() => {
-		process.exit(1);
+	void writeRawStdoutAsync(text).catch((error: Error) => {
+		if (rawStdoutFailureHandler) rawStdoutFailureHandler(error);
+		else process.exit(1);
 	});
+}
+
+/**
+ * Lets a protocol owner release its session when stdout fails, in place of the bare exit or the crash on the stream's
+ * `error` event. Its reader is gone, so from then on waiting for stdout returns at once and nothing is written.
+ * Returns a function that removes the handler. `handler` can be called more than once.
+ */
+export function onRawStdoutFailure(handler: (error: Error) => void): () => void {
+	const onStreamError = (error: Error) => {
+		rawStdoutFailed = true;
+		handler(error);
+	};
+	rawStdoutFailureHandler = handler;
+	process.stdout.on("error", onStreamError);
+	return () => {
+		rawStdoutFailureHandler = undefined;
+		process.stdout.off("error", onStreamError);
+	};
+}
+
+/** Whether a write is still on its way to stdout, so a reader is behind or the pipe is full. */
+export function isRawStdoutWritePending(): boolean {
+	return pendingRawStdoutWrites > 0;
 }
 
 /** Protocol owners await write failures so they can release their sessions before exiting. */
@@ -93,14 +120,30 @@ export function writeRawStdoutAsync(text: string): Promise<void> {
 	if (text.length === 0) {
 		return Promise.resolve();
 	}
-	rawStdoutWriteTail = rawStdoutWriteTail.then(() => writeRawStdoutChunk(text));
+	pendingRawStdoutWrites++;
+	const write = rawStdoutWriteTail
+		.then(() => writeRawStdoutChunk(text))
+		.finally(() => {
+			pendingRawStdoutWrites--;
+		});
+	rawStdoutWriteTail = write.catch((error: unknown) => {
+		rawStdoutFailed = true;
+		throw error;
+	});
+	// The caller handles the tail it is given; the same promise must not also count as an unhandled rejection.
+	void rawStdoutWriteTail.catch(() => {});
 	return rawStdoutWriteTail;
 }
 
 export async function waitForRawStdoutBackpressure(): Promise<void> {
 	while (true) {
 		const tail = rawStdoutWriteTail;
-		await tail;
+		try {
+			await tail;
+		} catch (error) {
+			if (!rawStdoutFailureHandler) throw error;
+			return;
+		}
 		if (tail === rawStdoutWriteTail) {
 			return;
 		}
@@ -109,5 +152,11 @@ export async function waitForRawStdoutBackpressure(): Promise<void> {
 
 export async function flushRawStdout(): Promise<void> {
 	await waitForRawStdoutBackpressure();
-	await writeRawStdoutChunk("");
+	if (rawStdoutFailed && rawStdoutFailureHandler) return;
+	try {
+		await writeRawStdoutChunk("");
+	} catch (error) {
+		if (!rawStdoutFailureHandler) throw error;
+		rawStdoutFailureHandler(error as Error);
+	}
 }

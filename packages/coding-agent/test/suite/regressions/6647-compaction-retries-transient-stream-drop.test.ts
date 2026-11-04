@@ -109,8 +109,9 @@ describe("#6647 compaction retries transient summarization failures", () => {
 		const ends = harness.eventsOfType("summarization_retry_finished");
 		expect(starts).toHaveLength(2);
 		expect(ends).toHaveLength(1);
-		expect(starts[0]).toMatchObject({ attempt: 1, maxAttempts: 3, errorMessage: "terminated" });
-		expect(starts[1]).toMatchObject({ attempt: 2, maxAttempts: 3 });
+		// A dropped stream gets the raised budget of a failure that clears by waiting, not just the configured 3.
+		expect(starts[0]).toMatchObject({ attempt: 1, maxAttempts: 6, errorMessage: "terminated" });
+		expect(starts[1]).toMatchObject({ attempt: 2, maxAttempts: 6 });
 		expect(ends[0]).toMatchObject({ type: "summarization_retry_finished" });
 		// model.* referenced to keep imports honest
 		expect(model.id).toBeTruthy();
@@ -157,12 +158,12 @@ describe("#6647 compaction retries transient summarization failures", () => {
 		harness.settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 2, baseDelayMs: 0 } });
 
 		const error: AssistantMessage = {
-			...fauxAssistantMessage("", { stopReason: "error", errorMessage: "terminated" }),
+			...fauxAssistantMessage("", { stopReason: "error", errorMessage: "500 internal server error" }),
 			usage: createUsage(10),
 		};
 		const getCallCount = useScriptedStreamFn(harness, [error, error, error]);
 
-		await expect(harness.session.compact()).rejects.toThrow("terminated");
+		await expect(harness.session.compact()).rejects.toThrow("500 internal server error");
 		expect(getCallCount()).toBe(3); // 1 initial + 2 retries
 		const starts = harness.eventsOfType("summarization_retry_scheduled");
 		const ends = harness.eventsOfType("summarization_retry_finished");

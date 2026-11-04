@@ -57,7 +57,20 @@ function sessionFolders(index: SessionIndex, target: RemovalTarget, env: NodeJS.
 }
 
 /**
- * Removes sessions: the transcript (to the trash with `trash`, else unlinked), the session-data and temp folders of the
+ * The files beside a transcript that hold its content: saved checkpoints (`<file>.checkpoint-<id>.md`) and backups taken
+ * before a migration or repair (`<file>.bak`, `<file>.<n>.bak`). A backup is a whole transcript, and retention only ever
+ * sees `.jsonl` files, so these go when their session goes or nothing ever removes them.
+ */
+async function transcriptSiblings(file: string): Promise<string[]> {
+	const base = path.basename(file);
+	const names = await fs.promises.readdir(path.dirname(file)).catch(() => [] as string[]);
+	return names
+		.filter((name) => name.startsWith(`${base}.checkpoint-`) || (name.startsWith(`${base}.`) && name.endsWith(".bak")))
+		.map((name) => path.join(path.dirname(file), name));
+}
+
+/**
+ * Removes sessions: the transcript (to the trash with `trash`, else unlinked) and the files saved beside it, the session-data and temp folders of the
  * session's own workspace, then the database rows of every session removed, with one `erase` (the user deleted them, so the transcript mirror goes too). The current session
  * and any session whose row names a running process are refused. A bad target (unverifiable workspace, a file that
  * cannot be deleted) lands in `failed` with nothing removed for it; the others go on. Never throws.
@@ -91,6 +104,10 @@ export async function removeSessions(
 					const deleted = await deleteSessionFile(target.file);
 					if (!deleted.ok) throw new Error(deleted.error ?? "could not delete the session file");
 				} else await fs.promises.rm(target.file, { force: true });
+				for (const sibling of await transcriptSiblings(target.file)) {
+					step = sibling;
+					await fs.promises.rm(sibling, { force: true });
+				}
 			}
 			result.removed.push(target.id);
 		} catch (error) {

@@ -101,9 +101,13 @@ export function handleSessionCommand(host: InfoCommandsHost): void {
 			info += `${theme.fg("dim", "Estimated refresh cost:")} $${decision.warmCost.toFixed(3)}\n`;
 		}
 
-		if (stats.cost > 0 || cacheWaste.missedTokens > 0) {
+		if (stats.cost > 0 || cacheWaste.missedTokens > 0 || stats.lowerBoundEntries > 0) {
 			info += `\n${theme.bold("Cost")}\n`;
-			info += `${theme.fg("dim", "Total:")} $${stats.cost.toFixed(3)}`;
+			info += `${theme.fg("dim", "Total:")} ${stats.cost.toFixed(3)}`;
+			if (stats.lowerBoundEntries > 0) {
+				const dropped = stats.lowerBoundEntries === 1 ? "1 response" : `${stats.lowerBoundEntries} responses`;
+				info += ` ${theme.fg("dim", `(at least: ${dropped} ended before the provider's final count)`)}`;
+			}
 			// A single entry repeats the total, unless it names a model other than the selected one.
 			if (usageBreakdown.length > 1 || usageBreakdown[0]?.key !== selectedModelKey) {
 				for (const entry of usageBreakdown) {

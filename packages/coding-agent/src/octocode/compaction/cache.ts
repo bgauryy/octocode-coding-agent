@@ -246,3 +246,10 @@ export function cacheClock(session: BranchSource): {
 	const usedAt = Math.max(cacheAt, warmAt);
 	return { replyAt, useAt: replyAt === undefined || !Number.isFinite(usedAt) ? undefined : usedAt, gaps };
 }
+
+/** Whether the entry a request would read has expired: it was last used longer ago than `ttlMs`. False when either is unknown. */
+export function cacheCold(session: BranchSource, ttlMs: number | undefined, now = Date.now()): boolean {
+	if (ttlMs === undefined) return false;
+	const { useAt } = cacheClock(session);
+	return useAt !== undefined && now - useAt > ttlMs;
+}

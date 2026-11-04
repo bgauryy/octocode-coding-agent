@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/
 import { formatBytes } from "../../utils/bytes.ts";
 import { LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
+import { memoryWarning } from "./memory.ts";
 import { createLlamaProvider, LLAMA_PROVIDER_ID } from "./provider.ts";
 import { type LlamaUi, runWithProgress, showLlamaUi } from "./ui.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -178,6 +179,7 @@ export default function llamaExtension(api: ExtensionAPI): void {
 				const detail = [
 					entry.size === undefined ? undefined : formatBytes(entry.size, "binary"),
 					entry.name === "Q4_K_M" ? "recommended" : undefined,
+					memoryWarning(entry.size) ? "over free memory" : undefined,
 				]
 					.filter((value): value is string => Boolean(value))
 					.join(" · ");
@@ -189,6 +191,8 @@ export default function llamaExtension(api: ExtensionAPI): void {
 			if (!quantization) return;
 		}
 		const model = quantization ? `${details.id}:${quantization}` : details.id;
+		const tooBig = memoryWarning(details.quantizations.find((entry) => entry.name === quantization)?.size);
+		if (tooBig) say(ctx, tooBig, "warning");
 		const result = await runWithProgress(ui, {
 			title: "Downloading model",
 			model,

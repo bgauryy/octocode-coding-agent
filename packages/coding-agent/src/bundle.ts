@@ -12,7 +12,6 @@ export { VERSION } from "./config.ts";
 export { RpcClient } from "./modes/rpc/rpc-client.ts";
 export * from "../../mcp/src/client/index.ts";
 export * from "../../mcp/src/client/oauth/index.ts";
-export * from "../../mcp/src/client/testing/index.ts";
 
 export async function main(args: string[]): Promise<void> {
 	return (await import("./main.ts")).main(args);

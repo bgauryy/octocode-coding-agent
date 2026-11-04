@@ -73,6 +73,21 @@ describe("UserMessageComponent", () => {
 		expect(lines[0]).toContain(OSC133_ZONE_START);
 	});
 
+	test("repaints the accent bar in the new theme's color after a theme switch", () => {
+		initTheme("dark");
+		const component = new UserMessageComponent("hello");
+		const dark = component.render(20);
+		expect(component.render(20)).toEqual(dark);
+
+		initTheme("light");
+		const lightBar = theme.fg("accent", "▎");
+		const light = component.render(20);
+		initTheme("dark");
+
+		expect(lightBar).not.toBe(theme.fg("accent", "▎"));
+		for (const line of light) expect(line).toContain(lightBar);
+	});
+
 	test("leaves a message without a padding column unmarked", () => {
 		initTheme("dark");
 

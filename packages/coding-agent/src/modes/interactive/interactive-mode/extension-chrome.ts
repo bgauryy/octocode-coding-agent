@@ -3,10 +3,10 @@
  * listeners and a custom editor component, and the reset that removes them all.
  */
 
-import { type Component, Container, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
+import { type Component, Container, SEPARATOR, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
 import type { EditorFactory, ExtensionWidgetOptions } from "../../../core/features/index.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { keyText } from "../components/keybinding-hints.ts";
+import { hintText, keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { getEditorTheme, type Theme, theme } from "../../../theme/theme.ts";
 import { closeExtensionOverlays } from "./extension-dialogs.ts";
@@ -53,7 +53,7 @@ type ExtensionChromeHost = Pick<
 	| "setWorkingIndicator"
 	| "setupAutocompleteProvider"
 	| "statusContainer"
-	| "toolOutputExpanded"
+	| "uiStore"
 	| "ui"
 	| "updateTerminalTitle"
 	| "widgetContainerAbove"
@@ -180,7 +180,9 @@ export function resetExtensionUI(host: ExtensionChromeHost): void {
 	host.workingVisible = true;
 	host.setWorkingIndicator();
 	if (host.activeStatusIndicator?.kind === "working") {
-		host.activeStatusIndicator.setMessage(`${host.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`);
+		host.activeStatusIndicator.setMessage(
+			`${host.defaultWorkingMessage}${SEPARATOR}${hintText([[keyText("app.interrupt"), "interrupt"]])}`,
+		);
 	}
 	host.setHiddenThinkingLabel();
 }
@@ -271,7 +273,7 @@ export function setExtensionHeader(
 		// Create and add custom header
 		host.customHeader = factory(host.ui, theme);
 		if (isExpandable(host.customHeader)) {
-			host.customHeader.setExpanded(host.toolOutputExpanded);
+			host.customHeader.setExpanded(host.uiStore.getState().view.toolsExpanded);
 		}
 		if (index !== -1) {
 			host.headerContainer.children[index] = host.customHeader;
@@ -283,7 +285,7 @@ export function setExtensionHeader(
 		// Restore built-in header
 		host.customHeader = undefined;
 		if (isExpandable(host.builtInHeader)) {
-			host.builtInHeader.setExpanded(host.toolOutputExpanded);
+			host.builtInHeader.setExpanded(host.uiStore.getState().view.toolsExpanded);
 		}
 		if (index !== -1) {
 			host.headerContainer.children[index] = host.builtInHeader;

@@ -58,10 +58,7 @@
 		"unicorn/no-useless-spread": "error",
 		"unicorn/no-useless-fallback-in-spread": "error",
 		"typescript/only-throw-error": "error",
-		"typescript/prefer-promise-reject-errors": [
-			"error",
-			{ "allowThrowingAny": true, "allowThrowingUnknown": true }
-		],
+		"typescript/prefer-promise-reject-errors": ["error", { "allowThrowingAny": true, "allowThrowingUnknown": true }],
 		"eslint/preserve-caught-error": "error",
 		"typescript/return-await": "error",
 		"typescript/no-misused-promises": "error",
@@ -93,10 +90,7 @@
 			}
 		},
 		{
-			"files": [
-				"packages/db/src/**",
-				"packages/coding-agent/src/octocode/team/peer-leases.ts"
-			],
+			"files": ["packages/db/src/**", "packages/coding-agent/src/octocode/team/peer-leases.ts"],
 			"rules": {
 				"no-restricted-imports": "off"
 			}

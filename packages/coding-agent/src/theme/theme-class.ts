@@ -13,7 +13,6 @@ import {
 	type TerminalColors,
 	type TextAttributes,
 } from "@octocodeai/octocode-tui";
-import chalk from "chalk";
 import type { SourceInfo } from "../core/source-info.ts";
 import type { ThemeColorValue } from "./theme-schema.ts";
 import { getTerminalColors, getTerminalTheme } from "./theme-terminal.ts";
@@ -172,6 +171,7 @@ export class Theme {
 		const addToken = (token: ThemeToken, value: string | number, isBackground: boolean): string => {
 			if (value === "") {
 				(isBackground ? this.defaultBackgroundTokens : this.defaultForegroundTokens).push(token);
+				if (mode === "none") return "";
 				return isBackground ? "\x1b[49m" : "\x1b[39m";
 			}
 			const color = parseColor(value);
@@ -241,13 +241,16 @@ export class Theme {
 
 	fg(color: ThemeColor, text: string): string {
 		const ansi = this.tokenAnsi(this.fgAnsi, color);
-		if (this.dimTokens.has(color)) return `${ansi}\x1b[2m${text}\x1b[22;39m`;
+		const dim = this.dimTokens.has(color);
+		// No color mode: no color sequence and no closer; a faint token keeps its attribute.
+		if (this.mode === "none") return dim ? `\x1b[2m${text}\x1b[22m` : text;
+		if (dim) return `${ansi}\x1b[2m${text}\x1b[22;39m`;
 		return `${ansi}${text}\x1b[39m`;
 	}
 
 	bg(color: ThemeBg, text: string): string {
 		const ansi = this.tokenAnsi(this.bgAnsi, color);
-		return `${ansi}${text}\x1b[49m`;
+		return this.mode === "none" ? text : `${ansi}${text}\x1b[49m`;
 	}
 
 	private tokenAnsi<T extends ThemeToken>(ansi: Map<T, string>, token: T): string {
@@ -256,24 +259,25 @@ export class Theme {
 		return value;
 	}
 
+	// Text attributes are not colors: they apply in every color mode, including "none" (NO_COLOR).
 	bold(text: string): string {
-		return chalk.bold(text);
+		return styleTextWithAnsi(text, undefined, undefined, { bold: true });
 	}
 
 	italic(text: string): string {
-		return chalk.italic(text);
+		return styleTextWithAnsi(text, undefined, undefined, { italic: true });
 	}
 
 	underline(text: string): string {
-		return chalk.underline(text);
+		return styleTextWithAnsi(text, undefined, undefined, { underline: true });
 	}
 
 	inverse(text: string): string {
-		return chalk.inverse(text);
+		return styleTextWithAnsi(text, undefined, undefined, { inverse: true });
 	}
 
 	strikethrough(text: string): string {
-		return chalk.strikethrough(text);
+		return styleTextWithAnsi(text, undefined, undefined, { strikethrough: true });
 	}
 
 	/** Opening escape sequence for a foreground token. Faint tokens include SGR 2, which `\x1b[22m` closes. */
@@ -284,6 +288,11 @@ export class Theme {
 
 	getBgAnsi(color: ThemeBg): string {
 		return this.tokenAnsi(this.bgAnsi, color);
+	}
+
+	/** Whether the token paints a background band: false for a terminal-default token and in the no-color mode. */
+	paintsBackground(color: ThemeBg): boolean {
+		return this.mode !== "none" && !this.defaultBackgroundTokens.includes(color);
 	}
 
 	getColorMode(): TerminalColorMode {

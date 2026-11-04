@@ -6,6 +6,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { BACKGROUND_AFTER_ENV, backgroundAfterSeconds, foregroundPlan } from "../../src/octocode/files/bash/auto.ts";
+import { sleepHint } from "../../src/octocode/files/bash/long-commands.ts";
 import type { ShellSettings } from "../../src/octocode/files/bash-jobs/shell.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
@@ -46,19 +47,92 @@ describe("the background threshold", () => {
 
 	it("applies unless the call waits on purpose, runs sleep, or sets a shorter deadline itself", () => {
 		const plan = (params: Parameters<typeof foregroundPlan>[0], setting = 90) => foregroundPlan(params, setting, {});
-		expect(plan({ command: "yarn test" })).toMatchObject({ timeout: 90, auto: true, movable: true });
-		expect(plan({ command: "yarn test", timeout: 3000 })).toMatchObject({ timeout: 90, auto: true });
-		expect(plan({ command: "yarn test", timeout: 3000, background: false })).toMatchObject({
+		expect(plan({ command: "./slow-task" })).toMatchObject({ timeout: 90, auto: true, movable: true });
+		expect(plan({ command: "./slow-task", timeout: 3000 })).toMatchObject({ timeout: 90, auto: true });
+		expect(plan({ command: "./slow-task", timeout: 3000, background: false })).toMatchObject({
 			timeout: 3000,
 			auto: false,
 			deliberate: true,
 		});
-		expect(plan({ command: "yarn test", timeout: 30 })).toMatchObject({ deliberate: false });
-		expect(plan({ command: "yarn test", background: false })).toMatchObject({ timeout: 90, auto: true });
-		expect(plan({ command: "yarn test", timeout: 30 })).toMatchObject({ timeout: 30, auto: false });
+		expect(plan({ command: "./slow-task", timeout: 30 })).toMatchObject({ deliberate: false });
+		expect(plan({ command: "./slow-task", background: false })).toMatchObject({ timeout: 90, auto: true });
+		expect(plan({ command: "./slow-task", timeout: 30 })).toMatchObject({ timeout: 30, auto: false });
 		expect(plan({ command: "sleep 200" })).toMatchObject({ timeout: 900, auto: false, movable: false });
-		expect(plan({ command: "yarn test" }, 0)).toMatchObject({ timeout: 900, auto: false });
+		expect(plan({ command: "./slow-task" }, 0)).toMatchObject({ timeout: 900, auto: false });
 	});
+
+	it.each([
+		"yarn test",
+		"yarn test:e2e",
+		"npm test",
+		"npm run test -- --watch=false",
+		"yarn run check",
+		"yarn run build:offline",
+		"yarn vitest run --config vitest.octocode.config.ts",
+		"npx vitest run",
+		"jest --ci",
+		"pytest -x",
+		"python3 -m pytest tests",
+		"node --test test/",
+		"./test.sh",
+		"cargo test",
+		"cargo build --release",
+		"go test ./...",
+		"tsc -b",
+		"yarn dev",
+		"npm run serve",
+		"npm start",
+		"cd packages/x && FOO=1 yarn test",
+	])("moves a known long command after 30 seconds, not 90: %s", (command) => {
+		expect(foregroundPlan({ command }, 90, {})).toMatchObject({ timeout: 30, auto: true });
+	});
+
+	it.each(["./slow-task", "ls -la", "git status", "echo yarn test", "cat test.sh", "node script.js", "make"])(
+		"keeps 90 seconds for an ordinary command: %s",
+		(command) => {
+			expect(foregroundPlan({ command }, 90, {})).toMatchObject({ timeout: 90, auto: true });
+		},
+	);
+
+	it("leaves a known long command alone when the threshold is off, shorter, or the call waits on purpose", () => {
+		expect(foregroundPlan({ command: "yarn test" }, 0, {})).toMatchObject({ timeout: 900, auto: false });
+		expect(foregroundPlan({ command: "yarn test" }, 10, {})).toMatchObject({ timeout: 10, auto: true });
+		expect(foregroundPlan({ command: "yarn test", timeout: 3000, background: false }, 90, {})).toMatchObject({
+			timeout: 3000,
+			auto: false,
+			deliberate: true,
+		});
+	});
+});
+
+describe("the sleep hint", () => {
+	it.each([
+		"sleep 20",
+		"sleep 45 && echo done",
+		"sleep 1m",
+		"while pgrep node; do sleep 5; done",
+		"until [ -f x ]; do sleep 2; done",
+	])("is given for %s", (command) => expect(sleepHint(command)).toContain("background: true"));
+	it.each(["sleep 1", "sleep 19", "echo sleep 60", "yarn test"])("is not given for %s", (command) =>
+		expect(sleepHint(command)).toBeUndefined(),
+	);
+
+	it.runIf(posix)(
+		"is appended to the result of a foreground command that still ran, only when it is a long wait",
+		async () => {
+			const { tool, ctx } = setup({ backgroundAfterSeconds: 0 });
+			// The sleeps never run (`false &&`, a loop that does not start), so the test stays fast: the hint reads the text.
+			for (const command of ["false && sleep 25; echo ran", "while false; do sleep 5; done; echo ran"]) {
+				const text = JSON.stringify((await tool.execute("t", { command }, undefined, undefined, ctx)).content);
+				expect(text, command).toContain("ran");
+				expect(text, command).toContain("completion message");
+			}
+			const quick = JSON.stringify(
+				(await tool.execute("t", { command: "sleep 1; echo ran" }, undefined, undefined, ctx)).content,
+			);
+			expect(quick).not.toContain("completion message");
+		},
+	);
 });
 
 describe.runIf(posix)("a foreground command past the threshold", () => {
@@ -75,7 +149,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		expect(sent).toHaveLength(0);
 		await until(() => sent.length === 1);
 		expect(sent[0].message.content).toMatch(/bash-1 finished after [34]s[\s\S]*before\nafter$/);
-		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(jobs.jobs.size).toBe(0);
 	});
 

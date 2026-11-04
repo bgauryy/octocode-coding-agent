@@ -8,6 +8,7 @@ import { planConstraintActive } from "../../octocode/plan/state.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmer } from "../cache-warmer.ts";
 import type { AgentInterruptedEvent } from "../features/types.ts";
@@ -22,6 +23,7 @@ import type { SessionModelControl } from "./model-control.ts";
 import { normalizePromptImages } from "./prompt-expansion.ts";
 import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { SessionRetry } from "./retry.ts";
+import { createRunOutcome, recordRunFailure, recordRunWarning, settledRunOutcome } from "./run-outcome.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
 import type { PendingUserInput } from "./types.ts";
 
@@ -80,6 +82,8 @@ export class SessionRunLoop {
 		)
 			throw new Error("This session has an active planning constraint. Enable native features before continuing.");
 		run.logicalTurnId = randomUUID();
+		run.outcome = createRunOutcome();
+		run.hasRun = true;
 		this._abortReason = undefined;
 		this._pendingInterruption = undefined;
 		run.inputTerminated = false;
@@ -90,56 +94,88 @@ export class SessionRunLoop {
 		try {
 			messages = await this.host.prepareRun(trigger, input);
 		} catch (error) {
-			bash.flushPending();
-			inputs.flushPendingCustomMessages();
-			await this._emitInterruption();
-			run.active = false;
-			run.logicalTurnId = undefined;
-			this.host.resolveIdleWaitIfIdle();
-			throw error;
-		}
-		// Messages held while the run was starting go before its starting messages, as they would
-		// have while idle. No run exists yet, so they cannot split a tool call from its result.
-		bash.flushPending();
-		inputs.flushPendingCustomMessages();
-		onStarted?.();
-
-		// Compaction before the prompt may have scheduled a retry; the new prompt replaces it.
-		run.failedResponse = undefined;
-		this.host.models.recordSelection();
-		// The run records the loadout in the transcript; restored tools that did not register by now
-		// are dropped, so a tool that never registers does not stay pending. MCP tools of servers that
-		// are still connecting stay pending until their server registers them or settles.
-		this.host.tools.settlePendingToolNames();
-		try {
-			if (run.agentRunAbortRequested) return;
-			await session.agent.prompt(messages);
-			while (!run.agentRunAbortRequested && !run.inputTerminated) {
-				if (await this._handlePostAgentRun()) {
-					if (run.agentRunAbortRequested) break;
-					// The run's turns are over, so held messages (such as those sent after an overflow compaction) cannot split a
-					// tool call from its result; append them before the retry's first request rather than after its turn.
-					inputs.flushPendingCustomMessages();
-					await session.agent.continue();
-					continue;
-				}
-				if (run.agentRunAbortRequested || !(await this.host.boundaries.runBeforeSettle())) break;
-				if (run.agentRunAbortRequested) break;
-				await session.agent.continue();
-			}
-		} finally {
-			if (run.agentRunAbortRequested) this.host.retry.finishCancelled();
-			run.failedResponse = undefined;
-			this.host.tools.runSystemPromptOptions = undefined;
-			bash.flushPending();
-			inputs.flushPendingCustomMessages();
+			// The preparation failure is what the caller needs to hear; a failed flush must not keep the session busy.
+			recordRunFailure(run.outcome, errorMessage(error));
+			this._flushHeld();
 			try {
 				await this._emitInterruption();
-				await settleSessionDispatch(session, () => this._emitAgentSettled());
 			} finally {
+				run.active = false;
 				run.logicalTurnId = undefined;
+				this.host.resolveIdleWaitIfIdle();
+			}
+			throw error;
+		}
+		// The body's first failure is rethrown only after the run settles: every wait on this session ends there, so
+		// nothing that can throw (a held message meeting a full disk, a lost lock) may stand between a run and settling.
+		let failure: { error: unknown } | undefined;
+		try {
+			// Messages held while the run was starting go before its starting messages, as they would
+			// have while idle. No run exists yet, so they cannot split a tool call from its result.
+			bash.flushPending();
+			inputs.flushPendingCustomMessages();
+			onStarted?.();
+
+			// Compaction before the prompt may have scheduled a retry; the new prompt replaces it.
+			run.failedResponse = undefined;
+			this.host.models.recordSelection();
+			// The run records the loadout in the transcript; restored tools that did not register by now
+			// are dropped, so a tool that never registers does not stay pending. MCP tools of servers that
+			// are still connecting stay pending until their server registers them or settles.
+			this.host.tools.settlePendingToolNames();
+			if (!run.agentRunAbortRequested) {
+				await session.agent.prompt(messages);
+				while (!run.agentRunAbortRequested && !run.inputTerminated) {
+					if (await this._handlePostAgentRun()) {
+						if (run.agentRunAbortRequested) break;
+						// The run's turns are over, so held messages (such as those sent after an overflow compaction) cannot split a
+						// tool call from its result; append them before the retry's first request rather than after its turn.
+						inputs.flushDuringRun(run.outcome);
+						await session.agent.continue();
+						continue;
+					}
+					if (run.agentRunAbortRequested || !(await this.host.boundaries.runBeforeSettle())) break;
+					if (run.agentRunAbortRequested) break;
+					await session.agent.continue();
+				}
+			}
+		} catch (error) {
+			failure = { error };
+			recordRunFailure(run.outcome, errorMessage(error));
+		}
+		if (run.agentRunAbortRequested) this.host.retry.finishCancelled();
+		run.failedResponse = undefined;
+		this.host.tools.runSystemPromptOptions = undefined;
+		// A run that worked stays a success: what could not be written stays queued for the next write, and a reply already
+		// produced must not be lost to a lock another process held for a moment.
+		const flushFailure = this._flushHeld();
+		if (flushFailure) recordRunWarning(run.outcome, errorMessage(flushFailure.error));
+		try {
+			await this._emitInterruption();
+		} catch (error) {
+			failure ??= { error };
+		}
+		try {
+			await settleSessionDispatch(session, () => this._emitAgentSettled());
+		} catch (error) {
+			failure ??= { error };
+		} finally {
+			run.logicalTurnId = undefined;
+		}
+		if (failure) throw failure.error;
+	}
+
+	/** Appends the messages held for the end of a run, and returns a failure instead of throwing it. */
+	private _flushHeld(): { error: unknown } | undefined {
+		let failure: { error: unknown } | undefined;
+		for (const flush of [() => this.host.bash.flushPending(), () => this.host.inputs.flushPendingCustomMessages()]) {
+			try {
+				flush();
+			} catch (error) {
+				failure ??= { error };
 			}
 		}
+		return failure;
 	}
 
 	/**
@@ -246,8 +282,10 @@ export class SessionRunLoop {
 		run.isEmittingAgentSettled = true;
 		try {
 			const aborted = run.agentRunAbortRequested;
-			await session.extensionRunner.emit({ type: "agent_settled", aborted });
-			this.host.emit({ type: "agent_settled", aborted });
+			const outcome = settledRunOutcome(run.outcome, aborted);
+			run.outcome = outcome;
+			await session.extensionRunner.emit({ type: "agent_settled", aborted, outcome });
+			this.host.emit({ type: "agent_settled", aborted, outcome });
 		} finally {
 			run.isEmittingAgentSettled = false;
 		}
@@ -301,7 +339,7 @@ export class SessionRunLoop {
 		session.abortRetry();
 		session.abortCompaction();
 		session.abortBranchSummary();
-		if (run.isBeforeSettle) run.abortDuringBeforeSettle = true;
+		if (run.isBeforeSettle) run.beforeSettleAbort.abort();
 		session.agent.abort();
 		if (!this._interruptionCallback.getStore()?.active) await this.host.waitForIdle();
 	}

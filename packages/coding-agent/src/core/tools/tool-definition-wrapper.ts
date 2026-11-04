@@ -22,6 +22,7 @@ export function wrapToolDefinition<TDetails = unknown>(
 		validationHint: definition.validationHint,
 		prepareArguments: definition.prepareArguments,
 		executionMode: definition.executionMode,
+		abortGraceMs: definition.abortGraceMs,
 		execute: async (toolCallId, params, signal, onUpdate, ctx?: ExtensionToolContext) => {
 			const base = ctx ?? ctxFactory?.(toolCallId, signal);
 			if (!base)
@@ -64,6 +65,7 @@ export function createToolDefinitionFromAgentTool(tool: AgentTool<any>): ToolDef
 		validationHint: tool.validationHint,
 		prepareArguments: tool.prepareArguments,
 		executionMode: tool.executionMode,
+		abortGraceMs: tool.abortGraceMs,
 		execute: async (toolCallId, params, signal, onUpdate) => tool.execute(toolCallId, params, signal, onUpdate),
 	};
 }

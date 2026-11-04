@@ -1,6 +1,6 @@
 import type { ExtensionContext, ToolCallEvent } from "../../../core/features/index.ts";
 import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
-import { callReason } from "../../shared/reason.ts";
+import { callReason, derivedReason, hasDerivedReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
 import { takesCallReason } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
@@ -14,10 +14,19 @@ const destructive = (command: string, cwd: string): boolean => catastrophicComma
 /** The call's arguments, whole: the user approves exactly what is shown. */
 export const args = (input: Record<string, unknown>): string => JSON.stringify(input);
 
-/** What a native call says it is for: its `reason` argument, as the request's `purpose` (ahead of the assistant's last sentence). */
-export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">): { purpose?: string } {
-	const reason = takesCallReason(event.toolName) ? callReason(event.input) : undefined;
-	return reason ? { purpose: reason } : {};
+/**
+ * What a native call says it is for: its `reason` argument, as the request's `purpose` (ahead of the assistant's last
+ * sentence). A reason made from the call's arguments (`derivedReason`), because the model gave none, is marked
+ * `reasonDerived`; a native call whose input has none still gets one, so the card never shows an empty purpose.
+ */
+export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">): {
+	purpose?: string;
+	reasonDerived?: true;
+} {
+	if (!takesCallReason(event.toolName)) return {};
+	const stated = callReason(event.input);
+	if (stated === undefined) return { purpose: derivedReason(event.toolName, event.input), reasonDerived: true };
+	return hasDerivedReason(event.toolName, event.input) ? { purpose: stated, reasonDerived: true } : { purpose: stated };
 }
 
 /** `request` as this call's: its purpose, tool call, folder and nesting. */

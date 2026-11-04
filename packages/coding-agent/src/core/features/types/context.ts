@@ -66,14 +66,18 @@ export interface ExtensionContext {
 	isIdle(): boolean;
 	/** Whether project-local trust is active for this context. */
 	isProjectTrusted(): boolean;
-	/** The call's abort signal in tool_call handlers; otherwise the current turn's signal, if streaming. */
+	/** The call's abort signal in tool_call handlers; otherwise the current turn's signal, if streaming; in agent_before_settle handlers, the signal a session abort fires. */
 	signal: AbortSignal | undefined;
 	/** Abort the current agent operation */
 	abort(reason?: "interrupted" | "internal"): void;
+	/** Record that the current run failed, for whoever drives the session from outside (print mode's exit code, RPC's outcome). A later good response supersedes it, as a retry does. */
+	failRun(reason: string): void;
 	/** Whether there are queued messages waiting */
 	hasPendingMessages(): boolean;
 	/** Whether a custom message sent with this exact `details` object (identity, not equality) still waits in the agent's queue. */
 	isMessageQueued(details: object): boolean;
+	/** Rewrites what a custom message sent with this exact `details` object says while it still waits; false once it was read. */
+	replaceQueuedMessage(details: object, content: string): boolean;
 	/** Gracefully shutdown Octocode and exit. Available in all contexts. */
 	shutdown(): void;
 	/** Get current context usage for the active model. */

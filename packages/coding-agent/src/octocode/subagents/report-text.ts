@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
@@ -32,8 +33,7 @@ export const foregroundExtras = (details: RunDetails, failed: boolean): string =
 export const ranOn = (route: RunRoute): string => (route.model ? `Ran on ${routeSummary(route)}.` : "");
 
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
-export const FAILED_NEXT = "Retry with a narrower task or do the work yourself.";
-const PARTIAL_UNVERIFIED = " The partial answer is unverified.";
+export const FAILED_NEXT = renderInstruction("notices/subagents/failed-narrower.md");
 
 /**
  * A provider refusing the credential or the model (an expired key, no access, an unknown id): retrying the same route
@@ -45,9 +45,6 @@ const MODEL_REFUSED =
 /** The provider throttled the request: every concurrent run shares its limit, so an immediate retry hits it again. */
 const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests|overloaded/i;
 
-const RATE_LIMIT_NEXT =
-	"The provider rate-limited the request. Wait before retrying, start fewer subagents at once (OCTOCODE_MAX_SUBAGENTS lowers the limit), or do the work yourself.";
-
 const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("/")));
 
 /**
@@ -57,17 +54,18 @@ const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("
  */
 export function failedNext(route: RunRoute, error: string, partial: boolean): string {
 	const ran = ranOn(route);
-	const unverified = partial ? PARTIAL_UNVERIFIED : "";
-	if (RATE_LIMITED.test(error) && !MODEL_REFUSED.test(error))
-		return [`${RATE_LIMIT_NEXT}${unverified}`, ran].filter(Boolean).join("\n");
-	if (!MODEL_REFUSED.test(error)) return [`${FAILED_NEXT}${unverified}`, ran].filter(Boolean).join("\n");
+	const refused = MODEL_REFUSED.test(error);
 	const provider = route.model ? providerOf(route.model) : "";
-	const fix = `ask the user to fix ${provider ? `the ${provider} credential` : "the provider credential"} with /login`;
-	const other = route.parent && provider !== providerOf(route.parent);
-	const advice = other
-		? `The provider refused the credential or the model, so the same route fails again. Retry with model: "${route.parent}" (this session's model) or ${fix}.`
-		: `The provider refused the credential or the model, so the same route fails again. To fix it, ${fix}, or pass another provider's model as model.`;
-	return [`${advice}${unverified}`, ran].filter(Boolean).join("\n");
+	const advice = renderInstruction("notices/subagents/failed-next.md", {
+		refused,
+		rateLimited: RATE_LIMITED.test(error),
+		narrower: FAILED_NEXT,
+		other: Boolean(route.parent) && provider !== providerOf(route.parent ?? ""),
+		parent: route.parent,
+		provider: provider || "provider",
+		partial,
+	});
+	return [advice, ran].filter(Boolean).join("\n");
 }
 
 /** Why a foreground run that someone stopped ended: who stopped it, so the model does not just start it again. */

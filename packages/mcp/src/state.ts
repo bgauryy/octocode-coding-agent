@@ -13,14 +13,6 @@ import {
 	updateMcpServerConfig,
 } from "./config.ts";
 import { exposureOf } from "./exposure.ts";
-import {
-	type ContractUsage,
-	contractTier,
-	type McpContractTiersSetting,
-	type ResolvedContractTier,
-} from "./contract-tiers.ts";
-import { getMcpToolContract } from "./servers.ts";
-import { hostUsage } from "./host.ts";
 import { getMcpConfigLocations } from "./inspection.ts";
 import { McpServerLog } from "./log.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
@@ -198,35 +190,6 @@ export class McpExtensionState {
 
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure {
 		return getMcpToolExposure(entry.config, tool);
-	}
-
-	/** The session's usage snapshot, read once on first need (`hostUsage`); `session_start` clears it. */
-	contractUsage: { value: ContractUsage | undefined } | undefined;
-
-	/**
-	 * The contract tier of one declared tool (`contractTier`). Every tool is resident while the session cannot read an
-	 * indexed contract: without the `mcp` tool, only a refused call would show it.
-	 */
-	contractTier(
-		entry: McpServerEntry,
-		tool: string,
-		registered: string,
-		serverContractChars: number,
-	): ResolvedContractTier {
-		const setting: McpContractTiersSetting =
-			(typeof this.api.getSettings === "function" ? this.api.getSettings().mcpContractTiers : undefined) ?? "auto";
-		const readable = this.api.getActiveTools().includes("mcp");
-		this.contractUsage ??= { value: hostUsage()?.contractUsage(this.sessionCwd) };
-		const core = this.preset(entry)?.coreTools;
-		return contractTier({
-			configured: readable ? getMcpToolContract(entry.config, tool) : "resident",
-			tool,
-			registered,
-			serverContractChars,
-			...(core ? { coreTools: new Set(core) } : {}),
-			usage: this.contractUsage.value,
-			setting,
-		});
 	}
 
 	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {

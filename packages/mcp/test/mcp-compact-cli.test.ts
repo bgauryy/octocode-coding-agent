@@ -180,8 +180,12 @@ describe("octocode mcp compact", () => {
 		});
 		expect((await run(["compact", "apply", "fixture", "--overrides", overrides])).exitCode).toBe(0);
 		const stored = readGenerated(store, "fixture")!;
-		expect(stored.meta.toolHashes?.echo).toMatch(/^[0-9a-f]{64}$/);
-		writeGenerated(store, "fixture", stored.text, { ...stored.meta, toolHashes: { echo: "0".repeat(64) } });
+		const written = stored.meta.authored?.tools?.echo;
+		expect(written?.descriptionHash).toMatch(/^[0-9a-f]{16}$/);
+		writeGenerated(store, "fixture", stored.text, {
+			...stored.meta,
+			authored: { tools: { echo: { ...written, descriptionHash: "0".repeat(16) } } },
+		});
 		const listed = await run(["compact", "list"]);
 		expect(listed.output).toContain("stale overrides: echo");
 		const json = JSON.parse((await run(["compact", "list", "--json"])).output);

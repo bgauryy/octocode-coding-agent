@@ -48,7 +48,7 @@ type ExtensionContextHost = Pick<
 	| "showWarning"
 	| "shutdownRequested"
 	| "themeController"
-	| "toolOutputExpanded"
+	| "uiStore"
 	| "ui"
 	| "workingMessage"
 >;
@@ -77,8 +77,11 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 		abort: () => {
 			host.restoreQueuedMessagesToEditor({ abort: true });
 		},
+		// A shortcut runs beside a run, not as part of one.
+		failRun: () => {},
 		hasPendingMessages: () => host.session.pendingMessageCount > 0,
 		isMessageQueued: (details) => host.session.isCustomMessageQueued(details),
+		replaceQueuedMessage: (details, content) => host.session.replaceQueuedCustomMessage(details, content),
 		shutdown: () => {
 			host.shutdownRequested = true;
 		},
@@ -140,7 +143,7 @@ export function createExtensionUIContext(host: ExtensionContextHost): ExtensionU
 		pasteToEditor: (text) => host.editor.handleInput(`\x1b[200~${text}\x1b[201~`),
 		setEditorText: (text) => host.editor.setText(text),
 		getEditorText: () => host.editor.getExpandedText?.() ?? host.editor.getText(),
-		editor: (title, prefill) => host.showExtensionEditor(title, prefill),
+		editor: (title, prefill, opts) => host.showExtensionEditor(title, prefill, opts),
 		addAutocompleteProvider: (factory) => {
 			host.autocompleteProviderWrappers.push(factory);
 			host.setupAutocompleteProvider();
@@ -164,7 +167,7 @@ export function createExtensionUIContext(host: ExtensionContextHost): ExtensionU
 			}
 			return result;
 		},
-		getToolsExpanded: () => host.toolOutputExpanded,
+		getToolsExpanded: () => host.uiStore.getState().view.toolsExpanded,
 		setToolsExpanded: (expanded) => host.setToolsExpanded(expanded),
 	};
 }

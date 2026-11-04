@@ -6,9 +6,11 @@ import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { API_COMMAND_FLAGS, integerFlag, parseArgs, pickInstance } from "./args.ts";
 import { ApiCallError, ApiClient } from "./client.ts";
 import { CLIENT_MARGIN_MS, EXTERNAL_CALL_MARGIN_MS, EXTERNAL_PROMPT_DEFAULT_MS, WAIT_MS } from "./protocol.ts";
-import { apiDir, listInstances } from "./registry.ts";
+import { runSucceeded, type RunResult } from "./receipts.ts";
+import { probeInstances } from "./probe.ts";
+import { apiDir, describeInstance, type InstanceRecord, listInstances } from "./registry.ts";
 
-const USAGE = `octocode-api — talk to running Octocode sessions (start them with OCTOCODE_API=1)
+const USAGE = `octocode-api — talk to running Octocode sessions on this machine
 
   octocode-api completion <bash|zsh|fish>
   octocode-api list
@@ -19,17 +21,47 @@ const USAGE = `octocode-api — talk to running Octocode sessions (start them wi
   octocode-api abort [--to <id>]
   octocode-api external [--to <id>] '<JSON>'
 
---to defaults to the only running instance (or the one in the current directory).
+--to takes what list shows: an instance id, a process name, a session id or a pid. Without it: the only running
+instance, or the one in the current directory.
+A session marks what send delivers as external, naming the caller as a claim; --from adds a name to that claim.
 --key deduplicates the same message within the current session; reuse it to retrieve its receipt.
 --session refuses delivery after a session switch; --require-idle refuses a busy session.
 --timeout sets the server wait in milliseconds (${WAIT_MS.min}-${WAIT_MS.max}; default ${WAIT_MS.default}).
 -- ends flag parsing, so message text can begin with --.
 --top-level drops tool events of calls other tools made (those with parentId).`;
 
+/** The instance this run is talking to, for an error the transport reports without it. */
+let target: InstanceRecord | undefined;
+
+/** One line per instance: id, name, pid, state, session, cwd. */
+async function listLines(instances: InstanceRecord[]): Promise<string[]> {
+	return (await probeInstances(instances)).map(({ instance, state }) =>
+		[instance.id, instance.name ?? "-", `pid ${instance.pid}`, state, instance.session ?? "-", instance.cwd].join("\t"),
+	);
+}
+
+/**
+ * Who is calling, as far as this process can tell. A session's shell carries its session id, and its instance record has
+ * the rest; any other program is a pid and a folder. The receiver treats all of it as a claim.
+ */
+function callerOf(instances: readonly InstanceRecord[]): Record<string, unknown> {
+	const session = process.env.OCTOCODE_SESSION_ID;
+	const own = session ? instances.find((entry) => entry.session === session) : undefined;
+	return own
+		? { name: own.name, instanceId: own.id, pid: own.pid, cwd: own.cwd }
+		: { pid: process.pid, cwd: process.cwd() };
+}
+
 async function main(argv: string[]): Promise<void> {
 	if (argv[0] === "completion") {
 		if (argv[1] === "--values") {
-			const ids = argv.at(-2) === "--to" ? listInstances(apiDir(), false).map((instance) => instance.id) : [];
+			const ids =
+				argv.at(-2) === "--to"
+					? listInstances(apiDir(), false).flatMap((instance) => [
+							instance.id,
+							...(instance.name ? [instance.name] : []),
+						])
+					: [];
 			const values = completeApi(argv.slice(2), ids);
 			if (values.length) process.stdout.write(values.join("\n") + "\n");
 		} else if (argv.length === 2 && ["bash", "zsh", "fish"].includes(argv[1])) {
@@ -57,10 +89,11 @@ async function main(argv: string[]): Promise<void> {
 	const since = integerFlag(flags, "since", { min: 0, max: Number.MAX_SAFE_INTEGER });
 	const instances = listInstances(apiDir());
 	if (command === "list") {
-		for (const entry of instances) console.log(`${entry.id}\tpid ${entry.pid}\t${entry.cwd}`);
+		for (const line of await listLines(instances)) console.log(line);
 		return;
 	}
-	const client = new ApiClient(pickInstance(instances, flags.get("to") as string | undefined, process.cwd()));
+	target = pickInstance(instances, flags.get("to") as string | undefined, process.cwd());
+	const client = new ApiClient(target);
 	if (command === "status") console.log(JSON.stringify(await client.call("status"), null, 2));
 	else if (command === "external") {
 		const input: unknown = JSON.parse(words.join(" "));
@@ -76,10 +109,15 @@ async function main(argv: string[]): Promise<void> {
 		);
 	} else if (command === "abort") console.log(JSON.stringify(await client.call("turn.abort")));
 	else if (command === "send") {
-		const result = await client.call<{ text?: string }>(
+		const own = process.env.OCTOCODE_SESSION_ID;
+		// A session's own run cannot answer a call its own tool is blocked on.
+		if (own && target.session === own)
+			throw new Error(`${describeInstance(target)} is this session; name another with --to.`);
+		const result = await client.call<Partial<RunResult>>(
 			"message.send",
 			{
 				text: words.join(" "),
+				caller: callerOf(instances),
 				...(flags.has("from") ? { from: flags.get("from") } : {}),
 				...(flags.has("mode") ? { mode: flags.get("mode") } : {}),
 				...(flags.has("key") ? { key: flags.get("key") } : {}),
@@ -90,7 +128,12 @@ async function main(argv: string[]): Promise<void> {
 			},
 			{ timeoutMs: (timeout ?? WAIT_MS.default) + CLIENT_MARGIN_MS.default },
 		);
-		console.log(flags.get("wait") ? (result.text ?? "") : JSON.stringify(result));
+		if (!flags.get("wait")) console.log(JSON.stringify(result));
+		else if (runSucceeded(result)) console.log(result.text ?? "");
+		else {
+			console.error(JSON.stringify(redactData(result)));
+			process.exitCode = 1;
+		}
 	} else {
 		const types = typeof flags.get("types") === "string" ? (flags.get("types") as string).split(",") : undefined;
 		await client.watch((event) => console.log(JSON.stringify(event)), {
@@ -118,7 +161,7 @@ main(process.argv.slice(2)).catch((error: unknown) => {
 						...(execution ? { execution } : {}),
 					}),
 				)
-			: redactSecrets(errorMessage(error)),
+			: redactSecrets(`${target ? `${describeInstance(target)} is not answering: ` : ""}${errorMessage(error)}`),
 	);
 	process.exitCode = 1;
 });

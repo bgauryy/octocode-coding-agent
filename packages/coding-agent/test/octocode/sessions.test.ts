@@ -218,7 +218,7 @@ describe("session extras", () => {
 			// Each session records the dir it runs from: the sweep keeps it while that dir cannot be read.
 			expect(custom.index().get("sess-custom")?.dir).toBe(path.dirname(custom.file));
 			const plain = setup({ id: "sess-default" });
-			const defaultDir = path.join(plain.ctx.cwd, ".octa", "code", "sessions");
+			const defaultDir = path.join(plain.ctx.cwd, ".octocode", "code", "sessions");
 			Object.assign(plain.ctx.sessionManager, { getSessionDir: () => defaultDir });
 			await plain.start();
 			expect(plain.index().sessionDirs()).toEqual([path.dirname(custom.file), defaultDir]);
@@ -544,7 +544,23 @@ describe("resume brief", () => {
 			message: { content: string };
 		};
 		expect(result.message.content).toBe(
-			`[Resumed] Resumed after 3h away — Last user request before the break: "${`Refactor the parser ${"q".repeat(500)}`.slice(0, 399)}…"`,
+			`[Resumed] Resumed after 3h away — Last user request before the break (older than the message above this note, which is the current request): "${`Refactor the parser ${"q".repeat(500)}`.slice(0, 399)}…"`,
+		);
+	});
+
+	it("does not call the message above current when a custom message started the run", async () => {
+		const entries: Entry[] = [
+			{ type: "message", id: "u1", timestamp: ago(3 * HOUR), message: { role: "user", content: "Refactor" } },
+		];
+		const host = setup({ id: "sess-v", entries });
+		await host.start("resume");
+		const result = (await host.fire(
+			"before_agent_start",
+			{ type: "before_agent_start", messageType: "custom" },
+			host.ctx,
+		)) as { message: { content: string } };
+		expect(result.message.content).toBe(
+			'[Resumed] Resumed after 3h away — Last user request before the break: "Refactor"',
 		);
 	});
 

@@ -3,7 +3,7 @@ import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
-import { apiDir, listInstances } from "../api/registry.ts";
+import { apiDir, listInstances, matchInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
 import type { ReferenceContext } from "../shared/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -61,6 +61,12 @@ function offered(backend: ExternalBackend): { models?: string[]; modelsMore?: nu
 	};
 }
 
+/** The folder a running instance works in: attaching to one by name states no folder, and the backend still verifies it. */
+function attachedWorkspace(input: ExternalParams): string | undefined {
+	if (input.transport !== "octocode" || !input.instanceId) return undefined;
+	return matchInstances(listInstances(apiDir()), input.instanceId)[0]?.cwd;
+}
+
 export interface ExternalFactories {
 	acp: (input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal) => Promise<AcpBackend>;
 	octocode: typeof OctocodeBackend.connect;
@@ -107,8 +113,9 @@ export class ExternalAgents {
 		if (input.action === "list") {
 			return {
 				connections: [...this.connections.values()].map(view),
-				instances: listInstances(apiDir()).map(({ id, pid, cwd, protocol, session }) => ({
+				instances: listInstances(apiDir()).map(({ id, name, pid, cwd, protocol, session }) => ({
 					id,
+					name,
 					pid,
 					cwd,
 					protocol,
@@ -232,7 +239,7 @@ export class ExternalAgents {
 			throw new Error(
 				`External connection limit (${MAX_EXTERNAL_CONNECTIONS}) reached. Disconnect one before connecting another.`,
 			);
-		const cwd = realpathSync(path.resolve(ctx.cwd, input.cwd ?? "."));
+		const cwd = realpathSync(path.resolve(ctx.cwd, input.cwd ?? attachedWorkspace(input) ?? "."));
 		if (!statSync(cwd).isDirectory()) throw new Error("External cwd must be a directory.");
 		const entry: Connection = {
 			info: {

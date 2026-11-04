@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SlashCommandInfo } from "../../src/core/slash-commands.ts";
@@ -9,7 +10,7 @@ import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { parseProfile, profileReach, profileTools } from "../../src/octocode/subagents/profiles.ts";
-import { prefixKey, taskSkillPlan, taskSkillText } from "../../src/octocode/subagents/task-skills.ts";
+import { prefixKey, taskSkillPlan, taskSkillText, withRoleSkills } from "../../src/octocode/subagents/task-skills.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 import { allSections, tmp } from "./helpers.ts";
@@ -84,10 +85,10 @@ describe("lean profiles", () => {
 		};
 		await fake.emit("before_agent_start", event, {});
 		const text = Object.values(allSections(event)).join("\n");
-		expect(Object.keys(event.systemPromptOptions.sections)).toContain("octocode_lean");
+		expect(Object.keys(event.systemPromptOptions.sections)).toContain("lean");
 		expect(text).toContain("You are a subagent: do exactly the task, then stop.");
 		expect(text).not.toContain("Start it with the outcome word");
-		expect(text).not.toContain("# Work and verification");
+		expect(text).not.toContain("## Understand the request");
 		expect(text).not.toContain("Octocode MCP");
 		expect(event.systemPromptOptions.skills).toEqual([]);
 		expect(text.length).toBeLessThan(1500);
@@ -110,10 +111,87 @@ describe("per-task skills", () => {
 		expect(taskSkillPlan(undefined, undefined)).toEqual({ inTask: false, inline: false });
 		expect(taskSkillPlan(undefined, [])).toEqual({ names: [], inTask: true, inline: false });
 		expect(taskSkillPlan(undefined, ["beta"])).toEqual({ names: ["beta"], inTask: true, inline: false });
-		expect(taskSkillPlan(specialist, undefined)).toEqual({ names: ["alpha"], inTask: true, inline: false });
+		// A role's skills never narrow the catalog: the child inherits it and its role section holds the role's skills.
+		expect(taskSkillPlan(specialist, undefined)).toEqual({ inTask: false, inline: false, roleSkills: ["alpha"] });
 		expect(taskSkillPlan(specialist, ["beta"])).toEqual({ names: ["beta"], inTask: true, inline: false });
 		expect(taskSkillPlan(lean, undefined)).toEqual({ names: [], inTask: true, inline: true });
 		expect(taskSkillPlan(lean, ["alpha"])).toEqual({ names: ["alpha"], inTask: true, inline: true });
+	});
+
+	it("inline a role's skills in its role prompt, the same for every sibling, while it keeps the whole catalog", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "role-skills-"));
+		try {
+			const skillFile = (name: string, body: string) => {
+				const file = path.join(dir, name, "SKILL.md");
+				fs.mkdirSync(path.dirname(file), { recursive: true });
+				fs.writeFileSync(file, `---\nname: ${name}\ndescription: ${name} skill\n---\n${body}\n`);
+				return file;
+			};
+			const skills = [
+				{ name: "alpha", filePath: skillFile("alpha", "Alpha body"), disableModelInvocation: false },
+				{ name: "beta", filePath: skillFile("beta", "Beta body"), disableModelInvocation: false },
+				{ name: "hidden", filePath: skillFile("hidden", "Hidden body"), disableModelInvocation: true },
+			].map((skill) => ({
+				...skill,
+				description: `${skill.name} skill`,
+				baseDir: path.dirname(skill.filePath),
+				sourceInfo: { path: skill.filePath, source: "user", scope: "user", origin: "top-level" },
+			}));
+			const snapshot = captureSkillResourceSnapshot(
+				{ skills, diagnostics: [] } as unknown as Parameters<typeof captureSkillResourceSnapshot>[0],
+				undefined,
+				[],
+			);
+			const role = parseProfile("two", "---\nskills: [beta, alpha, hidden, missing]\n---\nRole body");
+			const plan = taskSkillPlan(role, undefined);
+			// No `names`: the child inherits the catalog instead of a narrowed list.
+			expect(plan.names).toBeUndefined();
+			expect(plan.inTask).toBe(false);
+			const prompt = withRoleSkills(role, plan.roleSkills, snapshot).prompt;
+			expect(prompt.startsWith("Role body\n\n# Your role's skills\n")).toBe(true);
+			expect(prompt.indexOf("Beta body")).toBeGreaterThan(-1);
+			expect(prompt.indexOf("Beta body")).toBeLessThan(prompt.indexOf("Alpha body"));
+			expect(prompt).not.toContain("Hidden body");
+			expect(prompt).not.toContain("missing");
+			expect(withRoleSkills(role, plan.roleSkills, snapshot).prompt).toBe(prompt);
+			// Nothing to inline: the profile itself, untouched.
+			expect(withRoleSkills(role, undefined, snapshot)).toBe(role);
+			expect(withRoleSkills(role, [], snapshot)).toBe(role);
+			expect(withRoleSkills(undefined, ["alpha"], snapshot)).toBeUndefined();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("inline a role skill whole, however long it is", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-role-skill-"));
+		try {
+			const filePath = path.join(dir, "SKILL.md");
+			const body = `${"x".repeat(128 * 1024)}LAST_LINE`;
+			fs.writeFileSync(filePath, `---\nname: long\ndescription: long skill\n---\n${body}\n`);
+			const skill = {
+				name: "long",
+				filePath,
+				disableModelInvocation: false,
+				description: "long skill",
+				baseDir: dir,
+				sourceInfo: { path: filePath, source: "user", scope: "user", origin: "top-level" },
+			};
+			const snapshot = captureSkillResourceSnapshot(
+				{ skills: [skill], diagnostics: [] } as unknown as Parameters<typeof captureSkillResourceSnapshot>[0],
+				undefined,
+				[],
+			);
+			const prompt = withRoleSkills(
+				parseProfile("one", "---\nskills: [long]\n---\nRole body"),
+				["long"],
+				snapshot,
+			).prompt;
+			expect(prompt).toContain(body);
+			expect(prompt).not.toContain("[Cut at");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("leave out a role skill the session cannot load, but pass the task's own names through", () => {
@@ -125,11 +203,11 @@ describe("per-task skills", () => {
 			sourceInfo: { path: "/p/alpha.md" },
 		} as unknown as SlashCommandInfo;
 		expect(taskSkillPlan(specialist, undefined, [skill("alpha")])).toEqual({
-			names: ["alpha"],
-			inTask: true,
+			inTask: false,
 			inline: false,
+			roleSkills: ["alpha"],
 		});
-		expect(taskSkillPlan(specialist, undefined, [prompt])).toEqual({ names: [], inTask: true, inline: false });
+		expect(taskSkillPlan(specialist, undefined, [prompt])).toEqual({ inTask: false, inline: false });
 		expect(taskSkillPlan(specialist, ["beta"], [])).toEqual({ names: ["beta"], inTask: true, inline: false });
 	});
 
@@ -171,7 +249,7 @@ describe("per-task skills", () => {
 		};
 		await fake.emit("before_agent_start", event, {});
 		expect(event.systemPromptOptions.skills).toEqual([]);
-		expect(Object.keys(event.systemPromptOptions.sections)).toContain("octocode_work");
+		expect(Object.keys(event.systemPromptOptions.sections)).toContain("work");
 
 		const skillHost = fakeHost();
 		(skillHost.api as unknown as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = () => ({

@@ -1,9 +1,9 @@
-import { Container, getKeybindings, Spacer, Text } from "@octocodeai/octocode-tui";
+import { Container, getKeybindings, GLYPH, Spacer, Text } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../../config.ts";
 import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
+import { hintLine, keyText } from "./keybinding-hints.ts";
 
 export interface FirstTimeSetupResult {
 	theme: string;
@@ -88,11 +88,11 @@ export class FirstTimeSetupComponent extends Container {
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
-				rawKeyHint("↑↓", "navigate") +
-					"  " +
-					keyHint("tui.select.confirm", this.step === "theme" ? "continue" : "finish") +
-					"  " +
-					keyHint("tui.select.cancel", "skip setup"),
+				hintLine([
+					["↑↓", "navigate"],
+					[keyText("tui.select.confirm"), this.step === "theme" ? "continue" : "finish"],
+					[keyText("tui.select.cancel"), "skip setup"],
+				]),
 				1,
 				0,
 			),
@@ -104,7 +104,7 @@ export class FirstTimeSetupComponent extends Container {
 	private addOptionList(labels: string[], selectedIndex: number): void {
 		for (let i = 0; i < labels.length; i++) {
 			const isSelected = i === selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", "→ ") : "  ";
+			const prefix = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
 			const label = isSelected ? theme.fg("accent", labels[i]) : theme.fg("text", labels[i]);
 			this.addChild(new Text(`${prefix}${label}`, 1, 0));
 		}

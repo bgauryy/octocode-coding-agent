@@ -35,11 +35,11 @@ export function parentGone(parentPid: number): boolean {
 const startTimes = new Map<number, string | undefined>();
 
 /** `ps` in UTC and the C locale: `lstart` is printed in the reader's time zone, so two Pis in different zones would disagree. */
-const PS_UTC_ENV = (): NodeJS.ProcessEnv => ({ ...process.env, LC_ALL: "C", TZ: "UTC0" });
+export const PS_UTC_ENV = (): NodeJS.ProcessEnv => ({ ...process.env, LC_ALL: "C", TZ: "UTC0" });
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Seconds since the epoch of an `lstart` printed in UTC (`Mon Jan  2 15:04:05 2006`), as a decimal string; undefined when unparsable. */
-function utcSeconds(lstart: string): string | undefined {
+export function utcSeconds(lstart: string): string | undefined {
 	const match = /^\w{3} (\w{3}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(lstart.trim().replace(/\s+/g, " "));
 	const month = MONTHS.indexOf(match?.[1] ?? "");
 	if (!match || month < 0) return undefined;

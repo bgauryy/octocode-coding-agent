@@ -1,14 +1,15 @@
 /**
- * Which overrides of a preset no longer match the server they were written for, per override: the drift tests name
- * them, and `generate:compact` shows and re-points them. Overrides are checked against every catalog a server sends
+ * Which kept overrides no longer match the server they were written for, per override: the drift tests name a preset's,
+ * `generate:compact` shows and re-points them, and `octocode mcp compact list` names a server's stored ones. Overrides
+ * are checked against every catalog a server sends
  * (the Octocode server varies its tools by configuration): one is stale when it differs in any catalog that has its
  * text, or when no catalog has it.
  */
 
 import { instructionsHash } from "./render.ts";
-import { hashList, type PresetOverrides, type PresetToolOverrides, type UpstreamHashes } from "./preset-overrides.ts";
+import { hashList } from "./preset-overrides.ts";
 import { fieldUpstreamTexts, toolDescriptionTexts, upstreamHash } from "./upstream.ts";
-import type { CompactServerInput } from "./types.ts";
+import type { CompactServerInput, PresetOverrides, PresetToolOverrides, UpstreamHashes } from "./types.ts";
 
 export interface StalePresetEntry {
 	/** `server`, `<tool>.description` (its trigger too) or `<tool>.<field path>`: what the drift tests name. */

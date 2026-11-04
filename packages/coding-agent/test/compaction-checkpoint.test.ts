@@ -2,8 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { finalizeCompactionResult } from "../src/core/compaction/checkpoint.ts";
-import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { finalizeCompactionResult, spillFileLists } from "../src/core/compaction/checkpoint.ts";
+import { RECOVERY_HEADING, splitSummary, USER_HEADING, viewSummary } from "../src/core/compaction/summary-view.ts";
+import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 
 const directories: string[] = [];
@@ -29,6 +30,87 @@ function sessionFile() {
 }
 afterEach(() => {
 	for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+});
+
+const heavy = (kept: string[]) =>
+	[
+		"## Goal\nShip the parser",
+		"## Progress\n" + "- long entry of finished work\n".repeat(4000),
+		"## TL;DR\nRewrote the parser.\nTopics: parser",
+		`${USER_HEADING}\nEarlier user messages not kept here: 2 (segment 1 has them).\n${kept.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n")}`,
+		`${RECOVERY_HEADING}\n- the full transcript before this summary is /t/s.jsonl (JSONL, one entry per line): search it.`,
+	].join("\n\n");
+
+describe("what stays inline when a checkpoint is archived", () => {
+	it("keeps the goal, the TL;DR, the newest user messages and Recovery, and references the rest", () => {
+		const summary = heavy(["older request", "newest request"]);
+		const finalized = finalizeCompactionResult(result(summary), {
+			branchEntries: branch(),
+			contextWindow: 8000,
+			reserveTokens: 1000,
+			sessionFile: sessionFile(),
+		});
+		const details = finalized.details as { checkpointArchive: { path: string; summary: string } };
+		expect(fs.readFileSync(details.checkpointArchive.path, "utf8")).toBe(summary);
+		expect(finalized.summary).toContain(
+			`The complete context checkpoint is saved at ${details.checkpointArchive.path}`,
+		);
+		expect(finalized.summary).toContain("## Goal\nShip the parser");
+		expect(finalized.summary).toContain("## TL;DR\nRewrote the parser.");
+		expect(finalized.summary).toContain("<user-message>\nnewest request\n</user-message>");
+		expect(finalized.summary).toContain(`${RECOVERY_HEADING}\n- the full transcript`);
+		expect(finalized.summary).not.toContain("long entry of finished work");
+		const view = viewSummary(finalized.summary);
+		expect(view.checkpointFile).toBe(details.checkpointArchive.path);
+		expect(view.transcript).toBe("/t/s.jsonl");
+		expect(view.messages).toContain("newest request");
+		expect(splitSummary(finalized.summary).messages.at(-1)).toBe("newest request");
+	});
+
+	it("keeps what fits, newest messages first, when the window is small", () => {
+		const big = "x".repeat(2000);
+		const finalized = finalizeCompactionResult(result(heavy([big, "newest request"])), {
+			branchEntries: branch(),
+			contextWindow: 1000,
+			reserveTokens: 500,
+			sessionFile: sessionFile(),
+		});
+		expect(charsToTokens(finalized.summary.length)).toBeLessThanOrEqual(400);
+		expect(finalized.summary).toContain("newest request");
+		expect(finalized.summary).not.toContain(big);
+	});
+});
+
+describe("file lists in a checkpoint", () => {
+	const paths = Array.from({ length: 500 }, (_, i) => `packages/example/folder-${i}/component.ts`);
+	const withLists = `## Goal\nShip it\n\n<read-files>\nshort.ts\n</read-files>\n\n<modified-files>\n${paths.join("\n")}\n</modified-files>`;
+
+	it("moves an over-long list to a file instead of archiving the whole checkpoint", () => {
+		const file = sessionFile();
+		const finalized = finalizeCompactionResult(result(withLists), {
+			branchEntries: branch(),
+			contextWindow: 200_000,
+			reserveTokens: 16_384,
+			sessionFile: file,
+		});
+		expect(finalized.details).not.toHaveProperty("checkpointArchive");
+		expect(finalized.summary).toContain("## Goal\nShip it");
+		expect(finalized.summary).toContain("<read-files>\nshort.ts\n</read-files>");
+		const spilled = /500 files, listed one per line in (\S+);/.exec(finalized.summary)?.[1];
+		expect(spilled?.startsWith(`${file}.checkpoint-`)).toBe(true);
+		expect(fs.readFileSync(spilled!, "utf8")).toBe(`${paths.join("\n")}\n`);
+		expect(finalized.summary).not.toContain(paths[1]);
+		expect(splitSummary(finalized.summary).body).toBe("## Goal\nShip it");
+	});
+
+	it("keeps the list whole when it cannot be saved", () => {
+		expect(
+			spillFileLists(withLists, () => {
+				throw new Error("disk full");
+			}),
+		).toBe(withLists);
+		expect(spillFileLists(withLists, () => undefined)).toBe(withLists);
+	});
 });
 
 describe("final checkpoint budget", () => {

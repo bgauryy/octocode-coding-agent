@@ -34,6 +34,8 @@ export interface Member {
 	pending?: number;
 	/** Set by `list`: paths it has reserved (trees end with `/`). */
 	locks?: string[];
+	/** Set by the process running this subagent, in what it lists: when the subagent last wrote output. */
+	lastOutputAt?: number;
 }
 
 /** One message as the user sees it in the feed: who talked to whom, and how far it got. */

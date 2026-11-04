@@ -154,7 +154,7 @@ export async function runToolCall(toolCall: AgentToolCall, options: RunToolCallO
 	return finalizeExecutedToolCall(context, assistantMessage, preparation, executed, options, signal);
 }
 
-/** How long a tool may keep running after an abort before the loop stops waiting for it. */
+/** How long a tool may keep running after an abort before the loop stops waiting for it, unless it declares `abortGraceMs`. */
 const ABORT_GRACE_MS = 50;
 
 const ABANDONED = Symbol("abandoned");
@@ -164,12 +164,15 @@ export const ABANDONED_MESSAGE =
 	"Operation aborted. The tool did not stop when asked and may still be running, so its effects (a write, a command) may still happen; check the current state before retrying it.";
 
 /**
- * Resolve with the operation's outcome, or with {@link ABANDONED} once `signal` has been aborted for
- * {@link ABORT_GRACE_MS}. A tool that honors the signal settles inside the grace period and keeps its own
- * result; one that ignores it is abandoned. The abandoned promise stays observed so a later rejection
- * is never unhandled.
+ * Resolve with the operation's outcome, or with {@link ABANDONED} once `signal` has been aborted for `graceMs`.
+ * A tool that honors the signal settles inside the grace period and keeps its own result; one that ignores it is
+ * abandoned. The abandoned promise stays observed so a later rejection is never unhandled.
  */
-function raceAbort<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T | typeof ABANDONED> {
+function raceAbort<T>(
+	operation: Promise<T>,
+	signal: AbortSignal | undefined,
+	graceMs: number,
+): Promise<T | typeof ABANDONED> {
 	void operation.catch(() => {});
 	if (!signal) return operation;
 	return new Promise<T | typeof ABANDONED>((resolve, reject) => {
@@ -182,7 +185,7 @@ function raceAbort<T>(operation: Promise<T>, signal: AbortSignal | undefined): P
 			timer = setTimeout(() => {
 				cleanup();
 				resolve(ABANDONED);
-			}, ABORT_GRACE_MS);
+			}, graceMs);
 		};
 		operation.then(
 			(value) => {
@@ -200,8 +203,8 @@ function raceAbort<T>(operation: Promise<T>, signal: AbortSignal | undefined): P
 }
 
 /**
- * Execute a prepared call. An abort ends the call within a short grace period even when the tool ignores
- * the signal: the call then reports {@link ABANDONED_MESSAGE} and the tool keeps running in the background,
+ * Execute a prepared call. An abort ends the call within a grace period (short, unless the tool declares its own)
+ * even when the tool ignores the signal: the call then reports {@link ABANDONED_MESSAGE} and the tool keeps running in the background,
  * with its late result, updates and errors discarded.
  */
 export async function executePreparedToolCall(
@@ -213,6 +216,11 @@ export async function executePreparedToolCall(
 	let acceptingUpdates = true;
 	const startedAt = performance.now();
 	const elapsed = () => Math.round(performance.now() - startedAt);
+	// A listener that fails must cost neither the tool's result nor the process: the promise is held unobserved until
+	// the tool ends, so an unhandled rejection would fire while it runs, and a live view is not worth a tool's work.
+	const reportUpdateFailure = (error: unknown) => {
+		console.error(`Tool update listener error (${prepared.toolCall.name}):`, error);
+	};
 
 	try {
 		// Not awaited without a check: a tool that starts at once must still run before the next call's thunk begins.
@@ -229,9 +237,9 @@ export async function executePreparedToolCall(
 		const execution = (async () =>
 			prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
 				if (!acceptingUpdates) return;
-				updateEvents.push(Promise.resolve(onUpdate(partialResult)));
+				updateEvents.push(new Promise<void>((resolve) => resolve(onUpdate(partialResult))).catch(reportUpdateFailure));
 			}))();
-		const result = await raceAbort(execution, signal);
+		const result = await raceAbort(execution, signal, prepared.tool.abortGraceMs ?? ABORT_GRACE_MS);
 		const durationMs = elapsed();
 		acceptingUpdates = false;
 		await Promise.all(updateEvents);
@@ -242,7 +250,7 @@ export async function executePreparedToolCall(
 	} catch (error) {
 		const durationMs = elapsed();
 		acceptingUpdates = false;
-		await Promise.all(updateEvents);
+		await Promise.allSettled(updateEvents);
 		return {
 			result:
 				error instanceof AgentToolExecutionError

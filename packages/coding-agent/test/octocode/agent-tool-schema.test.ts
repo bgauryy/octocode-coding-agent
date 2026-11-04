@@ -55,12 +55,48 @@ const valid = [
 ];
 
 describe("flat agent schema", () => {
+	it("shares only paths between task and coordinate, marked for each, and still refuses it on another type", async () => {
+		const modes = agentModes();
+		const execute = vi.fn(async (..._args: unknown[]) => ({ content: [], details: {} }));
+		const paths = (description: string) => Type.Optional(Type.Array(Type.String(), { description }));
+		const fields = {
+			agent: { task: Type.String(), paths: paths("reserved for the child") },
+			coordinate: { action: Type.String(), paths: paths("lock these") },
+			sendMessage: { to: Type.String() },
+		};
+		for (const [name, properties] of Object.entries(fields))
+			modes.collect({ name, label: name, description: name, parameters: Type.Object(properties), execute });
+		const fake = fakeHost();
+		modes.register(withNativePermissionOwners(fake.api));
+		const tool = fake.tools.get("agent")!;
+		const schema = tool.parameters as { properties: Record<string, { description?: string }> };
+		expect(schema.properties.paths?.description).toBe("task: reserved for the child coordinate: lock these");
+		const call = (args: Record<string, unknown>) =>
+			tool.execute("c", args, undefined, undefined, fakeCtx({ cwd: "/" }));
+		await call({ type: "task", task: "t", paths: ["a.ts"], reason: "r" });
+		await call({ type: "coordinate", action: "lock", paths: ["a.ts"], reason: "r" });
+		expect(execute).toHaveBeenCalledTimes(2);
+		await expect(call({ type: "message", to: "x", paths: ["a.ts"], reason: "r" })).rejects.toThrow(
+			"agent type message does not take paths (only for task, coordinate).",
+		);
+		// Any other shared name still fails registration.
+		const clash = agentModes();
+		const twice = { to: Type.String() };
+		clash.collect({ name: "agent", label: "a", description: "a", parameters: Type.Object(twice), execute });
+		clash.collect({ name: "sendMessage", label: "m", description: "m", parameters: Type.Object(twice), execute });
+		expect(() => clash.register(withNativePermissionOwners(fakeHost().api))).toThrow(
+			"agent field to is declared by task and message; rename one.",
+		);
+	});
+
 	it("declares one flat object: type, each mode's fields marked with their type, and the call reason", () => {
 		const { tool } = unified();
 		const schema = tool.parameters as { properties: Record<string, { description?: string }> };
 		expect(schema).toMatchObject({ type: "object", required: ["type", "reason"], additionalProperties: false });
 		expect(schema).not.toHaveProperty("anyOf");
+		// The call reason is first (registration moves the tool's own definition there).
 		expect(Object.keys(schema.properties)).toEqual([
+			"reason",
 			"type",
 			"task",
 			"externalAction",
@@ -68,7 +104,6 @@ describe("flat agent schema", () => {
 			"action",
 			"subagent",
 			"to",
-			"reason",
 		]);
 		expect(schema.properties.task.description).toBe("task: brief");
 		expect(schema.properties.to.description).toBe("message only");

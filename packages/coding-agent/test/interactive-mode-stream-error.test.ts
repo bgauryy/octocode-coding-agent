@@ -4,11 +4,12 @@ import { Container } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
-import { handleEvent, subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
+import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
 import { getMarkdownTheme, initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const sessions: AgentSession[] = [];
 const PROVIDER_ERROR = "429 Too Many Requests: rate limited";
@@ -61,17 +62,17 @@ function fixture(messages: AgentMessage[] = []) {
 		getMarkdownTransformers: () => [],
 		getMarkdownThemeWithSettings: getMarkdownTheme,
 		hiddenThinkingLabel: "Thinking…",
-		hideThinkingBlock: false,
 		outputPad: 1,
 		pendingTools: new Map(),
 		entriesRenderedByRebuild: new Set<string>(),
-		toolOutputExpanded: false,
+		uiStore: createUiStore(),
+		pendingMessagesContainer: new Container(),
+		getAppKeyDisplay: () => "alt+up",
 		ui: { requestRender() {} },
 		settingsManager: { getShowImages: () => true, getImageWidthCells: () => 20, getShowCacheMissNotices: () => false },
 		sessionManager: { getCwd: () => "/tmp", buildContextEntries: () => [] },
 		getRegisteredToolDefinition: (): ReturnType<InteractiveModeHost["getRegisteredToolDefinition"]> => undefined,
 		programStatus: { handleEvent() {} },
-		updatePendingMessagesDisplay() {},
 		maybeShowThinkingDropNotice() {},
 		maybeShowCacheMissNotice() {},
 		maybeShowInstallChangeWarning() {},
@@ -117,19 +118,7 @@ describe("tool rows of a failed model response", () => {
 		expect(count(output, PROVIDER_ERROR)).toBe(1);
 	});
 
-	it("marks native-path pending tool rows as not run and shows the provider error once", async () => {
-		const { host, text } = fixture();
-		const message = failedToolCalls("error");
-		await handleEvent(host, { type: "message_start", message });
-		await handleEvent(host, { type: "message_end", message });
-
-		const output = text();
-		expect(count(output, "Not run: the model response failed")).toBe(2);
-		expect(count(output, PROVIDER_ERROR)).toBe(1);
-		expect(host.pendingTools.size).toBe(0);
-	});
-
-	it("keeps an abort's own text on the tool rows", async () => {
+	it("keeps an abort's own text on the tool rows", () => {
 		const live = fixture();
 		subscribeToAgent(live.host);
 		const message = failedToolCalls("aborted");
@@ -138,11 +127,5 @@ describe("tool rows of a failed model response", () => {
 		expect(count(live.text(), "Operation interrupted")).toBe(2);
 		expect(live.text()).not.toContain("Not run");
 		live.host.unsubscribe?.();
-
-		const native = fixture();
-		await handleEvent(native.host, { type: "message_start", message: failedToolCalls("aborted") });
-		await handleEvent(native.host, { type: "message_end", message: failedToolCalls("aborted") });
-		expect(count(native.text(), "Operation aborted")).toBe(2);
-		expect(native.text()).not.toContain("Not run");
 	});
 });

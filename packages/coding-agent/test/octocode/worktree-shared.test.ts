@@ -194,7 +194,7 @@ describe("a saved ref on a backlog item", () => {
 				.filter((note) => note.kind === "note")
 				.map((note) => note.text),
 		).toEqual([
-			"The isolated change is saved on refs/octocode/child-1, not merged yet. Merge it with `/agents merge child-1`.",
+			"The isolated change is saved on refs/octocode/child-1, not merged yet. Merge it with `agent` type `coordinate`, action `merge`, id `child-1` (the user: `/agents merge child-1`).",
 		]);
 
 		const merged = await mergeAgent(main, "child-1");

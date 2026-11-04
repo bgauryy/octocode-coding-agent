@@ -111,7 +111,7 @@ const late = "2026-10-25";
 
 /** Session a (kimi, early): 4 results, 3 errors. Session b (opus, late): 2 results, 1 error. Session c: not readable. */
 function history(cwd: string): void {
-	const agents = path.join(cwd, ".octa", "code", "temp", "agents");
+	const agents = path.join(cwd, ".octocode", "code", "temp", "agents");
 	session("a", cwd, path.join(agents, "a", "session", "a.jsonl"), [
 		model("kimi"),
 		result(early, "file", invalid("queries.0"), true),

@@ -12,9 +12,11 @@ export interface ShellSettings {
 	backgroundAfterSeconds?: number;
 	/** `bashOutputMaxBytes`: the model-facing budget of a foreground result. */
 	outputMaxBytes?: number;
+	/** `bash.spillMaxBytes`: the most the saved full output of a foreground result holds; 0 lifts the cap. */
+	spillMaxBytes?: number;
 }
 
-/** `shellPath`, `shellCommandPrefix`, `bashBackgroundAfterSeconds` and `bashOutputMaxBytes` from Octocode's settings for `cwd` (project settings only in a trusted project). */
+/** `shellPath`, `shellCommandPrefix`, `bashBackgroundAfterSeconds`, `bashOutputMaxBytes` and `bash.spillMaxBytes` from Octocode's settings for `cwd` (project settings only in a trusted project). */
 export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettings {
 	try {
 		const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
@@ -25,6 +27,7 @@ export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettin
 			...(commandPrefix ? { commandPrefix } : {}),
 			backgroundAfterSeconds: settings.getBashBackgroundAfterSeconds(),
 			outputMaxBytes: settings.getBashOutputMaxBytes(),
+			spillMaxBytes: settings.getBashSpillMaxBytes(),
 		};
 	} catch {
 		return {};

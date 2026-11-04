@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as importedModule3 from "../../src/octocode/web/fetch.ts";
 import { decodeBody } from "../../src/octocode/web/charset.ts";
 import { isBinaryType, type PageFetcher, pageFetcher, readCapped } from "../../src/octocode/web/fetch.ts";
-import { classifyHost, type HostLookup, isBlockedIp, publicFetch } from "../../../common/src/web-guard.ts";
+import { isBlockedIp, isMetadataIp } from "../../../common/src/ip-address.ts";
+import { classifyHost, type HostLookup, publicFetch, reachesMetadata } from "../../../common/src/web-guard.ts";
 import * as importedModule1 from "../../src/octocode/web/html.ts";
 import { collapseLinkRuns, describeHtml, htmlToText, mainContent } from "../../src/octocode/web/html.ts";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
@@ -118,9 +119,51 @@ describe("web private-address guard", () => {
 		["2002:0808:0808::1", false],
 		["100::1", true],
 		["100::ffff:ffff:ffff:ffff", true],
-		["100:0:0:1::1", false],
+		// Only global unicast 2000::/3 is public: what is outside it is blocked, listed or not.
+		["100:0:0:1::1", true],
+		["5f00::1", true],
+		["4000::1", true],
+		["168.63.129.16", true],
+		["168.63.129.17", false],
+		["2001:10::1", true],
+		["2001:20::1", true],
+		["2001:2f::1", true],
+		["2001:30::1", false],
+		["3fff::1", true],
+		["3fff:1000::1", false],
+		["2a00:1450::1", false],
 	])("%s blocked=%s", (ip, blocked) => {
 		expect(isBlockedIp(ip)).toBe(blocked);
+	});
+
+	it.each([
+		["169.254.169.254", true],
+		["168.63.129.16", true],
+		["fd00:ec2::254", true],
+		["FD00:EC2:0::254", true],
+		["::ffff:169.254.169.254", true],
+		["64:ff9b::a9fe:a9fe", true],
+		["169.254.169.253", false],
+		["10.0.0.1", false],
+		["fd00:ec2::253", false],
+		["8.8.8.8", false],
+		["not an address", false],
+	])("%s metadata=%s", (ip, metadata) => {
+		expect(isMetadataIp(ip)).toBe(metadata);
+	});
+
+	it("finds a metadata address behind a name, and does not call an unresolved name one", async () => {
+		const lookup: HostLookup = async (name) => {
+			if (name === "metadata.internal") return [{ address: "93.184.216.34" }, { address: "169.254.169.254" }];
+			if (name === "public.example") return [{ address: "93.184.216.34" }];
+			throw new Error("no such host");
+		};
+		expect(await reachesMetadata(new URL("http://metadata.internal/latest"), lookup)).toBe(true);
+		expect(await reachesMetadata(new URL("http://public.example/"), lookup)).toBe(false);
+		expect(await reachesMetadata(new URL("http://gone.example/"), lookup)).toBe(false);
+		// `new URL` normalizes decimal and hex hosts before the check.
+		expect(await reachesMetadata(new URL("http://2852039166/"), lookup)).toBe(true);
+		expect(await reachesMetadata(new URL("http://[fd00:ec2::254]/"), lookup)).toBe(true);
 	});
 
 	it.each([

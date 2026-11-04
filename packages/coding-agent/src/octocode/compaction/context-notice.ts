@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { MessageRef } from "../files/reads.ts";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
@@ -33,8 +34,14 @@ const COMPACT_HINT_BAND = CONTEXT_NOTICE_BANDS[0];
 export function contextNoticeText(tokens: number, limit: number, window: number, compactHint = false): string {
 	const left = Math.max(0, limit - tokens);
 	const percent = Math.round((tokens / limit) * 100);
-	const hint = compactHint ? " At a task boundary, `compact` can summarize sooner." : "";
-	return `[Context] ${kilo(tokens)} of ${kilo(limit)} usable tokens used (${percent}%); about ${kilo(left)} left before automatic compaction summarizes older turns. The window is ${kilo(window)}.${hint}`;
+	return renderInstruction("notices/compaction/context-usage.md", {
+		used: kilo(tokens),
+		limit: kilo(limit),
+		percent,
+		left: kilo(left),
+		window: kilo(window),
+		compactHint,
+	});
 }
 
 /** The band of the last notice in the context, if any. */

@@ -5,6 +5,7 @@ import { hasTmuxSession } from "./multiplexer.ts";
 import { StdinBuffer } from "./stdin-buffer.ts";
 import { BracketedPasteRearm, DISABLE_BRACKETED_PASTE, ENABLE_BRACKETED_PASTE } from "./terminal/bracketed-paste.ts";
 import { DEVICE_ATTRIBUTES_QUERY } from "./terminal/device-attributes.ts";
+import { registerExitRestore } from "./terminal/exit-restore.ts";
 import {
 	isAppleTerminalSession,
 	normalizeNativeShiftEnterInput,
@@ -49,6 +50,7 @@ export class ProcessTerminal implements Terminal {
 		isPasting: () => this.stdinBuffer?.pasting ?? false,
 	});
 	private wasRaw = false;
+	private disposeExitRestore?: () => void;
 	private inputHandler?: (data: string) => void;
 	private resizeHandler?: () => void;
 	private capabilitiesHandler?: () => void;
@@ -98,6 +100,8 @@ export class ProcessTerminal implements Terminal {
 		// Enable bracketed paste mode - terminal will wrap pastes in \x1b[200~ ... \x1b[201~
 		process.stdout.write(ENABLE_BRACKETED_PASTE);
 		this.bracketedPaste.start();
+		this.disposeExitRestore?.();
+		this.disposeExitRestore = registerExitRestore(() => this.restoreOnExit());
 
 		// Set up resize handler immediately
 		process.stdout.on("resize", this.resizeHandler);
@@ -230,7 +234,16 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
+	/** Undo the modes start() turned on when the process ends without stop(): the same synchronous writes stop() makes. */
+	private restoreOnExit(): void {
+		this.progress.clear();
+		this.keyboardProtocol.disable();
+		process.stdout.write(`${DISABLE_BRACKETED_PASTE}\x1b[?25h`);
+	}
+
 	stop(): void {
+		this.disposeExitRestore?.();
+		this.disposeExitRestore = undefined;
 		this.graphicsProbe.stop();
 		this.capabilitiesHandler = undefined;
 		this.progress.clear();

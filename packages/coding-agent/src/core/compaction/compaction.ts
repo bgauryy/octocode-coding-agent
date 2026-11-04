@@ -251,7 +251,7 @@ export async function compact(
 			const historyResult = await generateSummaryWithUsage(
 				messagesToSummarize,
 				model,
-				undefined,
+				preparation.settings?.reserveTokens,
 				apiKey,
 				headers,
 				signal,
@@ -291,7 +291,7 @@ export async function compact(
 		const result = await generateSummaryWithUsage(
 			messagesToSummarize,
 			model,
-			undefined,
+			preparation.settings?.reserveTokens,
 			apiKey,
 			headers,
 			signal,

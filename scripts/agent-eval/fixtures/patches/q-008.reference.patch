@@ -1,0 +1,22 @@
+--- a/packages/common/src/text.ts
++++ b/packages/common/src/text.ts
+@@ -22,7 +22,7 @@
+ 		if (text.length <= limit) return text;
+ 		if (tail) {
+ 			let start = text.length - limit;
+-			if (isHighSurrogate(text.charCodeAt(start))) start++;
++			if (isLowSurrogate(text.charCodeAt(start))) start++;
+ 			return text.slice(start);
+ 		}
+ 		let end = limit;
+--- /dev/null
++++ b/packages/common/test/text.test.ts
+@@ -0,0 +1,8 @@
++import { describe, expect, it } from "vitest";
++import { cutText } from "../src/text.ts";
++
++describe("cutText", () => {
++	it("never starts a tail cut inside a surrogate pair", () => {
++		expect(cutText("a\u{1F600}b", 2, { chars: true, tail: true })).toBe("b");
++	});
++});

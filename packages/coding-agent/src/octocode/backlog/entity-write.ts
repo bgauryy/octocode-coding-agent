@@ -7,6 +7,14 @@ import { checkHierarchy, openTasksRefusal } from "./hierarchy.ts";
 import { type Actor, type Item, BacklogError, refuseSecrets } from "./item.ts";
 import { getItem, list } from "./reads.ts";
 
+/** Why a file path is not repository-relative, naming it, or undefined when it is. */
+function pathRefusal(path: string): string | undefined {
+	if (!path.trim()) return "an empty file path is not a path";
+	if (/^(?:[\\/]|[a-z]:)/i.test(path)) return `\`${path}\` is absolute`;
+	if (path.split(/[\\/]/).includes("..")) return `\`${path}\` is outside the repository`;
+	return undefined;
+}
+
 /** Validates an input's entity fields (version, links, completions and their files) before anything is stored. */
 export function validateEntityInput(input: EntityInput): void {
 	if (input.version !== undefined && (!Number.isInteger(input.version) || input.version < 1))
@@ -31,13 +39,14 @@ export function validateEntityInput(input: EntityInput): void {
 				throw new BacklogError("External links need an HTTP(S) URL without credentials.");
 		}
 	}
-	for (const file of [
+	const refused = [
 		...(input.completion?.files ?? []),
 		...(input.links ?? []).flatMap((l) => (l.target.resource === "files" ? [l.target] : [])),
-	]) {
-		if (/^(?:[\\/]|[a-z]:)/i.test(file.path) || file.path.split(/[\\/]/).includes("..") || !file.path.trim())
-			throw new BacklogError("Files need repository-relative paths without traversal.");
-	}
+	].flatMap((file) => {
+		const why = pathRefusal(file.path);
+		return why ? [why] : [];
+	});
+	if (refused.length) throw new BacklogError(`${refused.join("; ")}; give a repository-relative path.`);
 }
 
 /**

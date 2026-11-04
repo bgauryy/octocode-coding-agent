@@ -26,7 +26,7 @@ function trimmed(truncation: TruncationResult, lastLineBytes: number): string | 
 
 /**
  * The first line of a foreground bash result, e.g. `[exit 0 · 4.2s · 312 lines · 18 KB]`; a trimmed result adds what
- * was kept and where the full output is. A command that timed out shows its deadline instead of a duration.
+ * was kept and where the full output is, or what the saved file lost to its cap. A command that timed out shows its deadline instead of a duration.
  */
 export function formatBashHeader(
 	end: BashEnd,
@@ -36,6 +36,8 @@ export function formatBashHeader(
 		truncation: TruncationResult;
 		fullOutputPath?: string;
 		lastLineBytes: number;
+		/** Bytes the `bash.spillMaxBytes` cap dropped from the saved file. */
+		spillDroppedBytes?: number;
 	},
 ): string {
 	const seconds = `${end.seconds}s`;
@@ -53,7 +55,14 @@ export function formatBashHeader(
 	const cut = trimmed(output.truncation, output.lastLineBytes);
 	if (cut) {
 		parts.push(cut);
-		if (output.fullOutputPath) parts.push(`full output: ${output.fullOutputPath}`);
+		if (output.fullOutputPath) {
+			// The file no longer holds every line, so "full" would be untrue and line numbers past the cut would mislead.
+			parts.push(
+				output.spillDroppedBytes
+					? `saved output: ${output.fullOutputPath} (${formatBytes(output.spillDroppedBytes, "spaced")} dropped from its middle by the bash.spillMaxBytes cap, so later line numbers shift)`
+					: `full output: ${output.fullOutputPath}`,
+			);
+		}
 	}
 	return `[${parts.join(" · ")}]`;
 }

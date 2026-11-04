@@ -23,8 +23,8 @@ export const ExternalParamsSchema = Type.Object(
 		vendor: Type.Optional(Type.String({ description: "connect acp: the agent's real vendor" })),
 		command: Type.Optional(Type.String({ description: "connect acp: executable" })),
 		args: Type.Optional(Type.Array(Type.String())),
-		instanceId: Type.Optional(Type.String({ description: "connect octocode: instance id from list" })),
-		cwd: Type.Optional(Type.String({ description: "connect: workspace (octocode: the instance's absolute path)" })),
+		instanceId: Type.Optional(Type.String({ description: "connect octocode: instance id or process name from list" })),
+		cwd: Type.Optional(Type.String({ description: "connect: workspace (octocode: defaults to the instance's)" })),
 		sessionId: Type.Optional(Type.String({ description: "connect acp: session to resume" })),
 		model: Type.Optional(Type.String({ description: "connect acp: model option" })),
 		text: Type.Optional(Type.String({ description: "prompt: the whole message; the peer sees nothing else" })),
@@ -73,7 +73,7 @@ export function parseExternalParams(value: unknown): ExternalParams {
 		if (input.transport === "acp" && (!input.command || !input.vendor))
 			throw new Error("ACP connect requires command and the real host vendor.");
 		if (input.transport === "octocode" && !input.instanceId)
-			throw new Error("Octocode connect requires an exact discovered instanceId.");
+			throw new Error("Octocode connect requires instanceId: an instance id or process name from list.");
 	} else if (input.action !== "list" && !input.id) throw new Error(`${input.action} requires id.`);
 	if (input.action === "prompt" && !input.text) throw new Error("prompt requires text.");
 	if (input.refs) {

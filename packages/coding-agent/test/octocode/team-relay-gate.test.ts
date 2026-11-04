@@ -40,9 +40,11 @@ function child(store: TeamStore, me: string): ReferenceHost {
 		store: () => store,
 		parentId: () => self?.parentId,
 		finished: new Map(),
+		reporting: () => false,
 		resumer: () => undefined,
 		messageHook: () => undefined,
 		signed: () => undefined,
+		signedByParent: () => undefined,
 		mail: { createdForUser: () => undefined },
 		started: () => false,
 	};

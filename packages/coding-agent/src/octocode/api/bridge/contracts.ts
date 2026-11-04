@@ -19,7 +19,20 @@ export function nesting(parentId: string | undefined): { depth: number; parentId
 	return parentId ? { parentId, depth: parentId.split("/").length } : { depth: 0 };
 }
 
+/** Who an external message says it is from and what it asks: what the session's permission layer decides on. */
+export interface ExternalAdmission {
+	from: string;
+	/** The name of the running instance the caller named. */
+	process?: string;
+	details: string[];
+	text: string;
+	/** This process's own name, for what the sender reads back. */
+	self: string;
+}
+
 export interface ApiOperations {
 	messageSend?(message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal): Promise<void>;
+	/** Whether this message may reach the session (a permission check); throws what the sender reads. `onAsk`: it waits for the user. */
+	admit?(claim: ExternalAdmission, ctx: ExtensionContext, signal?: AbortSignal, onAsk?: () => void): Promise<void>;
 	externalCall?(params: unknown, ctx: ExtensionContext): Promise<unknown>;
 }

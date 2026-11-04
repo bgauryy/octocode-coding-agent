@@ -50,6 +50,14 @@ export interface MailDetails {
 	messages: Array<Pick<Message, "from" | "text" | "at"> & Partial<Message>>;
 }
 
+/** A running child's model requests against its limits, as its parent's `coordinate` shows and grants them. */
+export interface BudgetStanding {
+	used: number;
+	soft: number;
+	/** Where the run stops. */
+	hard: number;
+}
+
 /** A message whose recipients left before reading it, or before answering its question, for its sender. */
 export interface DeadLetter {
 	id: number;
@@ -81,6 +89,12 @@ export interface Lease {
 }
 
 export type LeaseRequest = Pick<Lease, "path" | "kind" | "reason">;
+
+/** A requested path (as asked for) and the lease that blocks it. */
+export interface LeaseConflict {
+	path: string;
+	heldBy: Lease;
+}
 
 export function toMember(row: Row): Member {
 	const goal = optionalString(row.task);

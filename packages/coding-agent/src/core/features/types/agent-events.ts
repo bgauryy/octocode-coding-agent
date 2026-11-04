@@ -9,6 +9,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 } from "@octocodeai/octocode-ai";
+import type { RunOutcome } from "../../agent-session/run-outcome.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { ContextEditEntry, ProjectedSessionEntry } from "../../session-manager.ts";
 import type { NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts";
@@ -131,6 +132,8 @@ export interface AgentSettledEvent {
 	type: "agent_settled";
 	/** Whether the run ended because it was aborted, for example with Escape. */
 	aborted: boolean;
+	/** How the run ended, which the context cannot answer: recovery removes failed attempts from it. */
+	outcome?: RunOutcome;
 }
 
 export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom";

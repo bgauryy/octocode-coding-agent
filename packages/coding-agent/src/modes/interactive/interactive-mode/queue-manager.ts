@@ -15,8 +15,12 @@ import type { CompactionQueuedMessage } from "./types.ts";
 
 export type QueueManagerHost = Pick<
 	InteractiveModeHost,
-	"compactionQueuedMessages" | "editor" | "session" | "showError" | "showStatus" | "ui" | "updatePendingMessagesDisplay"
+	"editor" | "session" | "showError" | "showStatus" | "ui" | "uiStore"
 >;
+
+const held = (host: Pick<QueueManagerHost, "uiStore">) => host.uiStore.getState().queue.compaction;
+const editHeld = (host: Pick<QueueManagerHost, "uiStore">, edit: (queue: CompactionQueuedMessage[]) => void) =>
+	host.uiStore.getState().editHeldMessages(edit);
 
 /** A queued message from either queue, in delivery order. */
 export interface QueueItem {
@@ -31,7 +35,7 @@ export interface QueueItem {
 }
 
 /** Steering before follow-ups; within each, messages already in the session before those held for compaction. */
-export function listQueueItems(host: Pick<QueueManagerHost, "compactionQueuedMessages" | "session">): QueueItem[] {
+export function listQueueItems(host: Pick<QueueManagerHost, "session" | "uiStore">): QueueItem[] {
 	const items: QueueItem[] = [];
 	for (const mode of ["steer", "followUp"] as const) {
 		for (const queued of host.session.getQueuedInputs()) {
@@ -44,32 +48,27 @@ export function listQueueItems(host: Pick<QueueManagerHost, "compactionQueuedMes
 				session: queued,
 			});
 		}
-		for (const held of host.compactionQueuedMessages) {
-			if (held.mode === mode) items.push({ mode, text: held.text, imageCount: 0, extension: false, compaction: held });
+		for (const message of held(host)) {
+			if (message.mode === mode)
+				items.push({ mode, text: message.text, imageCount: 0, extension: false, compaction: message });
 		}
 	}
 	return items;
 }
 
-const changed = (host: QueueManagerHost): void => {
-	host.updatePendingMessagesDisplay();
-	host.ui.requestRender();
-};
-
 function takeOut(host: QueueManagerHost, item: QueueItem): boolean {
 	if (item.session) {
 		return getApplicationPort(host.session).invoke("removeQueuedInput", item.session.id) !== undefined;
 	}
-	const index = item.compaction ? host.compactionQueuedMessages.indexOf(item.compaction) : -1;
+	const index = item.compaction ? held(host).indexOf(item.compaction) : -1;
 	if (index === -1) return false;
-	host.compactionQueuedMessages.splice(index, 1);
+	editHeld(host, (queue) => void queue.splice(index, 1));
 	return true;
 }
 
 /** Remove a queued message so it is never sent; false when it is no longer queued (delivery has begun). */
 export function removeQueueItem(host: QueueManagerHost, item: QueueItem): boolean {
 	const removed = takeOut(host, item);
-	if (removed) changed(host);
 	return removed;
 }
 
@@ -79,17 +78,16 @@ export function moveQueueItem(host: QueueManagerHost, item: QueueItem, direction
 	if (item.session) {
 		moved = getApplicationPort(host.session).invoke("moveQueuedInput", item.session.id, direction);
 	} else if (item.compaction) {
-		const held = host.compactionQueuedMessages;
-		const from = held.indexOf(item.compaction);
+		const queue = held(host);
+		const from = queue.indexOf(item.compaction);
 		const step = direction === "up" ? -1 : 1;
 		let to = from + step;
-		while (from !== -1 && held[to] && held[to].mode !== item.mode) to += step;
-		if (from !== -1 && held[to]) {
-			[held[from], held[to]] = [held[to], held[from]];
+		while (from !== -1 && queue[to] && queue[to].mode !== item.mode) to += step;
+		if (from !== -1 && queue[to]) {
+			editHeld(host, (next) => void ([next[from], next[to]] = [next[to], next[from]]));
 			moved = true;
 		}
 	}
-	if (moved) changed(host);
 	return moved;
 }
 
@@ -100,11 +98,13 @@ export function toggleQueueItemMode(host: QueueManagerHost, item: QueueItem): bo
 	if (item.session) {
 		switched = getApplicationPort(host.session).invoke("setQueuedInputMode", item.session.id, mode);
 	} else if (item.compaction && takeOut(host, item)) {
-		item.compaction.mode = mode;
-		host.compactionQueuedMessages.push(item.compaction);
+		const message = item.compaction;
+		editHeld(host, (queue) => {
+			message.mode = mode;
+			queue.push(message);
+		});
 		switched = true;
 	}
-	if (switched) changed(host);
 	return switched;
 }
 
@@ -122,12 +122,10 @@ export function holdQueueItem(host: QueueManagerHost, item: QueueItem): HeldQueu
 	const owner = host.session;
 	if (item.session) {
 		if (!getApplicationPort(owner).invoke("holdQueuedInput", item.session.id)) return undefined;
-		changed(host);
 		return { item, owner };
 	}
-	const compactionIndex = item.compaction ? host.compactionQueuedMessages.indexOf(item.compaction) : -1;
+	const compactionIndex = item.compaction ? held(host).indexOf(item.compaction) : -1;
 	if (compactionIndex === -1 || !takeOut(host, item)) return undefined;
-	changed(host);
 	return { item, owner, compactionIndex };
 }
 
@@ -139,13 +137,12 @@ export type ReleaseOutcome = "queued" | "sent" | "removed" | "missing";
  * would have been. "missing": the queue was cleared or the session replaced meanwhile, and the queued text was
  * already returned to whoever cleared it.
  */
-export function releaseHeldQueueItem(host: QueueManagerHost, held: HeldQueueItem, text?: string): ReleaseOutcome {
-	const { item, owner } = held;
+export function releaseHeldQueueItem(host: QueueManagerHost, heldItem: HeldQueueItem, text?: string): ReleaseOutcome {
+	const { item, owner } = heldItem;
 	if (host.session !== owner) return "missing";
 	if (item.session) {
 		const released = getApplicationPort(owner).invoke("releaseQueuedInput", item.session.id, text);
 		if (released.outcome === "missing") return "missing";
-		changed(host);
 		if (released.outcome !== "idle") return released.outcome;
 		return sendReleased(host, { ...released, expand: false });
 	}
@@ -155,10 +152,11 @@ export function releaseHeldQueueItem(host: QueueManagerHost, held: HeldQueueItem
 	if (!owner.isCompacting) {
 		return sendReleased(host, { ...message, images: [], source: "interactive", expand: true });
 	}
-	item.compaction.text = message.text;
-	const index = Math.min(held.compactionIndex ?? 0, host.compactionQueuedMessages.length);
-	host.compactionQueuedMessages.splice(index, 0, item.compaction);
-	changed(host);
+	const restored = item.compaction;
+	editHeld(host, (queue) => {
+		restored.text = message.text;
+		queue.splice(Math.min(heldItem.compactionIndex ?? 0, queue.length), 0, restored);
+	});
 	return "queued";
 }
 
@@ -172,8 +170,7 @@ function sendReleased(
 	message: { mode: "steer" | "followUp"; text: string; images: ImageContent[]; source: InputSource; expand: boolean },
 ): ReleaseOutcome {
 	if (host.session.isCompacting && message.images.length === 0) {
-		host.compactionQueuedMessages.push({ text: message.text, mode: message.mode });
-		changed(host);
+		host.uiStore.getState().holdMessage({ text: message.text, mode: message.mode });
 		return "queued";
 	}
 	let accepted = false;
@@ -197,8 +194,7 @@ function sendReleased(
 			host.showError(
 				`${accepted ? "Message failed" : `Message was not sent; restored to editor${dropped}`}: ${errorMessage(error)}`,
 			);
-		})
-		.finally(() => changed(host));
+		});
 	return "sent";
 }
 
@@ -225,7 +221,6 @@ export function recallLastQueuedMessage(host: QueueManagerHost): boolean {
 	}
 	const draft = host.editor.getText();
 	host.editor.setText([last.text, draft].filter((part) => part.trim()).join("\n\n"));
-	changed(host);
 	const remaining = items.length - 1;
 	host.showStatus(
 		remaining > 0

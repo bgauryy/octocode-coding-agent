@@ -13,14 +13,21 @@ import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, keyText } from "./keybinding-hints.ts";
+import { hintText, keyHint, keyText } from "./keybinding-hints.ts";
 
 // Preview line limit when not expanded (matches tool execution behavior)
 const PREVIEW_LINES = 20;
 
 export class BashExecutionComponent extends Container {
 	private command: string;
-	private outputLines: string[] = [];
+	/** Finished lines of the newest output; the line still being written is `currentLine`. Bounded, see trimTail(). */
+	private tailLines: string[] = [];
+	private currentLine = "";
+	private retainedChars = 0;
+	/** Lines dropped from the front of the tail. */
+	private droppedLines = 0;
+	/** The last chunk ended with a CR: a following LF makes it a line break, anything else makes it a redraw. */
+	private pendingCarriageReturn = false;
 	private status: "running" | "complete" | "cancelled" | "error" = "running";
 	private exitCode: number | undefined = undefined;
 	private loader: Loader;
@@ -57,7 +64,7 @@ export class BashExecutionComponent extends Container {
 			ui,
 			(spinner) => theme.fg(STATE_COLOR.running, spinner),
 			(text) => theme.fg("muted", text),
-			`Running… (${keyText("tui.select.cancel")} to cancel)`, // Plain text for loader
+			`Running… · ${hintText([[keyText("tui.select.cancel"), "cancel"]])}`, // Plain text for loader
 		);
 
 		// Bottom border
@@ -89,22 +96,68 @@ export class BashExecutionComponent extends Container {
 		return super.render(width);
 	}
 
+	/**
+	 * Add streamed output. A carriage return redraws the current line, as a terminal draws it (progress bars):
+	 * only the text after the last one stays. CR LF is one line break. Only a bounded tail is kept; the command's
+	 * final output replaces it through replaceOutput().
+	 */
 	appendOutput(chunk: string): void {
-		// The executor strips colors from its stream, but an extension's result and a stored (possibly imported) session
-		// message arrive raw. Every control goes per chunk, so a sequence split across chunks cannot rejoin; CR becomes LF.
-		const clean = sanitizeTerminalText(chunk);
+		let text = this.pendingCarriageReturn ? `\r${chunk}` : chunk;
+		this.pendingCarriageReturn = text.endsWith("\r");
+		if (this.pendingCarriageReturn) text = text.slice(0, -1);
 
-		// Append to output lines
-		const newLines = clean.split("\n");
-		if (this.outputLines.length > 0 && newLines.length > 0) {
-			// Append first chunk to last line (incomplete line continuation)
-			this.outputLines[this.outputLines.length - 1] += newLines[0];
-			this.outputLines.push(...newLines.slice(1));
-		} else {
-			this.outputLines.push(...newLines);
+		let start = 0;
+		while (true) {
+			const lineEnd = text.indexOf("\n", start);
+			if (lineEnd === -1) {
+				this.writeToCurrentLine(text.slice(start));
+				break;
+			}
+			const endsWithCrLf = lineEnd > start && text[lineEnd - 1] === "\r";
+			this.writeToCurrentLine(text.slice(start, endsWithCrLf ? lineEnd - 1 : lineEnd));
+			this.tailLines.push(this.currentLine);
+			this.retainedChars += this.currentLine.length + 1;
+			this.currentLine = "";
+			start = lineEnd + 1;
 		}
-
+		this.trimTail();
 		this.layoutStale = true;
+	}
+
+	/** Show `output` as the whole output, in place of the streamed tail. */
+	replaceOutput(output: string): void {
+		this.tailLines = [];
+		this.currentLine = "";
+		this.retainedChars = 0;
+		this.droppedLines = 0;
+		this.pendingCarriageReturn = false;
+		this.appendOutput(output);
+	}
+
+	/** The executor strips colors from its stream, but an extension's result and a stored (possibly imported) session
+	 * message arrive raw. Every control goes per piece, so a sequence split across chunks cannot rejoin. */
+	private writeToCurrentLine(piece: string): void {
+		const lastCarriageReturn = piece.lastIndexOf("\r");
+		if (lastCarriageReturn !== -1) {
+			this.currentLine = "";
+			piece = piece.slice(lastCarriageReturn + 1);
+		}
+		this.currentLine = (this.currentLine + sanitizeTerminalText(piece)).slice(-DEFAULT_MAX_BYTES);
+	}
+
+	/** Drop the oldest lines beyond what the view can show (the same limits as the bash tool, twice the bytes). */
+	private trimTail(): void {
+		let drop = Math.max(0, this.tailLines.length - DEFAULT_MAX_LINES);
+		let droppedChars = 0;
+		for (let i = 0; i < drop; i++) droppedChars += this.tailLines[i].length + 1;
+		while (this.retainedChars - droppedChars > 2 * DEFAULT_MAX_BYTES && drop < this.tailLines.length) {
+			droppedChars += this.tailLines[drop].length + 1;
+			drop++;
+		}
+		if (drop === 0) return;
+		this.tailLines.splice(0, drop);
+		this.retainedChars -= droppedChars;
+		this.droppedLines += drop;
 	}
 
 	setComplete(
@@ -130,10 +183,15 @@ export class BashExecutionComponent extends Container {
 		this.updateDisplay();
 	}
 
+	/** Stops the running loader when the row leaves the transcript before the command finished. */
+	dispose(): void {
+		this.loader.stop();
+	}
+
 	private updateDisplay(): void {
 		this.layoutStale = false;
 		// Apply truncation for LLM context limits (same limits as bash tool)
-		const fullOutput = this.outputLines.join("\n");
+		const fullOutput = this.getOutput();
 		const contextTruncation = truncateTail(fullOutput, {
 			maxLines: DEFAULT_MAX_LINES,
 			maxBytes: DEFAULT_MAX_BYTES,
@@ -144,7 +202,7 @@ export class BashExecutionComponent extends Container {
 
 		// Apply preview truncation based on expanded state
 		const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
-		const hiddenLineCount = availableLines.length - previewLogicalLines.length;
+		const hiddenLineCount = this.droppedLines + availableLines.length - previewLogicalLines.length;
 
 		// Rebuild content container
 		this.contentContainer.clear();
@@ -229,11 +287,9 @@ export class BashExecutionComponent extends Container {
 		}
 	}
 
-	/**
-	 * Get the raw output for creating BashExecutionMessage.
-	 */
+	/** The retained output: all of it for a normal command, the newest part of a very long stream. */
 	getOutput(): string {
-		return this.outputLines.join("\n");
+		return [...this.tailLines, this.currentLine].join("\n");
 	}
 
 	/**

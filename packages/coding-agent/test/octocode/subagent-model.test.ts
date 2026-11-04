@@ -155,16 +155,16 @@ describe("subagent thinking", () => {
 
 	it("names a level on every route, so the coordinator knows each child's effort, whatever its own", () => {
 		const model = plan(reasoning);
-		expect(model("researcher")).toBe("p/tiny:low");
+		expect(model("researcher")).toBe("p/tiny:medium");
 		expect(model("browser")).toBe("p/tiny:low");
 		expect(model("lean")).toBe("p/tiny:low");
 		expect(model("implementer")).toBe("p/mid:medium");
-		expect(model("reviewer")).toBe("p/mid:high");
+		expect(model("reviewer")).toBe("p/mid:medium");
 		// No profile, no level: the medium purpose at the subagent default, not the coordinator's model or its high.
 		expect(model(undefined)).toBe("p/mid:medium");
 		vi.stubEnv(SUBAGENT_THINKING_ENV, "low");
 		expect(model(undefined)).toBe("p/mid:low");
-		expect(model("reviewer")).toBe("p/mid:high");
+		expect(model("reviewer")).toBe("p/mid:medium");
 	});
 
 	it("routes each task by the call: lookups cheap, escalations and root causes strong", () => {
@@ -174,7 +174,7 @@ describe("subagent thinking", () => {
 		// A scout whose question turned out hard: the same role on a stronger route.
 		expect(model("researcher", "medium:high")).toBe("p/mid:high");
 		// The role's effort holds when the call only changes the model.
-		expect(model("reviewer", "small")).toBe("p/tiny:high");
+		expect(model("reviewer", "small")).toBe("p/tiny:medium");
 		// A root cause or a design decision on the coordinator's own model.
 		expect(model(undefined, "p/big:high")).toBe("p/big:high");
 	});

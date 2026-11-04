@@ -74,7 +74,6 @@ async function main() {
 			OCTOCODE_OFFLINE: "1",
 			OCTOCODE_MCP: "0",
 			OCTOCODE_MODELS_DEV: "0",
-			OCTOCODE_API: "0",
 			OCTOCODE_MEMORY_AUTO: "0",
 			OCTOCODE_NOTIFY: "off",
 			OCTOCODE_TELEMETRY: "0",

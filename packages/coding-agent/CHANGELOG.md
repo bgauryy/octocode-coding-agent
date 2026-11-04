@@ -4,8 +4,48 @@ Entries are shown once by `octocode` after an update and on demand with `/change
 
 ## [Unreleased]
 
+- One protocol between agents: `agent` type `message`, `to` a name, also reaches another Octocode process by its process name, with no shell and no connection. A session's name is in its prompt, `coordinate list` shows the other sessions with folder and busy state, and each message says who it is from and how to answer.
+- A session in a linked worktree that has finished sends `to` `coordinator`: the session in the main checkout, which reviews and merges with `coordinate merge` and answers. It asks its user in every mode, `full` included, and refuses uncommitted work, a held path or a conflict with the reason to send back. No coordinator or several: told plainly, nothing sent. `/worktree merge <branch>` is the typed form.
+- Receiving an external message is a permission class, `message.external`. `full` takes it unasked. `manual`, `workspace` and plan show who sent it and ask: this message, this process or all processes for the session, or deny. A refusal reaches the sender, `/permissions grants clear messages` revokes, and the audit names the process. Accepting a message never widens what its tools may do.
+
+- Every top-level session is reachable by default: it serves the local session API on an owner-only Unix socket with no setup. `OCTOCODE_API=1` is gone; the `sessionApi` setting and `/api off` turn it off. Loopback HTTP stays opt-in (`OCTOCODE_API_HTTP`, `/api on http`), and a Windows session, which has no owner-only socket here, starts none unless asked. A session whose API cannot start warns and carries on.
+- An API message reaches the model marked as external: another process on this machine, not the user, with what the caller says it is, in the sender-proof fence. It can make requests and never grants approval. The terminal shows `✉ external` with the caller; RPC events carry the same facts at `details.external` and ACP at `_meta["octocode/external"]`. A pending permission dialog or question still waits for its owner.
+- `octocode-api send` names its caller, from a session's shell that session, and the receiver is told how to reply. `--to`, `/agents external connect octocode` and the `agent` tool's `instanceId` take the process name from `/processes` (`octocode-main-c0ea9f3e`), its id, the session ID or the pid; a bad or ambiguous one lists what would work. `octocode-api list` shows name, id, pid, cwd and whether it is busy, and clears a dead record even when its pid was reused. `send` refuses the caller's own session. `/processes` shows each process's name and API id. Attaching to a running instance no longer needs its folder.
+- ACP: closing an unknown session succeeds and cancelling one is ignored; `-32002` names the session in `data.sessionId`; an untrusted folder is now `-31000` (`-32002` said the resource did not exist); `$/cancel_request` on a prompt ends it `cancelled` (it did nothing); tool calls carry `name` and `kind`; a worker that cannot start says why. The broker names itself `octocode-acp-<pid>`.
+
+- `compact` works in a headless run: `octocode -p` waits for the compaction it asked for and answers from the turn that resumes, instead of cancelling it and printing the status line. If the compaction cannot run, the run goes on without it.
+- A headless Chrome that a browser subagent leaves open stops when the top session shuts down; a visible one stays. A follow-up in the same session still reuses it.
+- A message to a subagent that has not joined yet says it is still starting, not that no such agent is alive.
+- MCP signatures no longer offer a field on an operation whose server refuses it there (`lspSearch` `symbolName` and `line` on `documentSymbols`, `ghGetHistoryItem` `number` on `commit`).
+
+- Reports and background job results waiting when a parent would stop now arrive together, as one turn, so a final answer is not written with a report still due. A setting of `followUpMode` still decides for your own queued messages.
+- When a message resumes a subagent, its unread earlier report says that its waiting and unanswered lines are out of date.
+- `/quit` asks first while a reply, bash job, background subagent or external prompt is running, like `/new`. `/agents kill` asks first too.
+- `/agents tell <agent> #<message> <text>` answers that question and closes it. `askUser` can show a child's question word for word (`forward`).
+- A child's report says when it edited files after its last passing verification.
+- `/llama` warns when a model is larger than the free memory. The default number of subagents follows the machine (at most 6); `OCTOCODE_MAX_SUBAGENTS` still wins.
+- A read-only role's start prompt no longer says it may edit files. A headless session's prompt no longer tells the model to use `askUser`.
+- A tool call with `cursor` inside `queries` is told the correct form.
+- `api.exec` reports a signal exit as non-zero, keeps a spawn error's text and really forces a process that ignores SIGTERM.
+- Regular terminal mode no longer re-finishes every line each frame. Native commands are advertised over ACP. `OCTOCODE_TIMING` records CPU per phase. Unused memories rank lower after 90 days.
+
+- A running subagent that has exchanged no message with its parent for `subagents.checkInSeconds` (default 300, `0` off) is asked by its own harness whether it needs something. The ping joins a request the child was about to make and costs the parent no model turn. A foreground child is told to finish with `blocked`, since its parent reads messages only with its report.
+- `coordinate list` shows a running child's last output and the questions waiting on its parent.
+- A parent is no longer told its question went unanswered while the child that read it is still filing the report that answers it, and a foreground report now closes such questions too.
+- A report that arrives during the parent's last reply no longer costs a parent request for the notice saying it follows.
+- The request budget's steer tells a child where the run stops and to finish the check in progress, instead of "Finish now"; a child resumed past its soft limit does the task it was resumed for. Children were stopping at the soft limit with the hard limit's requests unused, and a resumed one returned after a single request.
+- A subagent near its request budget now talks to its parent instead of running on or stopping cold. The steer names the requests used, the soft limit and where the run stops; a background child asks its parent for more in a message and keeps working, and a foreground child says in its report what is left and how much more it needs. The parent adds requests to a running child with `agent` type `coordinate`, action `grant` (`subagent`, `requests`), for this run only, and `coordinate list` shows a child's requests against its limit. No answer changes nothing: the child stops at the hard limit with its partial work.
+- Resuming a subagent at or past its soft limit gives it a whole allowance again; at the hard limit it used to return `partial` without running. A budget stop's report says how to resume the child. A peer's message that the parent's process relays is not a grant: such a resume stays within the limits the child had.
+- A message to a finished child no longer claims its report already arrived while that report still waits for the turn to end.
+
+- Plan mode lets its documented native reads run: `bash` read-only commands, `askUser`, `archive`, `skill`, `web` and the `mcp` tool's `list`, `tools` and `restart`. A lost tool owner refused them all.
+- SIGTERM or SIGINT now ends a headless run that is holding for background work, and stops its children; a second signal exits at once.
+- `--exclude-tools` and `--no-mcp` now bind subagents. `--tools` stays the session's own allowlist.
+- A headless run the loop guard ends says why on stderr and exits 1, and a failed command exits 1 (RPC answers `success: false`). The "Extension error" prefix is gone.
+- A background job stopped at run end no longer starts a turn that replaces the answer.
 - `@octocodeai/octocodecode` is now the only package published to npm. The other workspaces are private and compile into one bundle file, `dist/bundle/octocode.js`, so an install no longer pulls them or their dependencies.
-- **Breaking: the package no longer ships TypeScript declarations.** The JavaScript exports (`.`, `./rpc-entry`, `./mcp`, `./mcp/oauth`, `./mcp/testing`) are unchanged.
+- **Breaking: the package no longer ships TypeScript declarations.** The JavaScript exports `.`, `./rpc-entry`, `./mcp` and `./mcp/oauth` are unchanged.
+- **Breaking: the `./mcp/testing` subpath is gone, and the package root no longer exports the in-memory MCP transport.** It was a test helper.
 - The package includes the project documentation under `docs/project/`, its MIT `LICENSE` and `dist/licenses/THIRD_PARTY_NOTICES.md`, which lists every third-party package compiled into the bundle with its license text.
 - Unified saved memory and lifecycle retrieval under `archive`; new notes default to workspace scope while legacy project/global notes and M IDs remain. `/memory` remains available.
 - Added durable agent events and complete compaction summaries in the agent database, with a generated, database-bound `.octocode/agents.txt` containing the latest 50 events.

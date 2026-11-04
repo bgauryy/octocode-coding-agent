@@ -225,6 +225,10 @@ describe("compact tool in a real session", () => {
 					expect(seen(context)).toMatch(/Compaction queued/);
 					return fauxAssistantMessage("Compacting after this reply.");
 				},
+				(context) => {
+					expect(seen(context)).toMatch(/did not run: Nothing to compact/);
+					return fauxAssistantMessage("Going on without it.");
+				},
 			]);
 			// Over half the room before automatic compaction (the tool's floor) and under its threshold. The single
 			// earlier turn fits the kept tail, so the summary is refused as too small: that path is checked here, and a
@@ -237,10 +241,23 @@ describe("compact tool in a real session", () => {
 					.find((entry) => entry.type === "custom_message" && entry.customType === COMPACT_RESUME_TYPE);
 			await vi.waitFor(() => expect(note()).toBeDefined(), { timeout: 5_000 });
 			await session.waitForIdle();
-			// The requesting run settled unaborted (its reply after the tool result was recorded), then compaction ran.
-			expect(events).toEqual(["agent_start", "agent_end", "settled", "agent_start", "agent_end", "compact", "settled"]);
+			await session.settled();
+			// The requesting run settled unaborted (its reply after the tool result was recorded), then compaction ran. It
+			// could not, and this is a headless run with no next turn to tell the model on, so a turn goes on from the failure.
+			expect(events).toEqual([
+				"agent_start",
+				"agent_end",
+				"settled",
+				"agent_start",
+				"agent_end",
+				"compact",
+				"settled",
+				"agent_start",
+				"agent_end",
+				"settled",
+			]);
 			expect(spy).toHaveBeenCalledWith({ customInstructions: "keep the plan" });
-			expect(requests).toHaveLength(3);
+			expect(requests).toHaveLength(4);
 			const entries = sessionManager.getBranch().map((entry) => JSON.stringify(entry));
 			expect(entries.some((entry) => entry.includes("Compacting after this reply."))).toBe(true);
 			expect(JSON.stringify(note())).toMatch(/did not run: Nothing to compact/);

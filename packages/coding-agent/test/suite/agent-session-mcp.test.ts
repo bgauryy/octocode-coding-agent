@@ -256,6 +256,8 @@ describe("AgentSession MCP integration", () => {
 	}
 
 	const NOT_CONNECTED = "Not connected yet: its instructions and tools are listed here once it connects.";
+	const MCPS_PREAMBLE =
+		"Each block is one MCP server: its instructions and a typed function for each tool. To call a tool, replace `*` in the block's `tools` prefix with the function's name and pass the input object.";
 
 	it("configures servers through slash subcommands and publishes enabled and connection state", async () => {
 		let api: ExtensionAPI | undefined;
@@ -306,7 +308,7 @@ describe("AgentSession MCP integration", () => {
 		);
 		await harness.session.prompt("/mcp list");
 		expect(notifications.at(-1)).toContain("docs: enabled · connected");
-		expect(notifications.at(-1)).toContain("octocode: enabled · connected, 3 tools");
+		expect(notifications.at(-1)).toContain("octocode: enabled · connected · 3 tools (direct)");
 	});
 
 	it("restores the same tool definition after reconnecting an unchanged validated catalog", async () => {
@@ -667,6 +669,7 @@ describe("AgentSession MCP integration", () => {
 		const calls: string[] = [];
 		const notifications: string[] = [];
 		const transports: Array<{ close(): Promise<void> }> = [];
+		let events: ExtensionAPI["events"] | undefined;
 		const { name = "slow", instructions, presentation, ...serverConfig } = config;
 		const entry: McpServerEntry = {
 			name,
@@ -676,6 +679,9 @@ describe("AgentSession MCP integration", () => {
 		const harness = await createHarness({
 			initialActiveToolNames: [],
 			extensionFactories: [
+				(api) => {
+					events = api.events;
+				},
 				createMcpExtension({
 					loadConfig: () => ({ servers: [entry], errors: [] }),
 					createTransport: () => {
@@ -693,7 +699,7 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.bindExtensions({
 			uiContext: createTestUiContext({ notify: (message) => notifications.push(message) }),
 		});
-		return { harness, calls, notifications, transports };
+		return { harness, calls, notifications, transports, serverState: () => getMcpSessionStatus(events!)[0]?.state };
 	}
 
 	it("names a server still connecting after the startup wait in `mcp_status`, with a block that has no contract", async () => {
@@ -714,7 +720,7 @@ describe("AgentSession MCP integration", () => {
 	});
 
 	it("fills a late server's block once when it connects; a drop and a reconnect patch only `mcp_status`", async () => {
-		const { harness, transports } = await setupSlow({ instructions: "Slow docs.\nMore." }, 60, 10);
+		const { harness, transports, serverState } = await setupSlow({ instructions: "Slow docs.\nMore." }, 60, 10);
 		harness.setResponses([1, 2, 3, 4].map((turn) => fauxAssistantMessage(`turn ${turn}`)));
 		const updates = () =>
 			harness.session.messages.filter((message): message is SystemMessage => message.role === "system");
@@ -723,7 +729,7 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.prompt("first");
 		const first = updates()[0].sections!;
 		expect(first[MCPS_SECTION]).toBe(
-			`<mcps>\n<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>\n</mcps>`,
+			`<mcps>\n${MCPS_PREAMBLE}\n<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>\n</mcps>`,
 		);
 		expect(first[MCP_STATUS_SECTION]).toContain("- slow: connecting");
 		expect(Object.keys(first).at(-1)).toBe(MCP_STATUS_SECTION);
@@ -737,19 +743,27 @@ describe("AgentSession MCP integration", () => {
 		expect(block).not.toContain(NOT_CONNECTED);
 		expect(block?.match(/Slow docs\./g)).toHaveLength(1);
 
-		// The transport drops: only the status changes; the block keeps its contract.
+		// The transport drops: the tools stay declared and callable (a call fails until the server is back), so the cached
+		// prompt prefix is not rewritten; only the status changes and the block keeps its contract.
 		await transports.at(-1)!.close();
-		await vi.waitFor(() => expect(callable()).not.toContain("mcp__slow__search"));
+		await vi.waitFor(() => expect(serverState()).toBe("disconnected"));
+		expect(callable()).toContain("mcp__slow__search");
 		await harness.session.prompt("third");
-		const dropped = updates().at(-1)!.sections!;
-		expect(Object.keys(dropped)).toEqual([MCP_STATUS_SECTION]);
-		expect(dropped[MCP_STATUS_SECTION]).toContain("- slow: disconnected");
+		const dropped = updates().at(-1)!;
+		expect(Object.keys(dropped.sections!)).toEqual([MCP_STATUS_SECTION]);
+		expect(dropped.sections![MCP_STATUS_SECTION]).toContain("- slow: disconnected");
+		expect(dropped.toolsAdded ?? []).toEqual([]);
+		expect(dropped.toolsRemoved ?? []).toEqual([]);
+		expect(declaredTool(harness, "mcp__slow__search")).toBeDefined();
 
-		// A reconnect removes the status line; the block stays byte-identical.
+		// A reconnect removes the status line; the block stays byte-identical and no tool is redeclared.
 		await harness.session.prompt("/mcp reconnect slow");
-		await vi.waitFor(() => expect(callable()).toContain("mcp__slow__search"));
+		await vi.waitFor(() => expect(serverState()).toBe("connected"));
 		await harness.session.prompt("fourth");
-		expect(updates().at(-1)!.sections).toEqual({ [MCP_STATUS_SECTION]: null });
+		const reconnected = updates().at(-1)!;
+		expect(reconnected.sections).toEqual({ [MCP_STATUS_SECTION]: null });
+		expect(reconnected.toolsAdded ?? []).toEqual([]);
+		expect(reconnected.toolsRemoved ?? []).toEqual([]);
 		expect(serversSection(harness)).toBe(block);
 	});
 

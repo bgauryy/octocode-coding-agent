@@ -13,7 +13,7 @@ import type { registerHooks } from "./hooks/register.ts";
 import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
-import { browserMcpRequest } from "./web/browser-mcp.ts";
+import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
 
 import type { registerCollab } from "./team/tools.ts";
 import type { registerActivity } from "./ui/activity.ts";
@@ -86,6 +86,10 @@ export function registerToolGates(
 		audited(async (event) => planning?.gate(event)),
 		...(gitState ? [audited(gitState)] : []),
 		audited(collab.reservationGate),
+		audited(async (event) => {
+			const reason = await browserMetadataRefusal(event.toolName, event.input);
+			return reason ? { block: true, reason } : undefined;
+		}),
 		audited(hooks.preToolUse),
 		(event, ctx, prior) => permissionStep(event, ctx, prior),
 	];

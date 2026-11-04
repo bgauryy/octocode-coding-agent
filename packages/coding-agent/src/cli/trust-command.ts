@@ -15,7 +15,7 @@ import {
 	TrustCommandError,
 } from "../octocode/trust/manage.ts";
 import { shown } from "../octocode/trust/messages.ts";
-import { insideSessionShell, sessionShellRefusal } from "../octocode/trust/session-shell.ts";
+import { belowSession, insideSessionShell, sessionShellRefusal } from "../octocode/trust/session-shell.ts";
 import { resolveFolderTrust, type TrustOptions } from "../octocode/trust/resolve.ts";
 
 const TRUST_COMMAND_USAGE = `Usage:
@@ -26,7 +26,8 @@ const TRUST_COMMAND_USAGE = `Usage:
 list shows where the current folder stands and every stored decision. add trusts a folder (default: the current one)
 and asks first; --yes skips the question for scripts. remove deletes a decision, so Octocode asks about the folder
 again. Decisions live in Octocode's agent database (OCTOCODE_AGENT_DB names another file). add and remove refuse to
-run from inside an Octocode session's shell: trust is your decision, so run them in your own terminal.`;
+run from inside an Octocode session's shell, and add --yes with no terminal refuses below a running session: trust is
+your decision, so run them in your own terminal.`;
 
 export interface TrustCommandIo {
 	cwd: string;
@@ -36,6 +37,8 @@ export interface TrustCommandIo {
 	err?: (text: string) => void;
 	/** Answers a yes/no question; undefined when there is no terminal to ask on. */
 	confirm?: ((question: string) => Promise<boolean>) | undefined;
+	/** Whether a running session started this process; the process tree by default. */
+	belowSession?: () => boolean;
 }
 
 async function askOnTerminal(question: string): Promise<boolean> {
@@ -84,6 +87,12 @@ export async function runTrustCommand(args: string[], io: TrustCommandIo): Promi
 
 	if ((sub === "add" || sub === "remove") && insideSessionShell(options.env)) {
 		err(sessionShellRefusal(sub === "add" ? "trust the folder" : "remove the trust decision"));
+		return 1;
+	}
+	// A script's `--yes` has no terminal, and neither has a session's shell, which can also remove the variable. What it
+	// cannot change is what started it. `options.env` names an isolated store, so that is a caller's own tree of processes.
+	if (sub === "add" && yes && !confirm && options.env === undefined && (io.belowSession ?? belowSession)()) {
+		err(sessionShellRefusal("trust the folder"));
 		return 1;
 	}
 

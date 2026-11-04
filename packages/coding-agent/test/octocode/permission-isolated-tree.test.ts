@@ -25,7 +25,7 @@ function repo(): string {
 function isolated(mode: "full" | "workspace" | "manual") {
 	const main = repo();
 	const worktree = repo();
-	const scratch = path.join(main, ".octa/code/temp/agents/impl-1");
+	const scratch = path.join(main, ".octocode/code/temp/agents/impl-1");
 	fs.mkdirSync(scratch, { recursive: true });
 	const env = {
 		[SUBAGENT_ENV]: "1",

@@ -33,6 +33,30 @@ function awaitedReply(runs: AgentRuns, id: string, details: RunDetails): Awaited
 }
 
 /**
+ * The report answers whatever the parent asked this child and it read: they stop counting as unanswered. Housekeeping on
+ * the way to the report, so a failure here costs at most a stale notice and never the report.
+ */
+function closeAnswered(runs: AgentRuns, id: string): void {
+	try {
+		runs.team.closeQuestionsTo(id);
+	} catch {
+		// The questions stay open; the report is delivered either way.
+	}
+}
+
+/**
+ * What the child sent before it finished goes to the parent's model before its report: the mail tick may be up to a second
+ * away, and a parent that ends with the report (a headless run) would never read it. Fails open like `closeAnswered`.
+ */
+function readMailFirst(runs: AgentRuns): void {
+	try {
+		runs.team.deliverMail();
+	} catch {
+		// The next tick delivers it.
+	}
+}
+
+/**
  * Runs the subagent in the background; its report (or why it stopped) arrives as a message, and then it gives its slot
  * back. `finish` gets the outcome when there is a report, so the parent's own notes on it (its backlog item) ride in the footer.
  */
@@ -103,6 +127,8 @@ export function startBackground(
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
 			const shot = details.shot ? `(Last screenshot: ${shortPath(details.shot)})` : "";
+			if (!outcome.error) closeAnswered(runs, identity.id);
+			readMailFirst(runs);
 			reports.add({
 				content: reportMessage(head, body, [
 					...(typedFailure ? [`Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.`] : []),
@@ -220,6 +246,7 @@ export async function runForeground(
 		runs.foreground.delete(identity.id);
 	}
 	const note = `${await finish(outcome)}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
+	if (!outcome.error) closeAnswered(runs, identity.id);
 	if (outcome.structured) details.structured = outcome.structured;
 	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
 	if (outcome.error) {

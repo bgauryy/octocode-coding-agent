@@ -25,6 +25,7 @@ const ROLLUP_EVERY = 500;
 export const WARN_ACTIONS: ReadonlySet<string> = new Set<ActionClass>([
 	"shell.destructive",
 	"browser.control",
+	"browser.cookies",
 	"net.private",
 ]);
 
@@ -40,6 +41,8 @@ export interface AuditEntry {
 	what: string[];
 	/** What the agent said it was for (unverified, at most 160 characters). */
 	purpose?: string;
+	/** `purpose` was derived from the call's arguments because the agent gave no reason. */
+	reasonDerived?: boolean;
 	/** Which agent issued it. */
 	agent: string;
 	allowed: boolean;
@@ -123,6 +126,7 @@ export function childAuditEntry(message: string, agent: string, nonce: string): 
 		...(reasons && reasons.length > 0 ? { reasons } : {}),
 		what: what.map(auditLine),
 		...(purpose ? { purpose } : {}),
+		...(raw.reasonDerived === true ? { reasonDerived: true } : {}),
 		agent: auditLine(agent),
 		allowed: raw.allowed,
 		via: knownVia,

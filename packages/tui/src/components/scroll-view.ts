@@ -50,8 +50,10 @@ export class ScrollView extends Container {
 		this.primary = options.primary ?? false;
 		this.overscroll = options.overscroll ?? "chain";
 		this.currentScrollbar = options.scrollbar ?? "hidden";
-		this.scrollbarTrackStyle = options.scrollbarTrackStyle ?? ((text) => `\x1b[90m${text}\x1b[39m`);
-		this.scrollbarThumbStyle = options.scrollbarThumbStyle ?? ((text) => `\x1b[37m${text}\x1b[39m`);
+		// The host picks scrollbar colors from its theme. Without them the track is faint and the thumb plain: the glyph
+		// tells them apart, and no fixed palette color can be unreadable on a light background.
+		this.scrollbarTrackStyle = options.scrollbarTrackStyle ?? ((text) => `\x1b[2m${text}\x1b[22m`);
+		this.scrollbarThumbStyle = options.scrollbarThumbStyle ?? ((text) => text);
 		this.scrollbarHideDelayMs = Math.max(0, Math.floor(options.scrollbarHideDelayMs ?? 1000));
 	}
 

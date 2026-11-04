@@ -70,6 +70,10 @@ export interface ExtensionAPI {
 		handler: ExtensionHandler<SessionEvents.SessionBeforeForkEvent, SessionBeforeForkResult>,
 	): () => void;
 	on(
+		event: "session_before_quit",
+		handler: ExtensionHandler<SessionEvents.SessionBeforeQuitEvent, SessionBeforeSwitchResult>,
+	): () => void;
+	on(
 		event: "session_before_compact",
 		handler: ExtensionHandler<SessionEvents.SessionBeforeCompactEvent, unknown>,
 	): () => void;
@@ -188,7 +192,7 @@ export interface ExtensionAPI {
 	/** Send a custom message. The runtime returns a promise so callers can observe asynchronous failure; it also reports errors for callers that do not await. */
 	sendMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },
 	): void | Promise<void>;
 
 	/**
@@ -225,6 +229,9 @@ export interface ExtensionAPI {
 
 	/** Get the names of the active tools, which are the tools declared to the model. */
 	getActiveTools(): string[];
+
+	/** Get the names of the active tools that requests leave undeclared, because declaring them is not worth the tokens. */
+	getHiddenDeclarations(): string[];
 
 	/** Get all configured tools with parameter schema, prompt guidelines, exposure, and source metadata. */
 	getAllTools(): ToolInfo[];

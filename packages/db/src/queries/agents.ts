@@ -137,6 +137,11 @@ export function processOf(db: DatabaseSync, id: string): ProcessIdentity | undef
 	return row ? { pid: num(row.pid), ...(typeof row.started === "string" ? { started: row.started } : {}) } : undefined;
 }
 
+/** Names `process` on the row of `id`: a child's process takes over the row its parent held for it. */
+export function setProcess(db: DatabaseSync, id: string, process: ProcessIdentity): void {
+	db.prepare("UPDATE agents SET pid = ?, started = ? WHERE id = ?").run(process.pid, process.started ?? null, id);
+}
+
 /** The process of every agent of `team`. */
 export function processes(db: DatabaseSync, team: string): MemberProcess[] {
 	return (db.prepare("SELECT id, pid, started FROM agents WHERE team = ?").all(team) as Row[]).map(processRow);

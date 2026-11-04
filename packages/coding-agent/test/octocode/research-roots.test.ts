@@ -166,8 +166,8 @@ describe("launch environment with user roots", () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	const sessions = () => [
-		path.join(cwd, ".octa", "code", "session-data"),
-		path.join(cwd, ".octa", "code", "temp", "sessions"),
+		path.join(cwd, ".octocode", "code", "session-data"),
+		path.join(cwd, ".octocode", "code", "temp", "sessions"),
 	];
 	const defaultServer = (skills: string[] = []): string[] => {
 		const preset = octocodePreset(() => skills, process.env);

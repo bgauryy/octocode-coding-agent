@@ -28,6 +28,8 @@ interface BashExecutorOptions {
 	signal?: AbortSignal;
 	/** Most bytes of the result that reach the model (the `bashOutputMaxBytes` setting). Default: 20 KB */
 	maxOutputBytes?: number;
+	/** Most bytes the saved full output holds (the `bash.spillMaxBytes` setting); 0 lifts the cap. Default: 1 GiB */
+	spillMaxBytes?: number;
 	/** Folder the full output moves to when the result is trimmed. Default: the OS temp folder it is written to */
 	outputDir?: string;
 }
@@ -52,6 +54,7 @@ export async function executeBashWithOperations(
 		...bashBudget(options?.maxOutputBytes),
 		tempFilePrefix: "octocode-bash",
 		smartTrim: true,
+		spillMaxBytes: options?.spillMaxBytes,
 	});
 	const startedAt = performance.now();
 
@@ -60,17 +63,14 @@ export async function executeBashWithOperations(
 	let pendingAnsi = "";
 
 	const appendText = (rawText: string) => {
-		// Strip ANSI and binary garbage; the accumulator keeps carriage returns to show a redrawn line's final state
+		// Strip ANSI and binary garbage; carriage returns stay, so the accumulator and the live view both show a
+		// redrawn line (a progress bar) as its last state
 		const text = sanitizeBinaryOutput(stripAnsi(rawText));
 		if (!text) {
 			return;
 		}
 		output.append(Buffer.from(text));
-
-		const chunk = text.replace(/\r/g, "");
-		if (chunk) {
-			options?.onChunk?.(chunk);
-		}
+		options?.onChunk?.(text);
 	};
 
 	const onData = (data: Buffer) => {
@@ -128,6 +128,7 @@ export async function executeBashWithOperations(
 			truncation: snapshot.truncation,
 			fullOutputPath: fullOutputPath && shortPath(fullOutputPath, cwd),
 			lastLineBytes: output.getLastLineBytes(),
+			spillDroppedBytes: output.spillDroppedBytes,
 		}),
 		totalLines: snapshot.truncation.totalLines,
 		totalBytes: snapshot.truncation.totalBytes,

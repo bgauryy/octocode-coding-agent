@@ -40,6 +40,8 @@ interface Inspection {
 	lines?: readonly LineRange[];
 	/** An edit only: the file changed since the read, so each oldText must be re-validated against its current content. */
 	stale?: true;
+	/** An edit only, with `stale`: the file was never read in this session, so an exact match of every oldText is the proof that its content is known. */
+	unread?: true;
 	/** When the file moved since the read: who last changed it, as a sentence with a leading space (`modifiedBy`). */
 	by?: string;
 }
@@ -56,7 +58,7 @@ export interface Reader {
 /** Octocode's local reader, the default whenever the Octocode MCP server is running. */
 export const LOCAL_FETCH_READER: Reader = {
 	name: "localFetch",
-	range: (from, to) => `ranges=["${from}-${to}"]`,
+	range: (from, to) => `ranges:[{startLine:${from},endLine:${to}}]`,
 };
 /**
  * The reader while Octocode's local readers are unavailable (the MCP server is off or failed to start): `bash`. Its reads
@@ -74,6 +76,7 @@ export function lostAnchor(
 	content: string,
 	reader: Reader,
 	by = "",
+	unread = false,
 ): string | undefined {
 	const normalized = normalizeToLF(content);
 	for (const [index, { oldText, replaceAll }] of edits.entries()) {
@@ -84,6 +87,8 @@ export function lostAnchor(
 				? 0
 				: normalized.split(anchor).length - 1;
 		if (replaceAll ? count > 0 : count === 1) continue;
+		// An unread file is refused as before: the model has to read it (a failed guess is not a changed file).
+		if (unread) return unreadRefusal(display, reader);
 		const shown = JSON.stringify(oldText.length > 60 ? `${oldText.slice(0, 60)}…` : oldText);
 		return `${display} changed on disk since you last read it and edits[${index}] (oldText ${shown}) ${count === 0 ? "is no longer in it" : `now matches ${count} times`}. Read it again with \`${reader.name}\` before editing it.${by}`;
 	}
@@ -97,12 +102,12 @@ export function staleRefusal(display: string, reader: Reader, by = ""): string {
 const BASH_PRINT = (file: string): string => `\`sed -n '1,200p' ${file}\``;
 const PIPE_NOTE = "A read piped or redirected, or after `||`, does not count.";
 
-/** The exact call that counts, path filled in: the reader first; a plain print in `bash` counts with either reader (`bashReads`). */
+/** The exact call that counts, path filled in, for the declared reader; a plain print in `bash` counts with either reader (`bashReads`). */
 function unreadRefusal(display: string, reader: Reader): string {
 	const unread = `${display} already exists and was not read in this session.`;
 	return reader === BASH_READER
 		? `${unread} Read it first: bash ${BASH_PRINT(display)} (a plain \`cat\` or \`sed -n\` print counts, alone or chained with \`;\` or \`&&\`). ${PIPE_NOTE}`
-		: `${unread} Read it first: ${reader.name} {path:${JSON.stringify(display)}} or bash ${BASH_PRINT(display)}. ${PIPE_NOTE}`;
+		: `${unread} Read it first: ${reader.name} {queries:[{path:${JSON.stringify(display)}}]}. A plain \`cat\` or \`sed -n\` print in bash also counts. ${PIPE_NOTE} For an edit, \`localSearch\` content rows showing the lines count too.`;
 }
 
 /**
@@ -283,7 +288,7 @@ export class FileGuard {
 	 * Returns an error message when the mutation must be refused, else undefined. An existing file must have been read
 	 * (or written by this tool) in this session, and not changed on disk or left the context since; a new file is free.
 	 * A write also needs every line of the file read (in one read or several); an edit does not, because its exact match
-	 * proves the edited region was seen, and a delete needs only proof that the read was of the current file.
+	 * proves the edited region was seen (an edit of a file never read is allowed on that proof alone), and a delete needs only proof that the read was of the current file.
 	 * `runQuery` applies the same two steps (`inspect`, then `judgeChange` over the bytes it reads); this runs them for
 	 * callers that only ask (the guard's tests).
 	 */
@@ -317,7 +322,9 @@ export class FileGuard {
 				: { refusal: staleRefusal(display, this.reader, by) };
 		}
 		const seen = this.#seen.get(real);
-		if (!seen) return { refusal: unreadRefusal(display, this.reader) };
+		// An edit of a file never read goes on only when every oldText matches exactly (`lostAnchor`, `unread`): the match shows
+		// the model knows that content. A write or delete has no such proof and needs the read.
+		if (!seen) return edit ? { current, stale: true, unread: true } : { refusal: unreadRefusal(display, this.reader) };
 		// ctime and inode also move on a same-size rewrite that restored the mtime, or a rename over the file. With a
 		// known digest a same-size move is left to the content check (a touch or a no-op rewrite is not a change).
 		const moved =

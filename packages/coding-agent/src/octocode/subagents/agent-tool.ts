@@ -49,7 +49,7 @@ export function agentToolSpec() {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Fit the task: small:low lookups and mechanical steps, medium scoped edits, medium:high review, your model :high root causes and design. Default: the profile's (see models); no profile: medium; thinking medium.",
+						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Fit the task: small:low lookups and mechanical steps, medium scoped edits and review, your model root causes and design. Pass :high only for a child that coordinates others or a sensitive task: security, permissions, credentials, data loss or migration, releases. Default: the profile's (see models); no profile: medium; thinking medium.",
 				}),
 			),
 			resultSchema: Type.Optional(
@@ -74,13 +74,19 @@ export function agentToolSpec() {
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
-						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. The user lands them with /agents merge <id>; slash commands are not yours to run.",
+						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. Land them with `coordinate` action `merge`, not git merge.",
 				}),
 			),
 			workingCopy: Type.Optional(
 				Type.Boolean({
 					description:
 						"With isolate: start from a snapshot of tracked and non-ignored untracked files; conflicts keep the worktree.",
+				}),
+			),
+			paths: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						'Files, or "dir/" for a tree, the child will edit: reserved for it from start to report, so you need no lock or unlock. A path another agent holds refuses the start. No effect with isolate or a read-only profile.',
 				}),
 			),
 			// The `agent` call's own reason (`octocode/agent-tool.ts` passes it to a type that declares one): the child's why.

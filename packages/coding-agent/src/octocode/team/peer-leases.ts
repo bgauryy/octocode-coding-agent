@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -157,9 +158,7 @@ class PeerDatabase {
 		this.retryAt = now + RETRY_MS;
 		if (this.warned) return;
 		this.warned =
-			this.warn?.(
-				`The agents-communication database ${this.file} ${why}: other agents' path leases are not checked before your edits.`,
-			) ?? true;
+			this.warn?.(renderInstruction("notices/mail/peer-db-unavailable.md", { file: this.file, why })) ?? true;
 	}
 }
 
@@ -179,10 +178,10 @@ export class PeerLeases {
 		this.registry = options.registry ? new PeerRegistry(options.registry) : undefined;
 	}
 
-	/** The first live lease of another package session that covers `file` (one spelling of the path is as good as another), or undefined. */
-	conflict(file: string): PeerLease | undefined {
+	/** The first live lease of another package session that overlaps `file`, or a tree there (one spelling of the path is as good as another), or undefined. */
+	conflict(file: string, kind: LeaseKind = "file"): PeerLease | undefined {
 		let key: string | undefined;
-		return this.first((row) => keysOverlap(row.pathKey, row.kind, (key ??= absoluteKey(file)), "file"));
+		return this.first((row) => keysOverlap(row.pathKey, row.kind, (key ??= absoluteKey(file)), kind));
 	}
 
 	/** The first live lease of another package session, whatever it covers, or undefined. */

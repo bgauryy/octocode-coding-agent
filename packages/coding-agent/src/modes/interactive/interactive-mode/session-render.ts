@@ -4,6 +4,8 @@
 
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { disposeTranscript } from "./transcript-dispose.ts";
+import { renderWindowedEntries } from "./session-window.ts";
 import {
 	type CacheMiss,
 	cacheMissLabel,
@@ -46,7 +48,7 @@ type SessionRenderHost = Pick<
 	| "settingsManager"
 	| "showStatus"
 	| "streamingComponent"
-	| "toolOutputExpanded"
+	| "uiStore"
 	| "ui"
 	| "updateEditorBorderColor"
 >;
@@ -59,7 +61,7 @@ type ToolExecutionHost = Pick<
 	| "outputPad"
 	| "sessionManager"
 	| "settingsManager"
-	| "toolOutputExpanded"
+	| "uiStore"
 	| "ui"
 >;
 
@@ -84,7 +86,7 @@ export function addToolExecution(
 		host.ui,
 		host.sessionManager.getCwd(),
 	);
-	component.setExpanded(host.toolOutputExpanded);
+	component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 	if (parent) parent.attachTool(toolCallId, component);
 	else host.chatContainer.addChild(component);
 	return component;
@@ -323,7 +325,7 @@ export function idleWarmingHint(
 
 export function renderInitialMessages(host: SessionRenderHost): void {
 	const entries = host.sessionManager.buildContextEntries();
-	host.renderSessionEntries(entries, {
+	renderWindowedEntries(host, entries, {
 		updateFooter: true,
 		populateHistory: true,
 	});
@@ -341,8 +343,10 @@ export function rebuildChatFromMessages(host: SessionRenderHost): void {
 	// The reply being streamed is not saved yet, so the rebuild cannot redraw it: keep it, and its tool rows, below.
 	const live = host.streamingComponent;
 	const liveTools = live ? [...host.pendingTools] : [];
+	// The live reply and its tool rows are re-added below, so they stay subscribed.
+	disposeTranscript(host.chatContainer, live ? [live, ...liveTools.map(([, component]) => component)] : []);
 	host.chatContainer.clear();
-	host.renderSessionEntries(host.sessionManager.buildContextEntries());
+	renderWindowedEntries(host, host.sessionManager.buildContextEntries());
 	if (!live) return;
 	host.chatContainer.addChild(live);
 	for (const [toolCallId, component] of liveTools) {

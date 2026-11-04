@@ -56,7 +56,7 @@ const age = (target: string, days: number) => {
 function workspace() {
 	const root = fs.realpathSync(tmp("octocode-ws-"));
 	const identity = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(identity.root, ".octa", "code");
+	const state = path.join(identity.root, ".octocode", "code");
 	return { root: identity.root, id: identity.id, state };
 }
 

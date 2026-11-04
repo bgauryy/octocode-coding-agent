@@ -15,12 +15,31 @@ export interface SessionState {
 	/** Byte size of the session file after this state's last load or write; undefined until the file is known. */
 	fileSize: number | undefined;
 	persistenceFailure: Error | undefined;
+	/**
+	 * Set when `persistenceFailure` came from the file system rather than from refusing the file's contents, so a later
+	 * write may try again (`write-recovery.ts`). `line` and `entry` name the append it failed inside, which is what proves
+	 * a torn tail is this process's own.
+	 */
+	failedWrite?: FailedWrite;
+	/** Messages kept in memory because another process held the lock past the wait; the next write saves them first. */
+	readonly unwritten: SessionEntry[];
 	mirrorProblem?: string;
+	/** After a failed mirror rebuild, when an append may try the next one and how many failed in a row. */
+	mirrorRebuild?: { notBefore: number; failures: number };
 	fileEntries: FileEntry[];
 	readonly byId: Map<string, SessionEntry>;
 	readonly labelsById: Map<string, string>;
 	readonly labelTimestampsById: Map<string, string>;
 	leafId: string | null;
+}
+
+/** What a failed write knew: the file's size before it and, inside an append, the line and entry it was writing. */
+export interface FailedWrite {
+	from: number | undefined;
+	/** The file's size right after the failure: a later size means another writer has been here since. */
+	after?: number;
+	line?: string;
+	entry?: SessionEntry;
 }
 
 export function createSessionState(cwd: string, sessionDir: string, persist: boolean): SessionState {
@@ -33,6 +52,7 @@ export function createSessionState(cwd: string, sessionDir: string, persist: boo
 		flushed: false,
 		fileSize: undefined,
 		persistenceFailure: undefined,
+		unwritten: [],
 		fileEntries: [],
 		byId: new Map(),
 		labelsById: new Map(),

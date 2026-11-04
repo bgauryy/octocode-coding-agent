@@ -17,7 +17,7 @@ type Host = Pick<
 	| "outputPad"
 	| "session"
 	| "settingsManager"
-	| "toolOutputExpanded"
+	| "uiStore"
 	| "ui"
 >;
 
@@ -42,7 +42,7 @@ export function addApplicationUserMessage(
 		: parseSkillBlock(sanitizeTerminalText(text));
 	if (skill) {
 		const component = new SkillInvocationMessageComponent(skill, host.getMarkdownThemeWithSettings(), host.outputPad);
-		component.setExpanded(host.toolOutputExpanded);
+		component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 		host.chatContainer.addChild(component);
 		if (skill.userMessage) {
 			host.chatContainer.addChild(new Spacer(1));

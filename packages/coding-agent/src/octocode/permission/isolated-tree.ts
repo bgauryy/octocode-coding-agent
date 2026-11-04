@@ -3,6 +3,7 @@ import { mutatedPaths } from "../shared/file-input.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { shellPath } from "./file-access.ts";
+import { bashSyntax } from "./bash-syntax.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { shellMutation } from "./shell/mutation.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
@@ -15,8 +16,11 @@ import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
  * isolated and is left alone. The child's scratch folder lives in the main tree on purpose and stays writable. The
  * user's way to land the changes is `/agents merge <name>`.
  *
- * Like the read-only guard it reads `file` paths and the shell command's parsed writes; it is not a sandbox, so a
- * program that writes by itself (`node script.js`) is not seen.
+ * Like the read-only guard it reads `file` paths and what the shell parse shows: the paths a command names, the
+ * repository a command with no file to name changes (`git -C <main> reset --hard`, `git --work-tree=<main> checkout`,
+ * `tar -C <main>`), and a ref it moves, since a worktree shares every branch, tag and stash with the main checkout. A
+ * write the parse cannot place is refused when it follows a `cd` the parse cannot follow, or when the command names the
+ * main tree. It is not a sandbox, so a program that writes by itself (`node script.js`) is not seen.
  */
 
 /** The main tree an isolated subagent must not write, or undefined when this process is not an isolated subagent. */
@@ -30,6 +34,9 @@ export function isolatedMainTree(cwd: string, env: NodeJS.ProcessEnv = process.e
 const refusal = (what: string, main: string): string =>
 	`${what} is refused: this subagent is isolated (isolate: true) and may not change the main tree (${main}). ` +
 	"Change files in your own worktree; the user merges them with `/agents merge`.";
+
+/** The part of a word's source text before anything expands: `../main/$X` names the main tree whatever `$X` holds. */
+const literalStart = (raw: string): string => raw.replace(/^["']/, "").split(/[$`*?[{"']/)[0] ?? "";
 
 /** The refusal for a call that would change the main tree from an isolated child, or undefined when it may (or this is not one). */
 export function isolatedTreeRefusal(
@@ -50,6 +57,23 @@ export function isolatedTreeRefusal(
 		return found === undefined ? undefined : refusal(`Changing ${found}`, main);
 	}
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
-	const found = shellMutation(optionalString(input.command) ?? "").writes.find((file) => intoMain(file, true));
-	return found === undefined ? undefined : refusal(`Changing ${found} from the shell`, main);
+	const command = optionalString(input.command) ?? "";
+	const effect = shellMutation(command, 0, env);
+	const found = [...effect.writes, ...effect.areas, ...effect.unreadAreas].find((file) => intoMain(file, true));
+	if (found !== undefined) return refusal(`Changing ${found} from the shell`, main);
+	if (effect.refMoves.length > 0)
+		return refusal(`\`${effect.refMoves[0]}\` (every worktree of this repository shares its refs)`, main);
+	if (effect.afterDirectoryChange)
+		return refusal(
+			"A write to a relative path after a `cd` the guard cannot follow (it follows only `cd /abs/dir`, `cd ~/dir` or `cd ./dir` joined by `&&`: not a bare name, `..`, a variable, `cd -`, `||` or a loop)",
+			main,
+		);
+	if (!effect.uncertain) return undefined;
+	const spelled = [main, env[TEAM_WORKSPACE_ENV]?.trim() ?? main];
+	const namesMain =
+		spelled.some((form) => command.includes(form)) ||
+		bashSyntax(command).commands.some((part) => part.tokens.some(({ raw }) => intoMain(literalStart(raw), true)));
+	return namesMain
+		? refusal("A shell write whose target the guard cannot resolve, in a command naming it,", main)
+		: undefined;
 }

@@ -1,0 +1,56 @@
+import type { ExtensionContext } from "../../core/features/index.ts";
+import type { Permission } from "../permission/ask.ts";
+import type { Team } from "../team/session.ts";
+import { noteMerge } from "./ref-link.ts";
+import { mergeAgent, reservedChanges } from "./worktree.ts";
+
+export interface MergeResult {
+	ok: boolean;
+	text: string;
+	/** Refused because another agent holds a file the ref changes. */
+	reserved?: boolean;
+}
+
+/**
+ * The one way an isolated child's saved ref lands: `/agents merge` and `coordinate merge` both come here, so neither can
+ * skip the reservation check, leave the ref behind or leave the backlog note saying "not merged yet". `override` is asked
+ * when another agent holds a file the ref changes.
+ */
+export async function landChild(
+	team: Pick<Team, "reservation">,
+	id: string,
+	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	override: (listed: string) => Promise<boolean>,
+): Promise<MergeResult> {
+	const held = await reservedChanges(ctx.cwd, id, (file, shown) => team.reservation(file, shown));
+	if (held.length > 0) {
+		const listed = `${held.slice(0, 5).join("\n")}${held.length > 5 ? `\n(${held.length - 5} more)` : ""}`;
+		if (!(await override(listed)))
+			return { ok: false, reserved: true, text: `Not merged: ${id} changes reserved files.\n${listed}` };
+	}
+	const result = await mergeAgent(ctx.cwd, id);
+	const noted = result.ok && result.ref ? noteMerge(ctx, result.ref, result.into ?? "HEAD") : "";
+	return { ok: result.ok, text: `${result.text}${noted}` };
+}
+
+/**
+ * `coordinate merge`, for a run with nobody to land its children's work. A merge writes the tree, so it follows the same
+ * policy as other workspace writes; a reservation it cannot override refuses it.
+ */
+export async function mergeChild(
+	team: Pick<Team, "reservation">,
+	permission: Permission,
+	id: string,
+	ctx: ExtensionContext,
+	signal?: AbortSignal,
+): Promise<MergeResult> {
+	const verdict = await permission.check(ctx, {
+		action: "file.workspace",
+		title: "Merge this isolated subagent into the tree?",
+		what: [`merge the saved work of ${id} into this tree`],
+		cwd: ctx.cwd,
+		...(signal ? { signal } : {}),
+	});
+	if (!verdict.allowed) return { ok: false, text: verdict.message };
+	return landChild(team, id, ctx, () => Promise.resolve(false));
+}

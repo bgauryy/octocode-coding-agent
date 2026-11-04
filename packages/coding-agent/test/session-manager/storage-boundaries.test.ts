@@ -141,8 +141,10 @@ describe("session storage boundaries", () => {
 		expect(manager.getEntries()).toEqual(before);
 		expect(manager.buildSessionContext()).toEqual(context);
 		expect(readFileSync(file, "utf8")).toBe(bytes);
-		expect(() => manager.appendMessage({ role: "user", content: "retry", timestamp: 3 })).toThrow(/recover|reload/);
-		expect(manager.getLeafId()).toBe(root);
+		// Nothing reached the file, so the next write that can succeed goes on from the restored leaf.
+		const retried = manager.appendMessage({ role: "user", content: "retry", timestamp: 3 });
+		expect(manager.getEntry(retried)?.parentId).toBe(root);
+		expect(readFileSync(file, "utf8").startsWith(bytes)).toBe(true);
 	});
 	it("keeps the leaf where it was when a branch summary cannot be saved", () => {
 		const manager = SessionManager.create(dir, dir);
@@ -188,7 +190,7 @@ describe("session storage boundaries", () => {
 		manager.appendMessage({ role: "user", content: "still active", timestamp: 2 });
 		expect(readFileSync(file, "utf8")).toBe(bytes);
 	});
-	it.each(["partial", "complete"])("preserves uncertain %s append bytes and refuses another write", (mode) => {
+	it.each(["partial", "complete"])("keeps every byte of an uncertain %s append and goes on after it", (mode) => {
 		const manager = SessionManager.create(dir, dir);
 		const root = manager.appendMessage({ role: "user", content: "keep original", timestamp: 1 });
 		const file = manager.getSessionFile()!;
@@ -210,17 +212,15 @@ describe("session storage boundaries", () => {
 		expect(uncertain.startsWith(bytes)).toBe(true);
 		expect(uncertain.length).toBeGreaterThan(bytes.length);
 		expect(manager.getLeafId()).toBe(root);
-		expect(() => manager.appendMessage({ role: "user", content: "unsafe retry", timestamp: 2 })).toThrow(
-			/recover|reload/,
-		);
-		expect(readFileSync(file, "utf8")).toBe(uncertain);
-		expect(manager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
-		if (mode === "partial") {
-			const reopened = SessionManager.open(file);
-			expect(() => reopened.appendMessage({ role: "user", content: "unsafe reload retry", timestamp: 3 })).toThrow(
-				/recover|incomplete/,
-			);
-			expect(readFileSync(file, "utf8")).toBe(uncertain);
-		}
+		// The failed entry is not written again: what reached the file stays, and the next write follows it.
+		const next = manager.appendMessage({ role: "user", content: "next write", timestamp: 2 });
+		const after = readFileSync(file, "utf8");
+		expect(after.startsWith(uncertain)).toBe(true);
+		expect(manager.getEntry(next)?.parentId).toBe(root);
+		const reopened = SessionManager.open(file);
+		expect(reopened.getLeafId()).toBe(next);
+		// A whole record that landed is kept, as a branch of its own; a fragment is a malformed line the loader skips.
+		expect(reopened.getEntries().some((entry) => entry.type === "compaction")).toBe(mode === "complete");
+		expect(after).toContain(mode === "partial" ? `${uncertain.slice(bytes.length)}\n` : uncertain.slice(bytes.length));
 	});
 });

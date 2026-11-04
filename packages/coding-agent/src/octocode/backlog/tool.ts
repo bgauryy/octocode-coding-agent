@@ -16,7 +16,7 @@ import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
 import { withOperationKey, type CompletionArgument } from "./completion-key.ts";
-import { entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
+import { acceptTargetShorthand, entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
 import { withReason } from "../shared/reason.ts";
 import { type Item, PRIORITIES } from "./store.ts";
 import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-text.ts";
@@ -121,7 +121,7 @@ export function registerBacklogTool(
 				defaultActive: !subagent || Boolean((options.env ?? process.env)[BACKLOG_ITEM_ENV]),
 				parameters,
 				// One release still takes the old item type `task`: it is mapped in `execute`, which says so.
-				validationParameters: withReason(parameters),
+				validationParameters: withReason(acceptTargetShorthand(parameters)),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
 					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.

@@ -42,7 +42,7 @@ export {
 	sessionEntryToContextMessages,
 } from "./session-manager/context.ts";
 export { assertValidSessionId, migrateSessionEntries, parseSessionEntries } from "./session-manager/entries.ts";
-export { findMostRecentSession, loadEntriesFromFile } from "./session-manager/storage.ts";
+export { findMostRecentSession, hasTornTail, loadEntriesFromFile } from "./session-manager/storage.ts";
 export { repairSessionFile, type SessionRepair } from "./session-manager/repair.ts";
 export * from "./session-manager/types.ts";
 
@@ -141,6 +141,7 @@ export class SessionManager implements SessionManagerApi {
 
 	retire(): void {
 		this.retired = true;
+		persistence.writeHeldEntries(this.state);
 	}
 
 	captureUsageWriter(): SessionManager["appendUsage"] {
@@ -296,7 +297,7 @@ export class SessionManager implements SessionManagerApi {
 	/**
 	 * Create a new session.
 	 * @param cwd Working directory (stored in session header)
-	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octa/code/sessions/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/code/sessions/).
 	 */
 	static create(cwd: string, sessionDir?: string, options?: NewSessionOptions): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
@@ -357,7 +358,7 @@ export class SessionManager implements SessionManagerApi {
 	 * Find an exact session ID without loading transcript bodies.
 	 * @param cwd Working directory (used to compute default session directory)
 	 * @param id Exact session ID
-	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octa/code/sessions/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/code/sessions/).
 	 */
 	static findById(cwd: string, id: string, sessionDir?: string): string | undefined {
 		return findSessionFileById(cwd, id, sessionDir);
@@ -366,7 +367,7 @@ export class SessionManager implements SessionManagerApi {
 	/**
 	 * List all sessions for a directory.
 	 * @param cwd Working directory (used to compute default session directory)
-	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octa/code/sessions/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/code/sessions/).
 	 * @param onProgress Optional callback for progress updates (loaded, total)
 	 */
 	static async list(

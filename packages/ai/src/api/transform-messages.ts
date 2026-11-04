@@ -15,6 +15,12 @@ export const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not
 /** What replaces a tool-result image for a model without vision. */
 export const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
 const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
+/**
+ * The result of a call no result was recorded for (a crash mid-tool, a save that failed). It must not read as "did not
+ * run": the tool may have finished, and a model that takes it as a failure can repeat a command or a push.
+ */
+const NO_RECORDED_RESULT =
+	"No result was recorded for this call. It may have run: check the current state before repeating it.";
 
 /** An error tool result split into a text-only result and the images to send after the tool results. */
 interface SplitErrorToolResult {
@@ -189,7 +195,7 @@ export function transformMessages<TApi extends Api>(
 		return msg;
 	});
 
-	// Second pass: insert synthetic empty tool results for orphaned tool calls
+	// Second pass: insert synthetic tool results for orphaned tool calls
 	// This preserves thinking signatures and satisfies API requirements
 	const result: Message[] = [];
 	let pendingToolCalls: ToolCall[] = [];
@@ -206,7 +212,7 @@ export function transformMessages<TApi extends Api>(
 						role: "toolResult",
 						toolCallId: tc.id,
 						toolName: tc.name,
-						content: [{ type: "text", text: "No result provided" }],
+						content: [{ type: "text", text: NO_RECORDED_RESULT }],
 						isError: true,
 						timestamp: Date.now(),
 					});

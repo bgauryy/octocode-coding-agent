@@ -1,9 +1,11 @@
+import { renderInstruction } from "../core/prompt-template.ts";
 import { archiveMutation } from "./shared/archive-operation.ts";
-import type { ExtensionAPI } from "../core/features/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import { sha256 } from "../../../common/src/atomic-file.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
 import { plainText } from "./files/reads.ts";
+import { say } from "./shared/commands.ts";
 
 /**
  * Repeated calls without progress. The same tool, the same arguments and the same outcome several times in a row means
@@ -36,11 +38,9 @@ const WAITING = /(?:^|[;&|]\s*)(?:sleep|wait|watch)\b|\btail\s+(?:-\S*\s+)*-\S*f
 
 /** The note for the `count`-th identical outcome in a row, or undefined when none is due. */
 export function loopNote(tool: string, count: number, failed: boolean): string | undefined {
-	const outcome = failed ? "failed the same way" : "returned the same result";
-	if (count === LOOP_NOTE_AT)
-		return `[Loop guard: this ${tool} call has ${outcome} ${count} times in a row. Repeating it will not change the outcome: change the arguments, use a different tool, or tell the user what blocks you.]`;
+	if (count === LOOP_NOTE_AT) return renderInstruction("notices/loop-guard/note.md", { tool, count, failed });
 	if (count >= LOOP_STOP_AT && (count - LOOP_STOP_AT) % LOOP_REPEAT_EVERY === 0)
-		return `[Loop guard: ${count} identical ${tool} calls in a row, no progress. Stop calling it this way. Summarize what you tried and report that you are blocked, or ask the user a specific question.]`;
+		return renderInstruction("notices/loop-guard/stop.md", { tool, count });
 	return undefined;
 }
 
@@ -75,7 +75,14 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 	let last: string | undefined;
 	let count = 0;
 	const refusal = (tool: string, previous: number) =>
-		`[Loop guard: refused. This ${tool} call already ran ${previous} times in a row with the same outcome. Stop retrying it; tell the user what you tried and what blocks you.]`;
+		renderInstruction("notices/loop-guard/refused.md", { tool, previous });
+	// A halted run gets no further turn, so nothing the refusal asks of the model happens. In a subagent this notice is what
+	// its report carries of the cause; a person sees why the run ended, a headless caller reads it on stderr, and the recorded
+	// failure is what its exit code says.
+	const halted = (ctx: ExtensionContext, tool: string, previous: number) => {
+		say(ctx, `Loop guard ended this run: ${previous} identical ${tool} calls with the same outcome.`, "error");
+		ctx.failRun("Stopped by the loop guard.");
+	};
 	const reset = () => {
 		calls.clear();
 		lastCall = undefined;
@@ -88,7 +95,7 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) calls.set(event.toolCallId, { key: loopCallKey(event.toolName, event.args) });
 	});
-	api.on("tool_call", async (event) => {
+	api.on("tool_call", async (event, ctx) => {
 		const call = calls.get(event.toolCallId);
 		if (call) call.checked = true;
 		if (event.parentToolCallId || count < LOOP_HALT_AT) return undefined;
@@ -97,6 +104,7 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 			? calls.get(event.toolCallId)?.key
 			: loopCallKey(event.toolName, event.input);
 		if (key !== lastCall) return undefined;
+		halted(ctx, event.toolName, count);
 		return {
 			block: true,
 			terminate: true,
@@ -127,6 +135,7 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 		lastCall = call.key;
 		// Unknown tools and schema-invalid arguments never reach tool_call. Their result still ends the run here.
 		if (!call.checked && count > LOOP_HALT_AT && message.isError) {
+			halted(ctx, message.toolName, count - 1);
 			ctx.abort("internal");
 			return {
 				message: { ...message, content: [{ type: "text" as const, text: refusal(message.toolName, count - 1) }] },

@@ -19,6 +19,30 @@ describe("registerTurnSetup", () => {
 	const turns = new Map<ReturnType<typeof fakeHost>, ReturnType<typeof registerTurnSetup>>();
 	const setupTurn = (fake: ReturnType<typeof fakeHost>) => turns.get(fake)!;
 	// The research section's last-resort line: shown only when neither the research server nor a shell or `web` is reachable.
+	it("tells a session with a person to use askUser and a headless one not to, and never changes it mid-session", async () => {
+		const prompt = async ({ fake }: ReturnType<typeof setup>, hasUI: boolean) => {
+			const event = {
+				systemPromptOptions: {
+					sections: {} as Record<string, string>,
+					baseSections: {} as Record<string, string>,
+					selectedTools: ["askUser"],
+				},
+			};
+			await fake.emit("before_agent_start", event, { hasUI });
+			return Object.values(allSections(event)).join("\n\n");
+		};
+		const interactive = setup();
+		expect(await prompt(interactive, true)).toContain("Ask with askUser");
+		const cached = await prompt(interactive, true);
+		expect(await prompt(interactive, false)).toBe(cached);
+
+		const headless = setup();
+		const text = await prompt(headless, false);
+		expect(text).not.toContain("Ask with askUser");
+		expect(text).toContain("Ask the user");
+		expect(await prompt(headless, true)).toBe(text);
+	});
+
 	const NO_LOOKUP_TOOL = "no lookup tool is available";
 	const run = async (fake: ReturnType<typeof fakeHost>, selectedTools?: string[]) => {
 		const event = {
@@ -48,9 +72,11 @@ describe("registerTurnSetup", () => {
 		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "direct" });
 		fake.api.setActiveTools(["mcp__octocode__ghSearchCode"]);
 		const prompt = await run(fake);
-		// With the server reachable the policy leaves research to its own text: no fallback, no server tool named.
+		// With the server reachable the research rule routes to `mcp__octocode__*` as a family and names no single
+		// server tool (the server's own text describes each); no fallback.
 		expect(prompt).not.toContain(NO_LOOKUP_TOOL);
-		expect(prompt).not.toContain("mcp__octocode");
+		expect(prompt).toContain("`mcp__octocode__*`");
+		expect(prompt).not.toMatch(/mcp__octocode__\w/);
 		expect(prompt).not.toContain("are called from `codemode`");
 		expect(prompt).not.toContain("tool_search");
 	});
@@ -78,8 +104,8 @@ describe("registerTurnSetup", () => {
 			isSubagent: true,
 			profiles: () => new Map(),
 		});
-		expect(await run(fake, ["read", "powershell"])).toContain("Run only read-only commands.");
-		expect(await run(fake, ["read"])).not.toContain("Run only read-only commands.");
+		expect(await run(fake, ["read", "powershell"])).toContain("Run only read-only commands,");
+		expect(await run(fake, ["read"])).not.toContain("Run only read-only commands,");
 		vi.unstubAllEnvs();
 	});
 
@@ -242,8 +268,16 @@ describe("registerTurnSetup", () => {
 			});
 			return run(fake, ["read", "file"]);
 		};
-		const first = await sectionFor("researcher-1a2b", "main-aaaaaa", "/repo/.octa/code/temp/agents/researcher-1a2b");
-		const second = await sectionFor("researcher-9z8y", "main-bbbbbb", "/other/.octa/code/temp/agents/researcher-9z8y");
+		const first = await sectionFor(
+			"researcher-1a2b",
+			"main-aaaaaa",
+			"/repo/.octocode/code/temp/agents/researcher-1a2b",
+		);
+		const second = await sectionFor(
+			"researcher-9z8y",
+			"main-bbbbbb",
+			"/other/.octocode/code/temp/agents/researcher-9z8y",
+		);
 		expect(second).toBe(first);
 		expect(first).not.toMatch(/researcher-1a2b|main-aaaaaa|\.octocode\/tmp/);
 	});
