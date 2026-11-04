@@ -190,7 +190,7 @@ export class Team {
 			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost), this.name);
 			db.edits.adoptUnjoined(this.me.id);
 			this.activity.joined(this.me);
-			this.mail.followPeers(this.lifecycle, () => this.me?.id, () => this.database.current?.refs);
+			this.mail.followPeers(this.database.peers(() => this.me?.id));
 			this.ticker.sync();
 		} else if (goal !== undefined) {
 			this.me.goal = storedText(goal, LINE_MAX);

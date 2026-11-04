@@ -116,7 +116,8 @@ export interface RunStart {
 	backlog?: { workspaceId: string; seq: number } | undefined;
 }
 
-const CLOSE_OPEN = "UPDATE agent_runs SET ended_at = ?, end_reason = 'crashed', end_detail = ? WHERE agent_id = ? AND ended_at IS NULL";
+const CLOSE_OPEN =
+	"UPDATE agent_runs SET ended_at = ?, end_reason = 'crashed', end_detail = ? WHERE agent_id = ? AND ended_at IS NULL";
 
 /** The run of `agentId` that began last. */
 export function latest(db: DatabaseSync, agentId: string): AgentRun | undefined {
@@ -214,7 +215,9 @@ function changedFiles(db: DatabaseSync, agent: string, from: number, to: number)
 	const where = "agent = ? AND at >= ? AND at <= ?";
 	const count = num(db.prepare(`SELECT COUNT(DISTINCT path) AS n FROM edits WHERE ${where}`).get(agent, from, to)?.n);
 	const paths = (
-		db.prepare(`SELECT DISTINCT path FROM edits WHERE ${where} ORDER BY path LIMIT ${FILES_LISTED}`).all(agent, from, to) as Row[]
+		db
+			.prepare(`SELECT DISTINCT path FROM edits WHERE ${where} ORDER BY path LIMIT ${FILES_LISTED}`)
+			.all(agent, from, to) as Row[]
 	).map((each) => String(each.path));
 	return { count, paths };
 }
@@ -223,10 +226,18 @@ function changedFiles(db: DatabaseSync, agent: string, from: number, to: number)
  * Agent `row` is being retired (`agents.remove`): its open run ends with `reason`, the row's last numbers and the files it
  * changed. Undefined when it has no open run. Called before the row is deleted.
  */
-export function ended(db: DatabaseSync, row: Row, reason: string, detail: string | undefined, now: number): AgentRun | undefined {
+export function ended(
+	db: DatabaseSync,
+	row: Row,
+	reason: string,
+	detail: string | undefined,
+	now: number,
+): AgentRun | undefined {
 	const id = String(row.id);
 	const open = db
-		.prepare("SELECT started_at FROM agent_runs WHERE agent_id = ? AND ended_at IS NULL ORDER BY started_at DESC, rowid DESC LIMIT 1")
+		.prepare(
+			"SELECT started_at FROM agent_runs WHERE agent_id = ? AND ended_at IS NULL ORDER BY started_at DESC, rowid DESC LIMIT 1",
+		)
 		.get(id);
 	if (!open) return undefined;
 	const files = changedFiles(db, id, num(open.started_at), now);
@@ -295,7 +306,10 @@ export function finish(db: DatabaseSync, agentId: string, outcome: RunOutcome, n
 }
 
 /** The runs that began last, newest first: of `workspaceId` when given, of `agentId` when given. */
-export function recent(db: DatabaseSync, filter: { workspaceId?: string; agentId?: string; limit?: number } = {}): AgentRun[] {
+export function recent(
+	db: DatabaseSync,
+	filter: { workspaceId?: string; agentId?: string; limit?: number } = {},
+): AgentRun[] {
 	const clauses: string[] = [];
 	const values: string[] = [];
 	if (filter.workspaceId) (clauses.push("workspace_id = ?"), values.push(filter.workspaceId));
@@ -312,7 +326,9 @@ export function recent(db: DatabaseSync, filter: { workspaceId?: string; agentId
 export function forItem(db: DatabaseSync, workspaceId: string, seq: number): AgentRun[] {
 	return (
 		db
-			.prepare("SELECT * FROM agent_runs WHERE backlog_workspace = ? AND backlog_seq = ? ORDER BY started_at DESC, rowid DESC")
+			.prepare(
+				"SELECT * FROM agent_runs WHERE backlog_workspace = ? AND backlog_seq = ? ORDER BY started_at DESC, rowid DESC",
+			)
 			.all(workspaceId, seq) as Row[]
 	).map(decode);
 }

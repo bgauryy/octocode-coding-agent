@@ -100,8 +100,8 @@ ${chalk.bold("Examples:")}
   # Start with a specific thinking level
   ${APP_NAME} --thinking high "Solve this complex problem"
 
-  # Fetch a known file with Octocode MCP
-  ${APP_NAME} --tools 'mcp__octocode__localFetch' -p "Review src/index.ts"
+  # Allow one MCP tool by its full name
+  ${APP_NAME} --tools 'mcp__docs__search' -p "Find the retry settings"
 
   # Limit native tools to one MCP server
   ${APP_NAME} --tools bash,'mcp__github__*'

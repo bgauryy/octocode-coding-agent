@@ -29,7 +29,7 @@ describe("skills named by bundled roles", () => {
 		}
 	});
 
-	it("gives the browser role the chrome devtools skill", () => {
-		expect(roleSkills("browser.md")).toEqual(["octocode-chrome-devtools"]);
+	it("gives the bundled roles no default skill, so a child does not carry the whole catalog", () => {
+		for (const file of roles) expect(roleSkills(file), file).toEqual([]);
 	});
 });

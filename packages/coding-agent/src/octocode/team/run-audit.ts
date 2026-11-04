@@ -25,7 +25,10 @@ export class RunAudit {
 		try {
 			const store = this.host.store();
 			const { item, ...run } = start;
-			store.presence.beginRun(item === undefined ? run : { ...run, backlog: { workspaceId: store.workspaceId, seq: item } }, store.workspaceId);
+			store.presence.beginRun(
+				item === undefined ? run : { ...run, backlog: { workspaceId: store.workspaceId, seq: item } },
+				store.workspaceId,
+			);
 		} catch {
 			// The run is then audited from the child's own join and its end, without the parent's facts.
 		}

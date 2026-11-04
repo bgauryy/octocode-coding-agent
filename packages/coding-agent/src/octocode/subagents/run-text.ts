@@ -8,7 +8,8 @@ const cost = (run: Pick<AgentRun, "cost" | "unpriced">): string =>
 export function recentRunsText(runs: readonly AgentRun[], now = Date.now()): string {
 	if (runs.length === 0) return "";
 	const lines = runs.map((run) => {
-		const how = run.endedAt === undefined ? "running" : `${run.endReason ?? "ended"}${run.outcome ? `, ${run.outcome}` : ""}`;
+		const how =
+			run.endedAt === undefined ? "running" : `${run.endReason ?? "ended"}${run.outcome ? `, ${run.outcome}` : ""}`;
 		const took = formatDuration((run.endedAt ?? now) - run.startedAt);
 		return `  ${run.agentId} (${run.profile ?? run.kind}) ${how} · ${took} · ${cost(run)}${run.goal ? ` · ${run.goal}` : ""}`;
 	});
@@ -24,7 +25,14 @@ export function agentDetailText(agent: ResolvedAgent, now = Date.now()): string 
 		["parent", agent.parentAgentId],
 		["cwd", agent.cwd],
 		["branch", agent.branch],
-		["process", agent.processTitle ? `${agent.processTitle}${agent.pid ? ` (pid ${agent.pid})` : ""}` : agent.pid ? `pid ${agent.pid}` : undefined],
+		[
+			"process",
+			agent.processTitle
+				? `${agent.processTitle}${agent.pid ? ` (pid ${agent.pid})` : ""}`
+				: agent.pid
+					? `pid ${agent.pid}`
+					: undefined,
+		],
 		["model", agent.model],
 		["backlog", agent.backlog?.ref],
 		["session", agent.sessionFile ?? agent.sessionId],
@@ -37,8 +45,14 @@ export function agentDetailText(agent: ResolvedAgent, now = Date.now()): string 
 		],
 		["outcome", run?.outcome ? `${run.outcome}${run.reportPath ? ` · report ${run.reportPath}` : ""}` : undefined],
 		["usage", run ? `${run.toolCalls} tool calls · ${run.input + run.output} tokens · ${cost(run)}` : undefined],
-		["files", run?.filesChanged ? `${run.filesChanged.count}: ${run.filesChanged.paths.slice(0, 10).join(", ")}` : undefined],
+		[
+			"files",
+			run?.filesChanged ? `${run.filesChanged.count}: ${run.filesChanged.paths.slice(0, 10).join(", ")}` : undefined,
+		],
 		["running for", run && run.endedAt === undefined ? formatDuration(now - run.startedAt) : undefined],
 	];
-	return rows.filter((row): row is [string, string] => Boolean(row[1])).map(([key, value]) => `${key}: ${value}`).join("\n");
+	return rows
+		.filter((row): row is [string, string] => Boolean(row[1]))
+		.map(([key, value]) => `${key}: ${value}`)
+		.join("\n");
 }

@@ -5,7 +5,9 @@ export interface PeerNoticeHost {
 	bus: AgentLifecycleBus;
 	/** This agent's name while it is in the team. */
 	self: () => string | undefined;
-	db: () => { correspondence(me: string, other: string, since?: number): { exchanged: boolean; asked: boolean } } | undefined;
+	db: () =>
+		| { correspondence(me: string, other: string, since?: number): { exchanged: boolean; asked: boolean } }
+		| undefined;
 	mail: { peerLeft(text: string, wake: boolean): boolean };
 }
 

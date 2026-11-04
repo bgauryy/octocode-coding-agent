@@ -106,15 +106,22 @@ describe("the peer-left notice", () => {
 	});
 
 	it("tells it when a peer is killed with -9 and swept: a notice and a wake for its open question", async () => {
-		const worker = spawn(process.execPath, ["--import", SOURCE_RESOLVER, WORKER, root, path.join(root, "agent.db"), "far-ibis"], {
-			stdio: ["pipe", "pipe", "inherit"],
-		});
+		const worker = spawn(
+			process.execPath,
+			["--import", SOURCE_RESOLVER, WORKER, root, path.join(root, "agent.db"), "far-ibis"],
+			{
+				stdio: ["pipe", "pipe", "inherit"],
+			},
+		);
 		children.push(worker);
 		const name = await new Promise<string>((resolve, reject) => {
-			worker.stdout!.on("data", (chunk: Buffer) => /joined (\S+)/.exec(String(chunk)) && resolve(/joined (\S+)/.exec(String(chunk))![1]));
+			worker.stdout!.on(
+				"data",
+				(chunk: Buffer) => /joined (\S+)/.exec(String(chunk)) && resolve(/joined (\S+)/.exec(String(chunk))![1]),
+			);
 			worker.once("exit", (code) => reject(new Error(`The worker exited with ${code} before it joined.`)));
 		});
-				await team.send(name, "are you still working on it?", { replyRequired: true });
+		await team.send(name, "are you still working on it?", { replyRequired: true });
 		const gone = new Promise<void>((resolve) => worker.once("exit", () => resolve()));
 		worker.kill("SIGKILL");
 		await gone;

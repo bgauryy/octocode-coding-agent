@@ -39,13 +39,22 @@ const INTEGER = /^\d+$/;
  * A backlog item reference as written: `B36` (in `workspaceId`, or in any workspace when none is given) or
  * `<workspace name>:B36` (a workspace of that name, or its id). Undefined when `ref` is not one.
  */
-export function parseItemRef(db: DatabaseSync, ref: string, workspaceId?: string): { workspaceIds: string[]; seq: number } | undefined {
+export function parseItemRef(
+	db: DatabaseSync,
+	ref: string,
+	workspaceId?: string,
+): { workspaceIds: string[]; seq: number } | undefined {
 	const match = ITEM.exec(ref.trim());
 	if (!match) return undefined;
 	const seq = Number(match[2]);
 	if (match[1] === undefined) {
 		if (workspaceId) return { workspaceIds: [workspaceId], seq };
-		return { workspaceIds: (db.prepare("SELECT DISTINCT workspace_id AS id FROM backlog WHERE seq = ?").all(seq) as Row[]).map((row) => String(row.id)), seq };
+		return {
+			workspaceIds: (db.prepare("SELECT DISTINCT workspace_id AS id FROM backlog WHERE seq = ?").all(seq) as Row[]).map(
+				(row) => String(row.id),
+			),
+			seq,
+		};
 	}
 	const named = db.prepare("SELECT id FROM workspaces WHERE name = ? OR id = ?").all(match[1], match[1]) as Row[];
 	return { workspaceIds: named.map((row) => String(row.id)), seq };
@@ -65,14 +74,17 @@ const first = (db: DatabaseSync, sql: string, ...values: Array<string | number>)
 
 /** The agent name `ref` names among the live agents: by name, registration or session id, process title, pid, or the item it works for. */
 function liveName(db: DatabaseSync, ref: string, item: ReturnType<typeof parseItemRef>): string | undefined {
-	const byColumn = (column: string) => first(db, `SELECT id FROM agents WHERE ${column} = ? ORDER BY joined_at DESC LIMIT 1`, ref);
+	const byColumn = (column: string) =>
+		first(db, `SELECT id FROM agents WHERE ${column} = ? ORDER BY joined_at DESC LIMIT 1`, ref);
 	return (
 		byColumn("id") ??
 		byColumn("registration_id") ??
 		byColumn("lifecycle_session_id") ??
 		byColumn("session_id") ??
 		byColumn("process_title") ??
-		(INTEGER.test(ref) ? first(db, "SELECT id FROM agents WHERE pid = ? ORDER BY joined_at DESC LIMIT 1", Number(ref)) : undefined) ??
+		(INTEGER.test(ref)
+			? first(db, "SELECT id FROM agents WHERE pid = ? ORDER BY joined_at DESC LIMIT 1", Number(ref))
+			: undefined) ??
 		(item
 			? item.workspaceIds
 					.map((workspace) =>
@@ -98,7 +110,13 @@ function pastName(db: DatabaseSync, ref: string, item: ReturnType<typeof parseIt
 		byColumn("registration_id") ??
 		byColumn("session_id") ??
 		byColumn("process_title") ??
-		(INTEGER.test(ref) ? first(db, "SELECT agent_id FROM agent_runs WHERE pid = ? ORDER BY started_at DESC, rowid DESC LIMIT 1", Number(ref)) : undefined) ??
+		(INTEGER.test(ref)
+			? first(
+					db,
+					"SELECT agent_id FROM agent_runs WHERE pid = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
+					Number(ref),
+				)
+			: undefined) ??
 		(item
 			? item.workspaceIds
 					.map((workspace) =>
@@ -128,7 +146,9 @@ export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string
 	const agentId = liveName(db, wanted, item) ?? pastName(db, wanted, item);
 	if (!agentId) return undefined;
 	const live = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
-	const latest = db.prepare("SELECT * FROM agent_runs WHERE agent_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1").get(agentId);
+	const latest = db
+		.prepare("SELECT * FROM agent_runs WHERE agent_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1")
+		.get(agentId);
 	const run = latest ? decode(latest) : undefined;
 	const session = text(live?.lifecycle_session_id) ?? text(live?.session_id) ?? run?.sessionId;
 	const backlog = run?.backlog ?? mainItem(db, run, session);
@@ -152,8 +172,16 @@ export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string
 }
 
 /** A main session's item: the ongoing one its session holds (`backlog.assignee` is the session id), as design B36 §5 derives it. */
-function mainItem(db: DatabaseSync, run: AgentRun | undefined, session: string | undefined): { workspaceId: string; seq: number } | undefined {
+function mainItem(
+	db: DatabaseSync,
+	run: AgentRun | undefined,
+	session: string | undefined,
+): { workspaceId: string; seq: number } | undefined {
 	if (run?.kind !== "main" || !session) return undefined;
-	const row = db.prepare("SELECT workspace_id, seq FROM backlog WHERE assignee = ? AND state = 'ongoing' ORDER BY updated_at DESC LIMIT 1").get(session);
+	const row = db
+		.prepare(
+			"SELECT workspace_id, seq FROM backlog WHERE assignee = ? AND state = 'ongoing' ORDER BY updated_at DESC LIMIT 1",
+		)
+		.get(session);
 	return row ? { workspaceId: String(row.workspace_id), seq: num(row.seq) } : undefined;
 }

@@ -247,8 +247,7 @@ export function registerMember(db: DatabaseSync, id: string, context: LifecycleC
 	if (changed.changes) {
 		const created = member(db, id)!;
 		recordMember(db, created, "create", runData(db, created, opened(db, created, now)), now);
-	}
-	else
+	} else
 		db.prepare("UPDATE agents SET activation_id=?, lifecycle_session_id=? WHERE id=? AND persist_events=1").run(
 			context.activationId,
 			context.sessionId,

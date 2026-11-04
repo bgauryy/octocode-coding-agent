@@ -1,6 +1,7 @@
 ---
 name: implementer
 description: Use when a scoped change is ready to build; researches, edits and verifies it; returns changed paths, results and integration needs.
+skills: []
 model: medium:medium
 ---
 

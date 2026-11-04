@@ -5,7 +5,7 @@ import { registerHarnessCommand } from "./harness/command.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "./files/tool/guard.ts";
+import { BASH_READER, FileGuard, mcpReader } from "./files/tool/guard.ts";
 import { plural } from "./shared/render/text.ts";
 import { spilledMessage } from "./team/session/spilled-message.ts";
 import { registerWebCommands } from "./remote/register.ts";
@@ -14,7 +14,7 @@ import { startWorkspaceWeb } from "./workspace/server.ts";
 import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../mcp/src/status.ts";
-import { OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { agentModes, agentOperation } from "./agent-tool.ts";
 import { registerApi, runningApiInstances } from "./api/register.ts";
 import { registerAskUser } from "./ask/tool.ts";
@@ -106,10 +106,14 @@ export default function octocode(api: ExtensionAPI): void {
 	let profiles = new Map<string, AgentProfile>();
 	/** Why each profile file was refused at load (`loadSessionProfiles`), by profile name: the `agent` tool names it for an unknown profile. */
 	let refused = new Map<string, string>();
+	// Refusals name the research entry's reader role (`roles`) while its server runs, and `bash` otherwise.
 	const updateReader = () => {
-		const server = getMcpSessionStatus(api.events).find((server) => server.name === OCTOCODE_SERVER);
+		const research = currentToolRoles().research;
+		const server = research && getMcpSessionStatus(api.events).find((server) => server.name === research.server);
 		guard.reader =
-			server?.enabled && !["failed", "stopped", "disabled"].includes(server.state) ? LOCAL_FETCH_READER : BASH_READER;
+			research && server?.enabled && !["failed", "stopped", "disabled"].includes(server.state)
+				? mcpReader(research.reader)
+				: BASH_READER;
 	};
 	api.events.on(MCP_STATUS_EVENT, updateReader);
 	api.on("session_start", updateReader);
@@ -140,7 +144,6 @@ export default function octocode(api: ExtensionAPI): void {
 			committed: (id, input, cwd) => hooks.fileInputCommitted(id, input, cwd),
 			refresh: (ctx) => sourcePolicy.refresh(ctx),
 		},
-		{ enabled: envFlag(process.env, "OCTOCODE_EDIT_DIAGNOSTICS", true) },
 	);
 	// Octocode's bash with a foreground deadline and background jobs.
 	const jobs = registerBashTool(api, commands);

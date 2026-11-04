@@ -7,6 +7,7 @@ import type { Ask } from "../asks.ts";
 import type { OpenQuestion } from "../model.ts";
 import { AGENT_LIFECYCLE_CHANNEL } from "../../shared/agent-lifecycle.ts";
 import { AgentLifecycleBus } from "../lifecycle-bus.ts";
+import type { PeerNoticeHost } from "../peer-left.ts";
 import { TeamStore } from "../store.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TeamView } from "../ticker.ts";
@@ -47,6 +48,11 @@ export class TeamDatabase {
 	/** The database this session opened, if it used one yet. */
 	get current(): TeamStore | undefined {
 		return this.db;
+	}
+
+	/** What the peer-left notices read (`peer-left.ts`) for the agent `self` names: the bus and the records of the database opened so far. */
+	peers(self: () => string | undefined): Omit<PeerNoticeHost, "mail"> {
+		return { bus: this.lifecycle, self, db: () => this.db?.refs };
 	}
 
 	/** Set when the team database is foreign or too new; nothing team-related works until it is fixed. */

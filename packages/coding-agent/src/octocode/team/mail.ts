@@ -86,8 +86,8 @@ export class Mail {
 	private peers: PeerNotices | undefined;
 
 	/** Starts telling this agent when a peer it corresponded with ends (`peer-left.ts`); `reset` stops it. */
-	followPeers(bus: PeerNoticeHost["bus"], self: PeerNoticeHost["self"], db: PeerNoticeHost["db"]): void {
-		this.peers ??= new PeerNotices({ bus, self, db, mail: this });
+	followPeers(host: Omit<PeerNoticeHost, "mail">): void {
+		this.peers ??= new PeerNotices({ ...host, mail: this });
 		this.peers.watch();
 	}
 

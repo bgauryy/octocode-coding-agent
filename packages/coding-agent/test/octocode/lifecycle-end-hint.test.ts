@@ -84,7 +84,8 @@ describe("the end_hint migration", () => {
 		const old = path.join(root, "old.db");
 		const first = open(old, { version: 1, migrations: [] });
 		// A version 1 file as the previous Octocode wrote it: no end_hint column.
-		for (const column of ["end_hint", "cwd", "branch", "process_title"]) first.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
+		for (const column of ["end_hint", "cwd", "branch", "process_title"])
+			first.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
 		first.db.exec("DROP TABLE agent_runs");
 		first.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		first.close();
@@ -194,7 +195,11 @@ describe("the parent's side", () => {
 			session: 1,
 			read: { track: () => undefined, consume: () => false },
 			team: {
-				audit: { hint: (id: string, hint: string) => hints.push([id, hint]), begin: () => undefined, finish: () => undefined },
+				audit: {
+					hint: (id: string, hint: string) => hints.push([id, hint]),
+					begin: () => undefined,
+					finish: () => undefined,
+				},
 				editLog: () => undefined,
 			},
 			reports: { add: (report: Report) => reports.push(report) },

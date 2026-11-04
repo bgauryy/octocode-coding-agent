@@ -176,7 +176,11 @@ export function startBackground(
 			read.consume(identity.id);
 			const by = entry.stoppedBy;
 			if (!by) hintEnd(runs, identity.id, "failed");
-			audit = { reason: by ? stopReason(by) : "failed", error: by ? undefined : errorMessage(error), outcome: by ? undefined : "failed" };
+			audit = {
+				reason: by ? stopReason(by) : "failed",
+				error: by ? undefined : errorMessage(error),
+				outcome: by ? undefined : "failed",
+			};
 			const reason =
 				by === USER_SENDER ? "cancelled by the user" : by ? `stopped by ${by}` : `stopped: ${errorMessage(error)}`;
 			const reachable = by === PERMISSION_STOP ? (linger?.() ?? "") : "";

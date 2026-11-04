@@ -52,7 +52,11 @@ export class Place {
 }
 
 /** The team's address of a process: its workspace (and the checkout its reservations protect, when another), with a `place` that reads fresh each time. */
-export function memberWorkspace(id: string, leaseWorkspaceId: string | undefined, place: Place): agents.MemberWorkspace {
+export function memberWorkspace(
+	id: string,
+	leaseWorkspaceId: string | undefined,
+	place: Place,
+): agents.MemberWorkspace {
 	return {
 		id,
 		...(leaseWorkspaceId && leaseWorkspaceId !== id ? { leaseWorkspaceId } : {}),

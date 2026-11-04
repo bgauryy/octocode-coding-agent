@@ -250,7 +250,7 @@ SessionEnd is observational. Native and Claude hooks default to 1.5 seconds per 
 
 `AgentOn` and `AgentOff` are Octocode's own events: Claude and Codex have no counterpart, and the `SubagentStart` and `SubagentStop` events of those profiles are unchanged. They are observers: output is ignored, they cannot block or add context, and a `failClosed` setting has no effect. A hook runs in the process that wrote the transition to the team database, once: an agent's own process for its join and its leave, and the parent (or another process) that finds a child dead and retires its row, so a killed child still gets an `AgentOff` with reason `crashed` from the process that reaped it. A process that is killed runs no hook of its own. Only sessions that are persisted to a session file write these transitions; a session without one runs neither event.
 
-`AgentOn` fires when the agent joins the team (a main session on its first collaboration, a child when it starts); its matcher is the agent's role (`main` for a main session). `AgentOff` fires when the row is retired; its matcher is the end reason: `completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed` or `left` (an older stored `reaped` reads as `crashed`). Both use the `SessionEnd` deadline (1.5 s, raised to the longest configured hook timeout, at most 60 s) and a hook still running then is stopped. Session shutdown waits for the hooks it started.
+`AgentOn` fires when the agent joins the team (a main session when it starts, a child when it starts); its matcher is the agent's role (`main` for a main session). `AgentOff` fires when the row is retired; its matcher is the end reason: `completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed` or `left` (an older stored `reaped` reads as `crashed`). Both use the `SessionEnd` deadline (1.5 s, raised to the longest configured hook timeout, at most 60 s) and a hook still running then is stopped. Session shutdown waits for the hooks it started.
 
 Input (added to `session_id`, `cwd` and `hook_event_name`):
 
@@ -262,11 +262,14 @@ Input (added to `session_id`, `cwd` and `hook_event_name`):
 | `parent_agent_id`                        | both       | The parent's name, or `null`.                                                                                                                  |
 | `model`, `goal`                          | both       | The model and one-line goal on the row, or `null`.                                                                                             |
 | `pid`                                    | both       | The agent's process.                                                                                                                           |
+| `parent_session_id`, `branch`            | both       | The parent's session id and the agent's git branch when it joined, or `null`.                                                                  |
+| `backlog_item`, `run_id`                 | both       | The backlog item the run was started for (`B36`, or `<workspace name>:B36` from another workspace) and the run's id in `agent_runs`, or `null`. |
 | `reason`, `detail`                       | `AgentOff` | The end reason; `detail` is free text when the writer gave one.                                                                                |
 | `started_at`, `ended_at`, `duration_ms`  | `AgentOff` | When the agent joined and the transition was written (ISO 8601), and the time between.                                                         |
 | `status`, `tool_calls`, `tokens`, `cost` | `AgentOff` | The row's last heartbeat: status, tool calls, `tokens` as `{ input, cache_read, output }` and cost. A number the row never recorded is `null`. |
+| `outcome`, `files_changed`               | `AgentOff` | The outcome word (`done`, `partial`, `blocked`, `failed`) when the parent had recorded it when the agent left (usually `null` for a child that leaves before its report), and the files it changed as `{ count, paths }` (first 20 paths). |
 
-Not recorded for an agent yet, so not in the input: branch, backlog item, run id, outcome and the files changed.
+The agent's folder is the common `cwd` field of the input.
 
 ### Codex post-tool result preview
 

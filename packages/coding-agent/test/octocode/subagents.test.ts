@@ -15,6 +15,7 @@ import { FAILED_NEXT, failedNext } from "../../src/octocode/subagents/report-tex
 import { assistantText } from "../../src/octocode/subagents/events.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { taskSkillPlan } from "../../src/octocode/subagents/task-skills.ts";
+import { mcpFloor } from "../../src/octocode/subagents/core-tools.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { askSpawn, loadProfiles, parseProfile, profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -357,10 +358,8 @@ describe("subagents", () => {
 
 	it("gives each bundled role the skills it names, so a child does not carry the whole catalog", () => {
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		expect(profiles.get("researcher")?.skills).toEqual(["octocode-research"]);
-		expect(profiles.get("reviewer")?.skills).toEqual(["octocode-research"]);
-		expect(profiles.get("browser")?.skills).toEqual(["octocode-chrome-devtools"]);
-		expect(profiles.get("implementer")?.skills).toEqual(["octocode-research"]);
+		for (const role of ["researcher", "reviewer", "browser", "implementer"])
+			expect(profiles.get(role)?.skills, role).toEqual([]);
 		// An empty list is a choice (no skills), not an absent key (the whole catalog).
 		expect(parseProfile("none", "---\nskills: []\n---\nTask").skills).toEqual([]);
 		// A task's own `skills` replaces the role's: taskSkillPlan prefers it.
@@ -376,12 +375,10 @@ describe("subagents", () => {
 		expect(other).toEqual(expect.arrayContaining(LOCAL_RESEARCH_TOOLS));
 	});
 
-	it("lets the browser role leave out the structure, AST and LSP tools but keeps the local reader and search", () => {
+	it("gives the browser role its server and the specialist MCP floor without naming a research server's tools", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
-		const tools = browser.tools ?? "";
-		for (const name of ["structureSearch", "astSearch", "lspSearch"]) expect(tools).not.toContain(name);
-		for (const name of ["localFetch", "localSearch"])
-			expect(tools).toMatch(new RegExp(`mcp__octocode__(${name}|local\\*)`));
+		const tools = (browser.tools ?? "").split(",");
+		expect(tools).toEqual(expect.arrayContaining(["mcp__browser__*", "web", ...mcpFloor(["mcp__browser__*"])]));
 	});
 
 	it("carries the browser mode in the task, not the environment", () => {

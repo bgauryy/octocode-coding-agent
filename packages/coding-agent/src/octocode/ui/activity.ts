@@ -33,7 +33,7 @@ const WORKING_LINE_MAX = 240;
 /** A parallel batch names this many tools, then counts the rest. */
 const BATCH_NAMES = 2;
 
-/** `mcp__octocode__localSearch` → `localSearch`: the server prefix only costs width. */
+/** `mcp__<server>__search` → `search`: the server prefix only costs width. */
 export function shortToolName(name: string): string {
 	return name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "");
 }
@@ -44,8 +44,8 @@ function safeText(text: string): string {
 }
 
 /**
- * What a call works on: the goal of an `agent` call, the first query's target of a batched call (`file` and the
- * Octocode tools take `{queries: [...]}`) with the count of the others, else the top-level argument `toolHint` picks.
+ * What a call works on: the goal of an `agent` call, the first query's target of a batched call (`file`, or any tool
+ * whose input has a `queries` array) with the count of the others, else the top-level argument `toolHint` picks.
  */
 export function callTarget(name: string, args: unknown): { hint: string; more: number } {
 	const input = name === "agent" ? agentCall(args).input : asRecord(args);
@@ -63,7 +63,7 @@ function fitWithin(head: string, sep: string, detail: string, tail: string, line
 	return `${head}${sep}${clipColumns(detail, Math.max(room, 12))}${tail}`;
 }
 
-/** A tool as its row titles it: `Bash`, `File`, `localSearch`; the `agent` tool is a subagent. */
+/** A tool as its row titles it: `Bash`, `File`, an MCP tool's short name; the `agent` tool is a subagent. */
 function toolLabel(name: string): string {
 	if (name === "agent") return "subagent";
 	return /^[a-z]+$/.test(name) ? `${name[0].toUpperCase()}${name.slice(1)}` : name;

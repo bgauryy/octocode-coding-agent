@@ -72,7 +72,9 @@ describe("the agent_runs table", () => {
 		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 3 });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "1" });
-		expect((raw.prepare("PRAGMA table_info(agent_runs)").all() as { name: string }[]).map((c) => c.name)).toContain("run_id");
+		expect((raw.prepare("PRAGMA table_info(agent_runs)").all() as { name: string }[]).map((c) => c.name)).toContain(
+			"run_id",
+		);
 		expect((raw.prepare("PRAGMA table_info(agents)").all() as { name: string }[]).map((c) => c.name)).toEqual(
 			expect.arrayContaining(["cwd", "branch", "process_title"]),
 		);
@@ -103,9 +105,17 @@ describe("the agent_runs table", () => {
 
 	it("links a child's own join to the run its parent opened, and the retiring writer ends it with the final numbers", () => {
 		store.join(member("parent-main", { role: "main" }));
-		store.presence.beginRun({ agentId: "kid", parentAgentId: "parent-main", profile: "implementer", goal: "fix it", startedBy: "agent" }, store.workspaceId);
+		store.presence.beginRun(
+			{ agentId: "kid", parentAgentId: "parent-main", profile: "implementer", goal: "fix it", startedBy: "agent" },
+			store.workspaceId,
+		);
 		const [opened] = store.presence.runs({ agentId: "kid" });
-		expect(opened).toMatchObject({ kind: "child", profile: "implementer", goal: "fix it", parentSessionId: "session-main" });
+		expect(opened).toMatchObject({
+			kind: "child",
+			profile: "implementer",
+			goal: "fix it",
+			parentSessionId: "session-main",
+		});
 		expect(opened.registrationId).toBeUndefined();
 		const kid = member("kid", { role: "implementer", parentId: "parent-main", toolCalls: 4, input: 9, cost: 1.25 });
 		store.join(kid);
@@ -117,7 +127,9 @@ describe("the agent_runs table", () => {
 		store.save({ ...kid, toolCalls: 6, input: 12, cost: 2 });
 		store.remove("kid", Date.now(), kid, "completed");
 		// The parent's word comes after the child left: outcome and report, the end stays as retired.
-		expect(store.presence.finishRun("kid", { endReason: "failed", outcome: "done", reportPath: "/tmp/report.md" })).toBe(true);
+		expect(
+			store.presence.finishRun("kid", { endReason: "failed", outcome: "done", reportPath: "/tmp/report.md" }),
+		).toBe(true);
 		const [ended] = store.presence.runs({ agentId: "kid" });
 		expect(ended).toMatchObject({
 			endReason: "completed",
@@ -134,7 +146,11 @@ describe("the agent_runs table", () => {
 	it("is completed by the parent when the child never joined, and a new run of a name closes an old one that never ended", () => {
 		store.presence.beginRun({ agentId: "ghost", profile: "general", goal: "never starts" }, store.workspaceId);
 		store.presence.finishRun("ghost", { endReason: "failed", endDetail: "Failed to start", outcome: "failed" });
-		expect(store.presence.runs({ agentId: "ghost" })[0]).toMatchObject({ endReason: "failed", endDetail: "Failed to start", outcome: "failed" });
+		expect(store.presence.runs({ agentId: "ghost" })[0]).toMatchObject({
+			endReason: "failed",
+			endDetail: "Failed to start",
+			outcome: "failed",
+		});
 		store.presence.beginRun({ agentId: "twin", goal: "first" }, store.workspaceId);
 		store.presence.beginRun({ agentId: "twin", goal: "second" }, store.workspaceId);
 		const runs = store.presence.runs({ agentId: "twin" });
@@ -163,7 +179,16 @@ describe("resolving an agent by any name it goes by", () => {
 	it("finds it by name, session, registration, process title, pid and backlog item, live and after its row is gone", () => {
 		process.title = "octocode-researcher-lone-fox";
 		const ws = store.workspaceId;
-		store.presence.beginRun({ agentId: "lone-fox", profile: "researcher", goal: "look around", startedBy: "agent", backlog: { workspaceId: ws, seq: 7 } }, ws);
+		store.presence.beginRun(
+			{
+				agentId: "lone-fox",
+				profile: "researcher",
+				goal: "look around",
+				startedBy: "agent",
+				backlog: { workspaceId: ws, seq: 7 },
+			},
+			ws,
+		);
 		const fox = member("lone-fox");
 		store.join(fox);
 		const registration = store.presence.runs({ agentId: "lone-fox" })[0].registrationId!;
@@ -213,7 +238,10 @@ describe("kill -9 of a parent", () => {
 		try {
 			const started = processStartTime(parentProc.pid!);
 			store.join(member("parent-main", { role: "main", pid: parentProc.pid!, ...(started ? { started } : {}) }));
-			store.presence.beginRun({ agentId: "kid", parentAgentId: "parent-main", profile: "researcher", goal: "wait for me" }, store.workspaceId);
+			store.presence.beginRun(
+				{ agentId: "kid", parentAgentId: "parent-main", profile: "researcher", goal: "wait for me" },
+				store.workspaceId,
+			);
 			child = spawn(process.execPath, ["--import", SOURCE_RESOLVER, WORKER, root, db.file, "kid", "parent-main"], {
 				stdio: ["ignore", "pipe", "inherit"],
 				env: { ...process.env, OCTOCODE_PARENT_PID: `${parentProc.pid} ${started ?? ""}`.trim() },
@@ -228,7 +256,10 @@ describe("kill -9 of a parent", () => {
 			parentProc.kill("SIGKILL");
 			await exits;
 			// The child notices within seconds, leaves with `parent-gone` and exits.
-			await vi.waitFor(() => expect(store.presence.runs({ agentId: "kid" })[0]?.endedAt).toBeGreaterThan(0), { timeout: 20_000, interval: 200 });
+			await vi.waitFor(() => expect(store.presence.runs({ agentId: "kid" })[0]?.endedAt).toBeGreaterThan(0), {
+				timeout: 20_000,
+				interval: 200,
+			});
 			const [run] = store.presence.runs({ agentId: "kid" });
 			expect(run).toMatchObject({
 				endReason: "parent-gone",
@@ -244,7 +275,9 @@ describe("kill -9 of a parent", () => {
 			expect(store.presence.runs({ agentId: "parent-main" })[0]).toMatchObject({ endReason: "crashed", kind: "main" });
 			await vi.waitFor(
 				() =>
-					expect(heard.filter((event) => event.kind === "off").map((event) => [event.agent, event.reason, event.own])).toEqual(
+					expect(
+						heard.filter((event) => event.kind === "off").map((event) => [event.agent, event.reason, event.own]),
+					).toEqual(
 						expect.arrayContaining([
 							["kid", "parent-gone", false],
 							["parent-main", "crashed", false],
@@ -252,7 +285,10 @@ describe("kill -9 of a parent", () => {
 					),
 				{ timeout: 10_000, interval: 200 },
 			);
-			expect(heard.find((event) => event.agent === "kid" && event.kind === "off")?.data).toMatchObject({ runId: run.runId, cwd: root });
+			expect(heard.find((event) => event.agent === "kid" && event.kind === "off")?.data).toMatchObject({
+				runId: run.runId,
+				cwd: root,
+			});
 		} finally {
 			peer.stop();
 			child?.kill("SIGKILL");

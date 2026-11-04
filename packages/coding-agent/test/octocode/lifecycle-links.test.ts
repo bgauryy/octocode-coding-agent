@@ -33,8 +33,18 @@ describe("a backlog item written from two workspaces", () => {
 		const alpha = fixtureBacklog(() => db, ALPHA);
 		const beta = fixtureBacklog(() => db, BETA);
 		for (const store of [alpha, beta]) store.add({ ...READY, title: "same number", state: "todo", createdBy: "user" });
-		agentRuns.begin(db.db, { workspaceId: ALPHA, agentId: "alpha-fox", profile: "implementer", backlog: { workspaceId: ALPHA, seq: 1 } });
-		agentRuns.begin(db.db, { workspaceId: BETA, agentId: "beta-owl", profile: "researcher", backlog: { workspaceId: BETA, seq: 1 } });
+		agentRuns.begin(db.db, {
+			workspaceId: ALPHA,
+			agentId: "alpha-fox",
+			profile: "implementer",
+			backlog: { workspaceId: ALPHA, seq: 1 },
+		});
+		agentRuns.begin(db.db, {
+			workspaceId: BETA,
+			agentId: "beta-owl",
+			profile: "researcher",
+			backlog: { workspaceId: BETA, seq: 1 },
+		});
 		return { alpha, beta };
 	}
 
@@ -52,7 +62,10 @@ describe("a backlog item written from two workspaces", () => {
 		twoWorkspaces();
 		expect(resolveAgent(db.db, "B1", ALPHA)?.agentId).toBe("alpha-fox");
 		expect(resolveAgent(db.db, "B1", BETA)?.agentId).toBe("beta-owl");
-		expect(resolveAgent(db.db, "alpha:B1", BETA)).toMatchObject({ agentId: "alpha-fox", backlog: { ref: "alpha:B1", seq: 1 } });
+		expect(resolveAgent(db.db, "alpha:B1", BETA)).toMatchObject({
+			agentId: "alpha-fox",
+			backlog: { ref: "alpha:B1", seq: 1 },
+		});
 		expect(resolveAgent(db.db, "beta:B1", ALPHA)).toMatchObject({ agentId: "beta-owl", backlog: { ref: "beta:B1" } });
 		expect(resolveAgent(db.db, "B1", ALPHA)?.backlog?.ref).toBe("B1");
 		expect(resolveAgent(db.db, "nowhere:B1", ALPHA)).toBeUndefined();
@@ -62,7 +75,8 @@ describe("a backlog item written from two workspaces", () => {
 	it("lists, in `backlog get`, only the runs of this workspace's item: agent, how it ended, outcome and cost", () => {
 		const { alpha, beta } = twoWorkspaces();
 		agentRuns.finish(db.db, "alpha-fox", { endReason: "completed", outcome: "done" });
-		const detail = (store: typeof alpha) => itemDetail(store.get("B1")!, [], 0, Date.now(), { runs: store.runs(store.get("B1")!) });
+		const detail = (store: typeof alpha) =>
+			itemDetail(store.get("B1")!, [], 0, Date.now(), { runs: store.runs(store.get("B1")!) });
 		expect(detail(alpha)).toMatch(/Runs \(1\):\n- alpha-fox \(implementer\) completed .* · done · \$0\.000/);
 		expect(detail(alpha)).not.toContain("beta-owl");
 		expect(detail(beta)).toMatch(/Runs \(1\):\n- beta-owl \(researcher\) running · \$0\.000/);
@@ -72,8 +86,19 @@ describe("a backlog item written from two workspaces", () => {
 
 describe("the text of /agents", () => {
 	it("shows one agent's detail, ended or live, and a line per recent run", () => {
-		agentRuns.begin(db.db, { workspaceId: fixtureBacklog(() => db, ALPHA).repo, agentId: "alpha-fox", profile: "implementer", goal: "fix the build", backlog: { workspaceId: ALPHA, seq: 3 } });
-		agentRuns.finish(db.db, "alpha-fox", { endReason: "failed", endDetail: "provider error", outcome: "failed", reportPath: "/tmp/r.md" });
+		agentRuns.begin(db.db, {
+			workspaceId: fixtureBacklog(() => db, ALPHA).repo,
+			agentId: "alpha-fox",
+			profile: "implementer",
+			goal: "fix the build",
+			backlog: { workspaceId: ALPHA, seq: 3 },
+		});
+		agentRuns.finish(db.db, "alpha-fox", {
+			endReason: "failed",
+			endDetail: "provider error",
+			outcome: "failed",
+			reportPath: "/tmp/r.md",
+		});
 		const found = resolveAgent(db.db, "B3", ALPHA)!;
 		const detail = agentDetailText(found);
 		expect(detail).toContain("agent: alpha-fox (implementer) · ended");

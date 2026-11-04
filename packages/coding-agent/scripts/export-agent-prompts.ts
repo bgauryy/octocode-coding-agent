@@ -11,7 +11,11 @@ import { teamTask, withIdentity } from "../src/octocode/instructions/task.ts";
 import { loadProfiles, profileSelectsTool } from "../src/octocode/subagents/profiles.ts";
 import { registerTurnSetup } from "../src/octocode/turn.ts";
 import { HOOK_EVALUATION_SYSTEM_PROMPT } from "../src/octocode/hooks/prompt.ts";
-import { defineOctocodeTool, octocodeToolName } from "../../mcp/src/presets/octocode/tools.ts";
+import { createMcpToolDefinition } from "../../mcp/src/tool-definition.ts";
+import { createMcpToolName } from "../../mcp/src/tool-names.ts";
+import { recommendedPresets } from "../../mcp/src/recommended/index.ts";
+import { publishToolRoles, resolveToolRoles } from "../../mcp/src/roles.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { MCPS_SECTION, renderMcpsSection } from "../../mcp/src/section.ts";
 import type { Tool } from "../../mcp/src/client/index.ts";
 import { fakeHost } from "../test/octocode/fake-host.ts";
@@ -24,6 +28,11 @@ const catalog = process.argv[3]
 			catalog: { tools: Tool[] };
 		})
 	: undefined;
+// The captured catalog is the research server's: the first recommended entry whose roles name a reader and a search.
+const research = recommendedPresets().find(
+	({ config }) => (config?.roles?.reader?.length ?? 0) > 0 && (config?.roles?.search?.length ?? 0) > 0,
+);
+if (catalog && !research) throw new Error("No recommended MCP server has reader and search roles for the catalog");
 const output = path.resolve(destination);
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-prompt-export-"));
 const previousEnv = { ...process.env };
@@ -34,6 +43,8 @@ try {
 	}
 	process.env.OCTOCODE_HOME = temporary;
 	process.env.OCTOCODE_CODING_AGENT_DIR = temporary;
+	if (catalog && research?.config)
+		publishToolRoles(resolveToolRoles([{ name: research.name, config: research.config, scope: "default" }]));
 	const profiles = loadProfiles(temporary, temporary, false, {});
 	const inventory: Array<{ name: string; characters: number; estimatedTokens: number; tools: string[] }> = [];
 	for (const name of ["coordinator", "general", ...profiles.keys()]) {
@@ -47,13 +58,13 @@ try {
 		if (profile?.prompt) process.env[ROLE_PROMPT_FILE_ENV] = writeRolePrompt(profile.prompt, temporary);
 		const native = fakeHost();
 		octocode(native.api);
-		for (const tool of catalog?.catalog.tools ?? []) {
-			const definition = defineOctocodeTool({
+		for (const tool of research ? (catalog?.catalog.tools ?? []) : []) {
+			const definition = createMcpToolDefinition({
 				tool,
-				server: "octocode",
-				name: octocodeToolName(tool.name),
+				server: research!.name,
+				name: createMcpToolName(research!.name, tool.name),
 				timeoutMs: 60_000,
-				namespace: { name: "mcp__octocode", instructions: catalog?.initialize.instructions },
+				namespace: { name: mcpNamespace(research!.name), instructions: catalog?.initialize.instructions },
 				exposure: "direct",
 				getClient: async () => {
 					throw new Error("Prompt export does not execute MCP tools");
@@ -84,7 +95,7 @@ try {
 			? renderMcpsSection([
 					{
 						entry: {
-							name: "octocode",
+							name: research!.name,
 							config: { command: "fixture", exposure: "direct" },
 							source: "prompt fixture",
 							scope: "default",

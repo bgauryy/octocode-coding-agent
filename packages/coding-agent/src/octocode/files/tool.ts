@@ -33,14 +33,12 @@ import {
 } from "./tool/queries.ts";
 import { runQuery } from "./tool/run.ts";
 export { projectEditHunk } from "./tool/patch-projection.ts";
-import { formatFeedback, inspectMutations } from "./feedback/diagnostics.ts";
-import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./feedback/parse.ts";
 
 /**
  * Octocode's `file` tool: batched edit / write / delete queries, each with a
  * reason line. Edits and writes run through the engines of `tool/apply.ts` (exact replacement with a
  * whitespace/punctuation fallback, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
- * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch` (or printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
+ * Writers outside Octocode that do not acquire that lock can still race the check. A file read with an MCP reader role (or printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
  * tool, that changed on disk since then must be read again before a write or delete; an edit re-validates each oldText
  * against the current content and applies when each still matches exactly once, also for a file never read (the match proves the content is known). A file whose earlier read left the
  * context (compaction, a branch switch, a rewind that restored it) must be read again before
@@ -51,7 +49,7 @@ import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./fe
  * ask. In `manual` mode the batch's review dialog is its `file.workspace` ask.
  *
  * A read is recorded by stat (size, mtime, ctime, inode) of the canonical path, without reading the file again; its
- * digest is known only when the read returned the whole file (Octocode's read) or the file tool wrote it, and is then
+ * digest is known only when the read returned the whole file (a credited whole read) or the file tool wrote it, and is then
  * checked against the bytes the change reads anyway. Residual race: a file changed between the read tool reading it
  * and the stat here is taken as read (unless its digest was known from the returned text).
  */
@@ -62,7 +60,6 @@ export function registerFileTool(
 	permission: Permission,
 	checkpoints?: Checkpoints,
 	replacementOwner?: FileReplacementOwner,
-	feedback?: { enabled: boolean },
 ): void {
 	api.registerTool(
 		timedTool(
@@ -260,13 +257,6 @@ export function registerFileTool(
 						? await preparePatch(canonical, params.reason ?? "Apply patch", guard, ctx, signal, permission, id)
 						: undefined;
 					if (prepared) queries = prepared.map((item) => item.query);
-					const parseBefore = feedback?.enabled
-						? await captureParseBefore(
-								queries.map((query) => canonicalPath(resolveToolPath(ctx.cwd, query.path))),
-								ctx,
-								signal,
-							)
-						: new Map();
 					for (const [index, query] of queries.entries()) {
 						const note = rejected.get(index);
 						const skip = rejected.has(index)
@@ -300,22 +290,11 @@ export function registerFileTool(
 						if (canonical && !outcomes.at(-1)!.ok) break;
 					}
 					const receipts = outcomes.flatMap((outcome) => (outcome.receipt ? [outcome.receipt] : []));
-					const diagnostics = feedback?.enabled && receipts.length ? await inspectMutations(receipts, ctx, signal) : [];
-					const parseFeedback =
-						feedback?.enabled && receipts.length ? await inspectParseAfter(receipts, parseBefore, ctx, signal) : [];
 					const isError = (canonical && !outcomes.at(-1)!.ok) || outcomes.every((outcome) => !outcome.ok);
 					if (isError && !receipts.length) throw new Error(formatOutcomes(outcomes));
-					const report = formatOutcomes(outcomes);
 					return {
-						content: [
-							{
-								type: "text" as const,
-								text: [report, formatFeedback(diagnostics), formatParseFeedback(parseFeedback)]
-									.filter(Boolean)
-									.join("\n"),
-							},
-						],
-						details: { outcomes, receipts, diagnostics, parseFeedback },
+						content: [{ type: "text" as const, text: formatOutcomes(outcomes) }],
+						details: { outcomes, receipts },
 						...(isError ? { isError: true } : {}),
 					};
 				},
