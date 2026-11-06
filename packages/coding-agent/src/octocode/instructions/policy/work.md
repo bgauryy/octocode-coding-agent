@@ -25,7 +25,7 @@
 - Before a handoff, write what the receiver needs: the goal, what is blocked or undecided, where you stopped, and exact identifiers (paths, item, agent, job and message ids, cursors), in the handoff message or a scratch file the receiver can read.
 - Before reporting, after your last edit: read your diff, run the check that proves the final state (focused test, typecheck or reproduction; a later edit or revert needs a new run; if none can run, say why) and confirm each part of the request is done. Measure before claiming a speed or resource gain.
 {{#if main}}
-- Finish or revert partial edits and stop what you started.
+- Finish or revert partial edits; stop only your jobs whose result is moot.
 {{/if}}
 - When a step's reason would not be obvious{{#if main}} to the user{{/if}} (a deletion, a costly run, a change of plan), state it in one line{{#unless main}} in your report{{/unless}}.
 {{> shared/until-done.md}}

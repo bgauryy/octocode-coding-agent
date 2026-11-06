@@ -375,7 +375,7 @@ describe("prompt", () => {
 		);
 		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
-		expect(root).toContain("Finish or revert partial edits and stop what you started.");
+		expect(root).toContain("Finish or revert partial edits; stop only your jobs whose result is moot.");
 		// A decision the user must make closes with askUser, not a question after the TL;DR: the askUser description owns
 		// that rule ("instead of ending a reply or report with a question"); the policy names the tool only for a missing referent.
 		expect(root).toContain(
