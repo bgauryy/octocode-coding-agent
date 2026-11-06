@@ -11,6 +11,7 @@
 import type { Component, Container, SelectListTheme, TUI } from "@octocodeai/octocode-tui";
 import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { TSchema } from "typebox";
+import type { McpServerConfig } from "./servers.ts";
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
 
 /** The host application's name, version and runtime. */
@@ -202,8 +203,15 @@ export interface McpVendorsPort {
 	vendorSwitch(place: McpVendorPlace): (vendor: string, scope: McpVendorScope) => boolean;
 }
 
+/** MCP servers that enabled plugins declare, which a session registers beside the configured ones. */
+export interface McpPluginsPort {
+	/** The servers (named `plugin:<plugin>:<server>`) and the problems found reading them, for one place. */
+	servers(place: McpVendorPlace): { servers: Array<{ name: string; config: McpServerConfig }>; errors: string[] };
+}
+
 export interface McpHostPorts {
 	identity: McpIdentityPort;
+	plugins: McpPluginsPort;
 	paths: McpPathsPort;
 	vendors: McpVendorsPort;
 	output: McpOutputPort;
@@ -230,6 +238,7 @@ function port<K extends keyof McpHostPorts>(name: K): McpHostPorts[K] {
 
 export const hostIdentity = (): McpIdentityPort => port("identity");
 export const hostPaths = (): McpPathsPort => port("paths");
+export const hostPlugins = (): McpPluginsPort => port("plugins");
 export const hostVendors = (): McpVendorsPort => port("vendors");
 export const hostOutput = (): McpOutputPort => port("output");
 export const hostImages = (): McpImagePort => port("images");

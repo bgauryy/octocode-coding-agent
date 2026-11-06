@@ -4,4 +4,4 @@ Bundled with Octocode. It rewrites what agents read of skills and MCP servers be
 
 - Start at [SKILL.md](SKILL.md).
 - Output: a report and the overrides files under `<workspace>/.octocode/octocode-context-optimization/` ([output.md](output.md)).
-- Setup: skills use `octocode context`; the MCP scripts run `octocode mcp compact`. Set `OCTOCODE_BIN` when the executable is not on the path.
+- Setup: skills use `octocode context`; the MCP scripts call the product's MCP compaction commands. Set `OCTOCODE_BIN` when the executable is not on the path.

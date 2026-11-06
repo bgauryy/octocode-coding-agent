@@ -24,6 +24,17 @@ export type SourcePermissionUpdate =
 			destination: SourcePermissionDestination;
 	  };
 
+/**
+ * Whether an update widens what a settings file grants: an allow rule, `acceptEdits` or extra directories. The loader
+ * ignores these in an untrusted project's files, so writing them there would be saved and never apply. Restricting
+ * updates (deny and ask rules, removals, the other modes) are not granting.
+ */
+export function grantsAccess(update: SourcePermissionUpdate): boolean {
+	if (update.type === "setMode") return update.mode === "acceptEdits";
+	if ("directories" in update) return update.type === "addDirectories" && update.directories.length > 0;
+	return update.behavior === "allow" && update.type !== "removeRules" && update.rules.length > 0;
+}
+
 export function parsePermissionUpdates(value: unknown): SourcePermissionUpdate[] {
 	if (!Array.isArray(value) || value.length > 4096) throw new Error("updatedPermissions must be a bounded array");
 	return value.map((entry) => {

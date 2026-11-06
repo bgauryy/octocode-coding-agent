@@ -25,7 +25,7 @@ flowchart LR
 | Run    | Answers questions at once, gives each confirmed defect an owner as it arrives, keeps ownership in the backlog                                                                                                                         | `policy/delegation.md`, Manage running children                                      |
 | Report | Reads the `Noticed` line first, treats the report as a claim and checks what the next step depends on                                                                                                                                 | `policy/delegation.md`, Use its report; the child's contract in `subagent/report.md` |
 | Review | Has a fresh reviewer check a risky change: the child that made it does not sign it off                                                                                                                                                | `policy/delegation.md`, `roles/reviewer.md`                                          |
-| Tell   | Tells the user unasked about rule breaks, data sent outside and its own wrong claims; in long runs, a short table of agent, state and blocker                                                                                         | `policy/communication.md`                                                            |
+| Tell   | Tells the user unasked about rule breaks, data sent outside and its own wrong claims; while work it started is open, ends each reply with a status table (agent or job, task, state, blocker) and a TL;DR                             | `policy/communication.md`                                                            |
 
 ## Who can help: the child's side
 

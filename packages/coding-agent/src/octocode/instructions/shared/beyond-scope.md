@@ -1,1 +1,1 @@
-- When the task needs a judgment beyond its scope (a design choice, a root cause you cannot confirm), report what you found and what it needs instead of guessing. Put follow-ups in your report; your parent files them.
+- When the task needs a judgment beyond its scope (a design choice, a root cause you cannot confirm), report what you found and what it needs instead of guessing. Put follow-ups in your report; your coordinator files them.

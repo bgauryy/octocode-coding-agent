@@ -4,7 +4,7 @@ import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-sto
 import { registerMcpHost } from "../src/index.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import type { McpExtensionOptions } from "../src/state.ts";
 import { StdioTransport } from "../src/client/index.ts";
 import { createDefaultTransport } from "../src/runtime.ts";
@@ -29,7 +29,7 @@ export function mcpHost(
 		credentials: new McpOAuthCredentialStore(new InMemoryAuthStorageBackend()),
 		logPath: `${tmp()}/mcp.log`,
 		loadConfig: (_ctx, defaults) => ({ servers: options.servers ?? [...defaults], errors: [] }),
-		presets: [octocodePreset(() => fake.api.getSkillDirectories(), {})],
+		presets: [defaultPreset({})],
 		createTransport: (entry, cwd, auth) => {
 			const transport = createDefaultTransport(entry, cwd, auth);
 			if (transport instanceof StdioTransport) transports.push(transport);

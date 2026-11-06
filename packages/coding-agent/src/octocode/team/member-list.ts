@@ -94,10 +94,10 @@ export function describeMembers(
 					...detailLines(details?.get(member.id), here),
 					`  ${firstLine(doing)}${output}`,
 					...awaiting(member, now, questions),
-					...(asked ? [`  ${asked} to its parent`] : []),
+					...(asked ? [`  ${asked} to its coordinator`] : []),
 					...waiting.map(
 						(ask) =>
-							`    #${ask.id} waiting on its parent (${formatAgo(now - ask.askedAt)}): ${cutText(firstLine(ask.text), 80, { chars: true })}`,
+							`    #${ask.id} waiting on its coordinator (${formatAgo(now - ask.askedAt)}): ${cutText(firstLine(ask.text), 80, { chars: true })}`,
 					),
 					...(member.locks?.length
 						? [

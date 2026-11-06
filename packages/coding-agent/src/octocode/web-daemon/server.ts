@@ -11,7 +11,13 @@ import {
 } from "@octocodeai/octocode-contracts/daemon";
 import { DAEMON_ROUTES, WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { MERMAID_SCRIPT_HASH, pagePolicy } from "@octocodeai/octocode-webview";
+import { MERMAID_SCRIPT_HASH, pagePolicy, WEB_PAGE_ASSETS, WEB_PREFS_ROUTE } from "@octocodeai/octocode-webview";
+import {
+	handleWebPrefsRequest,
+	serveServiceWorker,
+	settingsWebPrefs,
+	type WebPrefsStore,
+} from "../shared/web-page-routes.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { daemonPage, type DaemonPage } from "./build.ts";
 import { type ConfigRoutes, handleConfigRequest } from "./config-routes.ts";
@@ -45,6 +51,8 @@ export interface DaemonServerOptions {
 	auditRefused?: ConfigRoutes["auditRefused"];
 	/** Asked by `POST /api/admin/drain`. */
 	onDrain: () => void;
+	/** Where `/api/web-prefs` keeps the page's preferences; the global settings file unless replaced. */
+	webPrefs?: WebPrefsStore;
 }
 
 export interface DaemonServer {
@@ -150,6 +158,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 	});
 
 	// The page's own script and the Mermaid text its docs view runs inline; the rest of the policy is the page's own.
+	const webPrefs = options.webPrefs ?? settingsWebPrefs();
 	const csp = pagePolicy({
 		scripts: [`'${page.scriptHash}'`, `'${MERMAID_SCRIPT_HASH}'`],
 		live: true,
@@ -173,6 +182,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			res.end(page.html);
 			return;
 		}
+		if (serveServiceWorker(req, url.pathname, res, WEB_PAGE_ASSETS)) return;
 		if (req.method === "GET" && url.pathname.startsWith(LAUNCH_DOOR_PREFIX))
 			return openDoor(url, launchCodes, tokens.launch, res, reply);
 		const access = tokenAccess(bearerOf(req), tokens);
@@ -185,6 +195,14 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		if (access !== "launch" && url.pathname.startsWith(ADMIN_PREFIX))
 			return reply(403, { error: "This link cannot use admin routes. Run the command in the Octocode terminal." });
 		notify();
+		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.access)
+			return reply(200, { writable: access !== "view" });
+		// Preferences change with the launch capability only, like settings; a published link reads them.
+		if (req.method === "POST" && url.pathname === WEB_PREFS_ROUTE && access !== "launch")
+			return reply(403, {
+				error: "This link cannot change preferences. Use the page opened from the Octocode terminal.",
+			});
+		if (await handleWebPrefsRequest(req, url.pathname, webPrefs, reply, WEB_PAGE_ASSETS)) return;
 		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.sessions) {
 			const all = registry.list();
 			const unavailable = registry.unavailable();

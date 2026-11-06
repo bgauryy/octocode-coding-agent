@@ -1,109 +1,180 @@
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
-import { memo } from "react";
-import type { ViewProps } from "../extension.ts";
-import { type BacklogIndex, PRIORITY_TITLES } from "../model/backlog.ts";
-import { plural } from "../model/format.ts";
+import { type ComponentType, type DragEvent, type KeyboardEvent, memo, useEffect, useRef } from "react";
+import { PRIORITY_TITLES } from "../model/backlog.ts";
+import { isEpic, shownState } from "../model/hierarchy.ts";
 import { CommentIcon, LinkIcon } from "../ui/icons.tsx";
-import { Avatar, Badge, PriorityIcon, RelativeTime } from "../ui/primitives.tsx";
-import { isEpic, shownState, taskTallyText } from "../model/hierarchy.ts";
+import { Avatar, Badge, cx } from "../ui/primitives.tsx";
+import { useBoardFlow } from "./board-flow.tsx";
+import { tagSlot, taskChip } from "./board-dnd.ts";
+import { CardMenu } from "./CardMenu.tsx";
 import { StaleBadge } from "./shared.tsx";
-import { RollupLine } from "./Tasks.tsx";
 
-/** The title link covers the card; quick actions sit above it as separate keyboard controls. */
-export const BoardCard = memo(function BoardCard({
+const SHOWN_TAGS = 2;
+
+/** Priority, tags and the other chips of one card, in one row. Shared by the board card and the Backlog row. */
+export function CardMeta({
 	item: it,
-	index,
-	ItemAction,
-	StateControl,
+	childrenDone,
+	showRef = true,
 }: {
 	item: SnapshotItem;
-	index: BacklogIndex;
-	ItemAction?: ViewProps["ItemAction"];
-	StateControl?: NonNullable<ViewProps["controls"]>["StateControl"];
+	childrenDone: number;
+	showRef?: boolean;
 }) {
 	const comments = it.comments?.length ?? it.notes.filter((note) => note.kind === "note").length;
-	const childrenDone = it.children?.filter((ref) => index.byRef.get(ref)?.state === "done").length ?? 0;
+	const tasks = taskChip(it);
+	const priority = PRIORITY_TITLES[it.priority] ?? it.priority;
+	const hiddenTags = it.tags.length - SHOWN_TAGS;
 	return (
-		<article className={`card state-${shownState(it)}`}>
-			<div className="card-top">
-				<span className="ref">{it.ref}</span>
-				{it.type && it.type !== DEFAULT_ITEM_TYPE && <Badge>{it.type}</Badge>}
-				<span className={`card-priority priority-${it.priority}`}>
-					<PriorityIcon priority={it.priority} />
-					{PRIORITY_TITLES[it.priority] ?? it.priority}
+		<div className="card-meta">
+			{showRef && (
+				<span className="ref" title={`Updated ${new Date(it.updatedAt).toLocaleString()}`}>
+					{it.ref}
 				</span>
-			</div>
-			<h3 className="card-title">
-				<a className="card-link" href={`#${it.ref}`}>
-					{it.title}
-				</a>
-			</h3>
-			{it.goal && <p className="card-goal">{it.goal}</p>}
-			{isEpic(it) ? (
-				<p className="muted card-tasks">
-					<RollupLine index={index} epic={it} />
-				</p>
-			) : taskTallyText(it.tasks) ? (
-				<p className="muted card-tasks">{taskTallyText(it.tasks)}</p>
-			) : null}
-			{((it.blockedBy?.length ?? 0) > 0 ||
-				it.needsReview ||
-				it.parentId ||
-				(it.children?.length ?? 0) > 0 ||
-				it.state === "ongoing") && (
-				<div className="card-flags">
-					{it.blockedBy?.length ? <Badge tone="warning">Blocked by {it.blockedBy.join(", ")}</Badge> : null}
-					{it.needsReview && <Badge tone="warning">Needs review</Badge>}
-					<StaleBadge item={it} />
-					{it.parentId && <span className="muted">Part of {it.parentId}</span>}
-					{it.children?.length ? (
-						<span className="muted">
-							{childrenDone}/{it.children.length} children done
-						</span>
-					) : null}
-				</div>
 			)}
+			<span className={`priority-dot priority-${it.priority}`} title={priority} aria-hidden="true" />
+			<span className="visually-hidden">{priority} priority</span>
+			{it.type && it.type !== DEFAULT_ITEM_TYPE && <Badge>{it.type}</Badge>}
 			{it.tags.length > 0 && (
 				<ul className="labels" aria-label="Tags">
-					{it.tags.map((tag) => (
-						<li key={tag} className="label">
+					{it.tags.slice(0, SHOWN_TAGS).map((tag) => (
+						<li key={tag} className={`label tag-${tagSlot(tag)}`} title={tag}>
 							{tag}
 						</li>
 					))}
+					{hiddenTags > 0 && (
+						<li className="label label-more" title={it.tags.slice(SHOWN_TAGS).join(", ")}>
+							+{hiddenTags}
+						</li>
+					)}
 				</ul>
 			)}
-			<div className="card-meta">
-				<RelativeTime at={it.updatedAt} now={index.now} prefix="Updated " />
-				{comments > 0 && (
-					<span title={plural(comments, "comment")}>
-						<CommentIcon size={12} /> <span className="visually-hidden">Comments: </span>
-						{comments}
-					</span>
-				)}
-				{it.derived.length > 0 && (
-					<span title={`${it.derived.length} linked`}>
-						<LinkIcon size={12} /> <span className="visually-hidden">Linked: </span>
-						{it.derived.length}
-					</span>
-				)}
-				<span className="card-assignee">
-					{it.assignee ? (
-						<>
-							<Avatar name={it.assignee} label={`Assigned to ${it.assignee}`} />
-							<span title={it.assignee}>{it.assignee}</span>
-						</>
-					) : (
-						"Unassigned"
-					)}
+			{tasks && (
+				<span className="chip" title="Tasks done">
+					<span className="visually-hidden">Tasks: </span>
+					{tasks}
 				</span>
+			)}
+			{isEpic(it) && (it.children?.length ?? 0) > 0 && (
+				<span className="chip" title="Items done">
+					<span className="visually-hidden">Items done: </span>
+					{childrenDone}/{it.children?.length}
+				</span>
+			)}
+			{(it.blockedBy?.length ?? 0) > 0 && (
+				<Badge tone="warning" title={`Blocked by ${it.blockedBy?.join(", ")}`}>
+					Blocked by {it.blockedBy?.join(", ")}
+				</Badge>
+			)}
+			{it.needsReview && <Badge tone="warning">Needs review</Badge>}
+			<StaleBadge item={it} />
+			{comments > 0 && (
+				<span title={comments === 1 ? "1 comment" : `${comments} comments`}>
+					<CommentIcon size={12} /> <span className="visually-hidden">Comments: </span>
+					{comments}
+				</span>
+			)}
+			{it.derived.length > 0 && (
+				<span title={`${it.derived.length} linked`}>
+					<LinkIcon size={12} /> <span className="visually-hidden">Linked: </span>
+					{it.derived.length}
+				</span>
+			)}
+			{it.assignee && (
+				<span className="card-assignee">
+					<Avatar name={it.assignee} label={`Assigned to ${it.assignee}`} />
+				</span>
+			)}
+		</div>
+	);
+}
+
+/** The title link covers the card; the ⋯ menu sits above it. Drag it, or focus the title and press Space to lift it. */
+export const BoardCard = memo(function BoardCard({
+	item: it,
+	childrenDone,
+	ItemAction,
+}: {
+	item: SnapshotItem;
+	childrenDone: number;
+	ItemAction?: ComponentType<{ item: SnapshotItem }>;
+}) {
+	const flow = useBoardFlow();
+	const movable = Boolean(flow.actions) && !isEpic(it);
+	const lifted = flow.lifted?.ref === it.ref;
+	const link = useRef<HTMLAnchorElement>(null);
+	const wantsFocus = flow.focusRef === it.ref;
+	useEffect(() => {
+		if (wantsFocus) link.current?.focus();
+	}, [wantsFocus]);
+	function start(event: DragEvent) {
+		const transfer = event.dataTransfer as DataTransfer | null;
+		if (transfer) {
+			transfer.effectAllowed = "move";
+			transfer.setData("text/plain", it.ref);
+		}
+		flow.startDrag(it.ref);
+	}
+	function keys(event: KeyboardEvent) {
+		if (!movable) return;
+		if (!lifted) {
+			if (event.key !== " ") return;
+			event.preventDefault();
+			return flow.lift(it);
+		}
+		if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+			event.preventDefault();
+			flow.stepLift(event.key === "ArrowLeft" ? -1 : 1);
+		} else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+			event.preventDefault();
+			flow.moveLift(event.key === "ArrowUp" ? -1 : 1);
+		} else if (event.key === " " || event.key === "Enter") {
+			event.preventDefault();
+			flow.dropLift();
+		} else if (event.key === "Escape") {
+			event.preventDefault();
+			flow.cancelLift();
+		}
+	}
+	return (
+		// oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- native drag only starts the move; the title link and ⋯ menu are the keyboard paths.
+		<article
+			className={cx(
+				"card",
+				`state-${shownState(it)}`,
+				flow.dragging === it.ref && "is-dragging",
+				lifted && "is-lifted",
+			)}
+			data-ref={it.ref}
+			data-closed={it.closed ? "" : undefined}
+			draggable={movable || undefined}
+			onDragStart={movable ? start : undefined}
+			onDragEnd={movable ? () => (flow.startDrag(undefined), flow.hoverOver(undefined)) : undefined}
+		>
+			<div className="card-main">
+				<h3 className="card-title">
+					<a
+						ref={link}
+						className="card-link"
+						href={`#${it.ref}`}
+						draggable={false}
+						title={it.goal || undefined}
+						aria-roledescription={movable ? "draggable card" : undefined}
+						aria-describedby={movable ? "board-dnd-hint" : undefined}
+						onKeyDown={keys}
+						onBlur={() => lifted && flow.cancelLift()}
+					>
+						{it.title}
+					</a>
+				</h3>
+				<CardMenu item={it} ItemAction={ItemAction} />
 			</div>
-			{((StateControl && !isEpic(it)) || (ItemAction && it.state !== "done")) && (
-				<div className="card-actions">
-					{/* An epic's state follows its items: only an item's own state is edited here. */}
-					{StateControl && !isEpic(it) && <StateControl item={it} />}
-					{ItemAction && it.state !== "done" && <ItemAction item={it} />}
-				</div>
+			<CardMeta item={it} childrenDone={childrenDone} />
+			{it.closed && (
+				<p className="card-closed" title={it.closed.text}>
+					Closed · {it.closed.text}
+				</p>
 			)}
 		</article>
 	);

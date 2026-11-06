@@ -99,11 +99,28 @@ export function convertResponsesMessages<TApi extends Api>(
 		return normalized.length > 64 ? normalized.slice(0, 64) : normalized;
 	};
 
+	// GitHub Copilot gives parallel calls one call_id and tells them apart by item id. Item ids are not replayed for
+	// another model, so a call_id that more than one call carries is made unique with a hash of the whole id.
+	const callIdOwners = new Map<string, Set<string>>();
+	for (const message of normalizedContext.messages) {
+		if (message.role !== "assistant") continue;
+		for (const block of message.content) {
+			if (block.type !== "toolCall" || !block.id.includes("|")) continue;
+			const callId = block.id.split("|")[0];
+			callIdOwners.set(callId, (callIdOwners.get(callId) ?? new Set()).add(block.id));
+		}
+	}
+	const uniqueCallId = (normalizedCallId: string, callId: string, id: string): string => {
+		if ((callIdOwners.get(callId)?.size ?? 0) < 2) return normalizedCallId;
+		const hash = fastHash(id);
+		return `${normalizedCallId.slice(0, DEFAULT_TOOL_CALL_ID_MAX_LENGTH - hash.length - 1)}_${hash}`;
+	};
+
 	const normalizeToolCallId = (id: string, _targetModel: Model<TApi>, source: AssistantMessage): string => {
 		// A whole foreign id keeps a hash of itself when cut to the limit, so distinct calls keep distinct ids.
 		if (!allowedToolCallProviders.has(model.provider) || !id.includes("|")) return fitToolCallId(id).replace(/_+$/, "");
 		const [callId, itemId] = id.split("|");
-		const normalizedCallId = normalizeIdPart(callId);
+		const normalizedCallId = uniqueCallId(normalizeIdPart(callId), callId, id);
 		const isForeignToolCall = source.provider !== model.provider || source.api !== model.api;
 		let normalizedItemId = isForeignToolCall ? buildForeignResponsesItemId(itemId) : normalizeIdPart(itemId);
 		// OpenAI Responses API requires item id to start with "fc"

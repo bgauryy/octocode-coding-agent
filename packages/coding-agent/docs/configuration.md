@@ -17,7 +17,7 @@ See [models](models.md) and [environment variables](environment-variables.md).
 
 ## Built-in features
 
-`octocode config` and the default resource loader use the same [built-in catalog](../src/core/resource-loader/builtins.ts). Existing selections keep the identities `builtin:mcp` and `builtin:llama.cpp`; for example, `-builtin:mcp` in the `extensions` setting disables the built-in MCP host. Global and trusted workspace resource selection still use the normal settings precedence.
+`octocode config` and the default resource loader use the same [built-in catalog](../src/core/resource-loader/builtins.ts). Existing selections keep the identities `builtin:mcp` and `builtin:llama.cpp`; for example, `-builtin:llama.cpp` in the `extensions` setting disables the llama.cpp provider. MCP is always on: a `-builtin:mcp` entry is ignored with a warning. Global and trusted workspace resource selection still use the normal settings precedence.
 
 Native features load by default. See the [native feature guide](native-features.md) for tool selection.
 

@@ -10,7 +10,7 @@ octocode mcp list
 octocode
 ```
 
-Add `--local` (shell short form `-l`) to save to the workspace file `.octocode/mcp.json` instead of your user configuration: `octocode mcp add --local filesystem -- npx -y @modelcontextprotocol/server-filesystem .`. A workspace file loads only in a trusted project. In a running terminal session, run `/trust config` after creating or changing it, then `/reload`; `octocode mcp list` and `/mcp list` check the connection. Open `/mcp` to inspect servers, tools, errors, sign-in, and exposure.
+Add `--local` (shell short form `-l`) to save to the workspace file `.octocode/mcp.json` instead of your user configuration: `octocode mcp add --local filesystem -- npx -y @modelcontextprotocol/server-filesystem .`. A workspace file loads only in a trusted project. If the project is not trusted yet, run `/trust add` in a running terminal session, then `/reload` after creating or changing the file; `octocode mcp list` and `/mcp list` check the connection. Open `/mcp` to inspect servers, tools, errors, sign-in, and exposure.
 
 ## Configure servers
 
@@ -124,6 +124,6 @@ Validated instructions and tool contracts are cached in memory; reconnect refres
 
 ## Replace the built-in MCP support
 
-`--no-mcp` disables the host for one run. See the [built-in MCP host notes](mcp-reference.md#built-in-mcp-host).
+`--no-mcp` disables the host for one run. MCP is core, not a switchable extension: a `-builtin:mcp` entry in the `extensions` setting is ignored with a settings warning, and `octocode config` and `/harness` list no MCP row. Turn servers off one by one in `/mcp`, `mcp.json` or `octocode mcp`. See the [built-in MCP host notes](mcp-reference.md#built-in-mcp-host).
 
 For migration, OAuth settings, retries and permissions, see the [MCP reference](mcp-reference.md).

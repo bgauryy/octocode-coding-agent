@@ -10,7 +10,7 @@ import {
 	customMessageUsage,
 	type UsageTotals,
 } from "../../../core/usage-totals.ts";
-import { formatCost, formatTokens } from "../../../octocode/shared/format.ts";
+import { cachedPercent, formatCost, formatTokens } from "../../../octocode/shared/format.ts";
 import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
@@ -100,11 +100,6 @@ export class FooterComponent implements Component {
 				addUsageToTotals(usageTotals, entry.usage);
 			} else if (entry.type === "message" && entry.message.role === "assistant") {
 				addUsageToTotals(usageTotals, entry.message.usage);
-
-				const latestPromptTokens =
-					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
-				latestCacheHitRate =
-					latestPromptTokens > 0 ? (entry.message.usage.cacheRead / latestPromptTokens) * 100 : undefined;
 			} else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.usage) {
 				addUsageToTotals(usageTotals, entry.message.usage);
 			} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
@@ -113,6 +108,14 @@ export class FooterComponent implements Component {
 				const usage = customMessageUsage(entry);
 				if (usage) addUsageToTotals(usageTotals, usage);
 			}
+		}
+
+		// The hit rate describes the branch the next request continues, not the reply written last to the file.
+		for (const entry of sessionManager.getBranch()) {
+			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+			const { input, cacheRead, cacheWrite } = entry.message.usage;
+			// A reply without prompt counts (aborted before usage arrived) keeps the last known rate.
+			latestCacheHitRate = cachedPercent(cacheRead, input + cacheRead + cacheWrite, 1) ?? latestCacheHitRate;
 		}
 
 		// Calculate context usage from session (handles compaction correctly).
@@ -136,7 +139,8 @@ export class FooterComponent implements Component {
 		const { usageTotals, latestCacheHitRate, contextUsage } = this.getSessionStats();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
-		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
+		// Unknown (no usage yet, or just compacted) reads `?`, never `0.0%`.
+		const contextPercent = contextUsage?.percent != null ? contextPercentValue.toFixed(1) : "?";
 
 		// Replace home directory with ~
 		let pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);

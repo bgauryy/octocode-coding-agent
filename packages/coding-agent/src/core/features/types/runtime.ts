@@ -1,7 +1,7 @@
 /** Loaded extensions, their registrations and the shared runtime. */
 
 import type { AgentTool, AgentToolCallOutcome, ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import type { AssistantMessage, ImageContent, Model, Provider, TextContent } from "@octocodeai/octocode-ai";
+import type { AssistantMessage, ImageContent, Model, Provider, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { McpServerRegistry } from "../../../../../mcp/src/servers.ts";
 import type { CustomMessage } from "../../messages.ts";
@@ -121,6 +121,7 @@ interface ExtensionRuntimeState {
 	/** Create an extension context. Throws before the runner binds. */
 	createContext: () => ExtensionContext;
 	createUsageRecorder: (kind: string) => (message: AssistantMessage) => void;
+	recordUsage: (kind: string, provider: string, model: string, usage: Usage) => void;
 	/** Throws when this extension instance is stale after runtime replacement. */
 	assertActive: () => void;
 	/** Marks this extension instance as stale after runtime replacement or reload. */

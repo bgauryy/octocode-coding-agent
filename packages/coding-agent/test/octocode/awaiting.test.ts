@@ -152,4 +152,33 @@ describe("awaiting", () => {
 		await fake.emit("agent_settled", { aborted: false }, idle);
 		expect(service.getSnapshot().awaiting).toBeUndefined();
 	});
+
+	it("publishes the ask card for an answerable dialog: redacted, bounded, with option info aligned to the options", () => {
+		const ask = {
+			question: "Let this message reach the agent?",
+			meta: ["from octocode-main-6c9a · external"],
+			body: { text: "token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789", collapsible: true, previewLines: 2 },
+			notes: [{ text: "risk: starts a turn", tone: "warning" as const }],
+			options: [
+				{ label: "Allow once", description: "only this one", recommended: true },
+				{ label: "Deny", tone: "danger" as const },
+			],
+			writeIn: { label: "Deny", title: "Why?" },
+		};
+		const awaiting = awaitingFor({ kind: "select", id: "a", approval: true, options: ["Allow once", "Deny"], ask });
+		expect(awaiting).toMatchObject({
+			meta: ["from octocode-main-6c9a · external"],
+			body: { collapsible: true, previewLines: 2 },
+			details: [{ text: "risk: starts a turn", tone: "warning" }],
+			optionInfo: [{ description: "only this one", recommended: true }, { danger: true }],
+			writeIn: "Deny",
+		});
+		expect(awaiting.body?.text).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+		// A view whose options differ from the dialog's own is not published as option info.
+		const stale = awaitingFor({ kind: "select", id: "a", options: ["Allow once"], ask });
+		expect(stale.optionInfo).toBeUndefined();
+		expect(stale.writeIn).toBeUndefined();
+		// Without an id the dialog is terminal-only: no card either.
+		expect(awaitingFor({ kind: "select", approval: true, ask }).meta).toBeUndefined();
+	});
 });

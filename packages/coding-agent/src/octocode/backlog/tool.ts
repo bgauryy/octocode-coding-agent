@@ -4,8 +4,10 @@ import {
 	type EntityInput,
 	isItemType,
 	ITEM_TYPES,
+	type CloseInput,
+	CloseInputSchema,
 } from "@octocodeai/octocode-contracts/backlogs";
-import { STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
+import { LIST_STATES, STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
@@ -16,10 +18,13 @@ import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
 import { withOperationKey, type CompletionArgument } from "./completion-key.ts";
-import { acceptTargetShorthand, entityFields, type LinkArgument, linkInput } from "./tool-schema.ts";
+import { acceptTargetShorthand, entityFields, type LinkArgument, linkInput, updatesField } from "./tool-schema.ts";
+import { batchGet, batchUpdate } from "./tool-batch.ts";
+import { AUDIT_SHOWN, auditText } from "./audit-text.ts";
 import { withReason } from "../shared/reason.ts";
 import { type Item, PRIORITIES } from "./store.ts";
 import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-text.ts";
+import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
 import { styleBacklogLines } from "./tool-style.ts";
 import { clip } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
@@ -47,25 +52,23 @@ export function registerBacklogTool(
 		{
 			...entityFields(subagent),
 			...listFields,
-			op: StringEnum(
-				subagent ? (["list", "get", "add", "update"] as const) : (["list", "get", "add", "update", "remove"] as const),
-				{ description: ops },
-			),
+			op: StringEnum(["list", "get", "add", "update"] as const, { description: ops }),
 			id: Type.Optional(
 				Type.String({
-					description: `${subagent ? "get/update" : "get/update/remove"}: item id; list: ids, comma-separated, any state unless states is set`,
+					description: "get/update/list: item id",
 				}),
 			),
+			updates: updatesField(subagent ? StringEnum(SUBAGENT_STATES) : StringEnum(STATES)),
 			title: Type.Optional(Type.String({ description: `${write}one-line summary; list: words in the title` })),
 			goal: Type.Optional(
 				Type.String({ description: `${write}Definition of Done, checkable${subagent ? "" : "; add needs it"}` }),
 			),
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
-					description: `${write}files, dirs or components affected; list: any as path prefix`,
+					description: `${write}files, dirs or components affected; list: items touching any file or folder`,
 				}),
 			),
-			why: Type.Optional(Type.String({ description: `${write}why it matters` })),
+			why: Type.Optional(Type.String({ description: `${write}why it matters; required for add` })),
 			evidence: Type.Optional(
 				Type.Array(Type.String(), { description: `${write}observations with source (path:line, command)` }),
 			),
@@ -90,6 +93,7 @@ export function registerBacklogTool(
 					description: `Origin ID${subagent ? "" : '; update "" clears'}; list: items derived from it`,
 				}),
 			),
+			close: Type.Optional({ ...CloseInputSchema, description: "update: end an unneeded item (kept, not deleted)" }),
 			note: Type.Optional(
 				Type.String({
 					description: `${subagent ? "update" : "update, or add with state ongoing/done"}: append progress or findings`,
@@ -97,7 +101,9 @@ export function registerBacklogTool(
 			),
 			query: Type.Optional(Type.String({ description: "list: text in any field, or a whole tag" })),
 			states: Type.Optional(
-				Type.Array(StringEnum(STATES), { description: "list: states to show (default ongoing, todo)" }),
+				Type.Array(StringEnum(LIST_STATES), {
+					description: "list: states to show (default ongoing, todo)",
+				}),
 			),
 			limit: Type.Optional(
 				Type.Integer({
@@ -134,10 +140,11 @@ export function registerBacklogTool(
 					if (rest.type !== undefined && !isItemType(rest.type))
 						throw new Error(`Unknown item type ${visibleControls(rest.type)}: use ${ITEM_TYPES.join(", ")}.`);
 					const backlog = openBacklog(ctx, options);
-					const result = run(backlog, {
+					const single = {
 						...rest,
 						...(links !== undefined ? { links: linkInput(links, backlog.store.repo) } : {}),
-					});
+					};
+					const result = batched(backlog, single) ?? run(backlog, single);
 					if (params.op !== "list" && params.op !== "get") options.changed?.(ctx);
 					return result;
 				},
@@ -154,14 +161,14 @@ export function registerBacklogTool(
 					]
 						.filter(Boolean)
 						.join(" ");
-					return toolHeader(theme, context, "Backlog", target);
+					return toolHeader(theme, context, "Backlog", withItemTitles(target, itemTitle));
 				},
 				renderResult(result, _options, theme, context) {
 					const text = contentText(result.content);
 					const details = (result.details ?? {}) as BacklogToolDetails;
 					const summary = context.isError
 						? (text.split("\n", 1)[0] ?? "")
-						: backlogSummary(context.args?.op, details, text);
+						: withItemTitles(backlogSummary(context.args?.op, details, text), itemTitle);
 					const firstIsSummary = context.isError || (context.args?.op !== "list" && context.args?.op !== "get");
 					const body = firstIsSummary ? text.split("\n").slice(1).join("\n") : text;
 					return resultBlock(theme, context, {
@@ -176,10 +183,30 @@ export function registerBacklogTool(
 		),
 	);
 
+	/**
+	 * A `get` of several ids (`ids`, or older calls' comma-separated `id`) or an `update` with `updates`: each runs as
+	 * the single form, a refusal stays on its row.
+	 */
+	function batched(backlog: Backlog, args: Omit<Params, "completion"> & { completion?: CompletionArgument }) {
+		const { updates, ...single } = args;
+		if (updates !== undefined) {
+			if (args.op !== "update" || args.id !== undefined)
+				throw new Error("updates goes with op update and no id: each entry carries its own id.");
+			return batchUpdate(updates, (entry) => run(backlog, { ...single, ...entry, op: "update" }));
+		}
+		if (args.op !== "get") return undefined;
+		const { ids: listed, ...one } = single;
+		const ids = [...(args.id?.split(",") ?? []), ...(listed ?? [])].map((id) => id.trim()).filter(Boolean);
+		if (ids.length === 1) return run(backlog, { ...one, id: ids[0] });
+		return ids.length > 1 ? batchGet(ids, (id) => run(backlog, { ...one, id })) : undefined;
+	}
+
 	type Params = EntityInput &
 		Omit<ListParams, keyof EntityInput> & {
-			op: "list" | "get" | "add" | "update" | "remove";
+			op: "list" | "get" | "add" | "update";
 			id?: string;
+			updates?: Array<Record<string, unknown>>;
+			close?: CloseInput;
 			goal?: string;
 			why?: string;
 			evidence?: string[];
@@ -235,7 +262,12 @@ export function registerBacklogTool(
 			);
 			return textResult(`Added ${itemLine(item, actor.id, actor.owners)}`, { item });
 		}
-		if (!params.id?.trim()) throw new Error(`${params.op} needs an id, e.g. "B12".`);
+		if (!params.id?.trim())
+			throw new Error(
+				params.op === "get"
+					? 'get needs an id, e.g. "B12", or ids, e.g. ["B12", "B14"].'
+					: `${params.op} needs an id, e.g. "B12".`,
+			);
 		if (params.op === "get") {
 			const item = store.get(params.id);
 			if (!item) throw new Error(`No backlog item ${visibleControls(params.id)}.`);
@@ -263,13 +295,7 @@ export function registerBacklogTool(
 				offset + notes.length < total
 					? `\nNext: backlog ${JSON.stringify({ op: "get", id: item.ref, limit, offset: offset + notes.length })}`
 					: "";
-			return textResult(`${detail}${next}`, { item });
-		}
-		if (params.op === "remove") {
-			const item = store.remove(params.id, params.version, actor);
-			return textResult(`Removed ${item.ref} "${visibleControls(item.title)}" and its notes.`, {
-				removed: item.ref,
-			});
+			return textResult(`${detail}${auditText(store.audit(item.ref, AUDIT_SHOWN))}${next}`, { item });
 		}
 		const fields = {
 			type: params.type,
@@ -287,10 +313,11 @@ export function registerBacklogTool(
 			params.state === undefined &&
 			params.note === undefined &&
 			params.completion === undefined &&
+			params.close === undefined &&
 			Object.values(fields).every((value) => value === undefined)
 		)
 			throw new Error(
-				"update needs something to change: state, note, completion, title, goal, paths, why, evidence, plan, links, priority, tags or from.",
+				"update needs something to change: state, note, close, completion, title, goal, paths, why, evidence, plan, links, priority, tags or from.",
 			);
 		// The goal is the done criterion an agent's items always have (`store.add`): an update may change it, not blank it.
 		if (params.goal !== undefined && !storedText(params.goal))
@@ -311,13 +338,16 @@ export function registerBacklogTool(
 				...(params.tags !== undefined ? { tags: params.tags } : {}),
 				...(params.from !== undefined ? { from: params.from.trim() === "" ? null : params.from } : {}),
 				...(params.note !== undefined ? { note: params.note } : {}),
+				...(params.close !== undefined ? { close: params.close } : {}),
 			},
 			actor,
 		);
 		// The store accepted a retry of a recorded completion (same key, content and actor) without writing anything.
 		if (replayed)
 			return textResult(`${replayText(item, replayed)}\n${itemLine(item, actor.id, actor.owners)}`, { item });
-		const note = kept.length ? `\n(${kept.join("/")} kept: your parent owns ${kept.length > 1 ? "them" : "it"}.)` : "";
+		const note = kept.length
+			? `\n(${kept.join("/")} kept: your coordinator owns ${kept.length > 1 ? "them" : "it"}.)`
+			: "";
 		// Reopening is allowed (a regression turns up after the fact); the done items that waited on this one are named.
 		const review = reopened ? store.reviewNeeded(item) : [];
 		const flagged = review.length ? `\nNeeds review (done): ${review.join(", ")}.` : "";

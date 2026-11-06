@@ -49,6 +49,7 @@ describe("Ctrl+C and Ctrl+D", () => {
 		t.press(KEY.ctrlC);
 		t.press(KEY.ctrlC);
 		await t.until(() => t!.shutdowns === 1, "shutdown");
+		expect(t.shutdowns).toBe(1);
 	});
 
 	it("two slow Ctrl+C presses do not exit", async () => {

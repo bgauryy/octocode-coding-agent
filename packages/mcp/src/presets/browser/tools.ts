@@ -4,7 +4,7 @@ import {
 	createMcpToolRenderers,
 	type McpToolDefinitionOptions,
 } from "../../tool-definition.ts";
-import { toToolResult } from "../octocode/tools.ts";
+import { toToolResult } from "../../tool-result.ts";
 import { hostRender } from "../../host.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { engineDetail } from "./failure.ts";
@@ -36,7 +36,7 @@ export function withStructuredText(result: CallToolResult): CallToolResult {
 }
 
 /**
- * The Octocode tool for one browser server tool. Results share the Octocode preset's bounds: untrusted page text has its
+ * The Octocode tool for one browser server tool. Results share the generic result bounds (`toToolResult`): untrusted page text has its
  * control characters made visible, oversized text is saved whole to the session's output folder, and images fit the
  * active model. A saved screenshot reaches the model as an image beside its file paths, and a HAR without bodies is
  * flagged. Arguments reach the server as sent, except `open`, which the network filter starts behind its proxy.

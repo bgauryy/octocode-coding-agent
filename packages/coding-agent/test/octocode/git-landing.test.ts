@@ -136,13 +136,59 @@ describe("the landing commands of a bash line", () => {
 		expect(gitLandings(line, {})).toEqual([]);
 	});
 
+	// A local refspec writes a branch of this repository, so it lands like a merge; a remote one is no landing here.
+	it.each<[string, string[]]>([
+		["git push . feat:main", ["git push"]],
+		["git fetch . feat:main", ["git fetch"]],
+		["git push . +feat:main", ["git push"]],
+		["git fetch . +feat:main", ["git fetch"]],
+		["git push . feat:refs/heads/main", ["git push"]],
+		["git fetch . feat:refs/heads/main", ["git fetch"]],
+		["git fetch --depth 1 . feat:main", ["git fetch"]],
+		["git fetch --jobs 2 . feat:main", ["git fetch"]],
+		["git -C /main fetch . feat:main", ["git fetch"]],
+		["git fetch . feat:main && git push . a:main", ["git fetch", "git push"]],
+	])("counts the local refspec %s as a landing", (line, commands) => {
+		expect(gitLandings(line, {}).map((each) => each.command)).toEqual(commands);
+	});
+
+	it.each([
+		"git fetch origin",
+		"git fetch origin main:main",
+		"git fetch --depth 1 origin main:main",
+		"git push origin feat",
+		"git push origin feat:main",
+		"git push --force origin +feat:refs/heads/main",
+		"git fetch . feat:refs/remotes/origin/feat",
+		"git push . feat:refs/tags/v1",
+		"git fetch .",
+	])("does not count %s", (line) => {
+		expect(gitLandings(line, {})).toEqual([]);
+	});
+
+	// The module has no "uncertain" result (the guard is not a boundary): a program word the shell computes, or an alias,
+	// is not seen, and the session's normal rules apply. This pins that choice (documented in git-landing.ts).
+	it.each([
+		"$g merge x",
+		"g=git; $g merge x",
+		"$g push . feat:main",
+		"${GIT} fetch . feat:main",
+		"alias g=git; g merge x",
+	])("does not see a landing behind an unresolved program word: %s", (line) => {
+		expect(gitLandings(line, {})).toEqual([]);
+	});
+
 	it("records the branch the line switched to first, for the same checkout", () => {
 		const of = (line: string) => gitLandings(line, {}).map((each) => each.switchedTo);
 		expect(of("git checkout main && git merge x")).toEqual([{ name: "main", created: false }]);
 		expect(of("git switch main; git merge x")).toEqual([{ name: "main", created: false }]);
 		expect(of("git checkout -q main && git pull")).toEqual([{ name: "main", created: false }]);
 		expect(of("git switch -c feature && git merge x")).toEqual([{ name: "feature", created: true }]);
-		expect(of("git checkout -B main x && git merge y")).toEqual([{ name: "main", created: true }]);
+		// `-B` resets an existing branch, so it is a landing itself (git-landing-refs.test.ts), then the merge follows.
+		expect(of("git checkout -B main x && git merge y")).toEqual([
+			{ name: "main", created: true },
+			{ name: "main", created: true },
+		]);
 		expect(of("git checkout --detach main && git merge x")).toEqual([{ name: "HEAD", created: true }]);
 		// It restores paths or acts elsewhere: HEAD stays.
 		expect(of("git checkout -- a.txt && git merge x")).toEqual([undefined]);

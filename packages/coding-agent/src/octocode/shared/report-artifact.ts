@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sha256Hasher } from "../../../../common/src/atomic-file.ts";
+import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** A host-recorded report version. Without a path, use the current answer received in the transcript. */
@@ -33,6 +34,56 @@ function reportDigest(file: string): string {
 		fs.closeSync(fd);
 	}
 	return hash.digest("hex");
+}
+
+/**
+ * Opens a file in a child's scratch folder for writing without following a link the child planted there. A missing
+ * file is created exclusively (`O_EXCL`, which also refuses a dangling link); an existing one must be a plain file with
+ * one name, checked on the open descriptor before anything is cut, and it is emptied unless `append`. The scratch
+ * folder itself must not be a link. Throws when the path is not safe to write; the caller decides what to keep.
+ */
+export function openScratchFile(file: string, options: { append?: boolean } = {}): number {
+	if (fs.lstatSync(path.dirname(file)).isSymbolicLink()) throw new Error("its scratch folder is a link");
+	const base = fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW ?? 0) | (options.append ? fs.constants.O_APPEND : 0);
+	let created = false;
+	let fd: number;
+	try {
+		fd = fs.openSync(file, base | fs.constants.O_CREAT | fs.constants.O_EXCL, PRIVATE_FILE_MODE);
+		created = true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		fd = fs.openSync(file, base);
+	}
+	try {
+		const stat = fs.fstatSync(fd);
+		if (!stat.isFile() || stat.nlink !== 1) throw new Error("not a regular file with one name");
+		if (!created && !options.append) fs.ftruncateSync(fd, 0);
+		return fd;
+	} catch (error) {
+		fs.closeSync(fd);
+		throw error;
+	}
+}
+
+/** Writes `data` as the whole content of a scratch file; see `openScratchFile`. */
+export function writeScratchFile(file: string, data: string): void {
+	const fd = openScratchFile(file);
+	try {
+		fs.writeFileSync(fd, data);
+	} finally {
+		fs.closeSync(fd);
+	}
+}
+
+/** Appends to a scratch file, first cutting it to `keep` bytes when given; see `openScratchFile`. */
+export function appendScratchFile(file: string, data: string, keep?: number): void {
+	const fd = openScratchFile(file, { append: true });
+	try {
+		if (keep !== undefined) fs.ftruncateSync(fd, keep);
+		fs.writeFileSync(fd, data);
+	} finally {
+		fs.closeSync(fd);
+	}
 }
 
 /** Keep old versions when the compatibility report.md is replaced by a continuation. */

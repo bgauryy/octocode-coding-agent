@@ -9,15 +9,11 @@ import { initializeBashSyntax } from "./bash-syntax.ts";
 import { evaluateSourcePolicy, unprojectedSourcePolicy, sourceToolDenied } from "./source-policy.ts";
 import {
 	applySessionRuleUpdates,
+	grantsAccess,
 	type SourcePermissionUpdate,
 	type SourceRuleArrays,
 } from "../shared/permission-updates.ts";
-import {
-	localPermissionAllowances,
-	readPolicy,
-	stageSettingsWrite,
-	persistSettingsWrite,
-} from "./source-policy-storage.ts";
+import { readPolicy, stageSettingsWrite, persistSettingsWrite } from "./source-policy-storage.ts";
 
 export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onChange?: () => void) {
 	let policy: SourcePolicy = { rules: [], errors: [] };
@@ -69,16 +65,14 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 		const contents = captured.map((entry) =>
 			stable || entry.source === allSources[0] ? entry : { source: entry.source, error: true },
 		);
-		const localAllowed = contents.map((entry) => !entry.error && localPermissionAllowances(entry.source.path));
 		const id = ctx.sessionManager.getSessionId();
 		const fingerprint = JSON.stringify({
 			contents,
 			trusted,
-			localAllowed,
 			sessionId: id,
 		});
 		const next: SourcePolicy = { rules: [], errors: [] };
-		for (const [index, { source, text, error }] of contents.entries()) {
+		for (const { source, text, error } of contents) {
 			if (text === undefined && !error) continue;
 			let loaded: SourcePolicy;
 			try {
@@ -86,9 +80,10 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 			} catch {
 				loaded = parseSourcePolicy({ permissions: null }, source);
 			}
-			// What allows (allow rules, `acceptEdits`, extra directories) loads only from the user's own settings, an
-			// untracked local file or a trusted project; what restricts loads from any source.
-			const allowances = trusted || source.path === allSources[0].path || localAllowed[index];
+			// What allows (allow rules, `acceptEdits`, extra directories) loads only from the user's own settings or a
+			// trusted project, local file included; what restricts loads from any source. An untrusted project's files
+			// never grant, whatever git says about them: the folder chose them, not the user.
+			const allowances = trusted || source.path === allSources[0].path;
 			next.rules.push(...loaded.rules.filter((rule) => allowances || rule.behavior !== "allow"));
 			next.errors.push(...loaded.errors);
 			if (loaded.defaultMode && (allowances || loaded.defaultMode !== "acceptEdits"))
@@ -134,6 +129,19 @@ export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onC
 			);
 			const sessionParsed = parseSourcePolicy({ permissions: nextSession }, sessionSource(ctx));
 			if (sessionParsed.errors.length) throw new Error(sessionParsed.errors.join("\n"));
+			// An untrusted project's files grant nothing (see `capture`), so a granting update there would be saved and
+			// never apply. Refuse it before anything is written; restricting updates are still saved.
+			if (!ctx.isProjectTrusted()) {
+				const refused = updates.find(
+					(update) =>
+						(update.destination === "projectSettings" || update.destination === "localSettings") &&
+						grantsAccess(update),
+				);
+				if (refused)
+					throw new Error(
+						`Permission update to ${refused.destination} not saved: this project is not trusted, so its settings files grant nothing. Trust the folder with /trust, or use the userSettings or session destination; call not executed`,
+					);
+			}
 			const sources = claudeSettingsSources(ctx.cwd, true, home);
 			const destinations = {
 				userSettings: sources[0],

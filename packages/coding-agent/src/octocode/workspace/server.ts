@@ -5,7 +5,13 @@ import {
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
-import { renderBacklogHtml } from "@octocodeai/octocode-webview";
+import { renderBacklogHtml, WEB_PAGE_ASSETS } from "@octocodeai/octocode-webview";
+import {
+	handleWebPrefsRequest,
+	serveServiceWorker,
+	settingsWebPrefs,
+	type WebPrefsStore,
+} from "../shared/web-page-routes.ts";
 import {
 	WorkspaceCommandSchema,
 	BacklogCommandSchema,
@@ -19,14 +25,13 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, WebSocket } from "ws";
 import { Value } from "typebox/value";
-import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { BacklogError, TaskError } from "../backlog/store.ts";
-import { applyBacklogCommand } from "../backlog/web-commands.ts";
+import { applyBacklogCommand, applyBacklogMutation, mutationShapeError } from "../backlog/web-commands.ts";
 import { handleApplicationDataRequest } from "./application-data.ts";
 import { pumpApplicationFrames } from "./application-stream.ts";
-import { handleDocsRequest } from "./docs.ts";
+import { handleDocsRequest, repoDocsNeverTrusted, type RepoDocsTrusted } from "./docs.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 import { readerStalled } from "./socket-pressure.ts";
@@ -36,6 +41,8 @@ export async function startWorkspaceWeb(
 	backlog: Backlog,
 	changed: () => void = () => {},
 	workspace?: RevisedWorkspace,
+	repoDocsTrusted: RepoDocsTrusted = repoDocsNeverTrusted,
+	webPrefs: WebPrefsStore = settingsWebPrefs(),
 ): Promise<BacklogWeb> {
 	const token = randomBytes(32).toString("hex");
 	const notifyChanged = () => {
@@ -136,6 +143,8 @@ export async function startWorkspaceWeb(
 				);
 				return;
 			}
+			// Static code like the page: no token, but the host and origin checks above still apply.
+			if (serveServiceWorker(req, req.url ?? "", res, WEB_PAGE_ASSETS)) return;
 			const supplied = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
 			const expected = Buffer.from(token);
 			if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
@@ -145,6 +154,7 @@ export async function startWorkspaceWeb(
 			if (req.url === WORKSPACE_ROUTES.workspace && !workspace)
 				return reply(503, { error: "Agent controls are unavailable in this session." });
 			const requestUrl = new URL(req.url ?? "/", origin);
+			if (await handleWebPrefsRequest(req, requestUrl.pathname, webPrefs, reply, WEB_PAGE_ASSETS)) return;
 			if (await handleApplicationDataRequest(req, requestUrl, workspace?.application, backlog.session, reply)) return;
 			if (requestUrl.pathname === WORKSPACE_ROUTES.audit && req.method === "GET") {
 				const before = requestUrl.searchParams.get("before");
@@ -157,7 +167,7 @@ export async function startWorkspaceWeb(
 				return reply(200, { events, before: events.length === 100 ? events[0].id : undefined });
 			}
 			if (handleReportsRequest(req, requestUrl, backlog.repoRoot, reply)) return;
-			if (await handleDocsRequest(req, requestUrl, backlog.repoRoot, reply)) return;
+			if (await handleDocsRequest(req, requestUrl, backlog.repoRoot, reply, repoDocsTrusted)) return;
 			if (
 				req.url !== WORKSPACE_ROUTES.backlogs &&
 				req.url !== WORKSPACE_ROUTES.workspace &&
@@ -209,29 +219,12 @@ export async function startWorkspaceWeb(
 				return reply(200, result);
 			}
 			if (!Value.Check(BacklogMutationSchema, input)) return reply(400, { error: "Invalid backlog fields" });
-			const actor = { ...backlog.actor, kind: "human" as const };
-			const { op, id, ...fields } = input;
-			if (op !== "add" && (!id || fields.version === undefined))
-				return reply(400, { error: "An item and its current version are required." });
-			const item =
-				op === "add"
-					? backlog.store.add(
-							{
-								...fields,
-								title: fields.title ?? "",
-								createdBy: USER_AUTHOR,
-								sourceSession: backlog.session,
-							},
-							actor,
-						)
-					: op === "remove"
-						? backlog.store.remove(id!, fields.version, actor)
-						: op === "comment"
-							? backlog.store.comment(id!, fields.note ?? "", { id: USER_AUTHOR, kind: "human" }, fields.version)
-							: backlog.store.update(id!, fields, actor);
+			const shapeError = mutationShapeError(input);
+			if (shapeError) return reply(400, { error: shapeError });
+			const result = applyBacklogMutation(backlog.store, input, { actor: backlog.actor, session: backlog.session });
 			notifyChanged();
 			broadcast();
-			reply(200, { item });
+			reply(200, result);
 		};
 		void handle().catch((error: unknown) =>
 			reply(409, {

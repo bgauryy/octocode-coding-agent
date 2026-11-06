@@ -98,7 +98,7 @@ describe("a background subagent that ended with an unanswered replyRequired ask 
 			const id = await t.start("linger asking");
 			const ask = store.send(id, [t.team.id!], "which option?", { replyRequired: true }).id!;
 			await t.control.settle();
-			expect(t.reports()[0]).toContain("Asks to its parent: 1 ask (1 unanswered)");
+			expect(t.reports()[0]).toContain("Asks to its coordinator: 1 ask (1 unanswered)");
 			expect(t.reports()[0]).toContain(
 				`${id} is waiting for your reply to its question and stays resumable for ${BLOCKED_LINGER_SECONDS} s`,
 			);
@@ -107,7 +107,7 @@ describe("a background subagent that ended with an unanswered replyRequired ask 
 			);
 			await t.control.settle();
 			expect(t.reports()).toHaveLength(2);
-			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your parent agent [\s\S]*linger use the second/);
+			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your coordinator [\s\S]*linger use the second/);
 			// The follow-up asked nothing: with the setting at 0 nothing keeps the run reachable.
 			expect(t.reports()[1]).not.toContain("resumable");
 		} finally {

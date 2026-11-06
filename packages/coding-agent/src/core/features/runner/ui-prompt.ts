@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { ExtensionUIContext, ExtensionUIDialogOptions, UIPromptKind } from "../types.ts";
+import type { ExtensionUIAskView, ExtensionUIContext, ExtensionUIDialogOptions, UIPromptKind } from "../types.ts";
 import type { RunnerEmitEvent } from "./types.ts";
 
 type UIPromptEvent = Extract<RunnerEmitEvent, { type: "ui_prompt_start" | "ui_prompt_end" }>;
@@ -32,6 +32,8 @@ interface Pending {
 	allowsText: boolean;
 	/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
 	approval?: boolean;
+	/** The structured card the dialog draws (`ExtensionUIDialogOptions.ask`), reported so a client can draw it too. */
+	ask?: ExtensionUIAskView;
 	/** The dialog blocks work that goes on without the user (`ExtensionUIDialogOptions.blocking`). */
 	blocking?: boolean;
 	/** Settles the dialog with the remote answer's value; undefined when the dialog cannot be answered remotely. */
@@ -56,7 +58,14 @@ export class UIPromptTracker {
 			...ui,
 			select: (title, options, opts) =>
 				this.tracked(
-					{ kind: "select", title, options: [...options], allowsText: false, ...dialogFlags(opts, true) },
+					{
+						kind: "select",
+						title,
+						options: [...options],
+						allowsText: false,
+						...(opts?.ask ? { ask: opts.ask } : {}),
+						...dialogFlags(opts, true),
+					},
 					(signal) => ui.select(title, options, { ...opts, signal }),
 					opts,
 					(answer) => (answer.choice !== undefined && options.includes(answer.choice) ? answer.choice : REFUSED),
@@ -81,8 +90,37 @@ export class UIPromptTracker {
 					(signal) => ui.editor(title, prefill, { ...opts, signal }),
 					opts,
 				),
-			custom: (factory, options) =>
-				this.tracked({ kind: "custom", allowsText: false }, () => ui.custom(factory, options)),
+			custom: (factory, options) => {
+				const remote = options?.remote;
+				if (!remote) return this.tracked({ kind: "custom", allowsText: false }, () => ui.custom(factory, options));
+				// The terminal's component closes when a remote answer wins: its `done` is the only handle on it.
+				let close: (() => void) | undefined;
+				const shown: typeof factory = (tui, theme, keybindings, done) => {
+					close = () => done(undefined as never);
+					return factory(tui, theme, keybindings, done);
+				};
+				return this.tracked(
+					{
+						kind: "custom",
+						title: remote.title,
+						options: [...remote.options],
+						allowsText: remote.allowsText === true,
+						...(remote.ask ? { ask: remote.ask } : {}),
+					},
+					() => ui.custom(shown, options),
+					undefined,
+					(answer) => {
+						const value =
+							answer.choice !== undefined && remote.options.includes(answer.choice)
+								? remote.answer({ choice: answer.choice })
+								: remote.allowsText && typeof answer.text === "string"
+									? remote.answer({ text: answer.text })
+									: undefined;
+						return value ?? REFUSED;
+					},
+					() => close?.(),
+				);
+			},
 		};
 	}
 
@@ -109,6 +147,7 @@ export class UIPromptTracker {
 		run: (signal: AbortSignal | undefined) => Promise<T>,
 		opts?: ExtensionUIDialogOptions,
 		parse?: (answer: DialogAnswer) => T | typeof REFUSED,
+		close?: () => void,
 	): Promise<T> {
 		const id = randomUUID();
 		const nested = this.depth++ > 0;
@@ -125,6 +164,7 @@ export class UIPromptTracker {
 			...(dialog.options ? { options: dialog.options } : {}),
 			...(dialog.allowsText ? { allowsText: true } : {}),
 			...(dialog.approval ? { approval: true } : {}),
+			...(dialog.ask ? { ask: dialog.ask } : {}),
 			...(dialog.blocking ? { blocking: true } : {}),
 			...(nested ? { nested: true } : {}),
 		});
@@ -155,6 +195,7 @@ export class UIPromptTracker {
 								finish();
 								// The mode's dialog closes; its own resolution (undefined/false on abort) is dropped below.
 								controller.abort();
+								close?.();
 								resolve(value as T);
 							},
 						}

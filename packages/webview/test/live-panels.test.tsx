@@ -6,6 +6,7 @@ import { userEvent } from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";
+import { ActivityView } from "../src/app/live/ActivityView.tsx";
 import { AgentsView } from "../src/app/live/AgentsView.tsx";
 import { AuditView } from "../src/app/live/AuditView.tsx";
 import { CommandButton, MessageForm } from "../src/app/live/controls.tsx";
@@ -413,5 +414,29 @@ describe("ItemActivity comments", () => {
 				.getAllByRole("listitem")
 				.map((entry) => entry.textContent),
 		).toEqual(["failedNo agent free"]);
+	});
+});
+
+describe("a live view with no session", () => {
+	afterEach(() => vi.useRealTimers());
+
+	it.each([
+		["Agents", () => <AgentsView />],
+		["Activity", () => <ActivityView index={indexBacklog(backlog)} params={{}} setParams={() => {}} />],
+	])("%s says Connecting for about 5 s, then explains there is no session", (_name, view) => {
+		vi.useFakeTimers();
+		renderLive(view());
+		expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
+		act(() => {
+			vi.advanceTimersByTime(4900);
+		});
+		expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
+		act(() => {
+			vi.advanceTimersByTime(200);
+		});
+		expect(screen.queryByRole("status", { name: "Connecting to the session" })).toBeNull();
+		expect(screen.getByText("No session")).toBeInTheDocument();
+		expect(screen.getByText(/Open \/(web|backlog) from a running Octocode session/)).toBeInTheDocument();
+		expect(screen.getByText(/keeps trying to connect/)).toBeInTheDocument();
 	});
 });

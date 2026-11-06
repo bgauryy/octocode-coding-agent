@@ -3,6 +3,7 @@ import { within } from "@testing-library/dom";
 import { JSDOM } from "jsdom";
 import { afterEach, expect, it, vi } from "vitest";
 import { renderBacklogHtml } from "../src/index.ts";
+import { WEB_PREFS_ROUTE } from "../src/service-worker.ts";
 
 // These tests execute the generated page bundle exactly as the host serves it. React commits after the event that
 // caused an update, so assertions that follow navigation, socket frames or clicks wait for the DOM to settle.
@@ -55,7 +56,8 @@ function type(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
 async function page(fragment = "access=test") {
 	let socket!: { onmessage?: (event: { data: string }) => void; onopen?: () => void };
 	const fetch = vi.fn(
-		async (_url?: string, init?: RequestInit): Promise<{ ok: boolean; json: () => Promise<unknown> }> => {
+		async (url?: string, init?: RequestInit): Promise<{ ok: boolean; json: () => Promise<unknown> }> => {
+			if (url === WEB_PREFS_ROUTE) return { ok: true, json: async () => ({ sound: false, theme: "system" }) };
 			const command = JSON.parse(String(init?.body));
 			return {
 				ok: true,
@@ -119,6 +121,9 @@ async function page(fragment = "access=test") {
 		button,
 		findButton,
 		fetch,
+		/** The command requests the page sent; the preference read on load is counted apart in `prefsReads`. */
+		commands: () => fetch.mock.calls.filter(([url]) => url !== WEB_PREFS_ROUTE),
+		prefsReads: () => fetch.mock.calls.filter(([url]) => url === WEB_PREFS_ROUTE),
 		application: (frame: unknown) => socket.onmessage?.({ data: JSON.stringify({ type: "application", data: frame }) }),
 		backlogs: (data: unknown) => socket.onmessage?.({ data: JSON.stringify({ type: "snapshot", data }) }),
 	};
@@ -166,10 +171,10 @@ it("restores message drafts across navigation and only clears them after accepta
 		}),
 	}));
 	restored.closest("form")!.requestSubmit();
-	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledOnce());
+	await vi.waitFor(() => expect(app.commands()).toHaveLength(1));
 	await vi.waitFor(() => expect(app.document.body.textContent).toContain("Agent no longer available"));
 	expect(restored.value).toBe("Please check the tests");
-	const failedId = JSON.parse(String(app.fetch.mock.calls[0][1]?.body)).id;
+	const failedId = JSON.parse(String(app.commands()[0][1]?.body)).id;
 	app.fetch.mockImplementationOnce(async (_url, init) => {
 		const command = JSON.parse(String(init?.body));
 		const receipt = { id: command.id, action: command.action, status: "accepted" as const, at: 1, message: "Queued" };
@@ -180,8 +185,8 @@ it("restores message drafts across navigation and only clears them after accepta
 		return { ok: true, json: async () => ({ receipt }) };
 	});
 	restored.closest("form")!.requestSubmit();
-	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledTimes(2));
-	expect(JSON.parse(String(app.fetch.mock.calls[1][1]?.body)).id).not.toBe(failedId);
+	await vi.waitFor(() => expect(app.commands()).toHaveLength(2));
+	expect(JSON.parse(String(app.commands()[1][1]?.body)).id).not.toBe(failedId);
 	await vi.waitFor(() => expect(restored.value).toBe(""));
 	expect(restored.isConnected).toBe(true);
 	app.navigate("activity");
@@ -272,8 +277,10 @@ it("renders assistant deltas before completion and exposes scoped session comman
 		json: async () => ({ receipt: { id: JSON.parse(String(init?.body)).id, status: "accepted", message: "Stopping" } }),
 	}));
 	(await app.findButton("Stop current run")).click();
-	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledOnce());
-	const body = JSON.parse(String(app.fetch.mock.calls[0][1]?.body));
+	await vi.waitFor(() => expect(app.commands()).toHaveLength(1));
+	const body = JSON.parse(String(app.commands()[0][1]?.body));
+	// The theme preference is read once on load, not again per command.
+	expect(app.prefsReads()).toHaveLength(1);
 	expect(body).toMatchObject({ action: "abort", sessionId: "session", runId: "run-live" });
 	emit(4, {
 		type: "event",
@@ -294,8 +301,8 @@ it("renders assistant deltas before completion and exposes scoped session comman
 	const nextStop = await app.findButton("Stop current run");
 	await vi.waitFor(() => expect(nextStop.hasAttribute("disabled")).toBe(false));
 	nextStop.click();
-	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledTimes(2));
-	const next = JSON.parse(String(app.fetch.mock.calls[1][1]?.body));
+	await vi.waitFor(() => expect(app.commands()).toHaveLength(2));
+	const next = JSON.parse(String(app.commands()[1][1]?.body));
 	expect(next).toMatchObject({ action: "abort", runId: "run-next" });
 	expect(next.id).not.toBe(body.id);
 	app.navigate("agents");

@@ -60,6 +60,19 @@ describe("Vertex model pricing", () => {
 		expect(cost.output).toBeCloseTo((15 * 15) / 1_000_000, 12);
 	});
 
+	it("counts tool-use prompt tokens as input, so the parts add up to the reported total", () => {
+		const usage = normalizeGoogleUsage({
+			promptTokenCount: 1000,
+			cachedContentTokenCount: 400,
+			toolUsePromptTokenCount: 500,
+			candidatesTokenCount: 40,
+			thoughtsTokenCount: 10,
+			totalTokenCount: 1550,
+		});
+		expect(usage).toMatchObject({ input: 1100, cacheRead: 400, output: 50, totalTokens: 1550 });
+		expect(usage.input + usage.cacheRead + usage.cacheWrite + usage.output).toBe(usage.totalTokens);
+	});
+
 	it.each([
 		["gemini-2.5-pro", 1.25, 10, 0.125],
 		["gemini-3.1-pro-preview", 2, 12, 0.2],

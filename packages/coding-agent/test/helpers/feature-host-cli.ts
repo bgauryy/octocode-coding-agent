@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { getCliInvocation } from "../../src/config.ts";
+import { stopTree } from "../../src/octocode/shared/process.ts";
+import { leadsProcessGroup } from "../../src/utils/shell.ts";
 import { trustFolder } from "../octocode/helpers.ts";
 
 /**
@@ -60,6 +62,14 @@ interface CliResult {
 	stderr: string;
 }
 
+/**
+ * Ends a child spawned with `detached: leadsProcessGroup()` and everything it started, and resolves once the tree is
+ * gone: a grandchild left running would still write into the sandbox while `cleanup` removes it (ENOTEMPTY).
+ */
+export async function stopChildTree(child: { pid?: number }): Promise<void> {
+	await stopTree(child.pid, 2000);
+}
+
 /** Runs the source CLI to completion in the sandbox's project folder. */
 export async function runCli(sandbox: Sandbox, args: string[], timeoutMs = 60_000): Promise<CliResult> {
 	const invocation = getCliInvocation();
@@ -67,17 +77,19 @@ export async function runCli(sandbox: Sandbox, args: string[], timeoutMs = 60_00
 		cwd: sandbox.project,
 		env: sandbox.env,
 		stdio: ["ignore", "pipe", "pipe"],
+		detached: leadsProcessGroup(),
 	});
 	let stdout = "";
 	let stderr = "";
 	child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
 	child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
-	const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+	const timer = setTimeout(() => void stopChildTree(child), timeoutMs);
 	try {
 		const [code] = (await once(child, "close")) as [number | null];
 		return { code, stdout, stderr };
 	} finally {
 		clearTimeout(timer);
+		await stopChildTree(child);
 	}
 }
 

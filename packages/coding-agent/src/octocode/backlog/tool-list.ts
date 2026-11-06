@@ -1,6 +1,7 @@
 import { StringEnum } from "@octocodeai/octocode-ai";
 import type { BacklogRef, ItemType } from "@octocodeai/octocode-contracts/backlogs";
-import { STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
+import { LIST_STATES, type ListState } from "@octocodeai/octocode-contracts/snapshot";
+import path from "node:path";
 import { Type } from "typebox";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { backlog as queries } from "../../../../db/src/api.ts";
@@ -10,15 +11,26 @@ import { itemLine } from "./format.ts";
 import type { ListQuery } from "./inputs.ts";
 import { PRIORITIES } from "./store.ts";
 
+/** A path filter entry as a repository-relative path: an absolute path inside `root` is made relative; separators and `./` are the matcher's. */
+function repoRelative(entry: string, root: string): string {
+	const text = entry.trim();
+	if (!path.isAbsolute(text)) return text;
+	const relative = path.relative(root, text);
+	return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+		? text
+		: relative || ".";
+}
+
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 200;
-const DEFAULT_LIST_STATES: State[] = ["ongoing", "todo"];
+const DEFAULT_LIST_STATES: ListState[] = ["ongoing", "todo"];
 
 /**
  * The fields only `list` reads. `list` also filters by fields other operations write (`id`, `title`, `type`,
  * `parentId`, `priority`, `tags`, `paths`, `dependsOn`, `from`); their descriptions say so beside the write meaning.
  */
 export const listFields = {
+	ids: Type.Optional(Type.Array(Type.String(), { description: "get/list: several item ids" })),
 	since: Type.Optional(
 		Type.String({ description: "list: updated (with sort created: created) since an ISO time or age (2h, 7d)" }),
 	),
@@ -29,11 +41,10 @@ export const listFields = {
 
 /**
  * List filters the declaration no longer shows, still accepted so calls recorded in the old shape (a resumed session,
- * an RPC caller, a Next line printed before) validate and run: `ids` is `id` as a list, `createdSince` is `since` with
- * sort created, and `assignee` and `blocked` had no callers in recorded sessions.
+ * an RPC caller, a Next line printed before) validate and run: `createdSince` is `since` with sort created, and
+ * `assignee` and `blocked` had no callers in recorded sessions. (`id` with several comma-separated ids also still runs.)
  */
 export const legacyListFields = {
-	ids: Type.Optional(Type.Array(Type.String())),
 	assignee: Type.Optional(Type.String()),
 	blocked: Type.Optional(Type.Boolean()),
 	createdSince: Type.Optional(Type.String()),
@@ -41,10 +52,10 @@ export const legacyListFields = {
 
 /** What a list call may carry; the write fields it shares with add/update keep their declared types. */
 export interface ListParams {
-	states?: State[];
+	states?: ListState[];
 	query?: string;
 	from?: string;
-	/** list: one id or several, separated by commas or spaces. */
+	/** list: one id, or (older calls) several separated by commas or spaces. */
 	id?: string;
 	ids?: string[];
 	title?: string;
@@ -79,7 +90,7 @@ function sinceTime(since: string | undefined, now: number, field = "since"): str
 /** A list argument with entries, else undefined: an empty list filters nothing, like an omitted one. */
 const entries = <T>(values: readonly T[] | undefined): T[] | undefined => (values?.length ? [...values] : undefined);
 
-/** The ids a call names: `id` (comma- or space-separated) and the older `ids` list. */
+/** The ids a call names: the `ids` list and `id` (older calls: comma- or space-separated). */
 function givenIds(params: ListParams): string[] | undefined {
 	return entries([...(params.id?.split(/[\s,]+/).filter(Boolean) ?? []), ...(params.ids ?? [])]);
 }
@@ -109,13 +120,13 @@ function givenFilters(params: ListParams, now: number): Partial<ListParams> {
 
 /** `list`: one page of the items every given filter matches, with a Next call that repeats the filters. */
 export function runList(
-	{ store, actor, session }: Backlog,
+	{ store, actor, session, repoRoot }: Backlog,
 	params: ListParams,
 	now = Date.now(),
 ): { content: Array<{ type: "text"; text: string }>; details: { shown: number; total: number } } {
 	const filters = givenFilters(params, now);
 	const ids = filters.id?.split(",");
-	const states = params.states?.length ? params.states : ids ? [...STATES] : DEFAULT_LIST_STATES;
+	const states = params.states?.length ? params.states : ids ? [...LIST_STATES] : DEFAULT_LIST_STATES;
 	// `since` follows the order: with sort created it bounds creation time, as the older `createdSince` did.
 	const createdSince = filters.createdSince ?? (filters.sort === "created" ? filters.since : undefined);
 	const updatedSince = filters.sort === "created" ? undefined : filters.since;
@@ -140,7 +151,7 @@ export function runList(
 		...(filters.type ? { types: [filters.type] } : {}),
 		...(filters.priority ? { maxPriority: PRIORITIES.indexOf(filters.priority as (typeof PRIORITIES)[number]) } : {}),
 		...(filters.tags ? { tags: filters.tags } : {}),
-		...(filters.paths ? { paths: filters.paths } : {}),
+		...(filters.paths ? { paths: filters.paths.map((entry) => repoRelative(entry, repoRoot)) } : {}),
 		...(filters.dependsOn
 			? { dependsOn: filters.dependsOn.map((ref) => (typeof ref === "string" ? ref : ref.id)) }
 			: {}),
@@ -150,9 +161,13 @@ export function runList(
 		...(createdSince ? { createdSince: Date.parse(createdSince) } : {}),
 		...(filters.sort ? { sort: filters.sort } : {}),
 	};
-	const { items, total } = store.list(query);
+	const { items, total, pathMatches } = store.list(query);
 	const marks = store.marks(items, actor.id, actor.owners);
-	const lines = items.map((item) => itemLine(item, actor.id, actor.owners, marks.get(item.ref)));
+	const lines = items.map((item) => {
+		const line = itemLine(item, actor.id, actor.owners, marks.get(item.ref));
+		const why = pathMatches?.get(item.ref)?.reason;
+		return why ? `${line} — matched: ${visibleControls(why)}` : line;
+	});
 	if (lines.length === 0) {
 		const others = Object.keys(filters).filter((key) => !["query", "from", "sort"].includes(key));
 		lines.push(

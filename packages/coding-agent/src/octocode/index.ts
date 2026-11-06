@@ -13,7 +13,7 @@ import { setShellPathEntries } from "../utils/shell.ts";
 import { registerOctocodeCli } from "./cli/command.ts";
 import { octocodeShimDir } from "./cli/shim.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
-import { startWorkspaceWeb } from "./workspace/server.ts";
+import { startTrustedWorkspaceWeb } from "./workspace-web.ts";
 import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../mcp/src/status.ts";
@@ -204,7 +204,7 @@ export default function octocode(host: ExtensionAPI): void {
 		commands,
 		isSubagent,
 		agentId: () => team.id,
-		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
+		openWeb: (ctx, backlog, changed) => startTrustedWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
 	if (!isSubagent) registerWebCommands(api, { commands, workspace, openWorkspace });
 	const memoryTool = registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });

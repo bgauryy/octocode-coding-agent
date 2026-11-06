@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
 	cacheMissLabel,
 	collectCacheMisses,
@@ -44,15 +44,27 @@ function assistant(options: {
 	};
 }
 
-function entry(message: AssistantMessage): SessionEntry {
-	return { type: "message", id: "x", parentId: null, timestamp: "", message };
+// Entries written one after another form a chain: each one's parent is the entry created before it.
+let entryCount = 0;
+beforeEach(() => {
+	entryCount = 0;
+});
+function link(parentId?: string) {
+	entryCount += 1;
+	return {
+		id: `e${entryCount}`,
+		parentId: parentId ?? (entryCount > 1 ? `e${entryCount - 1}` : null),
+		timestamp: "",
+	};
+}
+function entry(message: AssistantMessage, parentId?: string): SessionEntry {
+	return { type: "message", ...link(parentId), message };
 }
 
 function usageEntry(kind: string, timestamp: number): SessionEntry {
 	return {
 		type: "usage",
-		id: `usage-${kind}`,
-		parentId: null,
+		...link(),
 		timestamp: new Date(timestamp).toISOString(),
 		kind,
 		provider: "test",
@@ -95,9 +107,12 @@ describe("computeCacheWaste", () => {
 	});
 
 	it("skips the turn after a compaction reset", () => {
-		const reset = { type: "compaction", id: "c", parentId: null, timestamp: "" } as SessionEntry;
-		const afterReset = assistant({ cacheWrite: 20_000, cost: { cacheWrite: 0.075 } });
-		const totals = computeCacheWaste([entry(turn1), reset, entry(afterReset)], models);
+		const first = entry(turn1);
+		const reset = { type: "compaction", ...link() } as SessionEntry;
+		const totals = computeCacheWaste(
+			[first, reset, entry(assistant({ cacheWrite: 20_000, cost: { cacheWrite: 0.075 } }))],
+			models,
+		);
 		expect(totals.missedTokens).toBe(0);
 	});
 
@@ -113,6 +128,34 @@ describe("computeCacheWaste", () => {
 		const b = assistant({ input: 110_000 });
 		const totals = computeCacheWaste([entry(a), entry(b)], models);
 		expect(totals.missedTokens).toBe(0);
+	});
+});
+
+describe("computeCacheWaste across branches", () => {
+	it("compares a reply with its own branch, not with the entry written before it", () => {
+		// e1 turn1 -> e2 turn2 (branch A); after /tree back to e1, a reply e3 forks off as branch B.
+		const a1 = entry(turn1);
+		const a2 = entry(turn2);
+		const b2 = entry(
+			assistant({
+				cacheRead: 100_000,
+				cacheWrite: 5_000,
+				cost: { cacheRead: 0.03, cacheWrite: 0.019 },
+				timestamp: 90_000,
+			}),
+			"e1",
+		);
+		// Branch A ended on a 105k prompt; branch B's parent turn1 had 100k, all of it read back: no miss on either.
+		expect(computeCacheWaste([a1, a2, b2], models).missedTokens).toBe(0);
+	});
+
+	it("still counts a real miss on a branch", () => {
+		const a1 = entry(turn1);
+		const a2 = entry(turn2);
+		const b2 = entry(assistant({ cacheWrite: 100_000, cost: { cacheWrite: 0.375 }, timestamp: 90_000 }), "e1");
+		const totals = computeCacheWaste([a1, a2, b2], models);
+		expect(totals.missedTokens).toBe(100_000);
+		expect(totals.missCount).toBe(1);
 	});
 });
 
@@ -204,13 +247,12 @@ describe("measured cache usage by purpose", () => {
 });
 
 describe("cache miss areas", () => {
-	const systemEntry = {
-		type: "message",
-		id: "s",
-		parentId: null,
-		timestamp: "",
-		message: { role: "system", content: "", toolsAdded: [{ name: "web" }], timestamp: 90_000 },
-	} as SessionEntry;
+	const systemEntry = () =>
+		({
+			type: "message",
+			...link(),
+			message: { role: "system", content: "", toolsAdded: [{ name: "web" }], timestamp: 90_000 },
+		}) as SessionEntry;
 	const missTurn = (fields: { cacheRead?: number; cacheWrite: number }) =>
 		assistant({ ...fields, cost: { cacheWrite: fields.cacheWrite * 3.75e-6 }, timestamp: 600_000 });
 
@@ -229,7 +271,7 @@ describe("cache miss areas", () => {
 	});
 
 	it("notes an instruction or tool update since the previous request", () => {
-		const entries = [entry(turn1), entry(turn2), systemEntry];
+		const entries = [entry(turn1), entry(turn2), systemEntry()];
 		expect(detectCacheMiss(entries, missTurn({ cacheWrite: 110_000 }), models)?.promptChanged).toBe(true);
 		// The update is attributed once: the request after the next one compares against that next one.
 		const next = assistant({ cacheRead: 110_000, cacheWrite: 0, timestamp: 620_000 });

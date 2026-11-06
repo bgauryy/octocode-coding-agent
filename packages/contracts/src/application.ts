@@ -7,6 +7,7 @@ import {
 	type ApplicationAssetInput,
 	type ApplicationAssetPayload,
 } from "./content.ts";
+import { AwaitingSchema } from "./application-awaiting.ts";
 
 export const APPLICATION_PROTOCOL_VERSION = 1 as const;
 const identity = {
@@ -173,18 +174,6 @@ const ApplicationModelSchema = Type.Object({
 	id: Type.String(),
 	name: Type.String(),
 	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
-});
-/**
- * A blocking dialog the run waits on: an approval, or a question or other input. With `id` a client may answer it with
- * the `answer` command: one of `options` (an approval's choices are the host's own words), or `text` where
- * `allowsText`. Without `id` only the terminal can answer (an older host, or an editor or custom dialog).
- */
-const AwaitingSchema = Type.Object({
-	kind: Type.Union([Type.Literal("approval"), Type.Literal("question")]),
-	title: Type.Optional(Type.String({ maxLength: 200 })),
-	id: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-	options: Type.Optional(Type.Array(Type.String({ maxLength: 200 }), { maxItems: 50 })),
-	allowsText: Type.Optional(Type.Boolean()),
 });
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,

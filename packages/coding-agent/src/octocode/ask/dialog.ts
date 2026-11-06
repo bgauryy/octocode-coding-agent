@@ -10,7 +10,15 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { Breath, tabMark } from "./dialog/marks.ts";
-import { type AskAnswer, type AskQuestion, type AskResult, answerOf, questionView, rows } from "./dialog/answers.ts";
+import {
+	type AskAnswer,
+	type AskQuestion,
+	type AskResult,
+	answerOf,
+	questionView,
+	remoteAnswer,
+	rows,
+} from "./dialog/answers.ts";
 import { DETAILS_KEY, hasMore, renderAskCard, startRow } from "./card.ts";
 import type { AskView } from "../shared/ask-view.ts";
 import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
@@ -42,6 +50,7 @@ export function showAskDialog(
 						done,
 						signal,
 					),
+				remoteAnswer(questions),
 			)
 			// Closed without an answer (another view took its place, or the UI was reset): a dismissal.
 			.then((result) => result ?? { answers: [], cancelled: true }),

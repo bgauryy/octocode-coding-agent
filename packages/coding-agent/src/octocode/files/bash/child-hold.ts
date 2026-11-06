@@ -7,8 +7,8 @@ import type { BashJob } from "../bash-jobs/types.ts";
  * A subagent's run ends with its answer, and its jobs are stopped with it. A child that answers while a job it started
  * still runs is almost always waiting for that job ("I'll wait for the completion message"), so the run holds instead:
  * until the first of its jobs ends (its completion then goes to the model in one more turn), or for
- * `CHILD_JOB_HOLD_MS`, after which the child is told once which jobs still run and how they end. Answering again with
- * only those jobs left is its choice: the run then ends and stops them as before.
+ * `CHILD_JOB_HOLD_MS`, after which the child is told which jobs still run and how they end. After that note, an answer
+ * without a report outcome word is still waiting, so the run holds again; a report ends the run and stops them as before.
  */
 
 /** How long a child's run holds after its answer for the first of its own running jobs to end. */
@@ -26,14 +26,14 @@ function jobHoldNote(jobs: readonly BashJob[], heldMs: number, now = Date.now())
 	return [
 		`Your run held ${formatDuration(heldMs)} after your answer, and these background jobs you started are still running:`,
 		...lines,
-		"Your run ends when you answer again, and they are stopped then. To wait longer, end your turn again: the run holds until one ends. Otherwise stop them, or say in your report that you leave them unfinished.",
+		"Your run ends with your report (its first word done, partial, blocked or failed), and they are stopped then. To wait longer, end your turn without a report: the run holds again until one ends. Otherwise stop them, or say in your report that you leave them unfinished.",
 	].join("\n");
 }
 
 /**
  * Holds a child's run for its own jobs. Resolves true when the model should get one more turn: a job ended (its report
- * is queued by the job's own exit) or the jobs outlasted the hold (`notify` got the note). False when nothing runs, the
- * child was already told about every running job, or `stop` fired.
+ * is queued by the job's own exit) or the jobs outlasted the hold (`notify` got the note). False when nothing runs,
+ * `stop` fired, or the child was already told about every running job and `reported` (its answer names an outcome).
  */
 export async function holdForOwnJobs(
 	jobs: Pick<BashJobs, "running">,
@@ -41,10 +41,12 @@ export async function holdForOwnJobs(
 	notify: (text: string) => void,
 	stop: AbortSignal | undefined,
 	holdMs = CHILD_JOB_HOLD_MS,
+	reported = false,
 ): Promise<boolean> {
 	const running = jobs.running();
+	if (running.length === 0) return false;
 	const fresh = running.filter((job) => !warned.has(job));
-	if (fresh.length === 0) return false;
+	if (fresh.length === 0 && reported) return false;
 	let ended = false;
 	const started = Date.now();
 	// A job's `done` resolves after its exit report was sent: the report is queued before this resumes.
@@ -59,6 +61,6 @@ export async function holdForOwnJobs(
 	if (stop?.aborted) return false;
 	if (ended) return true;
 	for (const job of fresh) warned.add(job);
-	notify(jobHoldNote(fresh, Date.now() - started));
+	notify(jobHoldNote(running, Date.now() - started));
 	return true;
 }

@@ -40,14 +40,14 @@ The reader is a model that sees the TypeScript signature next to your text. It a
 
 The trigger is the whole description of the tool's provider declaration; the model reads it when it picks a tool, before it looks at the file. Write one per tool:
 
-- One line, at most 200 characters, starting with the situation: "Use to read a GitHub file whose path you know; find the path first with ghSearchCode or ghStructure."
+- One line, at most 200 characters, starting with the situation: "Use to read a GitHub file whose path you know; find the path first with the search tool."
 - Name the sibling that fits the neighbouring situation when two tools are easy to confuse (text search against syntax search, search against read).
-- Only facts the source description or schema states; no limits, field names or result shapes, which the file carries. One exception: the read and search tools of the default research preset (`localFetch`, `localSearch`) state their row limit and one batched example, because the trigger is what the model reads when it decides how many calls to make. Keep that limit equal to the schema's `maxItems`.
+- Only facts the source description or schema states; no limits, field names or result shapes, which the file carries. One exception: read and search tools that batch calls state their row limit and one batched example, because the trigger is what the model reads when it decides how many calls to make. Keep that limit equal to the schema's `maxItems`.
 - Without a trigger the declaration uses the first sentence of the tool's description, so a tool whose description already opens with its situation may go without.
 
 ## Budget
 
-A rewrite must make the file smaller. Run `octocode mcp compact check` with an empty overrides file (`{}`) first, then after each draft; it prints the whole-file size, prose against structure, the costliest field docs and each description.
+A rewrite must make the file smaller. Run `scripts/check.mjs` with an empty overrides file (`{}`) first, then after each draft; it prints the whole-file size, prose against structure, the costliest field docs and each description.
 
 - Prose is the server instructions, tool descriptions and field docs together. Aim for at least 30% less than the plain render's prose; below 25% is a failed rewrite. Overrides cannot shrink structure (types, constraint notes), so judge the prose line, not only the file size.
 - Limits the check enforces: server instructions 1,200 characters, a tool description 600, a trigger 200 (one line), a field doc 240. Triggers are not file prose; they replace the provider declaration's description.
@@ -66,13 +66,13 @@ Write condition and action together: "When the path is unknown, search first wit
 Source:
 
 ```
-<when>Read a known GitHub file: source, ranges, matches, enclosing declarations, compact text or symbols.</when><workflow>Find paths with ghSearchCode or ghStructure.</workflow>
+<when>Read a known GitHub file: source, ranges, matches, enclosing declarations, compact text or symbols.</when><workflow>Find paths with the search or tree tools.</workflow>
 ```
 
 Rewrite:
 
 ```
-Read a file from a GitHub repository when you know its path: full content, line ranges, matchString hits, enclosing declarations (block) or a compact or symbols outline. Find the path first with ghSearchCode or ghStructure. ref pins a branch, tag or commit SHA; omit it for the default branch.
+Read a file from a GitHub repository when you know its path: full content, line ranges, matchString hits, enclosing declarations (block) or a compact or symbols outline. Find the path first with the search or tree tools. ref pins a branch, tag or commit SHA; omit it for the default branch.
 ```
 
 Kept: purpose, the read modes, the path-finding companions. Folded: the tags. Added from the schema only: what `ref` does. Nothing else was invented.

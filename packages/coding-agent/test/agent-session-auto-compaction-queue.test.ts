@@ -15,6 +15,7 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
+import { createHarness } from "./suite/harness.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
 describe("AgentSession auto-compaction queue resume", () => {
@@ -504,5 +505,52 @@ describe("AgentSession auto-compaction queue resume", () => {
 
 		// Should NOT compact because the only usage data is from a kept pre-compaction message
 		expect(runAutoCompactionSpy).not.toHaveBeenCalled();
+	});
+
+	it("fails the run and keeps the overflowed reply out of the context when the limit blocks recovery", async () => {
+		const harness = await createHarness({
+			settings: { retry: { enabled: false } },
+			compactionPolicy: { keepRecentTokens: 1 },
+		});
+		try {
+			const internals = harness.session as unknown as {
+				_runAutoCompaction: (reason: "overflow" | "threshold", willRetry: boolean) => Promise<boolean>;
+				_runDefaultCompaction: () => Promise<unknown>;
+			};
+			const summarize = vi
+				.spyOn(internals, "_runDefaultCompaction")
+				.mockRejectedValue(new Error("provider unavailable"));
+			const now = Date.now();
+			harness.sessionManager.appendMessage({
+				role: "user",
+				content: [{ type: "text", text: "old" }],
+				timestamp: now - 2000,
+			});
+			harness.sessionManager.appendMessage({
+				...fauxAssistantMessage("old reply"),
+				api: harness.session.model!.api,
+				provider: harness.session.model!.provider,
+				model: harness.session.model!.id,
+				timestamp: now - 1000,
+			});
+			harness.session.agent.state.messages = harness.sessionManager.buildSessionContext().messages;
+			for (let i = 0; i < 3; i++) await internals._runAutoCompaction("threshold", false);
+			expect(summarize).toHaveBeenCalledTimes(3);
+
+			harness.setResponses([
+				fauxAssistantMessage("", { stopReason: "error", errorMessage: "prompt is too long: 900000 tokens > 200000" }),
+			]);
+			await harness.session.prompt("too big");
+
+			expect(summarize).toHaveBeenCalledTimes(3);
+			const outcome = harness.session.lastRunOutcome;
+			expect(outcome?.status).toBe("failed");
+			expect(outcome?.stopReason).toBe("error");
+			expect(outcome?.errorMessage).toContain("prompt is too long");
+			expect(harness.session.messages.some((m) => m.role === "assistant" && m.stopReason === "error")).toBe(false);
+			expect(harness.eventsOfType("compaction_end").at(-1)?.errorMessage).toContain("three consecutive failures");
+		} finally {
+			harness.cleanup();
+		}
 	});
 });

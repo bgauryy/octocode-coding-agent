@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../shared/web.ts";
 import { STATUS } from "../shared/status.ts";
@@ -6,6 +6,7 @@ import { backlogCommand } from "./command.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
 import { countsText, openTaskCount } from "./format.ts";
 import { registerTaskTool } from "./task-tool.ts";
+import { refreshItemTitles } from "./title-lookup.ts";
 import { registerBacklogTool } from "./tool.ts";
 import { sharedWorkspaceWeb } from "./shared-web.ts";
 
@@ -23,7 +24,7 @@ interface RegisterBacklogOptions extends BacklogOptions {
 export function registerBacklog(
 	api: ExtensionAPI,
 	options: RegisterBacklogOptions,
-): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<string> {
+): (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<string> {
 	const { commands, open, ...backlogOptions } = options;
 
 	let currentContext: ExtensionContext | undefined;
@@ -32,6 +33,7 @@ export function registerBacklog(
 		if (!ctx.hasUI || options.isSubagent) return;
 		try {
 			const backlog = openBacklog(ctx, backlogOptions);
+			refreshItemTitles(backlog.store);
 			const text = countsText(backlog.store.counts(), openTaskCount(backlog.store, backlog.session));
 			ctx.ui.setStatus(STATUS.backlog, text || undefined);
 		} catch {
@@ -42,7 +44,7 @@ export function registerBacklog(
 
 	const launch = webLauncher(api, open);
 	const openWeb = options.openWeb ? sharedWorkspaceWeb(options.openWeb, backlogOptions.env) : undefined;
-	const openView = async (ctx: ExtensionCommandContext, view: "board" | "activity") => {
+	const openView = async (ctx: ExtensionContext, view: "board" | "activity", item?: string) => {
 		const backlog = openBacklog(ctx, backlogOptions);
 		return launch(
 			backlog.store.repo + ":" + backlog.session,
@@ -52,6 +54,7 @@ export function registerBacklog(
 				return openWeb(ctx, backlog, () => refresh(ctx));
 			},
 			view,
+			item,
 		);
 	};
 	registerBacklogTool(api, { ...backlogOptions, changed: refresh });

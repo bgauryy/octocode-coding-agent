@@ -49,6 +49,49 @@ async function readAll(response: Response): Promise<{ text: string; error: unkno
 	}
 }
 
+describe("publicFetch private first hop", () => {
+	it("refuses a host that resolves to a metadata address without connecting", async () => {
+		let connections = 0;
+		const server = http.createServer((_request, response) => response.end("hit"));
+		server.on("connection", () => (connections += 1));
+		servers.push(server);
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as AddressInfo).port;
+		const lookup = async () => [{ address: "169.254.169.254" }];
+		await expect(
+			publicFetch(`http://rebind.example.test:${port}/`, {}, { firstHopPrivate: true, lookup }),
+		).rejects.toThrow(/cloud metadata address/);
+		expect(connections).toBe(0);
+	});
+
+	it("refuses a metadata address when any resolved address is one", async () => {
+		const lookup = async () => [{ address: "127.0.0.1" }, { address: "169.254.169.254" }];
+		await expect(publicFetch("http://rebind.example.test:1/", {}, { firstHopPrivate: true, lookup })).rejects.toThrow(
+			/cloud metadata address/,
+		);
+	});
+
+	it("connects only to the resolved address", async () => {
+		const hosts: Array<string | undefined> = [];
+		const server = http.createServer((request, response) => {
+			hosts.push(request.headers.host);
+			response.end("pinned");
+		});
+		servers.push(server);
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as AddressInfo).port;
+		let lookups = 0;
+		const lookup = async () => {
+			lookups += 1;
+			return [{ address: "127.0.0.1" }];
+		};
+		const response = await publicFetch(`http://approved.example.test:${port}/`, {}, { firstHopPrivate: true, lookup });
+		expect(await response.text()).toBe("pinned");
+		expect(hosts).toEqual([`approved.example.test:${port}`]);
+		expect(lookups).toBe(1);
+	});
+});
+
 describe("publicFetch compressed bodies", () => {
 	it.each(Object.keys(ENCODERS) as Array<keyof typeof ENCODERS>)("decodes a whole %s body", async (encoding) => {
 		const url = await serve(encoding, ENCODERS[encoding](TEXT));

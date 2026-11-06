@@ -3,8 +3,8 @@ import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, toToolDeclaration } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
-import { OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
-import { defineOctocodeTool, octocodeToolName } from "../../../mcp/src/presets/octocode/tools.ts";
+import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
+import { createMcpToolDefinition } from "../../../mcp/src/tool-definition.ts";
 import { fakeCtx } from "./fake-host.ts";
 
 const inputSchema = {
@@ -19,10 +19,10 @@ function setup() {
 	const call = vi.fn(async (_name: string, _args: Record<string, unknown>) => ({
 		content: [{ type: "text" as const, text: "ok" }],
 	}));
-	const definition = defineOctocodeTool({
-		server: OCTOCODE_SERVER,
+	const definition = createMcpToolDefinition({
+		server: "octocode",
 		tool: { name: "localFetch", description: "Read files. Many at once.", inputSchema },
-		name: octocodeToolName("localFetch"),
+		name: createMcpToolName("octocode", "localFetch"),
 		exposure: "direct",
 		namespace: { name: "mcp__octocode" },
 		timeoutMs: 60_000,

@@ -1,5 +1,5 @@
-import type { EntityInput, ItemType } from "@octocodeai/octocode-contracts/backlogs";
-import type { State } from "@octocodeai/octocode-contracts/snapshot";
+import type { CloseInput, EntityInput, ItemType } from "@octocodeai/octocode-contracts/backlogs";
+import type { ListState, State } from "@octocodeai/octocode-contracts/snapshot";
 import type { backlog } from "../../../../db/src/api.ts";
 
 export interface AddInput extends EntityInput {
@@ -32,6 +32,8 @@ export interface UpdateInput extends EntityInput {
 	/** The item this one came from (`B12`); null clears the link. */
 	from?: string | null;
 	note?: string;
+	/** Close the item instead of completing it (a state of its own, with the reason). */
+	close?: CloseInput;
 	/** Refuse when the item changed since this version was read (a board holding a stale copy). */
 	version?: number;
 	/** The user's own edit: may change an item another live session holds (claiming it is still refused). */
@@ -40,7 +42,7 @@ export interface UpdateInput extends EntityInput {
 
 /** Which items to list; every set field must hold, and a list field matches when any entry does. */
 export interface ListQuery {
-	states?: readonly State[];
+	states?: readonly ListState[];
 	query?: string;
 	/** Only the items that came from this one (`B12`). */
 	from?: string;
@@ -54,7 +56,7 @@ export interface ListQuery {
 	/** Priorities up to this one (0 is the most urgent). */
 	maxPriority?: number;
 	tags?: readonly string[];
-	/** Prefixes of an item's paths. */
+	/** Files or folders (repository-relative) the items touch: see `matchPaths`. */
 	paths?: readonly string[];
 	/** Items that depend on one of these (`B12`). */
 	dependsOn?: readonly string[];

@@ -26,6 +26,7 @@ const ITEM_FIELDS = new Set([
 	"createdBy",
 	"sourceSession",
 	"force",
+	"close",
 ]);
 
 export function entityInput(input: EntityInput): EntityInput {

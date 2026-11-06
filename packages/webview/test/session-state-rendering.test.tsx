@@ -125,6 +125,39 @@ it("lets the user answer an answerable dialog from the page, and says so instead
 	);
 });
 
+it("draws the terminal ask card on an awaiting ask: metadata, folded body, details, option descriptions and write-in", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	await view.session({
+		...running,
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: {
+			kind: "approval",
+			title: "Let this external message reach the agent?",
+			id: "d5",
+			options: ["Allow once", "Deny", "Deny and tell the agent why…"],
+			allowsText: false,
+			meta: ["from octocode-main-6c9a · external, not you"],
+			body: { text: "line one\nline two\nline three\nline four\nline five", collapsible: true },
+			details: [{ text: "risk: starts a turn", tone: "warning" }],
+			optionInfo: [{ description: "only this one" }, { danger: true }, { description: "the agent hears why" }],
+			writeIn: "Deny and tell the agent why…",
+		},
+	});
+	expect(screen.getByText("from octocode-main-6c9a · external, not you")).toBeInTheDocument();
+	const body = document.querySelector(".dialog-answer-body");
+	expect(body?.textContent).toBe("line one\nline two\nline three");
+	await userEvent.click(screen.getByRole("button", { name: "Show all (+2 lines)" }));
+	expect(document.querySelector(".dialog-answer-body")?.textContent).toContain("line five");
+	expect(screen.getByText("risk: starts a turn")).toBeInTheDocument();
+	expect(screen.getByText("only this one")).toBeInTheDocument();
+	expect(screen.getByText("the agent hears why")).toBeInTheDocument();
+	await userEvent.click(screen.getByRole("button", { name: "Deny and tell the agent why… ✎" }));
+	await waitFor(() =>
+		expect(posted().at(-1)).toMatchObject({ action: "answer", dialogId: "d5", choice: "Deny and tell the agent why…" }),
+	);
+});
+
 it("shows the broker's refusal of an answer the host first accepted, and takes a completed answer quietly", async () => {
 	const view = controlView(activity());
 	await view.workspace();

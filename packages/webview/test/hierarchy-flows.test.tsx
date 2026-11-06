@@ -155,25 +155,31 @@ describe("epic → item → task tree", () => {
 });
 
 describe("board and item detail", () => {
-	it("changes an item's state on its card, and sends closing to the editor", async () => {
+	it("moves an item from its card menu, and sends Done to the editor", async () => {
 		const user = userEvent.setup();
 		page("#board");
-		await user.selectOptions(screen.getByRole("combobox", { name: "State of B3" }), "backlog");
+		await user.click(screen.getByRole("button", { name: "Actions for B3" }));
+		await user.click(screen.getByRole("menuitem", { name: "Move to Backlog" }));
 		await waitFor(() => expect(posted()).toHaveLength(1));
 		expect(posted()[0]).toEqual({ command: "item.state", id: "B3", version: 1, state: "backlog" });
-		await user.selectOptions(screen.getByRole("combobox", { name: "State of B3" }), "done");
+		await user.click(screen.getByRole("button", { name: "Actions for B3" }));
+		await user.click(screen.getByRole("menuitem", { name: "Move to Done" }));
 		expect(location.hash).toBe("#B3/edit");
 		expect(posted()).toHaveLength(1);
 	});
 
-	it("places an epic in the column of its derived state and gives it no stored-state control", () => {
+	it("places an epic in the column of its derived state and gives it no way to move", async () => {
+		const user = userEvent.setup();
 		const { container } = page("#board");
 		const column = (state: string) => container.querySelector(`section.column.state-${state}`) as HTMLElement;
 		// B1 is stored as backlog but its item is ongoing: it sits with the ongoing items, not in the Backlog column.
 		expect(within(column("ongoing")).getByRole("link", { name: "Search epic" })).toBeInTheDocument();
 		expect(within(column("backlog")).queryByRole("link", { name: "Search epic" })).toBeNull();
-		expect(screen.queryByRole("combobox", { name: "State of B1" })).toBeNull();
-		expect(screen.getByRole("combobox", { name: "State of B2" })).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Actions for B1" }));
+		expect(screen.queryByRole("menuitem", { name: /Move to/ })).toBeNull();
+		await user.keyboard("{Escape}");
+		await user.click(screen.getByRole("button", { name: "Actions for B2" }));
+		expect(screen.getByRole("menuitem", { name: "Move to Backlog" })).toBeInTheDocument();
 	});
 
 	it("lists an item's tasks in its detail with an inline add", async () => {

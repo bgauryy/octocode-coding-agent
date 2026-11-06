@@ -37,7 +37,7 @@ The groups below name the flags; `octocode --help` has the exact syntax.
 - **Sessions**: `--continue`, `--resume`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
 - **Planning**: `--plan` starts with the planning constraint on (read-only until you approve a plan; see [native planning constraint](native-features.md#native-planning-constraint)).
 - **Tools**: `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools`, `--no-mcp`. See [native features](native-features.md#tool-selection-and-migration).
-- **Resources**: `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`. User code extensions are not supported, and their flags (`--extension`, `-e`, `--no-extensions`) are unknown options. Built-in features switch through the `extensions` setting (`-builtin:mcp`) or `--no-mcp`.
+- **Resources**: `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`. User code extensions are not supported, and their flags (`--extension`, `-e`, `--no-extensions`) are unknown options. Built-in features switch through the `extensions` setting (`-builtin:llama.cpp`); MCP is always on unless `--no-mcp` is passed.
 
 An unknown `--flag` fails at startup with `Unknown option: --flag` and a pointer to `octocode --help`; features cannot register flags of their own, so the table that `--help` and shell completion read lists every flag.
 

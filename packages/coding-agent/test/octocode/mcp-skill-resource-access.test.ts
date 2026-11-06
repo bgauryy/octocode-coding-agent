@@ -12,7 +12,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
+import { researchServerLaunch } from "./research-server-launch.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -54,7 +54,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 		fs.writeFileSync(unrelated, "UNRELATED_SECRET\n");
 		fs.symlinkSync(unrelated, path.join(loser, "escape.txt"));
 		if (owner !== "native") {
-			const { command, args } = octocodeLaunch(cwd, process.env);
+			const { command, args } = researchServerLaunch(cwd);
 			fs.writeFileSync(
 				path.join(agentDir, "mcp.json"),
 				JSON.stringify({

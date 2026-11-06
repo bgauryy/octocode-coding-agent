@@ -36,6 +36,7 @@ function snapshotItem(
 		plan: item.plan,
 		state: item.state,
 		priority: priorityName(item.priority),
+		...(item.rank === undefined ? {} : { rank: item.rank }),
 		tags: item.tags,
 		...(item.assignee
 			? {
@@ -49,6 +50,7 @@ function snapshotItem(
 		updatedAt: item.updatedAt,
 		...(item.startedAt ? { startedAt: item.startedAt } : {}),
 		...(item.doneAt ? { doneAt: item.doneAt } : {}),
+		...(item.closed ? { closed: item.closed } : {}),
 		version: item.version,
 		...(item.from === undefined ? {} : { from: refText(item.from) }),
 		derived: store.derived(item).map((child) => child.ref),
@@ -111,7 +113,7 @@ export function backlogSnapshot(store: BacklogStore, repo: string, now: number, 
 			seen.add(parent);
 			return (childrenOf.get(parent) ?? []).some((child) => child.state !== "done" || openDescendant(child.ref, seen));
 		};
-		item.needsReview = item.state === "done" && (item.blockedBy.length > 0 || openDescendant(item.ref));
+		item.needsReview = item.state === "done" && !item.closed && (item.blockedBy.length > 0 || openDescendant(item.ref));
 	}
 	refuseSecrets(snapshot);
 	return snapshot;

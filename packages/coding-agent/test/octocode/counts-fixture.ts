@@ -4,4 +4,5 @@ import type { BacklogCounts } from "../../src/octocode/backlog/counts.ts";
 export const itemCounts = (items: BacklogCounts["items"]): BacklogCounts => ({
 	items,
 	epics: { backlog: 0, todo: 0, ongoing: 0, done: 0 },
+	closed: 0,
 });

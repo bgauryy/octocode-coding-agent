@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFile, sha256 } from "../../../../common/src/atomic-file.ts";
-import { gitMarkerDir } from "../../utils/git-marker.ts";
-import { gitSync } from "../shared/git.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { PolicySource } from "./source-policy/rules.ts";
@@ -12,22 +10,6 @@ import {
 	type SourcePermissionUpdate,
 	type SourceRuleArrays,
 } from "../shared/permission-updates.ts";
-
-export function localPermissionAllowances(file: string): boolean {
-	if (path.basename(file) !== "settings.local.json") return false;
-	try {
-		if (fs.lstatSync(path.dirname(file)).isSymbolicLink() || fs.lstatSync(file).isSymbolicLink()) return false;
-		const directory = gitMarkerDir(path.dirname(path.dirname(file)));
-		if (directory === undefined) return true;
-		const tracked = gitSync(directory, ["ls-files", "-z", "--", path.relative(directory, file)], {
-			timeoutMs: 2000,
-			maxBuffer: 1024 * 1024,
-		});
-		return tracked.length === 0;
-	} catch {
-		return false;
-	}
-}
 
 interface SettingsWrite {
 	source: PolicySource;

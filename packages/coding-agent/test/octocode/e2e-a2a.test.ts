@@ -355,9 +355,11 @@ describe("the paths the protocol keeps", () => {
 		expect(results).toContain("Queued message");
 		// A process name is refused outright: a child has no route to another process and must ask its parent; nothing is queued.
 		expect(results).toContain("subagents have no route to other processes: nothing was sent");
-		// Its `to` field names no process address: a child gets only what it can use.
+		// Its `to` field names no process address (another process, or the main checkout's `coordinator` from a linked
+		// worktree): a child gets only what it can use. Prose may still call its parent its coordinator.
 		const declared = JSON.stringify(requestsOf(endpoint, child)[0]?.declarations.agent ?? "");
-		expect(declared).not.toContain("coordinator");
+		expect(declared).not.toContain("linked worktree");
+		expect(declared).not.toContain("another Octocode process");
 		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("only you reach other Octocode processes");
 		await until(
 			() => endpoint.requests.some((request) => JSON.stringify(request.messages).includes("hello from the child")),

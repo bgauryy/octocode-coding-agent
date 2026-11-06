@@ -77,6 +77,7 @@ function createSession(options: {
 		},
 		sessionManager: {
 			getEntries: () => entries,
+			getBranch: () => entries,
 			getEntryCount: () => entries.length,
 			getSessionId: () => "test-session",
 			getLeafId: () => null,

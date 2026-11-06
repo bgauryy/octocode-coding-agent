@@ -106,7 +106,7 @@ describe("a session tree", () => {
 		await reachedStep(endpoint, sender, 3, "the sender's three sends");
 		const sent = resultsOf(endpoint, sender);
 		expect(sent).toMatch(/Queued message #\d+ for \S+ as an FYI/);
-		expect(sent).toContain(`${outsider} is outside your team; ask your parent`);
+		expect(sent).toContain(`${outsider} is outside your team; ask your coordinator`);
 		expect(read(store, (db) => db.pending(outsider).map((each) => each.text))).toEqual([]);
 
 		// The busy child read both messages in a later step of its own script, with no extra request: steered, not woken.
@@ -124,11 +124,11 @@ describe("a session tree", () => {
 		expect(steered, `the busy child's requests: ${heard(busy)}${heard(done)}`).toBeDefined();
 		expect(steered!.step).toBeGreaterThan(0);
 		const fromParent = steered!.messages.find((each) => each.text.includes("parent to the busy child"))!.text;
-		expect(fromParent).toContain("your parent agent");
+		expect(fromParent).toContain("your coordinator");
 		const fromSibling = requestsOf(endpoint, done)
 			.flatMap((request) => request.messages)
 			.find((each) => each.text.includes("hello team from the sender"))!.text;
-		expect(fromSibling).not.toContain("your parent agent");
+		expect(fromSibling).not.toContain("your coordinator");
 
 		// The parent went idle after starting both, and the sender's wake started a turn that read it.
 		await until(

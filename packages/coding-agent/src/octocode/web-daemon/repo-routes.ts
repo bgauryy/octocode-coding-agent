@@ -1,15 +1,17 @@
 import type { IncomingMessage } from "node:http";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
+import { isFolderTrusted } from "../trust/port.ts";
 import { handleDocsRequest } from "../workspace/docs.ts";
 import { handleReportsRequest } from "../workspace/reports.ts";
+import { handleBoardWrite } from "./board-write.ts";
 import type { Reply } from "./http-util.ts";
 import type { RepoCatalog, RepoInfo } from "./repos.ts";
 
 /**
- * The read-only routes both scopes share: the repository's board, audit and saved reports and documents. `self` is the attached
- * session (its claims show as live). Returns true when the request was answered. A write is refused: the phase-1 board
- * is read-only, and writes keep going through a session's own page.
+ * The routes both scopes share: the repository's board (read, and written through `handleBoardWrite`), audit and saved
+ * reports and documents (read-only). `self` is the attached session (its claims show as live). Returns true when the
+ * request was answered. Token, Host and Origin checks ran before this is reached.
  */
 export async function handleRepoRequest(
 	req: IncomingMessage,
@@ -21,8 +23,12 @@ export async function handleRepoRequest(
 ): Promise<boolean> {
 	const store = () => catalog.store(repo.id);
 	if (url.pathname === WORKSPACE_ROUTES.backlogs) {
+		if (req.method === "POST") {
+			await handleBoardWrite(req, store(), self, reply);
+			return true;
+		}
 		if (req.method !== "GET") {
-			reply(405, { error: "The board is read-only in the web daemon; use the session's own board to edit." });
+			reply(405, { error: "Method not allowed" });
 			return true;
 		}
 		reply(200, backlogSnapshot(store(), repo.name, Date.now(), self));
@@ -50,5 +56,5 @@ export async function handleRepoRequest(
 		}
 		return handleReportsRequest(req, url, repo.root, reply);
 	}
-	return handleDocsRequest(req, url, repo.root, reply);
+	return handleDocsRequest(req, url, repo.root, reply, isFolderTrusted);
 }

@@ -1,7 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { redactData, redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
-import { boundedExternal, boundedText } from "./bridge/bounded.ts";
+import { boundedText } from "./bridge/bounded.ts";
+import { TurnCeilings } from "./bridge/ceiling.ts";
+import { callExternal } from "./bridge/external-call.ts";
 import { admission, callerFrom, externalFacts } from "./bridge/caller.ts";
 import { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
 import { historyPage } from "./bridge/history.ts";
@@ -33,7 +35,7 @@ import {
 	writeRecord,
 } from "./registry.ts";
 import { ApiServer, type Connection } from "./server.ts";
-import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Session entry (`api.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";
@@ -64,6 +66,8 @@ export class OctocodeApi {
 	private readonly version: () => string | undefined;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly operations: ApiOperations;
+	/** The `sessionApiTurnPermission` ceiling's owner; `operations` is what it hands back. */
+	private readonly ceilings: TurnCeilings;
 	constructor(
 		api: ExtensionAPI,
 		agents: AgentDirectory,
@@ -75,7 +79,8 @@ export class OctocodeApi {
 		this.agents = agents;
 		this.version = version;
 		this.env = env;
-		this.operations = operations;
+		this.ceilings = new TurnCeilings(operations);
+		this.operations = this.ceilings.operations;
 
 		this.dir = apiDir(env);
 	}
@@ -297,25 +302,8 @@ export class OctocodeApi {
 				ctx.abort();
 				return { aborted: wasBusy };
 			}
-			case "external.call": {
-				if (!this.operations.externalCall) throw new RpcError(ERR.unavailable, "External agents are not registered");
-				try {
-					return boundedExternal(await this.operations.externalCall(params, this.session()));
-				} catch (error) {
-					const details = asRecord(error);
-					const data = Object.fromEntries(
-						["partial", "execution", "stderr"]
-							.filter((key) => details[key] !== undefined)
-							.map((key) => [key, details[key]]),
-					);
-					const evidence = boundedExternal(data);
-					const visible =
-						isRecord(evidence) && evidence.fullOutput
-							? { ...redactData({ execution: data.execution }), ...evidence }
-							: evidence;
-					throw new RpcError(ERR.unavailable, redactSecrets(errorMessage(error)), visible);
-				}
-			}
+			case "external.call":
+				return callExternal(this.ceilings, params, () => this.session());
 			case "messages.list":
 				return this.history(
 					clampedParam(params, "limit", { min: 1, max: HISTORY_MAX_PAGE }) ?? HISTORY_PAGE,
@@ -350,9 +338,11 @@ export class OctocodeApi {
 		const to = stringParam(params, "to")!;
 		const text = visibleControls(stringParam(params, "text")!);
 		const facts = externalFacts("external client", callerFrom(params), undefined, false);
-		await this.operations.admit?.(admission(facts, text), this.session()).catch((error: unknown) => {
-			throw new RpcError(ERR.unavailable, errorMessage(error), { execution: "not-sent" });
-		});
+		await this.operations
+			.admit?.(admission(facts, text, this.ceilings.current()), this.session())
+			.catch((error: unknown) => {
+				throw new RpcError(ERR.unavailable, errorMessage(error), { execution: "not-sent" });
+			});
 		const result = await this.agents.tell(to, text);
 		this.audit({
 			method: "agents.tell",

@@ -96,7 +96,7 @@ describe("a background subagent that reported blocked", () => {
 			await t.control.settle();
 			expect(t.reports()).toHaveLength(2);
 			expect(t.reports()[1]).toMatch(
-				/Message #[1-9]\d* from your parent agent [^\n]*:\n<<<untrusted-[0-9a-f]{16} \(from your parent agent[^\n]*\n[^\n]*linger answered: use the second option/,
+				/Message #[1-9]\d* from your coordinator [^\n]*:\n<<<untrusted-[0-9a-f]{16} \(from your coordinator[^\n]*\n[^\n]*linger answered: use the second option/,
 			);
 			// The follow-up reported no outcome: with the setting at 0 nothing keeps the run reachable.
 			expect(t.reports()[1]).not.toContain("reachable");
@@ -180,7 +180,7 @@ describe("a profile's linger seconds", () => {
 			expect(t.reports()[0]).toContain(`${id} stays reachable for 900 s`);
 			expect(await t.team.send(id, "linger follow-up", { replyRequired: false })).toHaveProperty("resumed");
 			await t.control.settle();
-			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your parent agent [\s\S]*linger follow-up/);
+			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your coordinator [\s\S]*linger follow-up/);
 		});
 	});
 

@@ -10,6 +10,8 @@ describe("usage helpers", () => {
 		const counts = { input: 10, output: 5, cacheRead: 3, cacheWrite: 2 };
 		expect(sumUsageTokens(counts, 99)).toBe(99);
 		expect(sumUsageTokens(counts, 0)).toBe(20);
+		// A provider total that leaves cache tokens out never shrinks the context size below the parts.
+		expect(sumUsageTokens(counts, 12)).toBe(20);
 		expect(sumUsageTokens(counts, undefined)).toBe(20);
 	});
 

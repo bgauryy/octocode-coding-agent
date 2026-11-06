@@ -283,6 +283,24 @@ function CopyLinkButton({ refName }: { refName: string }) {
 }
 
 function Results({ item: it }: { item: SnapshotItem }) {
+	if (it.closed)
+		return (
+			<Section title="Closed">
+				<p>
+					<Badge>{it.closed.kind.replace("_", " ")}</Badge>
+					{it.closed.of ? (
+						<>
+							{" "}
+							of <a href={`#${it.closed.of}`}>{it.closed.of}</a>
+						</>
+					) : null}{" "}
+					<span className="muted">
+						· {it.closed.by} · {stamp(it.closed.at)}
+					</span>
+				</p>
+				<LongText text={it.closed.text} label="reason" />
+			</Section>
+		);
 	if (!it.completions?.length)
 		return it.state === "done" ? (
 			<Section title="Results">

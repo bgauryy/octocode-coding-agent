@@ -82,7 +82,7 @@ describe("native features over RPC", () => {
 	}, 90_000);
 
 	it.each([
-		{ settings: ["-builtin:mcp"], args: [] as string[], mcp: false, llama: true },
+		{ settings: ["-builtin:mcp"], args: [] as string[], mcp: true, llama: true },
 		{ settings: ["-builtin:llama.cpp"], args: [], mcp: true, llama: false },
 		{ settings: [], args: ["--no-mcp"], mcp: false, llama: true },
 	])(

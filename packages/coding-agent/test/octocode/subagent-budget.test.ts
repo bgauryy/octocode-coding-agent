@@ -89,11 +89,11 @@ describe("RequestBudget", () => {
 	it("words the steer for how the child runs: a child its parent can answer asks, any other says so in its report", () => {
 		const ask = steerMessage(6, 6, 9, { ask: true });
 		expect(ask).toBe(
-			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nIf what is left (3) is enough, finish within it. If you need more, ask your parent now: send `agent` type `message` to `parent` with `replyRequired: true`, saying how many more requests you need and why, and keep working meanwhile. If no answer comes, the run still stops at 9 and your work so far is kept.",
+			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nIf what is left (3) is enough, finish within it. If you need more, ask your coordinator now: send `agent` type `message` to `parent` with `replyRequired: true`, saying how many more requests you need and why, and keep working meanwhile. If no answer comes, the run still stops at 9 and your work so far is kept.",
 		);
 		const report = steerMessage(6, 6, 9);
 		expect(report).toBe(
-			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nYour parent waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
+			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nYour coordinator waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
 		);
 		const steer = vi.fn();
 		const quiet = new RequestBudget(2, steer, vi.fn(), 0, { canAsk: false });
@@ -249,7 +249,7 @@ describe("coordinate grant", () => {
 		expect(budgets.usage("a-1")).toEqual({ used: 3, soft: 9, hard: 11 });
 		expect(send).toHaveBeenCalledWith(
 			"a-1",
-			"Your parent granted 5 more model requests for this run: you have used 3, your next check is at 9, and the run now stops at 11.",
+			"Your coordinator granted 5 more model requests for this run: you have used 3, your next check is at 9, and the run now stops at 11.",
 			{ replyRequired: false },
 		);
 		expect(result.content[0]).toMatchObject({

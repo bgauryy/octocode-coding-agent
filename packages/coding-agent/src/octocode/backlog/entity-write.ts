@@ -112,11 +112,12 @@ export function applyEntities(
 	for (const item of items) visit(item.ref);
 	const unresolved = current.dependsOn.filter((r) => byRef.get(r.id)?.state !== "done");
 	const closing = current.state === "done" && (before.state !== "done" || input.completion !== undefined);
+	const completing = closing && !current.closed;
 	const starting = input.state === "ongoing" && (before.state !== "ongoing" || before.assignee !== current.assignee);
 	const addedPrerequisite = unresolved.some(
 		(ref) => !before.dependsOn.some((old) => old.id === ref.id && old.repositoryKey === ref.repositoryKey),
 	);
-	if (["ongoing", "done"].includes(current.state) && unresolved.length && (closing || starting || addedPrerequisite))
+	if (["ongoing", "done"].includes(current.state) && unresolved.length && (completing || starting || addedPrerequisite))
 		throw new BacklogError(`Blocked by ${unresolved.map((r) => r.id).join(", ")}.`);
 
 	const descendants = (parent: string): Item[] =>

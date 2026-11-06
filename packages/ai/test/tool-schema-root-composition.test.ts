@@ -112,8 +112,8 @@ describe("local JSON Pointer resolution", () => {
 		const root: Record<string, unknown> = {};
 		root.$ref = "#";
 		const result = resolveLocalRef({ $ref: "#" }, root);
-		// After 16 resolution steps the cycle is cut off and the last schema is returned.
-		expect(result).toBeDefined();
+		// After 16 resolution steps the cycle is cut off and the last schema is returned, not looped on forever.
+		expect(result).toEqual({ $ref: "#" });
 	});
 
 	it("preserves sibling keywords when inlining a $ref", () => {

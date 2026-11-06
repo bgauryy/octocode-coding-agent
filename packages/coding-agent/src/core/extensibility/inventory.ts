@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { canonicalizePath } from "../../../../common/src/paths.ts";
 import { HOOK_CATALOG, HOOK_EVENTS } from "../../octocode/hooks/catalog.ts";
 import { hookFiles, hookLabel, loadHooks } from "../../octocode/hooks/config.ts";
 import { hookSwitchedOn, hookToggleIds } from "../../octocode/hooks/config/toggles.ts";
@@ -7,12 +9,13 @@ import { repoKey } from "../../octocode/shared/home/repo.ts";
 import { clipText } from "../../octocode/shared/util.ts";
 import { DefaultPackageManager } from "../package-manager.ts";
 import { buildGroups } from "../package-manager/resource-groups.ts";
-import { BUILTIN_FEATURE_IDS } from "../features/builtin-ids.ts";
-import type { SettingsManager } from "../settings-manager.ts";
+import { SWITCHABLE_BUILTIN_IDS, builtinEffect } from "../features/builtin-ids.ts";
+import { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import { hostInstalledPlugins } from "./host-plugins.ts";
 import { vendorItems } from "../../octocode/harness/vendor-items.ts";
-import { discoveryInput } from "../discovery/service.ts";
+import { configDiscovery, discoveryInput } from "../discovery/service.ts";
+import type { DiscoverInput } from "../discovery/types.ts";
 import { harnessStatuses } from "../discovery/vendors/index.ts";
 import { EMPTY_INVENTORY, type Inventory, type InventoryHost, type InventoryItem } from "./inventory-types.ts";
 import { count, pluginItems } from "../../octocode/harness/plugin-items.ts";
@@ -140,9 +143,53 @@ function hookItems(
 	return items;
 }
 
+/**
+ * Pi's global skills that discovery keeps (Pi harness on, not shadowed by another harness). The session resolves them
+ * with Pi's own settings (the Pi fallback in `FeatureSetLoader`), so this does the same to read their state; the package
+ * resolver has no row for them. They are read-only because Octocode never writes Pi's files.
+ */
+async function piSkillItems(input: DiscoverInput, cwd: string, home?: string): Promise<InventoryItem[]> {
+	const names = new Map(
+		configDiscovery
+			.discover("skill", input)
+			.filter(({ loaded, provenance }) => loaded && provenance.product === "pi" && provenance.scope === "global")
+			.map((item) => [canonicalizePath(item.provenance.path), item.name]),
+	);
+	if (names.size === 0) return [];
+	const items: InventoryItem[] = [];
+	for (const piDir of input.piRoots) {
+		if (!existsSync(piDir)) continue;
+		const settingsManager = SettingsManager.create(cwd, piDir, { projectTrusted: false });
+		const { skills } = await new DefaultPackageManager({ cwd, agentDir: piDir, settingsManager }).resolve(
+			async () => "skip",
+		);
+		for (const skill of skills) {
+			const name = names.get(canonicalizePath(skill.path));
+			if (name === undefined || items.some((item) => item.id === `skill:${tildePath(skill.path, home)}`)) continue;
+			items.push({
+				id: `skill:${tildePath(skill.path, home)}`,
+				name,
+				host: "skills",
+				kind: "skill",
+				depth: 0,
+				label: name,
+				on: skill.enabled,
+				detail: `Pi (global) · ${tildePath(skill.path, home)}`,
+				locked: "Pi's own settings decide this skill; /harness disable pi switches every Pi skill off.",
+			});
+		}
+	}
+	return items;
+}
+
 /** Extensions and skills from the package resolver, switched by the `extensions` and `skills` patterns. */
-async function resourceItems(manager: SettingsManager, cwd: string, agentDir: string): Promise<InventoryItem[]> {
-	const builtinExtensions = [...BUILTIN_FEATURE_IDS];
+async function resourceItems(
+	manager: SettingsManager,
+	cwd: string,
+	agentDir: string,
+	extraSkills: readonly InventoryItem[],
+): Promise<InventoryItem[]> {
+	const builtinExtensions = [...SWITCHABLE_BUILTIN_IDS];
 	// "skip": listing must never install a missing package source.
 	const resolved = await new DefaultPackageManager({
 		cwd,
@@ -177,14 +224,14 @@ async function resourceItems(manager: SettingsManager, cwd: string, agentDir: st
 									depth: 0,
 									label: `${resource.displayName} (extension)`,
 									on: resource.enabled,
-									detail: `${group.label} · ${group.scope}`,
+									detail: `${group.label} · ${group.scope}${builtinEffect(resource.path) ? ` · switching it off ${builtinEffect(resource.path)}` : ""}`,
 									resource,
 								},
 					),
 				),
 		);
 	// Skills read best alphabetically; the detail names the folder each comes from.
-	return [...rows("extensions"), ...rows("skills").sort((a, b) => a.label.localeCompare(b.label))];
+	return [...rows("extensions"), ...[...rows("skills"), ...extraSkills].sort((a, b) => a.label.localeCompare(b.label))];
 }
 
 /** What an MCP row reads of a server in the MCP host's status snapshot (core does not import the MCP package). */
@@ -236,15 +283,14 @@ export async function buildInventory(options: {
 }): Promise<Inventory> {
 	const notes: string[] = [];
 	const configured = new Set((options.settings.plugins ?? []).map((entry) => path.resolve(entry.path)));
-	const statuses = harnessStatuses(
-		discoveryInput({
-			cwd: options.cwd,
-			agentDir: options.agentDir,
-			projectTrusted: options.projectTrusted,
-			...(options.home ? { home: options.home } : {}),
-			...(options.settings.toggles ? { toggles: options.settings.toggles } : {}),
-		}),
-	);
+	const input = discoveryInput({
+		cwd: options.cwd,
+		agentDir: options.agentDir,
+		projectTrusted: options.projectTrusted,
+		...(options.home ? { home: options.home } : {}),
+		...(options.settings.toggles ? { toggles: options.settings.toggles } : {}),
+	});
+	const statuses = harnessStatuses(input);
 	const items = [
 		...vendorItems(statuses, options.settings.toggles),
 		...pluginItems(
@@ -274,7 +320,12 @@ export async function buildInventory(options: {
 			(host) => statuses.find((status) => status.id === host)?.on !== false,
 			options.home,
 		),
-		...(await resourceItems(options.manager, options.cwd, options.agentDir)),
+		...(await resourceItems(
+			options.manager,
+			options.cwd,
+			options.agentDir,
+			await piSkillItems(input, options.cwd, options.home),
+		)),
 		...mcpItems(options.mcp ?? [], options.home),
 	];
 	const ids = new Set(items.map((item) => item.id));

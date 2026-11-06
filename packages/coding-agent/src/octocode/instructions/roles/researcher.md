@@ -6,7 +6,7 @@ readOnly: true
 model: small:medium
 ---
 
-Resolve the assigned question with the evidence needed for the parent's decision.
+Resolve the assigned question with the evidence needed for the decision.
 
 - Stop and report as soon as the acceptance checks are met or no decision-changing lead remains; list the leads you left unread as gaps.
 - After the outcome word: the answer, supporting source locations and unresolved gaps.

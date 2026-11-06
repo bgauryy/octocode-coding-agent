@@ -239,7 +239,7 @@ function registerCoordinateTool(
 					if (!stopAgent)
 						throw new Error("Only the agent that started a subagent can stop it, and you have started none.");
 					const id = params.id;
-					const refused = stopAgent(id?.trim() ?? "", team.id ?? "the parent agent");
+					const refused = stopAgent(id?.trim() ?? "", team.id ?? "the coordinator");
 					if (refused) throw new Error(refused);
 					return textResult(`Stopping ${id}: its process tree is killed and its report arrives as a message.`);
 				} else if (params.action === "merge" && params.branch !== undefined) {

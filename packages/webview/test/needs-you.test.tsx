@@ -10,7 +10,8 @@ import { titleWithCount } from "../src/app/model/needs-you.ts";
 import { posted, setupControls } from "./control-fixtures.tsx";
 import { FakeSocket } from "./helpers.ts";
 
-const BASE_TITLE = "Octocode workspace";
+/** The shell titles the page after its view; the needs-you count prefixes it. */
+const BASE_TITLE = "Board · Octocode";
 const awaiting = {
 	kind: "approval" as const,
 	title: "Run rm -rf build?",

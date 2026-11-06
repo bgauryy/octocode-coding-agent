@@ -39,6 +39,16 @@ describe("page Content-Security-Policy", () => {
 		expect(policy.has("connect-src")).toBe(false);
 	});
 
+	it("allows the host's own service worker on a live page only", () => {
+		for (const html of [renderBacklogHtml(snapshot, true), renderDaemonHtml()])
+			expect(metaPolicy(html).get("worker-src")).toBe("'self'");
+		expect(metaPolicy(renderBacklogHtml(snapshot)).has("worker-src")).toBe(false);
+		expect(directives(pagePolicy({ scripts: ["'sha256-a'"], live: true, header: true })).get("worker-src")).toBe(
+			"'self'",
+		);
+		expect(directives(pagePolicy({ scripts: ["'sha256-a'"], live: false })).has("worker-src")).toBe(false);
+	});
+
 	it("builds a header with the given script hashes, no 'unsafe-inline', and framing forbidden", () => {
 		const policy = directives(pagePolicy({ scripts: ["'sha256-a'", "'sha256-b'"], live: true, header: true }));
 		expect(policy.get("script-src")).toBe("'sha256-a' 'sha256-b'");

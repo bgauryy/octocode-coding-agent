@@ -1,7 +1,7 @@
 {
 	"name": "octocode",
 	"enabledEnv": "OCTOCODE_MCP",
-	"description": "Code search and read; each tool's description says when to use it. Use before bash or web.",
+	"description": "Code search and read; each tool's description says when to use it.",
 	"exposure": "direct",
 	"command": "octocode-mcp",
 	"inheritEnv": true,

@@ -7,7 +7,6 @@
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { Component } from "@octocodeai/octocode-tui";
-import { reasonRow } from "../../modes/interactive/components/tool-execution/reason.ts";
 import type { Theme } from "../../theme/theme.ts";
 import type { ToolRenderContext, ToolRenderers } from "../features/types.ts";
 import { ansiLinesToHtml } from "./ansi-to-html.ts";
@@ -22,7 +21,13 @@ interface ToolHtmlRendererDeps {
 	cwd: string;
 	/** Terminal width for rendering (default: 100) */
 	width?: number;
+	/** The reason row of a tool call, as the terminal draws it; supplied by the host because `core/` cannot import the tool views. */
+	reasonRow: ToolRowView;
+	/** The purpose block below a tool result (what its own data states per query row), likewise supplied by the host. */
+	purposeRows: ToolRowView;
 }
+
+export type ToolRowView = (toolName: string, args: unknown, structuredContent?: unknown) => Component | undefined;
 
 /**
  * Create a tool HTML renderer.
@@ -45,7 +50,7 @@ function trimRenderedResultLines(lines: string[]): string[] {
 }
 
 export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRenderer {
-	const { getToolRenderers, theme, cwd, width = 100 } = deps;
+	const { getToolRenderers, theme, cwd, width = 100, reasonRow, purposeRows } = deps;
 
 	const renderedCallComponents = new Map<string, Component>();
 	const renderedResultComponents = new Map<string, Component>();
@@ -127,6 +132,8 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				// An MCP call's purpose comes from its result, so it opens the result, right under the call. Without the
 				// arguments a native tool's reason row (drawn with its call) is not repeated here.
 				const purpose = reasonRow(toolName, undefined, structuredContent)?.render(width) ?? [];
+				// Under the result message, below its output, and not repeating the reason row above.
+				const returned = purposeRows(toolName, renderedArgs.get(toolCallId), structuredContent)?.render(width) ?? [];
 
 				// Build AgentToolResult from content array
 				// Cast content since session storage uses generic object types
@@ -144,7 +151,11 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 					createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError),
 				);
 				renderedResultComponents.set(toolCallId, collapsedComponent);
-				const collapsed = ansiLinesToHtml([...purpose, ...trimRenderedResultLines(collapsedComponent.render(width))]);
+				const collapsed = ansiLinesToHtml([
+					...purpose,
+					...trimRenderedResultLines(collapsedComponent.render(width)),
+					...returned,
+				]);
 
 				// Render expanded
 				const expandedComponent = toolDef.renderResult(
@@ -154,7 +165,11 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 					createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), true, false, isError),
 				);
 				renderedResultComponents.set(toolCallId, expandedComponent);
-				const expanded = ansiLinesToHtml([...purpose, ...trimRenderedResultLines(expandedComponent.render(width))]);
+				const expanded = ansiLinesToHtml([
+					...purpose,
+					...trimRenderedResultLines(expandedComponent.render(width)),
+					...returned,
+				]);
 
 				return {
 					...(collapsed && collapsed !== expanded ? { collapsed } : {}),

@@ -157,7 +157,9 @@ it("a malformed later update invalidates the whole approval without partial publ
 
 for (const destination of ["session", "userSettings", "localSettings"]) {
 	it(`${destination} grant ${destination === "session" ? "expires" : "survives"} when a new actual session loads the same configuration`, async () => {
+		// A project's local settings allow only in a trusted project, so that destination runs trusted.
 		const f = await fixture("claude", {
+			...(destination === "localSettings" ? { projectTrusted: true } : {}),
 			output: decision({
 				behavior: "allow",
 				updatedPermissions: [update("addRules", "node -p 42", "allow", destination)],
@@ -221,7 +223,9 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 		projectTrusted: false,
 		output: decision({
 			behavior: "allow",
-			updatedPermissions: [update("addRules", "node -p 42", "allow", "projectSettings")],
+			// An untrusted project's files never grant, so an allow update there is refused (see
+			// source-permission-updates-untrusted.test.ts); a restricting one is still written.
+			updatedPermissions: [update("addRules", "node -p 42", "ask", "projectSettings")],
 		}),
 	});
 	try {
@@ -248,7 +252,7 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 41" });
 		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
-		expect(JSON.parse(fs.readFileSync(config, "utf8")).permissions.allow).toContain("Bash(node -p 42)");
+		expect(JSON.parse(fs.readFileSync(config, "utf8")).permissions.ask).toContain("Bash(node -p 42)");
 		fs.writeFileSync(
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
@@ -262,6 +266,29 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 		await f.close();
 	}
 });
+
+for (const destination of ["projectSettings", "localSettings"]) {
+	it(`a hook's allow update to ${destination} in an untrusted project is refused and writes nothing`, async () => {
+		const f = await fixture("claude", {
+			projectRules: {},
+			projectTrusted: false,
+			output: decision({
+				behavior: "allow",
+				updatedPermissions: [update("addRules", "node -p 42", "allow", destination)],
+			}),
+		});
+		try {
+			await f.run("bash", { command: "node -p 42" });
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
+			expect(result).toMatchObject({ isError: true });
+			expect(JSON.stringify(result)).toMatch(/not saved: this project is not trusted/);
+			expect(fs.existsSync(path.join(f.cwd, ".claude/settings.local.json"))).toBe(false);
+			expect(fs.readFileSync(path.join(f.cwd, ".claude/settings.json"), "utf8")).not.toContain("node -p 42");
+		} finally {
+			await f.close();
+		}
+	});
+}
 
 it("cancellation before a held update reply publishes no session grant", async () => {
 	const f = await fixture("claude", {

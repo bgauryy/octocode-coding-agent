@@ -8,11 +8,11 @@ import { compact, ResultCount, Toolbar } from "./shared.tsx";
 
 export function BacklogFilters({ index, params, setParams, shown }: ViewProps & { shown: number }) {
 	const search = useRef<HTMLInputElement>(null);
-	const { q = "", p = "", type = "", ready = "", assignee = "", tag = "", sort = "" } = params;
+	const { q = "", p = "", type = "", ready = "", assignee = "", tag = "", sort = "", closed = "" } = params;
 	const assignees = useMemo(() => distinct(index.items, (item) => (item.assignee ? [item.assignee] : [])), [index]);
 	const tags = useMemo(() => distinct(index.items, (item) => item.tags), [index]);
 	const update = (patch: Record<string, string>) =>
-		setParams(compact({ q, p, type, ready, assignee, tag, sort, ...patch }));
+		setParams(compact({ q, p, type, ready, assignee, tag, sort, closed, ...patch }));
 	return (
 		<Toolbar label="Board filters">
 			<SearchField
@@ -41,12 +41,20 @@ export function BacklogFilters({ index, params, setParams, shown }: ViewProps & 
 			>
 				Ready to start
 			</Button>
+			<Button
+				size="sm"
+				className="toggle"
+				aria-pressed={closed === "show"}
+				onClick={() => update({ closed: closed ? "" : "show" })}
+			>
+				Show closed
+			</Button>
 			{Boolean(q || p || type || ready || assignee || tag) && (
 				<Button
 					variant="ghost"
 					size="sm"
 					onClick={() => {
-						setParams(compact({ sort }));
+						setParams(compact({ sort, closed }));
 						search.current?.focus();
 					}}
 				>

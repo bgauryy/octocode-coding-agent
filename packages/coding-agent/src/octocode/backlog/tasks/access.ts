@@ -13,11 +13,11 @@ export function itemAccess(db: Db, item: Item, actor: Actor): void {
 	if (actor.owners) {
 		if (!(item.assignee && actor.owners.has(item.assignee)))
 			throw new BacklogError(
-				`${item.ref} is not claimed by your parent: a subagent touches only the tasks of items its parent has claimed. Ask your parent to claim it (agent message to parent), or add session steps without an item.`,
+				`${item.ref} is not claimed by your coordinator: a subagent touches only the tasks of items its coordinator has claimed. Ask your coordinator to claim it (agent message, to: "parent"), or add session steps without an item.`,
 			);
 		if (actor.item !== undefined && parseRef(actor.item) !== item.seq)
 			throw new BacklogError(
-				`${item.ref} is not your item: your parent started you for B${parseRef(actor.item) ?? actor.item}, the only item whose tasks you may touch.`,
+				`${item.ref} is not your item: your coordinator started you for B${parseRef(actor.item) ?? actor.item}, the only item whose tasks you may touch.`,
 			);
 		return;
 	}

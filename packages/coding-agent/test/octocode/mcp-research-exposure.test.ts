@@ -1,5 +1,5 @@
 import "../mcp-host.ts";
-import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
+import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
@@ -11,7 +11,7 @@ import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
-import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
+import { researchServerLaunch } from "./research-server-launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
@@ -61,7 +61,7 @@ async function declaredTools(
 			{ name: "faux", factory: provider },
 			{
 				name: "builtin:mcp",
-				factory: createMcpExtension({ presets: [octocodePreset()], logPath: path.join(root, "mcp.log") }),
+				factory: createMcpExtension({ presets: recommendedPresets(), logPath: path.join(root, "mcp.log") }),
 			},
 		],
 		disabledFeatures: ["mcp", "llama.cpp"],
@@ -112,7 +112,7 @@ async function declaredTools(
 }
 
 const real = () => {
-	const { command, args, env } = octocodeLaunch(process.cwd());
+	const { command, args, env } = researchServerLaunch(process.cwd());
 	return { command, args, env: { ...env, ALLOWED_PATHS: process.cwd() } };
 };
 const RESEARCH = ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"].map(
@@ -178,7 +178,6 @@ describe("Octocode research tools declared for a user-owned server", () => {
 
 	it("uses the same direct default for Octocode and other servers", async () => {
 		const { getMcpToolExposure } = await import("../../../mcp/src/servers.ts");
-		expect(octocodePreset(() => [], {}).config?.exposure).toBeUndefined();
 		for (const tool of ["localFetch", "ghSearchCode", "ghSearchHistory"])
 			expect(getMcpToolExposure({ command: "x" }, tool)).toBe("direct");
 		expect(getMcpToolExposure({ command: "x", exposure: "hidden" }, "localFetch")).toBe("hidden");

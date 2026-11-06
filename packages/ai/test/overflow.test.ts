@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "../src/types.ts";
 import { isContextOverflow, isRecoverableLength } from "../src/utils/overflow.ts";
 
+describe("silent overflow", () => {
+	it("counts cache writes as part of the prompt", () => {
+		const base = createErrorMessage("");
+		const message: AssistantMessage = {
+			...base,
+			errorMessage: undefined,
+			stopReason: "stop",
+			usage: { ...base.usage, input: 10, cacheRead: 600, cacheWrite: 500, output: 5 },
+		};
+		expect(isContextOverflow(message, 1000)).toBe(true);
+		expect(isContextOverflow(message, 2000)).toBe(false);
+	});
+});
+
 function createErrorMessage(errorMessage: string, provider = "ollama"): AssistantMessage {
 	return {
 		role: "assistant",

@@ -176,7 +176,7 @@ describe("permission modes in a headless run", () => {
 		for (const result of after) {
 			expect(result.isError).toBe(true);
 			expect(result.text.startsWith(NEEDS_APPROVAL)).toBe(true);
-			expect(result.text).toContain("report to your parent what is blocked, why, and what you need");
+			expect(result.text).toContain("report to your coordinator what is blocked, why, and what you need");
 		}
 		expect(fs.existsSync(path.join(cwd, "new.txt"))).toBe(false);
 		expect(fs.existsSync(path.join(cwd, "ran.txt"))).toBe(false);

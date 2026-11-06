@@ -50,6 +50,16 @@ export interface ExtensionUIAskView {
 	multiSelect?: boolean;
 }
 
+/** How a custom dialog is answered by a remote client (see `ExtensionUIContext.custom`). */
+export interface ExtensionUIRemoteAnswer<T> {
+	title: string;
+	/** The choices a client may send; each must be answered by `answer({ choice })`. */
+	options: string[];
+	allowsText?: boolean;
+	ask?: ExtensionUIAskView;
+	answer(answer: { choice: string } | { text: string }): T | undefined;
+}
+
 /** Options for extension UI dialogs. */
 export interface ExtensionUIDialogOptions {
 	/** Select dialogs only: the structured view a terminal draws instead of the plain title. */
@@ -185,6 +195,12 @@ export interface ExtensionUIContext {
 			overlayOptions?: OverlayOptions | (() => OverlayOptions);
 			/** Called with the overlay handle after the overlay is shown. Use to control visibility. */
 			onHandle?: (handle: OverlayHandle) => void;
+			/**
+			 * Let a remote client (the web workspace, an RPC client) answer this dialog too, as it can a select: first answer
+			 * wins and the terminal component is closed through its `done`. `answer` maps the client's choice or text to the
+			 * dialog's result, or undefined to refuse it.
+			 */
+			remote?: ExtensionUIRemoteAnswer<T>;
 		},
 	): Promise<T | undefined>;
 

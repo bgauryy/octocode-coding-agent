@@ -120,7 +120,9 @@ export function readOnlyRoleRefusal(
 			`Changing ${changed} from the shell${effect.afterUnjoinedCd && !path.isAbsolute(changed) ? " (a `cd` joined by `;` or a newline may have failed, leaving it here: join it with `&&`)" : ""}`,
 		);
 	if (effect.opaque.length > 0)
-		return refusal(`\`${effect.opaque[0]}\` (it changes files or repository state without naming a path)`);
+		return refusal(
+			`\`${effect.opaque[0]}\` (${effect.opaque[0] === "octocode" ? "it starts a session of its own, without this role's limits; " : ""}an opaque command: it changes files or repository state without naming a path, so its effect cannot be checked; use the declared read tools, or give your coordinator the exact command and mark what it would settle as unverified)`,
+		);
 	if (effect.unread.length > 0)
 		return refusal(
 			`\`${effect.unread[0]}\` (this role's git is status, log, diff, show, blame, grep, ls-files, ls-tree, rev-parse, rev-list, describe, shortlog, cat-file and show-ref, and branch, tag, remote, stash, worktree and notes when they only list; without \`-c\`, \`--git-dir\` or \`--work-tree\`)`,

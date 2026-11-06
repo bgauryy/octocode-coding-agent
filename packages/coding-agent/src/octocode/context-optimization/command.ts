@@ -3,7 +3,7 @@
  * and for the project of the working directory (`contextOptimizationDirs`), each skill's source and optimized
  * description and each MCP server's generated file; `check` and `apply` validate and store skill rewrites, each in the
  * store that records the skill (the project's first, as a session reads them). The `octocode-context-optimization`
- * skill drives these commands; MCP servers keep `octocode mcp compact`.
+ * skill drives these commands; MCP server files are rewritten with the skill's scripts.
  */
 
 import { readdirSync, readFileSync } from "node:fs";

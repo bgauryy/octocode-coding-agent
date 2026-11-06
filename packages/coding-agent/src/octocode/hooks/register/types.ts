@@ -71,7 +71,7 @@ export interface HooksView {
 	messageReceive(message: MessageEnvelope, ctx: ExtensionContext): Promise<void>;
 }
 
-/** Records a `PreToolUse` hook that gave no answer (`allowed`: the call went ahead) in the permission audit. */
+/** Records a hook outcome in the permission audit: a `PreToolUse` hook that gave no answer (`allowed`: the call went ahead), or an HTTP hook's allow or input rewrite (`allowed: true`, naming its host). */
 export type HookFailureSink = (what: readonly string[], note: string, allowed: boolean) => void;
 
 /** What every event handler shares: the loaded config (replaced on each session start) and the repository root. */

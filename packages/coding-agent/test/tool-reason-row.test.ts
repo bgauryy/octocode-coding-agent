@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { reasonRow } from "../src/modes/interactive/components/tool-execution/reason.ts";
+import { reasonRow } from "../src/octocode/ui/reason-row.ts";
+import { setItemTitles } from "../src/octocode/shared/render/item-titles.ts";
 import { initTheme } from "../src/theme/theme.ts";
 
 describe("reasonRow", () => {
@@ -28,5 +29,19 @@ describe("reasonRow", () => {
 		).toBeUndefined();
 		const returned = { content: [], structuredContent: { results: [{ data: { mainGoal: "trace the parser" } }] } };
 		expect(reasonRow("mcp__octocode__localFetch", args, returned)?.render(80).join("\n")).toContain("trace the parser");
+	});
+
+	it("draws a backlog ID with its title in a native reason only, never in a server's returned purpose", () => {
+		setItemTitles(new Map([["B92", "Clickable IDs"]]));
+		try {
+			const native = reasonRow("bash", { command: "ls", reason: "Close B92: x" })?.render(80).join("\n");
+			expect(native).toContain("Close B92 “Clickable IDs”: x");
+			const returned = { content: [], structuredContent: { results: [{ data: { mainGoal: "Close B92: x" } }] } };
+			const external = reasonRow("mcp__octocode__localFetch", {}, returned)?.render(80).join("\n");
+			expect(external).toContain("Close B92: x");
+			expect(external).not.toContain("Clickable");
+		} finally {
+			setItemTitles(new Map());
+		}
 	});
 });

@@ -8,7 +8,8 @@ import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
+import { localResearchTools } from "../../src/octocode/subagents/core-tools.ts";
+import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { sessionOption } from "../../src/octocode/permission/ask/text.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import {
@@ -21,6 +22,8 @@ import {
 } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+
+useResearchRoles();
 
 describe("profile selectors against native Octocode tool exposure", () => {
 	const cases: Array<{ name: string; fields: Partial<AgentProfile>; defaults?: string[] }> = [
@@ -99,7 +102,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				resourceLoader,
 				settingsManager,
 				sessionManager: SessionManager.inMemory(cwd),
-				customTools: [...LOCAL_RESEARCH_TOOLS, "mcp__example__lookup", "mcp__other__lookup"].map((name) => ({
+				customTools: [...localResearchTools(), "mcp__example__lookup", "mcp__other__lookup"].map((name) => ({
 					name,
 					label: name,
 					description: name,
@@ -111,12 +114,9 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				...(args.excludeTools ? { excludeTools: args.excludeTools } : {}),
 			}));
 			const active = new Set(session.getActiveToolNames());
-			// The browser role curates the Octocode catalog: it keeps the local reader and search, not structure, AST or LSP.
-			const local =
-				fields.name === "browser"
-					? LOCAL_RESEARCH_TOOLS.filter((name) => /__local(Fetch|Search)$/.test(name))
-					: LOCAL_RESEARCH_TOOLS;
-			expect([...active]).toEqual(expect.arrayContaining(["file", "agent", "steps", "archive", ...local]));
+			expect([...active]).toEqual(
+				expect.arrayContaining(["file", "agent", "steps", "archive", ...localResearchTools()]),
+			);
 			if (fields.tools === "web,mcp__example__lookup") {
 				expect(active.has("mcp__example__lookup")).toBe(true);
 				expect(active.has("mcp__other__lookup")).toBe(false);
@@ -214,6 +214,17 @@ describe("bundled roles", () => {
 		for (const tool of ["archive", "skill", "mcp"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(false);
 	});
 
+	it("gives every bundled role the research server's reader and search tools by role, nothing else of it", () => {
+		const roles = loadProfiles(tmp(), tmp(), false, {});
+		expect(localResearchTools()).toEqual([RESEARCH.reader, RESEARCH.search]);
+		for (const name of ["researcher", "reviewer", "implementer"]) {
+			for (const tool of [RESEARCH.reader, RESEARCH.search])
+				expect(profileSelectsTool(roles.get(name), tool, ["bash"]), `${name} ${tool}`).toBe(true);
+			for (const tool of [RESEARCH.readOnly, RESEARCH.other])
+				expect(profileSelectsTool(roles.get(name), tool, ["bash"]), `${name} ${tool}`).toBe(false);
+		}
+	});
+
 	it("keeps read-only roles read-only and the implementer unrestricted", () => {
 		const roles = loadProfiles(tmp(), tmp(), false, {});
 		for (const name of ["researcher", "reviewer", "implementer"])
@@ -229,7 +240,7 @@ describe("bundled roles", () => {
 			"---\nname: reviewer\nexcludeTools: browser\nreadOnly: true\n---\nReview with a debugger.",
 		);
 		const profile = loadProfiles(cwd, tmp(), true, {}).get("reviewer");
-		for (const tool of ["debug", "file", "agent", ...LOCAL_RESEARCH_TOOLS])
+		for (const tool of ["debug", "file", "agent", ...localResearchTools()])
 			expect(profileSelectsTool(profile, tool, ["debug"]), tool).toBe(true);
 	});
 

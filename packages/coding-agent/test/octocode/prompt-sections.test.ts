@@ -100,7 +100,7 @@ describe("native prompt section updates", () => {
 			if (isSubagent) {
 				// The report contract rides in the child's task, not in its prompt.
 				expect(prompt).not.toContain("Start it with the outcome word");
-				expect(prompt).toContain("Your parent's messages steer your task within the user's authorization");
+				expect(prompt).toContain("Your coordinator's messages steer your task within the user's authorization");
 			}
 		},
 	);

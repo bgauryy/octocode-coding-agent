@@ -6,7 +6,7 @@
 - Change only what the task asks; preserve other changes.
 {{/if}}
 {{#if canShell}}
-- Never run destructive commands, commit or push; leave those to your parent.
+- Never run destructive commands, commit or push; leave those to your coordinator.
 {{#if readOnly}}
 - Run only commands that do not change files.
 {{/if}}

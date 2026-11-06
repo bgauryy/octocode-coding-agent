@@ -79,7 +79,7 @@ export class Relays {
 				: reachable(target)
 					? undefined
 					: !resumable(target)
-						? `no agent "${target}" is running, and your parent ${me} cannot resume one by that name (live in your session: ${[...tree].filter((id) => id !== message.from).join(", ") || "none"}). ${cited(me, target)}`
+						? `no agent "${target}" is running, and your coordinator ${me} cannot resume one by that name (live in your session: ${[...tree].filter((id) => id !== message.from).join(", ") || "none"}). ${cited(me, target)}`
 						: !wakes
 							? `${target} has finished, and a message that asks no question does not resume a finished agent. Send it with replyRequired if you need an answer. ${cited(me, target)}`
 							: this.overBudget(target, now)
@@ -159,4 +159,4 @@ export class Relays {
 }
 
 const cited = (me: string, target: string) =>
-	`If ${target} finished, its report is report:${target}: ask your parent ${me} for it, or to start a new agent with it.`;
+	`If ${target} finished, its report is report:${target}: ask your coordinator ${me} for it, or to start a new agent with it.`;

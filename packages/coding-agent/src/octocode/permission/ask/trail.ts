@@ -78,7 +78,7 @@ export class PermissionTrail {
 		if (this.#nonce === "") {
 			if (!this.#unforwarded)
 				this.#stderr(
-					"octocode: this subagent has no permission secret from its parent: its audit entries are not forwarded to the parent and stay in its own session only.\n",
+					"octocode: this subagent has no permission secret from its coordinator: its audit entries are not forwarded to the coordinator and stay in its own session only.\n",
 				);
 			this.#unforwarded = true;
 			return;

@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
-import { type AgentDb, type Db, USER_AUTHOR, backlog, meta, tasks } from "../../../../db/src/api.ts";
+import { type AgentDb, type Db, USER_AUTHOR, backlog, meta } from "../../../../db/src/api.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import {
@@ -19,9 +19,10 @@ import {
 } from "./item.ts";
 import type { AddInput, UpdateInput } from "./inputs.ts";
 import { applyEntities, entityColumns, validateEntityInput } from "./entity-write.ts";
-import { checkEpicState, openTasksRefusal } from "./hierarchy.ts";
+import { checkEpicState } from "./hierarchy.ts";
 import { evidenceLink, mergeLinks, splitEvidence } from "./evidence-links.ts";
-import { derived, getItem, liveHolder, origin } from "./reads.ts";
+import { getItem, liveHolder, origin } from "./reads.ts";
+import { closeRecord } from "./close.ts";
 
 /** What closing an item takes; the tool guideline, the hand-over prompts and the refusal all say it with these words. */
 export const COMPLETION_GUIDANCE = "Done needs completion: summary, files, verification.";
@@ -46,10 +47,13 @@ const CHANGED_FIELDS = [
 	"dependsOn",
 	"links",
 	"completion",
+	"close",
 ] as const;
 
-/** The fields a subagent may not change on its parent's items: it changes state, notes and completion only. */
-const SUBAGENT_FIXED_FIELDS = CHANGED_FIELDS.filter((field) => field !== "state" && field !== "completion");
+/** The fields a subagent may not change on its coordinator's items: it changes state, notes and completion only. */
+const SUBAGENT_FIXED_FIELDS = CHANGED_FIELDS.filter(
+	(field) => field !== "state" && field !== "completion" && field !== "close",
+);
 
 const tagText = (tags: readonly string[]) => (tags.length ? tags.map((tag) => `#${tag}`).join(" ") : "none");
 const listText = (entries: readonly string[]) => (entries.length ? entries.join(", ") : "none");
@@ -60,7 +64,10 @@ const replaced = (name: string, before: string) => (before ? `${name} replaced; 
 /** The change note for one update: every field that changed, old → new; a replaced text is kept in full. */
 function changeText(before: Item, after: Item): string {
 	const parts: string[] = [];
-	if (after.state !== before.state) parts.push(`state ${before.state} → ${after.state}`);
+	const shown = (item: Item) => (item.closed ? "closed" : item.state);
+	if (shown(after) !== shown(before)) parts.push(`state ${shown(before)} → ${shown(after)}`);
+	if (after.closed && !before.closed)
+		parts.push(`${after.closed.kind}${after.closed.of ? ` of ${after.closed.of}` : ""}: ${after.closed.text}`);
 	if (after.assignee !== before.assignee)
 		parts.push(`assignee ${before.assignee ?? "none"} → ${after.assignee ?? "none"}`);
 	if (after.priority !== before.priority)
@@ -95,11 +102,11 @@ export function addItem(agentDb: AgentDb, repo: string, now: () => number, reque
 		const refused = SUBAGENT_REFUSED_ADD.filter((key) => input[key] !== undefined);
 		if (refused.length)
 			throw new BacklogError(
-				`A subagent proposal cannot set ${refused.join(", ")}: name them in plan or ask your parent.`,
+				`A subagent proposal cannot set ${refused.join(", ")}: name them in plan or ask your coordinator.`,
 			);
 		if (input.completion)
 			throw new BacklogError(
-				"A subagent proposal lands in backlog and cannot carry a completion: put the result in your report; your parent can claim and close the item.",
+				"A subagent proposal lands in backlog and cannot carry a completion: put the result in your report; your coordinator can claim and close the item.",
 			);
 	}
 	refuseSecrets({ note: input.note });
@@ -219,13 +226,13 @@ export function updateItem(
 				throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
 			if (actor.owners && !(item.assignee && actor.owners.has(item.assignee))) {
 				throw new BacklogError(
-					`${item.ref} is not claimed by your parent: a subagent updates only the items its parent has claimed. Ask your parent to claim it (agent message to parent), or put the finding in your report.`,
+					`${item.ref} is not claimed by your coordinator: a subagent updates only the items its coordinator has claimed. Ask your coordinator to claim it (agent message, to: "parent"), or put the finding in your report.`,
 				);
 			}
 			if (actor.item !== undefined && parseRef(actor.item) !== item.seq) {
 				const own = `B${parseRef(actor.item) ?? actor.item}`;
 				throw new BacklogError(
-					`${item.ref} is not your item: your parent started you for ${own}, the only item you may update. Propose a follow-up with add (from: ${own}) or report to your parent.`,
+					`${item.ref} is not your item: your coordinator started you for ${own}, the only item you may update. Propose a follow-up with add (from: ${own}) or report to your coordinator.`,
 				);
 			}
 			const holder =
@@ -240,12 +247,12 @@ export function updateItem(
 			}
 			if (actor.owners && SUBAGENT_FIXED_FIELDS.some((key) => input[key] !== undefined))
 				throw new BacklogError(
-					"A subagent changes only the state and notes of its parent's items (and the completion that closes one); report other changes to your parent.",
+					"A subagent changes only the state and notes of its coordinator's items (and the completion that closes one); report other changes to your coordinator.",
 				);
 			// Moving an item back to todo or backlog would release the parent's claim behind its back.
 			if (actor.owners && (input.state === "todo" || input.state === "backlog"))
 				throw new BacklogError(
-					`A subagent sets only ongoing or done; ask your parent to move an item to ${input.state}.`,
+					`A subagent sets only ongoing or done; ask your coordinator to move an item to ${input.state}.`,
 				);
 			const state = input.state ?? item.state;
 			if (!STATES.includes(state)) throw new BacklogError("Unknown backlog state.");
@@ -268,6 +275,10 @@ export function updateItem(
 			}
 			if (item.state === "done" && state !== "done" && !input.note?.trim())
 				throw new BacklogError("Reopening needs a note explaining why.");
+			// A close is the other way to end an item: `done` underneath, no completion, a recorded reason.
+			const closed = input.close ? closeRecord(agentDb.db, repo, item, input, actor, now()) : undefined;
+			if (item.closed && input.state === "done")
+				throw new BacklogError(`${item.ref} is closed: reopen it (state todo, with a note) before completing it.`);
 			// The user may force a correction of a done item's why; its goal is recorded in the completion, so it stays.
 			const whyFix = input.force && auditActor(actor).kind === "human";
 			if (
@@ -276,18 +287,20 @@ export function updateItem(
 				(input.goal !== undefined || (input.why !== undefined && !whyFix))
 			)
 				throw new BacklogError("Reopen before changing a completed goal or why.");
-			if (state === "done" && item.state !== "done" && !input.completion) throw new BacklogError(COMPLETION_GUIDANCE);
-			if (input.completion && state !== "done") throw new BacklogError("A completion requires state done.");
+			if (state === "done" && item.state !== "done" && !input.completion && !closed)
+				throw new BacklogError(COMPLETION_GUIDANCE);
+			if (input.completion && (state !== "done" || closed)) throw new BacklogError("A completion requires state done.");
 
 			let assignee = item.assignee;
 			if (input.state === "ongoing" && item.assignee !== actor.id) {
 				if (!actor.owners) assignee = actor.id;
-			} else if (input.state === "backlog" || input.state === "todo") assignee = undefined;
+			} else if (input.state === "backlog" || input.state === "todo" || closed) assignee = undefined;
 			const note = input.note === undefined ? "" : storedText(input.note);
 			const at = now();
 			const title = input.title === undefined ? item.title : storedTitle(input.title);
 			if (!title) throw new BacklogError("An item needs a title.");
-			const doneAt = state === "done" ? (item.state === "done" ? (item.doneAt ?? at) : at) : null;
+			const stored = closed ? "done" : state;
+			const doneAt = stored === "done" ? (item.state === "done" ? (item.doneAt ?? at) : at) : null;
 			// A claim (or a takeover) starts the clock; releasing the item clears it; done keeps it, so the cycle time stays.
 			const claimed = state === "ongoing" && (item.state !== "ongoing" || assignee !== item.assignee);
 			const startedAt = claimed ? at : state === "backlog" || state === "todo" ? null : (item.startedAt ?? null);
@@ -318,7 +331,14 @@ export function updateItem(
 				why: input.why === undefined ? item.why : storedText(input.why),
 				evidence: (evidence?.text ?? item.evidence).join("\n"),
 				plan: input.plan === undefined ? item.plan : storedText(input.plan),
-				state,
+				state: stored,
+				closed: closed
+					? JSON.stringify(closed)
+					: state === "done"
+						? item.closed
+							? JSON.stringify(item.closed)
+							: null
+						: null,
 				priority: input.priority === undefined ? item.priority : clampPriority(input.priority),
 				tags: input.tags === undefined ? item.tags.join(" ") : cleanTags(input.tags).join(" "),
 				assignee: assignee ?? null,
@@ -342,59 +362,6 @@ export function updateItem(
 			if (change) logNote(agentDb.db, item, at, actor.id, "change", change);
 			if (note) logNote(agentDb.db, item, at, actor.id, "note", note);
 			return updated;
-		}),
-	);
-}
-
-/**
- * Deletes an item, its notes and its closed tasks (open tasks refuse it). With `actor` (the agent), an item another live session holds is refused; a subagent
- * never removes.
- */
-export function removeItem(
-	agentDb: AgentDb,
-	repo: string,
-	now: () => number,
-	ref: string,
-	version?: number,
-	actor?: Actor,
-): Item {
-	if (actor?.owners) throw new BacklogError("A subagent cannot remove backlog items; report it to your parent.");
-	return agentDb.withActor(auditActor(actor), () =>
-		agentDb.transaction(() => {
-			const item = getItem(agentDb.db, repo, ref);
-			if (!item) throw new BacklogError(`No backlog item ${ref}.`);
-			if (version !== undefined && version !== item.version)
-				throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
-			const holder =
-				actor && item.state === "ongoing" && item.assignee && item.assignee !== actor.id
-					? liveHolder(agentDb.db, item.assignee)
-					: undefined;
-			if (holder)
-				throw new BacklogError(
-					`${item.ref} is ongoing for ${holder}, which is still running: leave it or ask the user.`,
-				);
-			if (backlog.hasDependants(agentDb.db, repo, item.rowId, item.ref))
-				throw new BacklogError("Reparent children and remove dependencies before deleting this item.");
-			if (item.completions.length) throw new BacklogError("Items with completion history cannot be deleted.");
-			const openTasks = openTasksRefusal(agentDb.db, repo, item);
-			if (openTasks) throw new BacklogError(openTasks);
-			// Closed tasks go first, so their audit rows are filed under the item (the delete trigger needs it to exist).
-			tasks.deleteItemTasks(agentDb.db, item.rowId);
-			// The items that came from it keep a trace of the link in their change log.
-			const at = now();
-			for (const child of derived(agentDb.db, repo, item)) {
-				backlog.clearOrigin(agentDb.db, child.rowId, at);
-				logNote(
-					agentDb.db,
-					child,
-					at,
-					actor?.id ?? USER_AUTHOR,
-					"change",
-					`from ${item.ref} → none (${item.ref} "${item.title}" was removed)`,
-				);
-			}
-			backlog.deleteItem(agentDb.db, item.rowId);
-			return item;
 		}),
 	);
 }

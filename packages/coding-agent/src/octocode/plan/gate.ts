@@ -4,6 +4,7 @@ import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
 import { createMcpToolName } from "../../../../mcp/src/tool-names.ts";
 import type { McpServerStatus } from "../../../../mcp/src/status.ts";
+import { untilCommand } from "../shared/until-command.ts";
 
 const reads = new Set(["askUser", "skill", "web"]);
 /** The `mcp` tool's intents that report on this session's servers or bring a dead one back; its tools stay gated. Unknown intents, and `stop`, are not reads. */
@@ -39,9 +40,8 @@ export function planningRefusal(
 	if (native && reads.has(event.toolName)) return undefined;
 	// A timer changes only this session's own timers; an until-command must be one plan mode would run as bash.
 	if (native && event.toolName === "timer") {
-		const until = (event.input as Record<string, unknown>).until;
-		const command = typeof until === "object" && until !== null ? (until as { command?: unknown }).command : undefined;
-		if (typeof command !== "string" || readOnlyShell({ command }, shell)) return undefined;
+		const command = untilCommand(event.input);
+		if (command === undefined || readOnlyShell({ command }, shell)) return undefined;
 		return "Plan mode blocks this until-command: only read-only shell commands may be checked. Use until unlocked, or a timer without a command.";
 	}
 	if (native && event.toolName === "bash") {

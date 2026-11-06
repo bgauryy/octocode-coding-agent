@@ -1,3 +1,4 @@
+import type { PathMatch } from "@octocodeai/octocode-contracts/backlogs";
 import {
 	type Note,
 	type BacklogComment,
@@ -21,7 +22,8 @@ import {
 	noteCount as countNotes,
 	notes as itemNotes,
 } from "./reads.ts";
-import { addItem, COMPLETION_GUIDANCE, removeItem, updateItem } from "./writes.ts";
+import { type RankInput, rankItem } from "./rank.ts";
+import { addItem, COMPLETION_GUIDANCE, updateItem } from "./writes.ts";
 import { type ItemMarks, itemMarks, reviewNeeded } from "./marks.ts";
 import type { BacklogCounts } from "./counts.ts";
 
@@ -104,7 +106,7 @@ export class BacklogStore {
 	}
 
 	/** Items in `states` (every state when unset), ongoing first, then by priority and most recently updated; `total` counts past the limit. */
-	list(query: ListQuery = {}): { items: Item[]; total: number } {
+	list(query: ListQuery = {}): { items: Item[]; total: number; pathMatches?: Map<string, PathMatch> } {
 		return listItems(this.db, this.repo, query);
 	}
 
@@ -166,13 +168,13 @@ export class BacklogStore {
 	 * `ongoing` for `backlog`/`todo` releases it; `done` stamps `done_at`. While another live session holds an item,
 	 * others may only add a note (the user may force an edit). A subagent may only touch items its parent holds.
 	 */
-	update(ref: string, input: UpdateInput, actor: Actor): Item {
-		return updateItem(this.agentDb(), this.repo, this.now, ref, input, actor);
+	/** Places `ref` in its column by a rank between the cards `after` and `before` (see `rankItem`); one row changes in the usual case. */
+	rank(ref: string, input: RankInput, actor: Actor): Item {
+		return rankItem(this.agentDb(), this.repo, this.now, ref, input, actor);
 	}
 
-	/** Deletes an item and its notes. With `actor` (the agent), an item another live session holds is refused. */
-	remove(ref: string, version?: number, actor?: Actor): Item {
-		return removeItem(this.agentDb(), this.repo, this.now, ref, version, actor);
+	update(ref: string, input: UpdateInput, actor: Actor): Item {
+		return updateItem(this.agentDb(), this.repo, this.now, ref, input, actor);
 	}
 
 	/** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */

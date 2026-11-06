@@ -2,7 +2,14 @@ import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-sto
 import { StdioTransport } from "../src/client/index.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { McpServerConnection } from "../src/runtime.ts";
-import type { Launch } from "../src/presets/octocode/launch.ts";
+
+/** A stdio server process to start. */
+interface Launch {
+	command: string;
+	args: string[];
+	cwd: string;
+	env: Record<string, string>;
+}
 
 export function connectionFixture(options: {
 	launch: (cwd: string) => Launch;

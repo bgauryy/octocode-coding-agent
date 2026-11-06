@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import { globalMcpConfigPaths } from "../src/paths.ts";
 import { loadMcpConfig, updateMcpServerConfig } from "../src/config.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import { presetEntries } from "../src/preset.ts";
 
 const roots: string[] = [];
@@ -140,14 +140,14 @@ describe("shared MCP discovery", () => {
 	});
 	it("represents the default opt-out as a disabled server in the same config loader", () => {
 		const { options } = setup();
-		const defaults = presetEntries([octocodePreset(() => [], { OCTOCODE_MCP: "0" })]);
+		const defaults = presetEntries([defaultPreset({ OCTOCODE_MCP: "0" })]);
 		expect(loadMcpConfig({ ...options, defaults }).servers).toMatchObject([
 			{ name: "octocode", config: { enabled: false } },
 		]);
 	});
 	it("keeps a built-in server's purpose when a configured entry replaces it, unless the entry has its own", () => {
 		const { options, write } = setup();
-		const defaults = presetEntries([octocodePreset()]);
+		const defaults = presetEntries([defaultPreset()]);
 		const purpose = defaults[0].config.description;
 		expect(purpose).toBeTruthy();
 		write(join(options.agentDir, "mcp.json"), { octocode: { command: "node", args: ["server.js"] } });

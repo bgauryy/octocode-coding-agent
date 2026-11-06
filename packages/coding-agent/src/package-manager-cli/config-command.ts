@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { selectConfig } from "../cli/config-selector.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { DefaultPackageManager } from "../core/package-manager.ts";
-import { BUILTIN_FEATURE_IDS } from "../core/features/builtin-ids.ts";
+import { SWITCHABLE_BUILTIN_IDS } from "../core/features/builtin-ids.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { CONFIG_COMMAND_USAGE, printConfigCommandHelp } from "./help.ts";
 import {
@@ -57,7 +57,7 @@ export async function handleConfigCommand(args: string[]): Promise<boolean> {
 		return true;
 	}
 	reportSettingsErrors(settingsManager, "config command");
-	const builtinExtensions = [...BUILTIN_FEATURE_IDS];
+	const builtinExtensions = [...SWITCHABLE_BUILTIN_IDS];
 	const globalSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	const globalResolvedPaths = await new DefaultPackageManager({
 		cwd,

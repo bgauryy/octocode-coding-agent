@@ -27,6 +27,7 @@ export function headerLine(
 		{ priority: 60 },
 		{ priority: 50 },
 		{ priority: 70 },
+		{ priority: 40 },
 	];
 	const cells = (long: boolean): string[] => [
 		theme.bold(sanitizeTerminalText(title)),
@@ -40,6 +41,7 @@ export function headerLine(
 			? theme.fg("muted", `${EPIC_GLYPH}${long ? " " : ""}${epics}${long ? ` epic${epics === 1 ? "" : "s"}` : ""}`)
 			: "",
 		openTasks ? theme.fg("muted", `${openTasks}${long ? ` open task${openTasks === 1 ? "" : "s"}` : " tasks"}`) : "",
+		counts.closed ? theme.fg("dim", `${counts.closed}${long ? " closed" : "✕"}`) : "",
 	];
 	// A column that holds no text is never kept, so a dropped column of the spelled-out form is a real loss.
 	const wanted = cells(true).filter(Boolean).length;

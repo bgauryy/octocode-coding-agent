@@ -63,7 +63,7 @@ describe("a finished child's open session tasks", () => {
 		);
 		expect(footer).toContain(workspace.id);
 		expect(footer).toContain(`${step.ref}: Check the isolated changes`);
-		expect(footer).toContain("they were not transferred to the parent. Recreate them there if needed");
+		expect(footer).toContain("they were not transferred to the coordinator. Recreate them there if needed");
 		expect(footer).toContain("...and 1 more.");
 		expect(footer).not.toContain("A".repeat(201));
 		expect(footer).toContain("Worktree removed.");

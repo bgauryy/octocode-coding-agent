@@ -1,6 +1,9 @@
-import type { ItemType, BacklogRef, WorkLink, Completion, BacklogTask } from "./backlogs.ts";
+import type { ItemType, BacklogRef, WorkLink, Completion, BacklogTask, Closed } from "./backlogs.ts";
 export const STATES = ["backlog", "todo", "ongoing", "done"] as const;
 export type State = (typeof STATES)[number];
+/** What a list may filter by: the states, and `closed` (items closed without being done; every one is `done` underneath). */
+export const LIST_STATES = [...STATES, "closed"] as const;
+export type ListState = (typeof LIST_STATES)[number];
 
 /**
  * What an epic shows, from its children's states: no children keeps `stored`; all done is done; any ongoing is ongoing;
@@ -31,7 +34,7 @@ export interface BacklogAudit {
 	id: number;
 	backlogId: string;
 	at: number;
-	actor: { id: string; kind?: string };
+	actor: { id: string; kind?: string; surface?: string };
 	action: string;
 	entity: string;
 	before: unknown;
@@ -62,6 +65,8 @@ export interface SnapshotItem {
 	plan: string;
 	state: State;
 	priority: string;
+	/** Manual position in its column (ascending); absent until the item is first ordered by hand. */
+	rank?: number;
 	tags: string[];
 	assignee?: string;
 	/** Whether the assignee is a running session at snapshot time (the writer's own session counts). */
@@ -72,6 +77,8 @@ export interface SnapshotItem {
 	updatedAt: number;
 	startedAt?: number;
 	doneAt?: number;
+	/** Set when the item was closed instead of completed (it reads as done: it has no completion). */
+	closed?: Closed;
 	version: number;
 	/** The ref of the item this one came from. */
 	from?: string;

@@ -1,4 +1,10 @@
-import { type BacklogTask, DEFAULT_ITEM_TYPE, PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
+import {
+	type BacklogTask,
+	DEFAULT_ITEM_TYPE,
+	PRIORITIES,
+	looksLikePath,
+	matchPaths,
+} from "@octocodeai/octocode-contracts/backlogs";
 import type { Snapshot, SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
 import { median } from "./format.ts";
 
@@ -49,6 +55,12 @@ export function cycleTime(it: SnapshotItem): number | undefined {
 		? it.doneAt - it.startedAt
 		: undefined;
 }
+/** Ranked items first, ascending; two unranked items tie. */
+function compareRank(a: SnapshotItem, b: SnapshotItem): number {
+	if (a.rank === undefined || b.rank === undefined) return Number(a.rank === undefined) - Number(b.rank === undefined);
+	return a.rank - b.rank;
+}
+
 function sequence(it: SnapshotItem): number {
 	return Number(it.ref.slice(1));
 }
@@ -87,7 +99,8 @@ function haystack(it: SnapshotItem): string {
 }
 function matchesQuery(it: SnapshotItem, q = ""): boolean {
 	const needle = q.trim().toLowerCase();
-	return !needle || haystack(it).includes(needle);
+	// A path (`packages/db/src/`, `./a.ts:12`) also finds items naming a folder that holds it, or files under it.
+	return !needle || haystack(it).includes(needle) || (looksLikePath(needle) && matchPaths(it, [q]) !== undefined);
 }
 
 interface BoardFilters {
@@ -98,11 +111,14 @@ interface BoardFilters {
 	tag?: string;
 	assignee?: string;
 	sort?: string;
+	/** `show`: closed items stay on the board, in their own column; they are hidden by default. */
+	closed?: string;
 }
 export function filterBoard(index: BacklogIndex, filters: BoardFilters): SnapshotItem[] {
 	return index.items
 		.filter(
 			(it) =>
+				(filters.closed === "show" || !it.closed) &&
 				matchesQuery(it, filters.q) &&
 				(!filters.p || it.priority === filters.p) &&
 				(!filters.type || (it.type ?? DEFAULT_ITEM_TYPE) === filters.type) &&
@@ -111,8 +127,10 @@ export function filterBoard(index: BacklogIndex, filters: BoardFilters): Snapsho
 				(!filters.ready || isReadyToStart(it)),
 		)
 		.sort((a, b) => {
+			// A hand-ordered card comes before one that was never ordered; the "updated" sort ignores the manual order.
+			const manual = filters.sort === "updated" ? 0 : compareRank(a, b);
 			const order = filters.sort === "updated" ? b.updatedAt - a.updatedAt : a.priority.localeCompare(b.priority);
-			return order || sequence(a) - sequence(b);
+			return manual || order || sequence(a) - sequence(b);
 		});
 }
 

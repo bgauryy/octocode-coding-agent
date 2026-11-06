@@ -10,7 +10,7 @@ export type ReportStatus = (typeof REPORT_STATUSES)[number];
 const REPORT_STATUS_MEANING: Record<ReportStatus, string> = {
 	done: "acceptance checks met",
 	partial: "ended before the Definition of Done, usable as it is, no answer pending",
-	blocked: "a decision or access from your parent would let you continue",
+	blocked: "a decision or access from your coordinator would let you continue",
 	failed: "could not proceed",
 };
 

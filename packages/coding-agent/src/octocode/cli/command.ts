@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
 import { type Subcommand, type Subcommands, say } from "../shared/commands.ts";
 import { isStaleSessionError } from "../shared/util.ts";
-import { completeCliArgs } from "./help.ts";
+import { completeCliArgs, isCliCommand } from "./help.ts";
 import { GITHUB_LOGIN_NOTICE, githubLoginMissing } from "./login-check.ts";
 import { resolveOctocodeCli } from "./resolve.ts";
 import { captureCli, ownsTerminal, runCliInTerminal } from "./run.ts";
@@ -47,14 +47,22 @@ async function captured(ctx: ExtensionCommandContext, bin: string, argv: string[
 	}
 }
 
+/** Sends text to the agent as a prompt the user typed. */
+export type SendPrompt = (text: string, ctx: ExtensionCommandContext) => void;
+
 /**
  * `/octocode <args>`: the research CLI, run with the arguments exactly as typed (quotes group words, as in a shell); no
  * arguments is the CLI's own no-argument behavior. It knows no subcommand: on a terminal the CLI gets the real terminal
  * (`runCliInTerminal`), so interactive commands such as a device-flow sign-in work; elsewhere its output is captured.
+ * A first word that is neither an option nor a command of the CLI (`isCliCommand`) is not meant for it: with `send`,
+ * the whole line goes to the agent as a regular prompt instead.
  * The user typed it, so it runs in every mode, plan mode included, as `!cmd` does; `record` (the permission audit's
  * `typed`, wired by the composition root, since `cli` may not import `permission`) logs each run before it starts.
  */
-export const createOctocodeCommand = (record?: (command: string, cwd: string) => void): Subcommand => ({
+export const createOctocodeCommand = (
+	record?: (command: string, cwd: string) => void,
+	send?: SendPrompt,
+): Subcommand => ({
 	description: "Run the octocode research CLI",
 	argumentHint: "[octocode arguments]",
 	dialog: "interaction",
@@ -63,6 +71,9 @@ export const createOctocodeCommand = (record?: (command: string, cwd: string) =>
 		const cli = resolveOctocodeCli();
 		if (!cli) return say(ctx, MISSING, "warning");
 		const argv = parseCommandArgs(args);
+		const first = argv[0];
+		if (send && first !== undefined && !first.startsWith("-") && !isCliCommand(first))
+			return send(`/octocode ${args.trim()}`, ctx);
 		const label = ["octocode", ...argv].join(" ");
 		record?.(`/octocode ${args.trim()}`.trimEnd(), ctx.cwd);
 		if (ownsTerminal()) {
@@ -89,7 +100,12 @@ export function registerOctocodeCli(
 	commands: Subcommands,
 	record?: (command: string, cwd: string) => void,
 ): void {
-	commands.add("octocode", createOctocodeCommand(record));
+	commands.add(
+		"octocode",
+		createOctocodeCommand(record, (text, ctx) =>
+			api.sendUserMessage(text, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
+		),
+	);
 	let done = false;
 	let running: AbortController | undefined;
 	api.on("session_start", async (_event, ctx) => {

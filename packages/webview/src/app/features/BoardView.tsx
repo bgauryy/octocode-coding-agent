@@ -1,25 +1,39 @@
-import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { useMemo } from "react";
 import type { ViewProps } from "../extension.ts";
-import { type BacklogIndex, filterBoard, isReadyToStart, STATE_TITLES } from "../model/backlog.ts";
-import { shownState } from "../model/hierarchy.ts";
+import { filterBoard, isReadyToStart } from "../model/backlog.ts";
 import { BoardIcon } from "../ui/icons.tsx";
-import { EmptyState, StatusIcon } from "../ui/primitives.tsx";
+import { EmptyState } from "../ui/primitives.tsx";
 import { BacklogFilters } from "./BacklogFilters.tsx";
-import { BoardCard } from "./BoardCard.tsx";
+import { BoardDialogs } from "./BoardDialogs.tsx";
+import { BoardColumn, ClosedDrawer } from "./BoardColumns.tsx";
+import { doneChildren } from "./board-dnd.ts";
+import { BoardScope, useBoardFlow } from "./board-flow.tsx";
+import { Toast } from "./Toast.tsx";
 
-const COLUMN_HINTS: Record<State, string> = {
-	backlog: "Ideas and upcoming work",
-	todo: "Prioritized and ready to pick up",
-	ongoing: "Work currently underway",
-	done: "Finished work and recorded results",
-};
+export function BoardView(props: ViewProps) {
+	return (
+		<BoardScope index={props.index} controls={props.controls}>
+			<Board {...props} />
+		</BoardScope>
+	);
+}
 
-export function BoardView({ index, params, setParams, ItemAction, controls }: ViewProps) {
-	const shown = useMemo(() => filterBoard(index, params), [index, params]);
-	const filtered = shown.length !== index.items.length;
-	const ready = index.items.filter(isReadyToStart).length;
-	const blocked = index.items.filter((item) => item.state !== "done" && item.blockedBy?.length).length;
+function Board({ index, params, setParams, ItemAction }: ViewProps) {
+	const flow = useBoardFlow();
+	const { open, closed, ready, blocked } = useMemo(() => {
+		const shown = filterBoard(index, { ...params, closed: "show" });
+		return {
+			open: shown.filter((it) => !it.closed),
+			closed: shown.filter((it) => it.closed),
+			ready: index.items.filter(isReadyToStart).length,
+			blocked: index.items.filter((item) => item.state !== "done" && item.blockedBy?.length).length,
+		};
+	}, [index, params]);
+	const showClosed = params.closed === "show";
+	const shownCount = open.length + (showClosed ? closed.length : 0);
+	const filtered = shownCount !== index.items.filter((it) => showClosed || !it.closed).length;
+	const childrenDone = (item: SnapshotItem) => doneChildren(index, item);
 	return (
 		<div className="view board-view">
 			<div className="view-heading">
@@ -39,7 +53,7 @@ export function BoardView({ index, params, setParams, ItemAction, controls }: Vi
 					<a href="#backlog">Plan backlog</a>
 				</div>
 			</div>
-			<BacklogFilters index={index} params={params} setParams={setParams} shown={shown.length} />
+			<BacklogFilters index={index} params={params} setParams={setParams} shown={shownCount} />
 			{index.items.length === 0 ? (
 				<EmptyState icon={<BoardIcon size={20} />} title="Your next idea starts here">
 					{ItemAction ? (
@@ -53,57 +67,35 @@ export function BoardView({ index, params, setParams, ItemAction, controls }: Vi
 					)}
 				</EmptyState>
 			) : null}
+			{flow.actions && (
+				<p id="board-dnd-hint" className="visually-hidden">
+					Press Space to lift this card, the left and right arrow keys to choose a column, the up and down arrow keys to
+					choose the position, Space or Enter to drop it, Escape to cancel.
+				</p>
+			)}
+			<div className="visually-hidden board-live" aria-live="polite" aria-atomic="true">
+				{flow.announcement}
+			</div>
 			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be keyboard-scrollable. */}
 			<section className="board" aria-label="Backlog board, scroll horizontally for more lists" tabIndex={0}>
 				{index.states.map((state) => (
 					<BoardColumn
 						key={state}
 						state={state}
-						items={shown.filter((it) => shownState(it) === state)}
-						index={index}
+						items={flow.arrange(
+							open.concat(closed).filter((it) => flow.shownIn(it) === state),
+							state,
+						)}
+						childrenDone={childrenDone}
 						filtered={filtered}
 						ItemAction={ItemAction}
-						StateControl={controls?.StateControl}
 					/>
 				))}
 			</section>
+			{/* A closed item reopened from a dialog also moves at once: the overlay applies to closed items too. */}
+			<ClosedDrawer items={closed.filter((it) => flow.shownIn(it) === "closed")} initiallyOpen={showClosed} />
+			<BoardDialogs />
+			{flow.toast && <Toast toast={flow.toast} onDismiss={flow.dismissToast} />}
 		</div>
-	);
-}
-
-function BoardColumn({
-	state,
-	items,
-	index,
-	filtered,
-	ItemAction,
-	StateControl,
-}: {
-	state: State;
-	items: SnapshotItem[];
-	index: BacklogIndex;
-	filtered: boolean;
-	ItemAction?: ViewProps["ItemAction"];
-	StateControl?: NonNullable<ViewProps["controls"]>["StateControl"];
-}) {
-	const headingId = `column-${state}`;
-	return (
-		<section className={`column state-${state}`} aria-labelledby={headingId}>
-			<div className="column-heading">
-				<h2 id={headingId} className="column-title">
-					<span aria-hidden="true">
-						<StatusIcon state={state} />
-					</span>
-					{STATE_TITLES[state]} <span className="count">{items.length}</span>
-				</h2>
-				<p className="column-description">{COLUMN_HINTS[state]}</p>
-			</div>
-			<div className="column-cards">
-				{items.map((it) => (
-					<BoardCard key={it.ref} item={it} index={index} ItemAction={ItemAction} StateControl={StateControl} />
-				))}
-				{!items.length && <p className="column-empty">{filtered ? "No matching items" : "No items yet"}</p>}
-			</div>
-		</section>
 	);
 }

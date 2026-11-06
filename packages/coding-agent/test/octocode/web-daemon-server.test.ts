@@ -271,7 +271,7 @@ describe("daemon with attached sessions and repositories", () => {
 		expect(repos.repos).toEqual([expect.objectContaining({ id: REPO_KEY, name: "demo", sessions: 1 })]);
 	});
 
-	it("proxies session commands through the attach endpoint and keeps the board read-only", async () => {
+	it("proxies session commands through the attach endpoint (board writes: web-daemon-board-write.test.ts)", async () => {
 		const { authed, session } = await attached();
 		const base = "/s/sess-1";
 		const prompt = { id: "p1", sessionId: "sess-1", action: "prompt", text: "hello" };
@@ -291,18 +291,6 @@ describe("daemon with attached sessions and repositories", () => {
 		expect((await authed(`${base}/api/workspace`)).status).toBe(200);
 		const board = await (await authed(`${base}/api/backlogs`)).json();
 		expect(board.items.map((item: { title: string }) => item.title)).toEqual(["Daemon item"]);
-		const write = await authed(`${base}/api/backlogs`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ op: "add", title: "nope" }),
-		});
-		expect(write.status).toBe(405);
-		const task = await authed(`${base}/api/backlogs`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ command: "task.add", goal: "nope" }),
-		});
-		expect(task.status).toBe(405);
 		const history = await authed(`${base}/api/application/history?sessionId=sess-1&limit=5`);
 		expect(history.status).toBe(200);
 		expect((await authed(`${base}/api/application/history?sessionId=wrong`)).status).toBe(409);
@@ -315,7 +303,9 @@ describe("daemon with attached sessions and repositories", () => {
 		expect(board.items).toHaveLength(1);
 		expect((await authed(`${base}/api/workspace`)).status).toBe(503);
 		expect((await authed(`${base}/api/application`, { method: "POST" })).status).toBe(503);
-		expect((await authed(`${base}/api/backlogs`, { method: "POST" })).status).toBe(405);
+		// A board write needs a JSON body (web-daemon-board-write.test.ts covers the accepted and refused writes).
+		expect((await authed(`${base}/api/backlogs`, { method: "POST" })).status).toBe(400);
+		expect((await authed(`${base}/api/backlogs`, { method: "DELETE" })).status).toBe(405);
 		expect(await (await authed(`${base}/api/reports`)).json()).toEqual({ reports: [] });
 	});
 

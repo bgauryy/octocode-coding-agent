@@ -1,4 +1,5 @@
-import { type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
+import { getCapabilities, hyperlink, type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
+import { ITEM_REF, itemLinkUrl, itemLinksClickable } from "../item-ref.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { clip, plural, queryTarget } from "../../../../../common/src/clip.ts";
 import { shortcutText } from "../keys.ts";
@@ -55,4 +56,16 @@ export function bodyLines(text: string): string[] {
 	while (rows.length > 0 && rows.at(-1)!.trim() === "") rows.pop();
 	while (rows.length > 0 && rows[0].trim() === "") rows.shift();
 	return rows;
+}
+
+/**
+ * `text` as an OSC 8 link to backlog item `ref` where the terminal supports hyperlinks and something handles the click
+ * (fullscreen mode with a `/web item` handler); the unchanged text elsewhere, so no link opens a dead page.
+ */
+export function linkItem(
+	text: string,
+	ref: string,
+	enabled: boolean = getCapabilities().hyperlinks && itemLinksClickable(),
+): string {
+	return enabled && ITEM_REF.test(ref) ? hyperlink(text, itemLinkUrl(ref)) : text;
 }

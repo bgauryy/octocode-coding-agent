@@ -139,7 +139,7 @@ describe("a subagent session that relays its dialogs", () => {
 		permission.start(ctx);
 		permission.typed("ls", "/tmp");
 		permission.typed("pwd", "/tmp");
-		expect(written.filter((text) => text.includes("no permission secret from its parent"))).toHaveLength(1);
+		expect(written.filter((text) => text.includes("no permission secret from its coordinator"))).toHaveLength(1);
 		expect(fake.entries.filter((entry) => (entry.data as { via: string }).via === "typed")).toHaveLength(2);
 		expect(ctx.ui.notes.filter((note) => note.message.startsWith(AUDIT_NOTIFY_PREFIX))).toEqual([]);
 	});

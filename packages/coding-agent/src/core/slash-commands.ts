@@ -132,12 +132,6 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "compact", description: "Compact the session context", argumentHint: "[instructions]" },
 	{ name: "resume", description: "Browse and resume sessions", argumentHint: "[search]" },
-	{
-		name: "skills",
-		description: "Find, inspect and toggle skills",
-		argumentHint: "[search|list|info|enable|disable]",
-		argumentValues: ["list", "info", "enable", "disable"],
-	},
 	{ name: "debug", description: "Save a diagnostics file (secrets redacted)" },
 	{ name: "reload", description: "Reload config, skills and themes" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },

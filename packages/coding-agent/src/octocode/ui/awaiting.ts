@@ -1,6 +1,7 @@
 import type { ApplicationAwaiting } from "@octocodeai/octocode-contracts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { ExtensionUIAskView } from "../../core/features/types.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clipText, firstLine } from "../shared/util.ts";
 import { promptTitle } from "../shared/locks.ts";
@@ -8,8 +9,8 @@ import { promptTitle } from "../shared/locks.ts";
 /**
  * What a dialog asks, for the browser: a confirmation and a dialog opened with the `approval` option (every permission
  * prompt) are approvals; a choice, an input or a custom dialog is a question. With the dialog's `id` (the broker's), its
- * options and whether it takes text, a client can answer it with the `answer` command; an editor or custom dialog
- * carries no id and stays terminal-only.
+ * options and whether it takes text, a client can answer it with the `answer` command; an editor dialog, or a custom one
+ * without a remote answer shape, carries no id and stays terminal-only.
  */
 export function awaitingFor(event: {
 	kind: string;
@@ -18,9 +19,13 @@ export function awaitingFor(event: {
 	options?: string[];
 	allowsText?: boolean;
 	approval?: boolean;
+	ask?: ExtensionUIAskView;
 }): ApplicationAwaiting {
 	const title = promptTitle(event);
-	const answerable = event.id !== undefined && ["select", "confirm", "input"].includes(event.kind);
+	// A custom dialog is answerable only when it opened with a remote answer shape (askUser), which gives it options.
+	const answerable =
+		event.id !== undefined &&
+		(["select", "confirm", "input"].includes(event.kind) || (event.kind === "custom" && event.options !== undefined));
 	return {
 		kind: event.kind === "confirm" || event.approval ? "approval" : "question",
 		...(title ? { title: clipText(redactSecrets(firstLine(title)), 200) } : {}),
@@ -29,8 +34,41 @@ export function awaitingFor(event: {
 					id: event.id,
 					options: (event.options ?? []).slice(0, 50).map((option) => clipText(redactSecrets(option), 200)),
 					allowsText: event.allowsText === true,
+					...(event.ask ? cardFields(event.ask, event.options?.length ?? 0) : {}),
 				}
 			: {}),
+	};
+}
+
+const text = (value: string, max: number) => clipText(redactSecrets(value), max);
+
+/**
+ * The ask card's content for the browser, from the dialog's own view: every string redacted and bounded, the option
+ * descriptions aligned with the dialog's options (a view whose options differ from them is not drawn).
+ */
+function cardFields(ask: ExtensionUIAskView, optionCount: number): Partial<ApplicationAwaiting> {
+	const meta = (ask.meta ?? []).slice(0, 12).map((line) => text(line, 400));
+	const body = ask.body && {
+		text: text(ask.body.text, 20_000),
+		...(ask.body.label ? { label: text(ask.body.label, 400) } : {}),
+		...(ask.body.collapsible ? { collapsible: true } : {}),
+		...(ask.body.previewLines ? { previewLines: Math.min(100, Math.max(1, Math.floor(ask.body.previewLines))) } : {}),
+	};
+	const details = (ask.notes ?? []).slice(0, 12).map((note) => ({ text: text(note.text, 800), tone: note.tone }));
+	const aligned = ask.options.length === optionCount;
+	const optionInfo = aligned
+		? ask.options.slice(0, 50).map((option) => ({
+				...(option.description ? { description: text(option.description, 400) } : {}),
+				...(option.recommended ? { recommended: true } : {}),
+				...(option.tone === "danger" ? { danger: true } : {}),
+			}))
+		: [];
+	return {
+		...(meta.length ? { meta } : {}),
+		...(body ? { body } : {}),
+		...(details.length ? { details } : {}),
+		...(optionInfo.some((info) => Object.keys(info).length) ? { optionInfo } : {}),
+		...(aligned && ask.writeIn ? { writeIn: text(ask.writeIn.label, 200) } : {}),
 	};
 }
 

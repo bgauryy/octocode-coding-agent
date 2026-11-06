@@ -1,6 +1,12 @@
 import { expect, it } from "vitest";
 import { Value } from "typebox/value";
-import { ApplicationContentBlockSchema, applicationContentText, returnedPurpose } from "../src/content.ts";
+import {
+	ApplicationContentBlockSchema,
+	applicationContentText,
+	layoutPurposes,
+	returnedPurpose,
+	returnedPurposes,
+} from "../src/content.ts";
 import { ApplicationCommandSchema, applicationCommandFingerprint, parseApplicationFrame } from "../src/application.ts";
 
 it("round trips ordered rich content and explicit failures through application frames", () => {
@@ -69,4 +75,76 @@ it("reads an external call's purpose only from the data its result returns", () 
 	expect(returnedPurpose({ mainGoal: "  " })).toBeUndefined();
 	expect(returnedPurpose("text")).toBeUndefined();
 	expect(returnedPurpose(undefined)).toBeUndefined();
+});
+
+it("lists every purpose a result returns, per row, from its own data only", () => {
+	expect(returnedPurposes({ mainGoal: " find it ", reasoning: "because" })).toEqual([
+		{ mainGoal: "find it", reasoning: "because" },
+	]);
+	// Rows keep their own `index`, else their position; a row's own text comes before its `data`'s; `reason` fills in.
+	expect(
+		returnedPurposes({
+			results: [
+				{ index: 4, mainGoal: "g1", reasoning: "r1" },
+				{ data: { mainGoal: "g2" }, reason: "r2" },
+				{ index: 7, data: { reasoning: "r3" } },
+			],
+		}),
+	).toEqual([
+		{ row: 4, mainGoal: "g1", reasoning: "r1" },
+		{ row: 1, mainGoal: "g2", reasoning: "r2" },
+		{ row: 7, reasoning: "r3" },
+	]);
+	// A top-level goal beside rows, inside a `structuredContent` wrapper.
+	expect(
+		returnedPurposes({ content: [], structuredContent: { mainGoal: "top", results: [{ reasoning: "row" }] } }),
+	).toEqual([{ mainGoal: "top" }, { row: 0, reasoning: "row" }]);
+});
+
+it("drops empty values, duplicate entries and non-records from the returned purposes", () => {
+	expect(returnedPurposes({ results: [{ mainGoal: "  ", reasoning: "" }, { data: {} }, "text", 3, null] })).toEqual([]);
+	expect(returnedPurposes({ a: [{ index: 1, mainGoal: "g" }], b: [{ index: 1, mainGoal: "g" }] })).toEqual([
+		{ row: 1, mainGoal: "g" },
+	]);
+	expect(returnedPurposes({ a: [{ mainGoal: "g" }, { mainGoal: "g" }] })).toEqual([
+		{ row: 0, mainGoal: "g" },
+		{ row: 1, mainGoal: "g" },
+	]);
+	for (const value of ["text", 4, null, undefined, ["x"]]) expect(returnedPurposes(value)).toEqual([]);
+});
+
+it("lays out a shared goal once and keeps per-row goals with their rows", () => {
+	const shared = [
+		{ row: 0, mainGoal: "map the parser", reasoning: "entry point" },
+		{ row: 1, mainGoal: "map the parser", reasoning: "its callers" },
+	];
+	expect(layoutPurposes(shared)).toEqual({
+		shared: true,
+		goal: "map the parser",
+		rows: [
+			{ row: 0, reasoning: "entry point" },
+			{ row: 1, reasoning: "its callers" },
+		],
+		numbered: true,
+	});
+	expect(layoutPurposes([shared[0]]).numbered).toBe(false);
+	const mixed = [
+		{ row: 0, mainGoal: "a", reasoning: "x" },
+		{ row: 1, mainGoal: "b" },
+	];
+	expect(layoutPurposes(mixed)).toEqual({ shared: false, rows: mixed, numbered: true });
+	// What the title line already shows is left out; a row with nothing left is dropped.
+	expect(layoutPurposes(shared, "map  the parser")).toEqual({
+		shared: true,
+		rows: [
+			{ row: 0, reasoning: "entry point" },
+			{ row: 1, reasoning: "its callers" },
+		],
+		numbered: true,
+	});
+	expect(layoutPurposes([{ mainGoal: "only goal" }], "only goal")).toEqual({ shared: true, rows: [], numbered: false });
+	expect(layoutPurposes(mixed, "a").rows).toEqual([
+		{ row: 0, reasoning: "x" },
+		{ row: 1, mainGoal: "b" },
+	]);
 });

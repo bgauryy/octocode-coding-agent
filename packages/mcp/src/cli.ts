@@ -8,10 +8,10 @@ import { recommendedPresets } from "./recommended/index.ts";
  * next turn.
  */
 
-import { existsSync } from "node:fs";
 import chalk from "chalk";
 import { hostIdentity, hostTrust } from "./host.ts";
-import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
+import { globalMcpConfigPath, projectMcpConfigPath } from "./paths.ts";
+import { withPluginServers } from "./cli/plugins.ts";
 import { MCP_COMMANDS } from "./cli/commands.ts";
 import { compact, compactUsage } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
@@ -19,7 +19,7 @@ import { list } from "./cli/list.ts";
 import { login } from "./cli/login.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { createConnection, helpHint, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
-import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts";
+import { formatMcpConfigLocations, getMcpConfigLocations, untrustedProjectNote } from "./inspection.ts";
 import { loadMcpConfig, type McpExposure, updateMcpServerConfig, writableSource } from "./config.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
@@ -108,11 +108,9 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 		projectTrusted,
 		defaults: presetEntries(options.presets ?? []),
 	});
-	const untrustedNote =
-		!projectTrusted &&
-		mcpConfigFiles(options.agentDir, options.cwd).some((file) => file.scope === "project" && existsSync(file.path))
-			? `Project MCP configuration is ignored because the folder is not trusted. Run \`${hostIdentity().appName} trust add\` in it, or start ${hostIdentity().appName} there to trust it.`
-			: undefined;
+	const untrustedNote = untrustedProjectNote(options.agentDir, options.cwd, projectTrusted);
+	// Plugin servers exist only in a session; `list` and `tools` show them as the session registers them.
+	const listed = withPluginServers(loaded, { agentDir: options.agentDir, cwd: options.cwd, projectTrusted });
 	const credentials = options.credentials ?? new McpOAuthCredentialStore();
 
 	switch (command) {
@@ -124,11 +122,11 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 				error(`Usage: ${hostIdentity().appName} mcp tools [server] [tool] [--json]`);
 				return 1;
 			}
-			if (server && !loaded.servers.some((entry) => entry.name === server)) {
+			if (server && !listed.servers.some((entry) => entry.name === server)) {
 				error(`No MCP server named "${server}".${untrustedNote ? ` ${untrustedNote}` : ""}`);
 				return 1;
 			}
-			return list(loaded, parsed.values.has("json"), untrustedNote, options, credentials, log, { server, tool });
+			return list(listed, parsed.values.has("json"), untrustedNote, options, credentials, log, { server, tool });
 		}
 		case "enable":
 		case "disable":
@@ -195,7 +193,7 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 				error(`Usage: ${hostIdentity().appName} mcp list [--json]\n${helpHint()}`);
 				return 1;
 			}
-			return list(loaded, parsed.values.has("json"), untrustedNote, options, credentials, log);
+			return list(listed, parsed.values.has("json"), untrustedNote, options, credentials, log);
 		}
 		case "login":
 		case "logout": {

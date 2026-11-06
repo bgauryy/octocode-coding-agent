@@ -19,13 +19,17 @@ import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { publishToolRoles, resolveToolRoles } from "../../../mcp/src/roles.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
-import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
+import { researchServerLaunch } from "./research-server-launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+	vi.unstubAllEnvs();
+	publishToolRoles(resolveToolRoles([]));
+});
 
 describe("installed MCP and skills through the native SDK", () => {
 	it.each([
@@ -71,7 +75,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				"---\nname: discovered-skill\ndescription: Discovered fixture\n---\nDISCOVERED_SKILL_EVIDENCE\n",
 			);
 			if (owner !== "native") {
-				const { command, args, env } = octocodeLaunch(cwd, process.env, undefined, [externalSkill, discoveredSkill]);
+				const { command, args, env } = researchServerLaunch(cwd, [externalSkill, discoveredSkill]);
 				fs.writeFileSync(
 					path.join(agentDir, "mcp.json"),
 					JSON.stringify({
@@ -133,6 +137,13 @@ describe("installed MCP and skills through the native SDK", () => {
 				noContextFiles: true,
 			});
 			await resourceLoader.reload();
+			// A parent builds its child's selection with its MCP roles already published (the registry does so once its
+			// servers load); the roles of the default entry stand in for that, as `local research` follows them.
+			publishToolRoles(
+				resolveToolRoles(
+					recommendedPresets().flatMap(({ name, config }) => (config ? [{ name, config, scope: "default" }] : [])),
+				),
+			);
 			const selection =
 				role === "browser"
 					? parseArgs(

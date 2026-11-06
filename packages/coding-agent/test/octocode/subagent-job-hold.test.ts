@@ -121,6 +121,36 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 		expect(session.jobs.running()).toHaveLength(0);
 	});
 
+	it("holds again when the child answers the note without a report, and gives it the job's completion (B193)", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		// The first 1s hold ends with the job still running; the job ends 0.5s into the second.
+		const session = await child({ jobHoldMs: 1000 });
+		open.push(session);
+		let warned = "";
+		let last = "";
+		session.harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("bash", { command: "sleep 1.5; echo slow-job-marker", background: true, reason: "suite" })],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("I'll wait for the completion message."),
+			(context) => {
+				warned = requestText(context);
+				return fauxAssistantMessage("The job is still running, so I'll keep waiting.");
+			},
+			(context) => {
+				last = requestText(context);
+				return fauxAssistantMessage("done. The suite printed slow-job-marker.");
+			},
+		]);
+		await session.harness.session.prompt("run the suite and report");
+		expect(warned).toContain("end your turn without a report: the run holds again until one ends");
+		expect(session.harness.faux.state.callCount).toBe(4);
+		expect(last).toContain("slow-job-marker");
+		expect(last).not.toMatch(/stopped[^\n]*run end/i);
+		expect(session.jobs.running()).toHaveLength(0);
+	});
+
 	it("does not hold a top-level headless session's untimed job: it is stopped at run end as before", async () => {
 		const session = await child({ isSubagent: false });
 		open.push(session);

@@ -1,4 +1,4 @@
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { grantFolder } from "../../coding-agent/src/octocode/trust/grants.ts";
 import { runMcpCommand } from "../src/cli.ts";
+import type { McpServerPreset } from "../src/preset.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
 
@@ -17,13 +18,18 @@ describe("octocode mcp", () => {
 		while (dirs.length > 0) rmSync(dirs.pop() ?? "", { recursive: true, force: true });
 	});
 
-	async function run(args: string[], servers: Record<string, unknown> | undefined, dir?: string) {
+	async function run(
+		args: string[],
+		servers: Record<string, unknown> | undefined,
+		dir?: string,
+		presets: McpServerPreset[] = [{ ...defaultPreset(), config: undefined }],
+	) {
 		const agentDir = dir ?? mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
 		if (!dir) dirs.push(agentDir);
 		if (servers) writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: servers }));
 		const output: string[] = [];
 		const exitCode = await runMcpCommand(args, {
-			presets: [{ ...octocodePreset(), config: undefined }],
+			presets,
 			cwd: agentDir,
 			agentDir,
 			log: (line) => output.push(line),
@@ -105,13 +111,18 @@ describe("octocode mcp", () => {
 		}
 	});
 
-	it("launches the local octocode server with the roots a session gives it", async () => {
-		const result = await run(["list", "--json"], {
-			octocode: {
-				command: process.execPath,
-				args: ["-e", "process.stderr.write('roots=' + process.env.ALLOWED_PATHS); process.exit(3)"],
+	it("launches a replacement of the default server with the roots the default's template gives it", async () => {
+		const result = await run(
+			["list", "--json"],
+			{
+				octocode: {
+					command: process.execPath,
+					args: ["-e", "process.stderr.write('roots=' + process.env.ALLOWED_PATHS); process.exit(3)"],
+				},
 			},
-		});
+			undefined,
+			[defaultPreset()],
+		);
 		const parsed = JSON.parse(result.output) as { servers: { error?: string }[] };
 		expect(parsed.servers[0].error).toContain(`roots=${result.agentDir},`);
 	});

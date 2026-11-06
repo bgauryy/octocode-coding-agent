@@ -9,7 +9,7 @@ import { type Subcommands, say } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { formatDuration } from "../shared/format.ts";
 import { toolHeader } from "../shared/render.ts";
-import { STATUS } from "../shared/status.ts";
+import { runningWorkOf, type WorkRow } from "../shared/running-work.ts";
 import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
 import { createReadHint } from "./read-hint.ts";
@@ -83,18 +83,23 @@ export function registerBashTool(
 	let closing = false;
 	let sessionGeneration = 0;
 	const reportedAtShutdown = new WeakSet<BashJob>();
-	const showJobs = () => {
-		try {
-			if (current)
-				current.ui.setStatus(
-					STATUS.bash,
-					jobs.jobs.size > 0 ? `${jobs.jobs.size} bash job${jobs.jobs.size === 1 ? "" : "s"}` : undefined,
-					"accent",
-				);
-		} catch {
-			// The session was replaced.
-		}
-	};
+	const work = runningWorkOf(api);
+	/** Publishes the running jobs to the footer's typed counts and the work rows above it (`team/panel.ts`). */
+	const showJobs = () =>
+		work.set(
+			"bash",
+			[...jobs.jobs.values()].map((job): WorkRow => {
+				const command = job.command.trim().split("\n", 1)[0] ?? "";
+				const reason = job.reason?.trim();
+				return {
+					kind: "bash",
+					id: job.id,
+					title: reason || command,
+					...(reason && command ? { detail: command } : {}),
+					startedAt: job.startedAt,
+				};
+			}),
+		);
 	const report = (job: BashJob, exit: JobExit, wake: boolean) => {
 		const context = current;
 		const generation = sessionGeneration;

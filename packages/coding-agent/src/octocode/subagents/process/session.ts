@@ -44,6 +44,8 @@ export function buildAgentArgs(
 	skillPaths?: readonly string[],
 	/** The level of a child with no model to suffix (`ModelRoute.thinking`). */
 	thinking?: string,
+	/** Servers a task named: their tools join the selection (`Identity.mcpNamed`). */
+	namedServers: readonly string[] = [],
 ): string[] {
 	const args = ["--mode", "rpc", "--session-dir", session.dir, "--session-id", session.id];
 	// The built-in MCP feature serves Octocode's research tools and the user's own MCP servers: every specialist needs
@@ -54,7 +56,12 @@ export function buildAgentArgs(
 	// preference is routed by `routeModel` before this, so an unavailable one never reaches Octocode.
 	if (model) args.push("--model", model);
 	else if (thinking) args.push("--thinking", thinking);
-	args.push("--tools", profileTools(profile));
+	const tools = profileTools(profile);
+	const relative = tools.split(",").some((name) => /^[+-]/.test(name));
+	args.push(
+		"--tools",
+		[tools, ...namedServers.map((name) => `${relative ? "+" : ""}${mcpNamespace(name)}__*`)].join(","),
+	);
 	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
 	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`). The floor
 	// `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away.

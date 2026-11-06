@@ -5,6 +5,10 @@
  * each session's normal config loader; the child then leaves out the ones the parent stopped, unless its tool
  * selection names the server explicitly (`mcp__<server>__*` in `tools`; the server's default-active flag does not
  * count), because a profile that asks for a server's tools has chosen it over the parent's session state.
+ *
+ * A task can also name the servers the child gets (`only`, file version 3; `planTaskMcpServers`): a configured server
+ * outside that list is left out of the child whatever its tool selection says, and the parent's added servers are
+ * narrowed the same way before they are written.
  */
 
 import fs from "node:fs";
@@ -19,15 +23,20 @@ const REQUEST_ADDED_SERVERS = "mcp:added-servers:request";
 /** Version 1 lists servers only; version 2 adds `stopped`. A file without stopped servers stays version 1. */
 const FILE_VERSION = 1;
 const FILE_VERSION_STOPPED = 2;
+const FILE_VERSION_ONLY = 3;
 /** A handoff file larger than this is not a server list. */
 const MAX_FILE_BYTES = 256 * 1024;
 
 type AddedServers = Readonly<Record<string, McpServerConfig>>;
 
-/** What a child inherits: servers to register, and names of servers the parent stopped for this session. */
+/**
+ * What a child inherits: servers to register, names of servers the parent stopped for this session, and the names of
+ * every enabled server of the parent's session (what a task may name).
+ */
 export interface McpSessionHandoff {
 	servers: AddedServers;
 	stopped: readonly string[];
+	available: readonly string[];
 }
 
 /** The owner of the session's added servers answers requests for them. Returns the unregistration. */
@@ -39,15 +48,49 @@ export function registerMcpAddedServers(events: EventBus, provider: () => McpSes
 
 /** Live session registrations and stops to inherit, including plugin servers; empty when no MCP host answers. */
 export function getMcpSessionHandoff(events: EventBus): McpSessionHandoff {
-	let handoff: McpSessionHandoff = { servers: {}, stopped: [] };
+	let handoff: McpSessionHandoff = { servers: {}, stopped: [], available: [] };
 	events.emit(REQUEST_ADDED_SERVERS, (current: McpSessionHandoff) => {
 		handoff = current;
 	});
 	return handoff;
 }
 
-/** The text of a handoff file, or undefined when there is nothing to hand over. */
-export function serializeMcpSessionServers(servers: AddedServers, stopped: readonly string[] = []): string | undefined {
+/** The servers a task gives its child, and the parent's added servers narrowed to them. */
+export interface TaskMcpServers {
+	only: string[];
+	servers: AddedServers;
+}
+
+/**
+ * The servers a child runs when its task names `named`: those, plus every server the child's tools name explicitly
+ * (`childTools`: the profile's selection and the research floor; a wildcard such as `mcp__*` names none). A name that is
+ * not an enabled server of the session is refused with a message naming them.
+ */
+export function planTaskMcpServers(
+	handoff: McpSessionHandoff,
+	named: readonly string[],
+	childTools: readonly string[],
+): TaskMcpServers | string {
+	const unknown = named.find((name) => !handoff.available.includes(name));
+	if (unknown !== undefined)
+		return `Unknown or disabled MCP server "${unknown}"; configured servers: ${handoff.available.join(", ") || "none"}.`;
+	const listed = childTools.map((tool) => tool.replace(/^\+/, ""));
+	const only = handoff.available.filter(
+		(name) => named.includes(name) || listed.some((tool) => tool.startsWith(`${mcpNamespace(name)}__`)),
+	);
+	return { only, servers: Object.fromEntries(Object.entries(handoff.servers).filter(([name]) => only.includes(name))) };
+}
+
+/**
+ * The text of a handoff file, or undefined when there is nothing to hand over. `only` (even empty) is written as
+ * version 3: the child runs just those configured servers.
+ */
+export function serializeMcpSessionServers(
+	servers: AddedServers,
+	stopped: readonly string[] = [],
+	only?: readonly string[],
+): string | undefined {
+	if (only !== undefined) return JSON.stringify({ version: FILE_VERSION_ONLY, servers, stopped, only });
 	if (Object.keys(servers).length === 0 && stopped.length === 0) return undefined;
 	return stopped.length === 0
 		? JSON.stringify({ version: FILE_VERSION, servers })
@@ -58,6 +101,7 @@ export function serializeMcpSessionServers(servers: AddedServers, stopped: reado
 export function parseMcpSessionServers(text: string): {
 	servers: Record<string, McpServerConfig>;
 	stopped: string[];
+	only?: string[];
 	errors: string[];
 } {
 	const servers: Record<string, McpServerConfig> = {};
@@ -65,41 +109,44 @@ export function parseMcpSessionServers(text: string): {
 	const value: unknown = JSON.parse(text);
 	if (
 		!isRecord(value) ||
-		(value.version !== FILE_VERSION && value.version !== FILE_VERSION_STOPPED) ||
+		(value.version !== FILE_VERSION && value.version !== FILE_VERSION_STOPPED && value.version !== FILE_VERSION_ONLY) ||
 		!isRecord(value.servers)
 	)
 		throw new Error("not a session server list");
-	const stopped =
-		value.version === FILE_VERSION_STOPPED && Array.isArray(value.stopped)
-			? value.stopped.filter((name): name is string => typeof name === "string")
-			: [];
+	const names = (list: unknown): string[] =>
+		Array.isArray(list) ? list.filter((name): name is string => typeof name === "string") : [];
+	const stopped = value.version === FILE_VERSION ? [] : names(value.stopped);
+	const only = value.version === FILE_VERSION_ONLY && Array.isArray(value.only) ? names(value.only) : undefined;
 	for (const [name, config] of Object.entries(value.servers)) {
 		const validated = validateMcpServerConfig(name, config);
 		if (typeof validated === "string") errors.push(validated);
 		else servers[name] = validated;
 	}
-	return { servers, stopped, errors };
+	return { servers, stopped, ...(only ? { only } : {}), errors };
 }
 
 /**
  * In a subagent, registers the servers its parent's `mcp` tool added and returns the names the parent stopped for
- * the session (apply them with `isParentStopped`). Without the file, or when it cannot be read, the child runs with
- * its configured servers only.
+ * the session (apply them with `isParentStopped`) and the task's server list when it named one. Without the file, or
+ * when it cannot be read, the child runs with its configured servers only.
  */
-export function registerInheritedMcpServers(api: McpExtensionApi, env: NodeJS.ProcessEnv = process.env): string[] {
+export function registerInheritedMcpServers(
+	api: McpExtensionApi,
+	env: NodeJS.ProcessEnv = process.env,
+): { stopped: string[]; only?: string[] } {
 	const file = env[MCP_SESSION_SERVERS_FILE_ENV];
-	if (!file || !envFlag(env, SUBAGENT_ENV)) return [];
+	if (!file || !envFlag(env, SUBAGENT_ENV)) return { stopped: [] };
 	try {
 		if (fs.statSync(file).size > MAX_FILE_BYTES) throw new Error("file too large");
-		const { servers, stopped, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
+		const { servers, stopped, only, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
 		for (const message of errors) process.stderr.write(`Ignored inherited MCP server: ${message}\n`);
 		for (const [name, config] of Object.entries(servers)) api.registerMcpServer(name, config, { inherited: true });
-		return stopped;
+		return { stopped, ...(only ? { only } : {}) };
 	} catch (error) {
 		process.stderr.write(
 			`Inherited MCP servers unavailable: ${error instanceof Error ? error.message : String(error)}\n`,
 		);
-		return [];
+		return { stopped: [] };
 	}
 }
 

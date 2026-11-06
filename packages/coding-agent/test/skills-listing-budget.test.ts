@@ -37,7 +37,7 @@ describe("skill listing budget", () => {
 		expect(warning?.message).toContain(`12 skills, ${listing.length} chars > 8000 budget`);
 		expect(warning?.message).toContain("octocode context check");
 		expect(warning?.message).toContain("octocode context apply");
-		expect(warning?.message).toContain("/skills");
+		expect(warning?.message).toContain("/harness");
 	});
 
 	it("uses the model's window: the same listing fits a larger window", () => {

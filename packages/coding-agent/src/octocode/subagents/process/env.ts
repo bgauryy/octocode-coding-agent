@@ -55,6 +55,10 @@ export interface Identity {
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	/** Servers the parent stopped for this session only: the child leaves them out unless its tool selection names them. */
 	mcpStopped?: readonly string[];
+	/** The configured servers the task gave the child (`mcp` on the task, plus those its tools name): any other stays out. */
+	mcpOnly?: readonly string[];
+	/** The servers the task named: their tools are added to the child's selection, so a server that is not active by default still starts. */
+	mcpNamed?: readonly string[];
 	cachePreferences?: CachePreferences;
 	/** Lifetime of the history entry the child's requests write, when known (`cache-warmer/economics`). */
 	cacheTtlMs?: number;
@@ -72,8 +76,6 @@ export interface Identity {
 	/** This run was resumed by a peer's message its parent's process relayed: no parent decided it, so it is no budget grant. */
 	peerResumed?: boolean;
 	goal?: string;
-	/** Works with its sibling subagents (messages them directly), not only for its parent. */
-	collaborate?: boolean;
 	/**
 	 * Set for an isolated child. `path` is its worktree, `repo` the main checkout and `cwd` where it runs. Its system
 	 * prompt names the main checkout, so every child of one profile shares the prompt; the task names the worktree.

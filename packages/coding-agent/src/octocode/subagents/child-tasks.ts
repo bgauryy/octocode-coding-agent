@@ -26,7 +26,7 @@ export function isolatedChildSteps(cwd: string, agent: string): string {
 			const goal = visibleControls(redactSecrets(step.goal.replace(/\s+/g, " ").trim()));
 			return `- T${step.seq}: ${cutText(goal, 200, { chars: true })}`;
 		});
-		return `\nOpen steps remain in isolated workspace ${workspace.id}; they were not transferred to the parent. Recreate them there if needed:\n${shown.join("\n")}${open.length > shown.length ? `\n...and ${open.length - shown.length} more.` : ""}`;
+		return `\nOpen steps remain in isolated workspace ${workspace.id}; they were not transferred to the coordinator. Recreate them there if needed:\n${shown.join("\n")}${open.length > shown.length ? `\n...and ${open.length - shown.length} more.` : ""}`;
 	} catch {
 		// A failed read cannot prevent delivery of the child's report or cleanup of its worktree.
 		return "\nCould not read the isolated child's open steps before worktree cleanup.";

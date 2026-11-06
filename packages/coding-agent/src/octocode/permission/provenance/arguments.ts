@@ -1,8 +1,10 @@
+import path from "node:path";
 import { archiveMutation } from "../../shared/archive-operation.ts";
 import { browserMcpUrls } from "../../../../../common/src/browser-mcp.ts";
 import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
+import { CONTEXT_FILE_CANDIDATES } from "../../../core/discovery/sources.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { runsLater } from "../file-access.ts";
 import { SHELL_TOOLS } from "../shell.ts";
@@ -59,13 +61,26 @@ export function consequential(
 	return [];
 }
 
-/** `target` is an ordinary workspace file: inside the repository, not run or loaded by later sessions, not executable. */
+const CONTEXT_FILE_NAMES = new Set(CONTEXT_FILE_CANDIDATES.map((name) => name.toLowerCase()));
+
+/** An instruction file the resource loader reads into every later session (`AGENTS.md` in any folder, any letter case). */
+const loadsAsInstructions = (file: string): boolean => CONTEXT_FILE_NAMES.has(path.basename(file).toLowerCase());
+
+/**
+ * `target` is an ordinary workspace file: inside the repository, not run or loaded by later sessions (`runsLater`, and the
+ * instruction files `CONTEXT_FILE_CANDIDATES` names), not executable.
+ */
 function storesData(target: string, cwd: string, workspaceRoot: (cwd: string) => string | undefined): boolean {
 	const workspace = workspaceRoot(cwd);
 	if (workspace === undefined) return false;
 	const root = canonicalPath(workspace);
 	const file = canonicalPath(resolveToolPath(cwd, target));
-	return isWithin(file, root) && !runsLater(file, root) && !EXECUTABLE.test(file.slice(root.length));
+	return (
+		isWithin(file, root) &&
+		!runsLater(file, root) &&
+		!loadsAsInstructions(file) &&
+		!EXECUTABLE.test(file.slice(root.length))
+	);
 }
 
 /** Arguments that leave the machine: the web URL or search query, a browser navigation, a network command. */

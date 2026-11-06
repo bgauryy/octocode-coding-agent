@@ -10,12 +10,11 @@ import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, wa
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { registerMcpReload, registerMcpSwitch, switchMcpServer } from "./switch.ts";
 import { reportProblems } from "./report.ts";
-import { say } from "./notice.ts";
+import { say, sayUntrustedProject } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isSelected } from "./exposure.ts";
 import { deferralOf } from "./deferral.ts";
-import { isParentStopped } from "./session-servers.ts";
 import {
 	MCP_STATUS_SECTION,
 	MCPS_SECTION,
@@ -125,6 +124,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.projectConfig = loaded.projectConfig;
 		state.globalConfig = loaded.globalConfig;
 		state.projectTrusted = ctx.isProjectTrusted();
+		sayUntrustedProject(ctx);
 		state.waitedForStartup = false;
 		state.sessionCwd = ctx.cwd;
 		state.modelRegistry = ctx.modelRegistry;
@@ -171,7 +171,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				.filter(
 					(entry) => !registered.servers.some((server) => mcpNamespace(server.entry.name) === mcpNamespace(entry.name)),
 				)
-				.filter((entry) => !isParentStopped(state.parentStopped, entry.name, state.api))
+				.filter((entry) => !state.leavesOut(entry.name))
 				.map((entry) => ({ entry })),
 			...registered.servers,
 		];
@@ -270,7 +270,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			.filter(
 				(entry) =>
 					entry.scope === "default" &&
-					!isParentStopped(state.parentStopped, entry.name, state.api) &&
+					!state.leavesOut(entry.name) &&
 					!registered.servers.some((server) => mcpNamespace(server.entry.name) === mcpNamespace(entry.name)),
 			)
 			.map((entry) => ({ entry }));

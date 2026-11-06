@@ -2,77 +2,12 @@ import "../mcp-host.ts";
 import { octocodeToolDefinition } from "../../../mcp/test/mcp-preset-tool-fixture.ts";
 import os from "node:os";
 import fs from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sanitizeJson, toToolResult } from "../../../mcp/src/presets/octocode/tools.ts";
-import { expandKey } from "../../src/octocode/shared/render/text.ts";
+import { sanitizeJson } from "../../../mcp/src/sanitize.ts";
+import { toToolResult } from "../../../mcp/src/tool-result.ts";
 import { TEXT_MAX_CHARS } from "../../src/utils/output-budget.ts";
-import { rendered, theme } from "./fake-host.ts";
 import { noisyPng, pixelSize } from "./helpers.ts";
-import { OCTOCODE_MCP_SPEC, octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
 afterEach(() => vi.unstubAllEnvs());
-describe("Octocode launch policy", () => {
-	it("launches the bundled octocode-mcp with the workspace allowed", () => {
-		const launch = octocodeLaunch("/work/app", { OCTOCODE_HOME: "/h/.octocode" }, "/x/octocode-mcp/bin.js");
-		expect(launch).toEqual({
-			command: process.execPath,
-			args: ["/x/octocode-mcp/bin.js"],
-			cwd: "/work/app",
-			env: {
-				WORKSPACE_ROOT: "/work/app",
-				ALLOWED_PATHS: "/work/app,/work/app/.octocode/code/session-data,/work/app/.octocode/code/temp/sessions",
-			},
-		});
-		// The real bundled bin resolves (octocode-mcp is a dependency).
-		expect(fs.existsSync(octocodeLaunch("/w").args[0])).toBe(true);
-	});
-
-	it("keeps Octocode's home state (trust store, credentials, database) out of the readers' roots", () => {
-		const home = "/h/.octocode";
-		const { env } = octocodeLaunch("/work/app", { OCTOCODE_HOME: home }, "/x/bin.js", ["/skills/review"]);
-		const roots = env.ALLOWED_PATHS.split(",");
-		expect(roots).toEqual([
-			"/work/app",
-			"/work/app/.octocode/code/session-data",
-			"/work/app/.octocode/code/temp/sessions",
-			"/skills/review",
-		]);
-		expect(roots).not.toContain(home);
-		// Spilled output and bash logs, which the model reads back, are under the session folders.
-		expect(path.join(home, "pi-trust.json").startsWith(`${roots[1]}${path.sep}`)).toBe(false);
-	});
-
-	it("turns off project language-server config for an untrusted project only", () => {
-		const trusted = octocodeLaunch("/w", {}, "/x/bin.js", [], true);
-		const untrusted = octocodeLaunch("/w", {}, "/x/bin.js", [], false);
-		expect(trusted.env).not.toHaveProperty("OCTOCODE_TRUST_PROJECT_LSP_CONFIG");
-		expect(untrusted.env.OCTOCODE_TRUST_PROJECT_LSP_CONFIG).toBe("false");
-	});
-
-	it("runs the octocode-mcp range of package.json: the dependency and the npx fallback share it", () => {
-		const manifest = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../..", "package.json"), "utf8")) as {
-			dependencies: Record<string, string>;
-		};
-		const range = manifest.dependencies["octocode-mcp"];
-		expect(OCTOCODE_MCP_SPEC).toBe(`octocode-mcp@${range}`);
-		if (/^(file|link):/.test(range))
-			expect(() => octocodeLaunch("/w", {}, "")).toThrow("local octocode-mcp build is missing");
-		else expect(octocodeLaunch("/w", {}, "")).toMatchObject({ command: "npx", args: ["-y", `octocode-mcp@${range}`] });
-	});
-
-	it("refuses the npx fallback in an untrusted project", () => {
-		const range = OCTOCODE_MCP_SPEC.slice("octocode-mcp@".length);
-		if (/^(file|link):/.test(range)) {
-			expect(() => octocodeLaunch("/w", {}, "", [], false)).toThrow("local octocode-mcp build is missing");
-		} else {
-			expect(() => octocodeLaunch("/w", {}, "", [], false)).toThrow(/npx fallback runs only in a trusted project/);
-			expect(octocodeLaunch("/w", {}, "", [], true).command).toBe("npx");
-		}
-		// An installed server needs no fallback, whatever the trust.
-		expect(octocodeLaunch("/w", {}, "/x/bin.js", [], false).args).toEqual(["/x/bin.js"]);
-	});
-});
-
 describe("Octocode tool results and rendering", () => {
 	const tool = {
 		name: "localFetch",
@@ -181,163 +116,29 @@ describe("Octocode tool results and rendering", () => {
 				expect(octocodeToolDefinition({ ...tool, name }, { ...binding, exposure }).exposure).toBe(exposure);
 	});
 
-	it("defines the Octocode tool from the listed tool: name, schema, declared output", async () => {
-		const definition = octocodeToolDefinition(tool, binding);
-		expect(definition).toMatchObject({
-			name: "mcp__octocode__localFetch",
-			label: "localFetch",
-			description: "Read files",
-			exposure: "direct",
-			parameters: tool.inputSchema,
-		});
-		// Only the server's own output schema is declared: no tool name earns one.
-		expect(definition).not.toHaveProperty("outputSchema");
-		const withOutput = octocodeToolDefinition(
-			{ ...tool, title: "Fetch", description: undefined, outputSchema: { type: "object" } },
-			binding,
-		);
-		expect(withOutput).toMatchObject({
-			label: "Fetch",
-			description: 'Fetch\n\nServer result schema:\n{"type":"object"}',
-			outputSchema: { type: "object" },
-		});
-		expect(withOutput).not.toHaveProperty("annotations");
-		expect(octocodeToolDefinition({ name: "x", inputSchema: {} }, binding).description).toBe(
-			"MCP tool x from server octocode",
-		);
-		const out = (await definition.execute("id", { queries: [] }, undefined, undefined, {} as never)) as {
-			content: unknown;
-		};
-		expect(out.content).toEqual([{ type: "text", text: "ok" }]);
-	});
-
 	it("resizes an oversized image to the active model's image limit and keeps the coordinate note", async () => {
 		const original = noisyPng(512);
 		const image = { type: "image" as const, data: original.toString("base64"), mimeType: "image/png" };
-		const withImage = { ...binding, call: async () => ({ content: [image] }) };
-		const run = async (model: unknown) => {
-			const out = (await octocodeToolDefinition(tool, withImage).execute("id", {}, undefined, undefined, {
-				model,
-			} as never)) as { content: Array<{ type: string; text?: string; data?: string }> };
+		const run = async (limits?: { maxWidth: number; maxHeight: number }) => {
+			const out = await toToolResult("t", { content: [image] }, false, limits);
 			return {
 				shown: out.content.find((part) => part.type === "image")!,
-				note: out.content.find((part) => part.type === "text")!.text!,
+				note: out.content.find((part) => part.type === "text")!.text,
 			};
 		};
-		const small = await run({ inputLimits: { images: { resize: { maxWidth: 120, maxHeight: 90 } } } });
-		expect(pixelSize(small.shown.data!)).toEqual({ width: 90, height: 90 });
+		const small = await run({ maxWidth: 120, maxHeight: 90 });
+		expect(pixelSize(small.shown.data)).toEqual({ width: 90, height: 90 });
 		expect(small.note).toContain("original 512x512, displayed at 90x90");
 		expect(fs.readFileSync(/Original saved to (\S+?\.png)\./.exec(small.note)![1])).toEqual(original);
-		// A model without image metadata gets the default 1568 px limit, which this image already fits: only the byte budget applies.
-		const unknown = await run(undefined);
-		expect(pixelSize(unknown.shown.data!)).toEqual({ width: 512, height: 512 });
+		// Without a limit only the byte budget applies, which this image fits.
+		const unknown = await run();
+		expect(pixelSize(unknown.shown.data)).toEqual({ width: 512, height: 512 });
 		expect(
 			(await toToolResult("t", { content: [image] }, false, { maxWidth: 60, maxHeight: 60 })).content.map(
 				(part) => part.type,
 			),
 		).toEqual(["image", "text"]);
 	}, 120_000); // CPU-bound wasm resize: seconds alone, several times that on a loaded machine
-
-	it("renders a call by what it looks for and a result as a compact block", () => {
-		const definition = octocodeToolDefinition(tool, binding);
-		const context = (extra: object = {}) =>
-			({
-				lastComponent: undefined,
-				state: {},
-				args: {},
-				toolCallId: "c",
-				invalidate: () => undefined,
-				cwd: "/w",
-				executionStarted: true,
-				argsComplete: true,
-				isPartial: false,
-				expanded: false,
-				showImages: false,
-				isError: false,
-				...extra,
-			}) as never;
-		const header = (args: object) => rendered(definition.renderCall!(args, theme, context()));
-		expect(header({ queries: [{ path: ".", searchText: "add" }] })).toContain("localFetch(add in .)");
-		const batch = header({ queries: [{ path: "a.ts" }, { path: "b.ts" }] });
-		expect(batch).toContain("localFetch(2 queries)");
-		expect(batch).toContain("a.ts");
-		expect(batch).toContain("b.ts");
-		expect(header({})).toContain("localFetch");
-		const ok = rendered(
-			definition.renderResult!(
-				{ content: [{ type: "text", text: "line one\nline two" }], details: { tool: "localFetch" } } as never,
-				{ expanded: false, isPartial: false },
-				theme,
-				context(),
-			),
-		);
-		expect(ok).toContain("line one");
-		const failed = rendered(
-			definition.renderResult!(
-				{ content: [{ type: "text", text: "It broke\nwith detail" }], details: { tool: "localFetch" } } as never,
-				{ expanded: true, isPartial: false },
-				theme,
-				context({ isError: true }),
-			),
-		);
-		expect(failed).toContain("It broke");
-		expect(failed).toContain("with detail");
-	});
-
-	it("summarizes the server's JSON envelope in one line and keeps the payload for the expanded row", () => {
-		const definition = octocodeToolDefinition(tool, binding);
-		const context = (extra: object = {}) =>
-			({
-				lastComponent: undefined,
-				state: {},
-				args: {},
-				toolCallId: "c",
-				invalidate: () => undefined,
-				cwd: "/w",
-				executionStarted: true,
-				argsComplete: true,
-				isPartial: false,
-				expanded: false,
-				showImages: false,
-				isError: false,
-				...extra,
-			}) as never;
-		const show = (payload: object, extra: object = {}, expanded = false) =>
-			rendered(
-				definition.renderResult!(
-					{ content: [{ type: "text", text: JSON.stringify(payload) }], details: { tool: "localFetch" } } as never,
-					{ expanded, isPartial: false },
-					theme,
-					context({ expanded, ...extra }),
-				),
-			);
-		const read = {
-			results: [{ index: 0, data: { path: "package.json", content: "1\t{\n2\t}\n3\t", totalLines: 76 } }],
-		};
-		expect(show(read)).toBe(`  ⎿  package.json · lines 1–3 of 76 (${expandKey()} to expand)`);
-		expect(show(read, {}, true)).toContain('"totalLines":76');
-		const search = { results: [{ index: 0, data: { matchCount: 29, files: [{ path: "a" }, { path: "b" }] } }] };
-		expect(show(search)).toContain("29 matches in 2 files");
-		const none = { results: [{ index: 0, status: "empty", data: { matchCount: 0, filesScanned: 4 } }] };
-		expect(show(none)).toContain("no matches");
-		const listing = { results: [{ index: 0, data: { path: "src", files: [], summary: { files: 8, dirs: 1 } } }] };
-		expect(show(listing)).toContain("src · 8 files, 1 dir");
-		const error = {
-			results: [
-				{
-					index: 0,
-					data: {
-						error: `Path '/nonexistent-xyz' is outside allowed directories (allowed: ., ~/.octocode/sessions, ${"~/x/y, ".repeat(20)})`,
-					},
-				},
-			],
-		};
-		const failed = show(error, { isError: true });
-		expect(failed).toContain("Error: Path '/nonexistent-xyz' is outside allowed directories");
-		expect(failed).not.toContain('{"results"');
-		expect(failed).not.toContain("allowed:");
-		expect(show(error, { isError: true }, true)).toContain("allowed:");
-	});
 });
 
 describe("Octocode result size budgets", () => {

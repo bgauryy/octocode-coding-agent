@@ -7,6 +7,7 @@ import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { RERUN_HINT } from "../../src/octocode/files/render.ts";
 import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
+import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { groupAlive, processAlive } from "../../src/octocode/shared/process.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
@@ -56,7 +57,7 @@ describe("bash tool", () => {
 		registerBashTool(api, commands, jobs, () => shell);
 		const cwd = tmp();
 		const ctx = fakeCtx({ cwd });
-		return { tool: tools.get("bash"), registered, commands, jobs, sent, fire, cwd, ctx };
+		return { tool: tools.get("bash"), registered, commands, jobs, sent, fire, cwd, ctx, work: runningWorkOf(api) };
 	};
 
 	it("replaces Octocode bash with a schema that has background and a documented deadline", () => {
@@ -78,7 +79,13 @@ describe("bash tool", () => {
 		// The result header carries exit code, time and size itself; the rule says only what trimmed output needs, and no rule asks for `| tail -n 50`.
 		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Trimmed output is saved in full"));
 		expect(guideline).not.toContain("Each result starts with");
-		expect(guideline).toContain("maxOutputTokens");
+		expect(guideline).toContain("read that file by line range instead of rerunning");
+		// B149: the output-limit hint was dropped; agents copied it into tools whose schemas lack that field.
+		expect(guideline).not.toContain("output limit");
+		expect(guideline).not.toContain("maxOutputTokens");
+		expect(guideline).toContain(
+			"While another agent reserves a path, bash refuses a command that writes or names it, or whose writes cannot be checked (`$f`, `$((…))`, an inline interpreter): spell paths literally, and use `file` for edits.",
+		);
 		expect(guideline).toContain("`set -o pipefail;` before an explicit pipe");
 		expect(tool.promptGuidelines.join("\n")).not.toContain("tail -n 50");
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
@@ -433,10 +440,10 @@ describe("bash tool", () => {
 	});
 
 	it("starts a background job at once and reports its exit and output tail as a follow-up message", async () => {
-		const { tool, ctx, jobs, sent } = setup();
+		const { tool, ctx, jobs, sent, work } = setup();
 		const result = await tool.execute(
 			"t1",
-			{ command: "echo started; sleep 0.3; echo done; exit 2", background: true },
+			{ command: "echo started; sleep 0.3; echo done; exit 2", background: true, reason: "check the exit code" },
 			undefined,
 			undefined,
 			ctx,
@@ -450,9 +457,19 @@ describe("bash tool", () => {
 			log: expect.stringMatching(/bash-1-\d+\.log$/),
 		});
 		expect(jobs.jobs.size).toBe(1);
-		expect(ctx.ui.statuses.get("octocode-bash")).toBe("1 bash job");
+		// The job is a typed row (id, its reason first and the command after it, start time) for the footer and the work rows.
+		expect(work.all()).toEqual([
+			{
+				kind: "bash",
+				id: "bash-1",
+				title: "check the exit code",
+				detail: "echo started; sleep 0.3; echo done; exit 2",
+				startedAt: expect.any(Number),
+			},
+		]);
 		await until(() => sent.length === 1);
 		expect(jobs.jobs.size).toBe(0);
+		expect(work.all()).toEqual([]);
 		const { message, options } = sent[0];
 		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(message.content).toMatch(
@@ -528,7 +545,7 @@ describe("bash tool", () => {
 		expect(processAlive(first.pid)).toBe(false);
 		await commands.get("jobs")!.handler("kill nope", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/No background bash job "nope"/);
-		expect(sent[0].message.details).toEqual({ id: "bash-1", log: first.log, quiet: true });
+		expect(sent[0].message.details).toEqual({ id: "bash-1", command: "sleep 30", log: first.log, quiet: true });
 		// The user stopped it: the model learns of it without a turn being started for it (`quiet`).
 		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 		await fire("session_shutdown", {}, ctx);

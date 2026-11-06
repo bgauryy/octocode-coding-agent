@@ -21,17 +21,13 @@ async function git(
 	options?: { configuration?: string[]; allowMissing?: boolean },
 ): Promise<{ text: string; truncated: boolean }> {
 	try {
-		const text = await runGit(
-			cwd,
-			["--no-pager", "-c", "core.fsmonitor=false", ...(options?.configuration ?? []), ...args],
-			{
-				signal,
-				timeoutMs: 15_000,
-				maxBuffer: MAX_OUTPUT,
-				raw: true,
-				env: { GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat", GIT_EXTERNAL_DIFF: "", GIT_CONFIG_COUNT: "0" },
-			},
-		);
+		const text = await runGit(cwd, ["--no-pager", ...(options?.configuration ?? []), ...args], {
+			signal,
+			timeoutMs: 15_000,
+			maxBuffer: MAX_OUTPUT,
+			raw: true,
+			env: { GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat", GIT_EXTERNAL_DIFF: "", GIT_CONFIG_COUNT: "0" },
+		});
 		return { text: text.slice(0, MAX_OUTPUT), truncated: false };
 	} catch (error) {
 		if (signal?.aborted) throw new Error("Diff cancelled.", { cause: error });

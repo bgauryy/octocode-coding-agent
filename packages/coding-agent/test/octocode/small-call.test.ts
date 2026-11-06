@@ -41,15 +41,35 @@ const call = (
 describe("callSmallModel", () => {
 	it("calls the cheaper model the small purpose resolves to, with no cache and the key", async () => {
 		const { complete, result } = call(ctx([parent, cheap]));
-		expect(await result).toEqual({ text: "ok", model: "p/cheap" });
+		expect(await result).toEqual({
+			text: "ok",
+			model: "p/cheap",
+			provider: "p",
+			modelId: "cheap",
+			usage: fauxAssistantMessage("ok").usage,
+		});
 		expect(complete.mock.calls[0][0].id).toBe("cheap");
 		expect(complete.mock.calls[0][2]).toMatchObject({ maxTokens: 64, cacheRetention: "none", apiKey: "k" });
+	});
+
+	it("returns the reply's usage and cost so a caller can record the spend", async () => {
+		const reply = fauxAssistantMessage("ok");
+		reply.usage = {
+			...reply.usage,
+			input: 120,
+			output: 30,
+			totalTokens: 150,
+			cost: { ...reply.usage.cost, total: 0.0042 },
+		};
+		const result = await call(ctx([parent, cheap]), {}, reply).result;
+		expect("usage" in result && result.usage.cost.total).toBe(0.0042);
+		expect("usage" in result && result.usage.input).toBe(120);
 	});
 
 	it("fails without a cheaper model unless the session's own is allowed", async () => {
 		expect(await call(ctx([parent])).result).toEqual({ error: "no cheaper model is available" });
 		const { complete, result } = call(ctx([parent]), { fallbackToSession: true });
-		expect(await result).toEqual({ text: "ok", model: "p/big" });
+		expect(await result).toMatchObject({ text: "ok", model: "p/big", provider: "p", modelId: "big" });
 		expect(complete.mock.calls[0][0].id).toBe("big");
 	});
 

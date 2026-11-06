@@ -31,6 +31,7 @@ import {
 import { browserMcpAsked } from "../web/browser-mcp.ts";
 import { contextOptimizationDirs, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
+import { plugins } from "./plugins.ts";
 import { userResearchRoots } from "./research-roots.ts";
 import { vendors } from "./vendors.ts";
 
@@ -104,5 +105,5 @@ const models: McpHostPorts["models"] = {
 const browser: McpHostPorts["browser"] = { mcpAsked: browserMcpAsked };
 
 export function installMcpCorePorts(): void {
-	installMcpHost({ identity, paths, vendors, output, images, trust, models, browser });
+	installMcpHost({ identity, paths, plugins, vendors, output, images, trust, models, browser });
 }

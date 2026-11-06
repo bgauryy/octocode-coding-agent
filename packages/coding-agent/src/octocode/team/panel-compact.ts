@@ -49,11 +49,12 @@ export function collapsedRows(tree: PanelEntry[], now: number, theme: Theme, wid
 		const prefix = depth > 0 ? `${"  ".repeat(depth - 1)} └ ` : "";
 		const flag = member.pending ? `${GLYPH.message} ${member.pending}` : "";
 		const tail = flag ? `${SEPARATOR}${flag}` : "";
+		const worktree = entry.isolated ? `${SEPARATOR}worktree` : "";
 		const name = fitName(
 			`${prefix}${clip(member.id, 64)}`,
-			Math.max(NAME_MIN, width - state.label.length - tail.length - 7),
+			Math.max(NAME_MIN, width - state.label.length - worktree.length - tail.length - 7),
 		);
-		const bare = ` ${panelMark(theme, state, now, doneAt)} ${theme.fg(lively ? "text" : "muted", name)}${SEPARATOR}${theme.fg(panelColor(state), state.label)}${theme.fg("warning", tail)}`;
+		const bare = ` ${panelMark(theme, state, now, doneAt)} ${theme.fg(lively ? "text" : "muted", name)}${SEPARATOR}${theme.fg(panelColor(state), state.label)}${theme.fg("accent", worktree)}${theme.fg("warning", tail)}`;
 		const ageText = visibleWidth(bare) + age.length + SEPARATOR.length <= width ? `${SEPARATOR}${age}` : "";
 		return truncateToWidth(`${bare}${theme.fg("dim", ageText)}`, Math.max(1, width), "…");
 	});

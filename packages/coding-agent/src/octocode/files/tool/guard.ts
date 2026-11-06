@@ -89,7 +89,8 @@ export function lostAnchor(
 				: normalized.split(anchor).length - 1;
 		if (replaceAll ? count > 0 : count === 1) continue;
 		// An unread file is refused as before: the model has to read it (a failed guess is not a changed file).
-		if (unread) return unreadRefusal(display, reader);
+		if (unread)
+			return `${unreadRefusal(display, reader)} edits[${index}] oldText ${count === 0 ? "was not found in it" : `matches it ${count} times`}, so the edit was not applied; copy oldText from what you read.`;
 		const shown = JSON.stringify(oldText.length > 60 ? `${oldText.slice(0, 60)}…` : oldText);
 		return `${display} changed on disk since you last read it and edits[${index}] (oldText ${shown}) ${count === 0 ? "is no longer in it" : `now matches ${count} times`}. Read it again with \`${reader.name}\` before editing it.${by}`;
 	}

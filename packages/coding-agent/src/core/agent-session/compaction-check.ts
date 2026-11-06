@@ -111,8 +111,13 @@ export async function checkCompaction(
 		sameModel &&
 		((explicitOverflow && assistantRetainedForExplicitRecovery) ||
 			(assistantUsageMatchesProjection && isContextOverflow(assistantMessage, contextWindow)));
+	// A length stop below the model's desired output limit is overflow only when the context left too little room for
+	// the reply; elsewhere it is a plain truncation, so the reply stays and nothing is compacted.
 	const recoverableLength =
-		sameModel && assistantIsProjected && isRecoverableLength(assistantMessage, messageModel.maxTokens);
+		sameModel &&
+		assistantIsProjected &&
+		isRecoverableLength(assistantMessage, messageModel.maxTokens) &&
+		lengthStopNearWindow(assistantMessage, currentProjection, branch, contextWindow, messageModel.maxTokens, settings);
 	if (contextOverflow || recoverableLength) {
 		const willRetry = assistantMessage.stopReason !== "stop";
 
@@ -169,19 +174,17 @@ export async function checkCompaction(
 		// Without provider usage, estimate.tokens is the pure message-size estimate.
 		// Only usage-backed estimates need the stale pre-compaction check.
 		if (estimate.lastUsageIndex !== null) {
-			// Verify the usage source is post-compaction. Kept pre-compaction messages
-			// have stale usage reflecting the old (larger) context and would falsely
-			// trigger compaction right after one just finished.
+			// Kept pre-compaction messages carry stale usage for the old, larger context. Size the
+			// projected context from message content instead of trusting it or skipping the check.
 			const usageMsg = messages[estimate.lastUsageIndex];
-			if (
+			const usageIsStale =
 				compactionEntry &&
 				usageMsg.role === "assistant" &&
-				usageMsg.timestamp <= new Date(compactionEntry.timestamp).getTime()
-			) {
-				return false;
-			}
+				usageMsg.timestamp <= new Date(compactionEntry.timestamp).getTime();
+			contextTokens = usageIsStale ? estimateProjectedContextTokens(projection, branch).tokens : estimate.tokens;
+		} else {
+			contextTokens = estimate.tokens;
 		}
-		contextTokens = estimate.tokens;
 	} else {
 		// The provider counted the context up to this response. Before a prompt, idle bash output, custom or
 		// steering messages and restored files appended after it are not in that count, so add their estimate.
@@ -204,4 +207,18 @@ function estimateTrailingTokens(messages: readonly AgentMessage[], assistantMess
 	let tokens = 0;
 	for (let i = index + 1; i < messages.length; i++) tokens += estimateTokens(messages[i]);
 	return tokens;
+}
+
+/** Whether the context at a length stop is close enough to the window to explain the cut-off as overflow. */
+function lengthStopNearWindow(
+	message: AssistantMessage,
+	projection: ReturnType<SessionInternals["session"]["sessionManager"]["buildSessionProjection"]>,
+	branch: Parameters<typeof estimateProjectedContextTokens>[1],
+	contextWindow: number,
+	desiredMaxOutput: number,
+	settings: Parameters<typeof shouldCompact>[2],
+): boolean {
+	const direct = calculateContextTokens(message.usage);
+	const tokens = direct > 0 ? direct : estimateProjectedContextTokens(projection, branch).tokens;
+	return shouldCompact(tokens, contextWindow, settings) || tokens + desiredMaxOutput > contextWindow;
 }

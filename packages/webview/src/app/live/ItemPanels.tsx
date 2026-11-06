@@ -9,24 +9,53 @@ import { Field } from "../ui/fields.tsx";
 import { CheckIcon, CommentIcon, EditIcon, PlusIcon } from "../ui/icons.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, Button, Section } from "../ui/primitives.tsx";
+import { Popover } from "../features/Popover.tsx";
+import { CloseItem } from "./CloseItem.tsx";
 import { CommandButton, MessageForm, StatusLine } from "./controls.tsx";
 import { ItemImplementation } from "./ItemImplementation.tsx";
 import { record } from "./model.ts";
 import { useAnswerNote } from "./NeedsYou.tsx";
 import { useLive } from "./session.tsx";
 
+/** Moves to a form further down the sheet; the menu shortcuts "Add task" and "Add comment" use it. */
+function focusField(selector: string) {
+	const field = document.querySelector<HTMLElement>(selector);
+	field?.scrollIntoView?.({ block: "center" });
+	field?.focus();
+}
+
+/** Implement is the primary action; every other action sits in one menu. "Close" is the action, "Closed" the result. */
 export function ItemActions({ item }: { item: SnapshotItem }) {
+	const correctable = item.state === "done" && Boolean(item.completions?.length);
 	return (
 		<>
 			<ItemImplementation item={item} />
-			<Button icon={<EditIcon />} onClick={() => navigate(`#${item.ref}/edit`)}>
-				Edit / change status
-			</Button>
-			{item.state === "done" && item.completions?.length ? (
-				<Button icon={<CheckIcon />} onClick={() => navigate(`#${item.ref}/correct`)}>
-					Correct result
+			<Popover
+				summary="Actions ▾"
+				title="More actions for this item"
+				className="actions-trigger"
+				panelClassName="actions-panel"
+			>
+				<Button icon={<EditIcon />} data-menu-item onClick={() => navigate(`#${item.ref}/edit`)}>
+					Edit
 				</Button>
-			) : null}
+				{correctable && (
+					<Button icon={<CheckIcon />} data-menu-item onClick={() => navigate(`#${item.ref}/correct`)}>
+						Correct result
+					</Button>
+				)}
+				<CloseItem item={item} />
+				<Button
+					icon={<PlusIcon />}
+					data-menu-item
+					onClick={() => focusField(`input[aria-label="Add a task to ${item.ref}"]`)}
+				>
+					Add task
+				</Button>
+				<Button icon={<CommentIcon />} data-menu-item onClick={() => focusField("[data-add-comment] textarea")}>
+					Add comment
+				</Button>
+			</Popover>
 		</>
 	);
 }
@@ -136,7 +165,7 @@ function CommentForm({ item }: { item: SnapshotItem }) {
 					))}
 				</ol>
 			) : null}
-			<form className="composer" onSubmit={submit}>
+			<form className="composer" data-add-comment="" onSubmit={submit}>
 				<Field label="Comment" hint="Comments stay on this item; they do not message an agent.">
 					{(props) => (
 						<textarea
@@ -217,7 +246,8 @@ export function AuditRows({ events }: { events: readonly BacklogAudit[] }) {
 							{ACTIONS[event.action] ?? event.action}
 							<span className="muted">
 								{" "}
-								· {event.actor.id} · {stamp(event.at)}
+								· {event.actor.id}
+								{event.actor.surface ? ` via ${event.actor.surface}` : ""} · {stamp(event.at)}
 							</span>
 						</summary>
 						<dl className="diff">

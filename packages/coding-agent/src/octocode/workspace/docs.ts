@@ -4,10 +4,11 @@ import path from "node:path";
 import { Value } from "typebox/value";
 import {
 	DOCS_ROUTES,
+	isRepoDocPath,
+	REPO_DOC_PREFIX,
 	DocFileSchema,
 	DocsIndexSchema,
 	type DocFile,
-	type DocKind,
 	type DocsIndex,
 	type DocSummary,
 } from "@octocodeai/octocode-contracts/docs";
@@ -15,82 +16,27 @@ import { mermaidScript } from "@octocodeai/octocode-webview";
 import { redactData } from "../../../../common/src/sanitize.ts";
 import { WORKSPACE_STATE, workspaceStateDir } from "../../config/workspace.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
-import { firstHeading, isSymlink, readFrontmatter, truncate } from "./reports.ts";
+import { docKind, MAX_DOC_BYTES, summarize } from "./doc-summary.ts";
+import { isSymlink } from "./reports.ts";
+import { readRepoDocFile, readRepoDocsIndex } from "./repo-docs.ts";
 
 /**
  * Never listed as authored documents: the saved skill output of other tools, and the workspace state folder inside
  * `.octocode/` (listed only through its backlog export and opted-in scratch). Only the top-level folder is excluded.
  */
-const EXCLUDED_TOP = new Set(["skills", WORKSPACE_STATE.split(path.sep)[1]]);
+const EXCLUDED_TOP = new Set(["skills", WORKSPACE_STATE.split(path.sep)[1], REPO_DOC_PREFIX.slice(0, -1)]);
 /** Scratch space: listed only when the request opts in. */
 const SCRATCH_TOP = "tmp";
 const RUNTIME_PREFIX = WORKSPACE_STATE.split(path.sep).join("/") + "/";
 const SKIPPED_FOLDERS = new Set(["view", "node_modules"]);
-const MAX_DOC_BYTES = 512 * 1024;
 const MAX_DOCS = 1000;
 const MAX_FILES_SEEN = 5000;
 const MAX_DEPTH = 8;
-/** Title, status and question come from the head of the file; the rest is read only when the document is opened. */
-const HEAD_BYTES = 16 * 1024;
 
-const FOLDER_KINDS: readonly [RegExp, DocKind][] = [
-	[/rfc/i, "rfc"],
-	[/brainstorm/i, "brainstorm"],
-	[/research/i, "research"],
-	[/audit/i, "audit"],
-	[/review/i, "review"],
-	[/plan/i, "plan"],
-	[/contract/i, "contract"],
-];
-const FILE_KINDS: readonly [RegExp, DocKind][] = [
-	[/^rfc\b/i, "rfc"],
-	[/^plan\b/i, "plan"],
-	[/^contract\b/i, "contract"],
-	[/review/i, "review"],
-	[/audit/i, "audit"],
-];
-
-/** The kind of a document: its top-level folder decides, then its file name, else a plain report. */
-export function docKind(relativePath: string): DocKind {
-	const parts = relativePath.split("/");
-	if (parts.length > 1) for (const [pattern, kind] of FOLDER_KINDS) if (pattern.test(parts[0])) return kind;
-	const file = parts[parts.length - 1];
-	for (const [pattern, kind] of FILE_KINDS) if (pattern.test(file)) return kind;
-	return "report";
-}
+export { docKind };
 
 function skipped(top: string, includeTmp: boolean): boolean {
 	return EXCLUDED_TOP.has(top) || (top === SCRATCH_TOP && !includeTmp);
-}
-
-function readHead(filePath: string): string {
-	const fd = fs.openSync(filePath, "r");
-	try {
-		const buffer = Buffer.alloc(HEAD_BYTES);
-		return buffer.subarray(0, fs.readSync(fd, buffer, 0, HEAD_BYTES, 0)).toString("utf8");
-	} finally {
-		fs.closeSync(fd);
-	}
-}
-
-function summarize(file: string, relativePath: string, size: number, modified: Date): DocSummary | undefined {
-	try {
-		const head = readHead(file);
-		const frontmatter = readFrontmatter(head);
-		const parts = relativePath.split("/");
-		return {
-			path: relativePath,
-			kind: docKind(relativePath),
-			topic: parts.length > 1 ? parts[0] : "",
-			title: (firstHeading(head) || frontmatter.title || parts[parts.length - 1].replace(/\.md$/i, "")).slice(0, 300),
-			updated: modified.toISOString(),
-			bytes: size,
-			status: truncate(frontmatter.status, 40),
-			question: truncate(frontmatter.question, 2000),
-		};
-	} catch {
-		return undefined; // An unreadable file is left out, not half-listed.
-	}
 }
 
 /** Authored documents, the backlog export, and optional runtime scratch, newest first. Skip symbolic links. */
@@ -192,6 +138,27 @@ export function readDocFile(root: string, relativePath: string, includeTmp = fal
 
 type Reply = (status: number, body: unknown) => void;
 
+/** The authored index plus, for a trusted project, its git-tracked Markdown. An untrusted project runs no git and is reported as hidden. */
+async function docsIndexWithRepo(root: string, includeTmp: boolean, trusted: boolean): Promise<DocsIndex> {
+	const index = readDocsIndex(root, includeTmp);
+	if (!trusted) return { ...index, repoDocsHidden: true };
+	const repoDocs = await readRepoDocsIndex(root);
+	const room = Math.max(0, MAX_DOCS - index.docs.length);
+	const merged: DocsIndex = {
+		...index,
+		docs: [...index.docs, ...repoDocs.slice(0, room)],
+		truncated: index.truncated || repoDocs.length > room,
+	};
+	if (!Value.Check(DocsIndexSchema, merged)) throw new Error("Generated docs index violates the contracts schema");
+	return merged;
+}
+
+/** Whether a project's repository documents may be shown; the host supplies it (workspace does not know about folder trust). */
+export type RepoDocsTrusted = (root: string) => boolean;
+
+/** The answer when no host supplies a trust check: repository documents stay hidden. */
+export const repoDocsNeverTrusted: RepoDocsTrusted = () => false;
+
 /**
  * The docs library's read-only routes, called only after the loopback host, origin and bearer capability have been
  * checked. Returns true when the request was answered.
@@ -201,6 +168,7 @@ export async function handleDocsRequest(
 	url: URL,
 	repoRoot: string | undefined,
 	reply: Reply,
+	trusted: RepoDocsTrusted,
 ): Promise<boolean> {
 	const route = Object.values(DOCS_ROUTES).find((value) => value === url.pathname);
 	if (!route) return false;
@@ -214,10 +182,25 @@ export async function handleDocsRequest(
 	}
 	const includeTmp = url.searchParams.get("tmp") === "1";
 	if (route === DOCS_ROUTES.index) {
-		reply(200, repoRoot ? redactData(readDocsIndex(repoRoot, includeTmp)) : { docs: [], truncated: false, tmp: false });
+		const index = repoRoot
+			? await docsIndexWithRepo(repoRoot, includeTmp, trusted(repoRoot))
+			: { docs: [], truncated: false, tmp: false };
+		reply(200, redactData(index));
 		return true;
 	}
-	const doc = repoRoot ? readDocFile(repoRoot, url.searchParams.get("path") ?? "", includeTmp) : undefined;
+	const requested = url.searchParams.get("path") ?? "";
+	if (repoRoot && isRepoDocPath(requested)) {
+		if (!trusted(repoRoot)) {
+			reply(403, {
+				error: "Repository documents are shown only in a trusted project. Run `octocode trust add` in a terminal.",
+			});
+			return true;
+		}
+		const repoDoc = await readRepoDocFile(repoRoot, requested);
+		reply(repoDoc ? 200 : 404, repoDoc ? redactData(repoDoc) : { error: "Document not found in this workspace" });
+		return true;
+	}
+	const doc = repoRoot ? readDocFile(repoRoot, requested, includeTmp) : undefined;
 	reply(doc ? 200 : 404, doc ? redactData(doc) : { error: "Document not found in this workspace" });
 	return true;
 }

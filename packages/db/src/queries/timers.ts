@@ -25,10 +25,15 @@ export interface TimerRow {
 	created_at: number;
 	updated_at: number;
 	ended_at: number | null;
+	/** What a `file` or `check` condition compares against, taken when the timer was set. */
+	baseline: string | null;
+	/** Model calls a `check` condition made, and what they cost. */
+	checks: number;
+	spent_usd: number;
 }
 
 export type TimerKind = "once" | "every" | "until";
-export type TimerConditionKind = "command" | "unlocked";
+export type TimerConditionKind = "command" | "unlocked" | "file" | "item" | "agent" | "port" | "check";
 export type TimerStatus = "active" | "done" | "cancelled" | "expired" | "failed";
 
 /** The stored fields of a new timer. */
@@ -41,7 +46,7 @@ export interface NewTimer {
 	kind: TimerKind;
 	dueAt: number;
 	intervalMs?: number;
-	condition?: { kind: TimerConditionKind; value: string; cwd?: string };
+	condition?: { kind: TimerConditionKind; value: string; cwd?: string; baseline?: string };
 	maxRuns?: number;
 	deadlineAt?: number;
 	at: number;
@@ -55,7 +60,7 @@ export function insert(db: DatabaseSync, timer: NewTimer): TimerRow {
 		db
 			.prepare(
 				`INSERT INTO timers (workspace_id, session_id, agent, tool_call_id, note, kind, due_at, interval_ms, condition_kind,
-				 condition, cwd, max_runs, deadline_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+				 condition, cwd, max_runs, deadline_at, created_at, updated_at, baseline) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
 			)
 			.get(
 				timer.workspaceId,
@@ -73,6 +78,7 @@ export function insert(db: DatabaseSync, timer: NewTimer): TimerRow {
 				timer.deadlineAt ?? null,
 				timer.at,
 				timer.at,
+				timer.condition?.baseline ?? null,
 			),
 	)!;
 }
@@ -135,16 +141,50 @@ export function claim(db: DatabaseSync, id: number, sessionId: string, now: numb
 export interface TimerResult {
 	exit: number | null;
 	output: string;
+	/** Model calls this check made and what they cost: added to the row's `checks` and `spent_usd`. */
+	spend?: { calls: number; usd: number };
 }
 
-/** Stores the last check's result on an active timer. */
+/** Stores the last check's result on an active timer, and adds its model spend. */
 export function recordResult(db: DatabaseSync, id: number, result: TimerResult, now: number): void {
-	db.prepare("UPDATE timers SET last_exit = ?, last_output = ?, updated_at = ? WHERE id = ? AND status = 'active'").run(
-		result.exit,
-		result.output,
-		now,
-		id,
+	db.prepare(
+		`UPDATE timers SET last_exit = ?, last_output = ?, updated_at = ?, checks = checks + ?, spent_usd = spent_usd + ?
+		 WHERE id = ? AND status = 'active'`,
+	).run(result.exit, result.output, now, result.spend?.calls ?? 0, result.spend?.usd ?? 0, id);
+}
+
+/** What the session's `check` conditions have spent so far, ended timers included. */
+export function sessionSpend(db: DatabaseSync, sessionId: string): number {
+	return Number(
+		db.prepare("SELECT COALESCE(SUM(spent_usd), 0) AS usd FROM timers WHERE session_id = ?").get(sessionId)?.usd ?? 0,
 	);
+}
+
+/** The session's active `until` timers: the ones that may hold an event watcher. */
+export function activeUntil(db: DatabaseSync, sessionId: string): TimerRow[] {
+	return db
+		.prepare("SELECT * FROM timers WHERE session_id = ? AND status = 'active' AND kind = 'until' ORDER BY id")
+		.all(sessionId) as unknown as TimerRow[];
+}
+
+/**
+ * Claims a check of an active `until` timer ahead of its due time, for an event that says "look now". As `claim`, one
+ * guarded statement; the next check is `interval_ms` after `now` (the safety-net poll), so an event never doubles the rate.
+ */
+export function claimNow(db: DatabaseSync, id: number, sessionId: string, now: number): TimerRow | undefined {
+	return row(
+		db
+			.prepare(
+				`UPDATE timers SET runs = runs + 1, last_fired_at = ?1, updated_at = ?1, due_at = ?1 + interval_ms
+				 WHERE id = ?2 AND session_id = ?3 AND status = 'active' AND kind = 'until' RETURNING *`,
+			)
+			.get(now, id, sessionId),
+	);
+}
+
+/** Moves an active timer's next check to `dueAt` (a watcher that failed falls back to a short poll). */
+export function reschedule(db: DatabaseSync, id: number, dueAt: number): void {
+	db.prepare("UPDATE timers SET due_at = ? WHERE id = ? AND status = 'active'").run(dueAt, id);
 }
 
 /** Ends an active timer with `status` and why; returns it, or undefined when it had already ended (a cancel won). */
@@ -174,6 +214,18 @@ export function cancel(db: DatabaseSync, id: number, sessionId: string, now: num
 			)
 			.get(now, id, sessionId),
 	);
+}
+
+/** Cancels every active timer of the session; returns them, oldest first. */
+export function cancelAll(db: DatabaseSync, sessionId: string, now: number): TimerRow[] {
+	return (
+		db
+			.prepare(
+				`UPDATE timers SET status = 'cancelled', stop_reason = 'cancelled', ended_at = ?1, updated_at = ?1
+				 WHERE session_id = ?2 AND status = 'active' RETURNING *`,
+			)
+			.all(now, sessionId) as unknown as TimerRow[]
+	).sort((a, b) => a.id - b.id);
 }
 
 /**

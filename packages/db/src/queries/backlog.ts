@@ -5,13 +5,13 @@ import { allRows, num, type Row } from "../rows.ts";
 // Item rows and listings (one item, an origin's derived items, filtered pages) live beside this module.
 export * from "./backlog-items.ts";
 
-/** Every item's row id, type, state and parent's row id: the least the counts need (an epic's state comes from its children). */
+/** Every item's row id, type, state, whether it is closed and its parent's row id: the least the counts need (an epic's state comes from its children). */
 export function countHeads(
 	db: DatabaseSync,
 	repo: string,
-): Array<{ id: number; type: string; state: string; parent_id: number | null }> {
-	return allRows<{ id: number; type: string; state: string; parent_id: number | null }>(
-		db.prepare("SELECT id, type, state, parent_id FROM backlog WHERE workspace_id = ?"),
+): Array<{ id: number; type: string; state: string; closed: number; parent_id: number | null }> {
+	return allRows<{ id: number; type: string; state: string; closed: number; parent_id: number | null }>(
+		db.prepare("SELECT id, type, state, closed IS NOT NULL AS closed, parent_id FROM backlog WHERE workspace_id = ?"),
 		repo,
 	);
 }
@@ -216,11 +216,13 @@ export interface ItemChanges extends EntityColumns {
 	startedAt: number | null;
 	doneAt: number | null;
 	fromItem: number | null;
+	/** The JSON of a closed item (it is `done` underneath), else null: reopening clears it. */
+	closed: string | null;
 }
 
 export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void {
 	db.prepare(
-		"UPDATE backlog SET title = ?, goal = ?, body = ?, paths = ?, why = ?, evidence = ?, plan = ?, state = ?, priority = ?, tags = ?, assignee = ?, updated_at = ?, started_at = ?, done_at = ?, from_item = ?, parent_id = CASE WHEN ? THEN ? ELSE parent_id END, type = COALESCE(?, type), version = version + 1 WHERE id = ?",
+		"UPDATE backlog SET title = ?, goal = ?, body = ?, paths = ?, why = ?, evidence = ?, plan = ?, state = ?, priority = ?, tags = ?, assignee = ?, updated_at = ?, started_at = ?, done_at = ?, from_item = ?, closed = ?, parent_id = CASE WHEN ? THEN ? ELSE parent_id END, type = COALESCE(?, type), version = version + 1 WHERE id = ?",
 	).run(
 		c.title,
 		c.goal,
@@ -237,6 +239,7 @@ export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void 
 		c.startedAt,
 		c.doneAt,
 		c.fromItem,
+		c.closed,
 		c.parent ? 1 : 0,
 		c.parent?.rowId ?? null,
 		c.type ?? null,
@@ -244,13 +247,18 @@ export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void 
 	);
 }
 
+/**
+ * Sets one item's manual `rank` and bumps its version, and nothing else: no other row, and not `updated_at`, so ordering a
+ * card is neither a state change nor fresh activity. Returns the new version.
+ */
+export function setItemRank(db: DatabaseSync, rowId: number, rank: number): number {
+	db.prepare("UPDATE backlog SET rank = ?, version = version + 1 WHERE id = ?").run(rank, rowId);
+	return num((db.prepare("SELECT version FROM backlog WHERE id = ?").get(rowId) as { version: number }).version);
+}
+
 /** Clears an item's origin link at `at`, bumping its version. */
 export function clearOrigin(db: DatabaseSync, rowId: number, at: number): void {
 	db.prepare("UPDATE backlog SET from_item = NULL, updated_at = ?, version = version + 1 WHERE id = ?").run(at, rowId);
-}
-
-export function deleteItem(db: DatabaseSync, rowId: number): void {
-	db.prepare("DELETE FROM backlog WHERE id = ?").run(rowId);
 }
 
 /** Ongoing backlog items assigned to session `sessionId` in `repoKey` (most important first), for the resume brief. */

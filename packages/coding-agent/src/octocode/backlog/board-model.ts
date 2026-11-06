@@ -31,7 +31,7 @@ export interface BoardLayout {
 	entries: BoardEntry[];
 	/** The selectable rows, top to bottom. */
 	rows: BoardRow[];
-	/** The footer's counts (`summarizeCounts`): items per state, epics counted once by derived state. */
+	/** The footer's counts (`summarizeCounts`): items per state, epics counted once by derived state, closed items apart. */
 	counts: BacklogCounts;
 }
 
@@ -80,8 +80,9 @@ export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout 
 	for (const task of tasks)
 		if (task.owner.kind === "item") byItem.set(task.owner.ref, [...(byItem.get(task.owner.ref) ?? []), task]);
 	const own = tasks.filter((task) => task.owner.kind === "session" && task.owner.id === session);
-	const plain = items.filter((item) => item.type !== "epic");
-	const epics = items.filter((item) => item.type === "epic");
+	// Closed items are not done and stay off the board (the counts say how many); a closed child still resolves its epic.
+	const plain = items.filter((item) => item.type !== "epic" && !item.closed);
+	const epics = items.filter((item) => item.type === "epic" && !item.closed);
 
 	const entries: BoardEntry[] = [];
 	const rows: BoardRow[] = [];
@@ -110,6 +111,7 @@ export function boardLayout(data: BoardData, selectedKey?: string): BoardLayout 
 			key: item.ref,
 			type: item.type,
 			state: item.state,
+			closed: item.closed !== undefined,
 			...(item.parentId ? { parent: item.parentId } : {}),
 		})),
 	);

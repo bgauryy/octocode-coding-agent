@@ -82,7 +82,7 @@ export function messageText(
 			: renderInstruction("notices/mail/unverified-user.md")
 		: message.from === EXTERNAL_SENDER
 			? apiClientLabel()
-			: `${fromParent ? "your parent agent" : writtenByParent ? "agent (your parent)" : claimsParent ? "agent (recorded as your parent, unverified)" : "agent"} ${headerText(message.from, 64)}${senderTag(message.sender)}`;
+			: `${fromParent ? "your coordinator" : writtenByParent ? "agent (your coordinator)" : claimsParent ? "agent (recorded as your coordinator, unverified)" : "agent"} ${headerText(message.from, 64)}${senderTag(message.sender)}`;
 	const footer = outside(message.from)
 		? ""
 		: message.replyRequired
@@ -175,7 +175,7 @@ export function sessionTree(members: readonly Member[], id: string): Set<string>
 
 /** The refusal a subagent gets for a recipient outside its session tree: only its parent reaches other trees. */
 const outsideTeam = (who: string, parentId: string | undefined) =>
-	`${who} is outside your team; ask your parent (${parentId}) to relay.`;
+	`${who} is outside your team; ask your coordinator (${parentId}) to relay.`;
 
 /**
  * Who a message goes to: an id, a role held by one agent, `parent`, or `all` (every other agent in the session tree of

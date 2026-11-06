@@ -13,8 +13,15 @@ import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "..
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
 import { globalPaths } from "../shared/home.ts";
-import { CORE_TOOLS, DEFAULT_CHILD_TOOLS, LEAN_FLOOR, MCP_ACCESS_TOOLS, mcpFloor, SHELL_TOOLS } from "./core-tools.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
+import {
+	CORE_TOOLS,
+	DEFAULT_CHILD_TOOLS,
+	LEAN_FLOOR,
+	localResearchTools,
+	MCP_ACCESS_TOOLS,
+	mcpFloor,
+	SHELL_TOOLS,
+} from "./core-tools.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 
 export interface AgentProfile {
@@ -258,7 +265,7 @@ function refuseCoreRemoval(
 ): void {
 	const excluded = toolList(excludeTools);
 	const removed = (selected ?? []).filter((entry) => entry.startsWith("-")).map((entry) => entry.slice(1));
-	const named = [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].filter(
+	const named = [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...localResearchTools()].filter(
 		(name) => matchesTool(excluded, name) || removed.includes(name),
 	);
 	if (named.length === 0) return;
@@ -282,7 +289,7 @@ export function profileTools(profile?: AgentProfile): string {
 					...CORE_TOOLS,
 					...DEFAULT_CHILD_TOOLS,
 					...MCP_ACCESS_TOOLS,
-					...LOCAL_RESEARCH_TOOLS,
+					...localResearchTools(),
 				].map((name) => `+${name}`),
 			].join(",")
 		: withCoreTools(profile!.tools!, selected);

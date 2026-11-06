@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
-import { octocodeCommand } from "../../src/octocode/cli/command.ts";
+import { createOctocodeCommand, octocodeCommand } from "../../src/octocode/cli/command.ts";
 import { parseCliHelp } from "../../src/octocode/cli/help.ts";
 import { resolveOctocodeCli } from "../../src/octocode/cli/resolve.ts";
 
@@ -22,12 +22,31 @@ describe("/octocode without a terminal", () => {
 		expect(notify).toHaveBeenCalledWith(`octocode ${resolveOctocodeCli()!.version}`, "info");
 	});
 
-	it("has no aliases: `login` reaches the CLI unchanged and the CLI's own answer is the result", async () => {
+	it("has no aliases: `login` is no CLI command, so the line goes to the agent as a regular prompt", async () => {
+		const { ctx, notify } = headless();
+		const send = vi.fn();
+		await createOctocodeCommand(undefined, send).handler("login", ctx);
+		expect(send).toHaveBeenCalledWith("/octocode login", ctx);
+		expect(notify).not.toHaveBeenCalled();
+		await createOctocodeCommand(undefined, send).handler("why does search miss files?", ctx);
+		expect(send).toHaveBeenLastCalledWith("/octocode why does search miss files?", ctx);
+	});
+
+	it("runs the CLI for its listed commands, its unlisted `help` and options", async () => {
+		const send = vi.fn();
+		for (const args of ["auth status --help", "help", "--version"]) {
+			const { ctx, notify } = headless();
+			await createOctocodeCommand(undefined, send).handler(args, ctx);
+			expect(notify).toHaveBeenCalledWith(expect.any(String), "info");
+		}
+		expect(send).not.toHaveBeenCalled();
+	});
+
+	it("without a way to prompt, passes an unknown word to the CLI, whose own error is the result", async () => {
 		const { ctx, notify } = headless();
 		await octocodeCommand.handler("login", ctx);
 		const [text, level] = notify.mock.calls[0] as [string, string];
-		expect(text).toMatch(/login/);
-		expect(text).not.toMatch(/needs an interactive terminal/);
+		expect(text).toMatch(/unrecognized subcommand 'login'/);
 		expect(level).toBe("warning");
 	});
 });

@@ -152,8 +152,10 @@ describe("file edits of an unread file", () => {
 		],
 	])("still refuses %s, with the read instruction, and changes nothing", async (_name, edits) => {
 		const { file, run } = setup();
-		expect(await run({ type: "edit", path: "a.txt", edits })).toMatch(
-			/already exists and was not read in this session/,
+		const refusal = await run({ type: "edit", path: "a.txt", edits });
+		expect(refusal).toMatch(/already exists and was not read in this session/);
+		expect(refusal).toMatch(
+			/edits\[\d\] oldText (was not found in it|matches it 2 times), so the edit was not applied/,
 		);
 		expect(fs.readFileSync(file, "utf8")).toBe("one\ntwo\ntwo\nthree\n");
 	});

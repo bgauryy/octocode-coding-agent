@@ -25,7 +25,9 @@ export function createMcpExtension(options: McpExtensionOptions = {}): McpExtens
 
 export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptions = {}): McpExtensionState {
 	const state = new McpExtensionState(api, options);
-	state.parentStopped = new Set(registerInheritedMcpServers(api));
+	const inherited = registerInheritedMcpServers(api);
+	state.parentStopped = new Set(inherited.stopped);
+	state.taskServers = inherited.only ? new Set(inherited.only) : undefined;
 	registerAcpClientMcpServers(api);
 
 	// A resumed session renders calls to MCP tools before their server connected, if it ever does.

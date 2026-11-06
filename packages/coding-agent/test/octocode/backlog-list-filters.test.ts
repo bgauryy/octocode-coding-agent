@@ -105,7 +105,7 @@ describe("backlog list filters", () => {
 		expect(refs(await t.backlog({ op: "list", id: "B4, b2" }))).toEqual(["B2", "B4"]);
 		expect(refs(await t.backlog({ op: "list", id: "B4 B2", states: ["todo"] }))).toEqual(["B2"]);
 		await expect(t.backlog({ op: "list", id: "nope" })).rejects.toThrow(/nope is not an item id/);
-		// The older `ids` list still runs, so calls recorded in that shape replay.
+		// The declared `ids` list names the same items.
 		expect(refs(await t.backlog({ op: "list", ids: ["B4", "b2"] }))).toEqual(["B2", "B4"]);
 		// Title words match in any order, case-insensitively.
 		expect(refs(await t.backlog({ op: "list", title: "search" }))).toEqual(["B3", "B2", "B1"]);
@@ -215,8 +215,8 @@ describe("backlog list filters", () => {
 		const tool = fake.tools.get("backlog");
 		const properties = tool.parameters.properties as Record<string, { description?: string }>;
 		for (const field of ["since", "sort"]) expect(properties).toHaveProperty(field);
-		for (const field of ["ids", "assignee", "blocked", "createdSince"]) expect(properties).not.toHaveProperty(field);
-		for (const field of ["id", "title", "type", "parentId", "priority", "tags", "paths", "dependsOn", "from"])
+		for (const field of ["assignee", "blocked", "createdSince"]) expect(properties).not.toHaveProperty(field);
+		for (const field of ["id", "ids", "title", "type", "parentId", "priority", "tags", "paths", "dependsOn", "from"])
 			expect(properties[field].description).toContain("list:");
 		const old = { reason: "replay", op: "list", ids: ["B1"], assignee: "me", blocked: false, createdSince: "1d" };
 		expect(

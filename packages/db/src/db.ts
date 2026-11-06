@@ -32,7 +32,7 @@ export interface AgentDb {
 	onCommit(listener: () => void): () => void;
 	/** After a transaction of this connection that appended agent events: their sequences, `from` to `to` inclusive. */
 	onEvents(listener: (from: number, to: number) => void): () => void;
-	withActor<T>(actor: { id: string; kind?: string }, fn: () => T): T;
+	withActor<T>(actor: { id: string; kind?: string; surface?: string }, fn: () => T): T;
 	close(): void;
 }
 
@@ -57,7 +57,7 @@ export function openDatabase(
 	db.function("octocode_backlog_writer", () => 1);
 	let auditActor = JSON.stringify({ id: "system", kind: "system" });
 	db.function("octocode_audit_actor", () => auditActor);
-	const withActor = <T>(actor: { id: string; kind?: string }, fn: () => T): T => {
+	const withActor = <T>(actor: { id: string; kind?: string; surface?: string }, fn: () => T): T => {
 		const previous = auditActor;
 		auditActor = JSON.stringify(actor);
 		try {

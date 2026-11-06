@@ -4,7 +4,7 @@ import { type BacklogIndex, buildTree, type TreeNode } from "../model/backlog.ts
 import { isEpic, taskTallyText } from "../model/hierarchy.ts";
 import { TreeIcon } from "../ui/icons.tsx";
 import { Button, EmptyState } from "../ui/primitives.tsx";
-import { ItemLine, Toolbar } from "./shared.tsx";
+import { ItemLine, ShowClosedToggle, Toolbar, visibleIndex } from "./shared.tsx";
 import { RollupLine, SessionTasks, TaskList } from "./Tasks.tsx";
 
 type Expansion = "default" | "all" | "none";
@@ -15,7 +15,8 @@ type Controls = ViewProps["controls"];
  * (`controls`); a read-only page and the static export show the same structure without them.
  * Expand/collapse all remounts the disclosures with a new key, so each one stays natively toggleable afterwards.
  */
-export function TreeView({ index, controls }: ViewProps) {
+export function TreeView({ index: full, params, setParams, controls }: ViewProps) {
+	const index = useMemo(() => visibleIndex(full, params), [full, params]);
 	const tree = useMemo(() => buildTree(index), [index]);
 	const [expansion, setExpansion] = useState<{ mode: Expansion; generation: number }>({
 		mode: "default",
@@ -35,6 +36,7 @@ export function TreeView({ index, controls }: ViewProps) {
 				<Button size="sm" onClick={() => set("none")}>
 					Collapse all
 				</Button>
+				<ShowClosedToggle index={full} params={params} setParams={setParams} />
 			</Toolbar>
 			<div className="tree" key={expansion.generation}>
 				{tree.roots.length ? (

@@ -8,10 +8,14 @@ import type { AgentProfile } from "./profiles.ts";
 
 /** A task's `paths` at launch: reserved for the child from its claim until its run ends (`Team.childLeases`). */
 
-/** What to reserve for a task, and what its result says about paths it will not reserve. */
-interface ReservationPlan {
+/**
+ * What to reserve for a task, and what its result says about paths it will not reserve. `waitOn`: the running children of
+ * this session that alone hold paths it needs; the start waits for their release (`awaitSiblings`) before it reserves.
+ */
+export interface ReservationPlan {
 	paths: string[];
 	note: string;
+	waitOn: string[];
 }
 
 const conflictText = (team: Team, conflicts: readonly LeaseConflict[]): string[] =>
@@ -44,17 +48,49 @@ export function planReservation(
 	params: { paths?: string[]; isolate?: boolean },
 ): ReservationPlan {
 	const paths = (params.paths ?? []).filter((entry) => entry.trim() !== "");
-	if (paths.length === 0) return { paths: [], note: "" };
-	if (params.isolate) return { paths: [], note: skipped("an isolated child edits its own worktree") };
-	if (profile?.readOnly) return { paths: [], note: skipped(`profile ${profile.name} is read-only`) };
+	if (paths.length === 0) return { paths: [], note: "", waitOn: [] };
+	if (params.isolate) return { paths: [], note: skipped("an isolated child edits its own worktree"), waitOn: [] };
+	if (profile?.readOnly) return { paths: [], note: skipped(`profile ${profile.name} is read-only`), waitOn: [] };
 	let conflicts: LeaseConflict[] = [];
 	try {
 		conflicts = team.childLeases.conflicts(paths);
 	} catch {
 		// Below, at the claim.
 	}
-	if (conflicts.length > 0) throw refusal(team, conflicts);
-	return { paths, note: "" };
+	if (conflicts.length === 0) return { paths, note: "", waitOn: [] };
+	// Held by running children of this session alone: they release at their report, so the start waits. Anything else refuses.
+	const waitOn = team.childLeases.siblingsHolding(conflicts);
+	if (waitOn.length === 0) throw refusal(team, conflicts);
+	return { paths, note: "", waitOn };
+}
+
+/** Where the start stands while it waits: the children and the paths it needs of them (those they hold, as the task named them). */
+export function waitingText(plan: ReservationPlan): string {
+	return `waiting for ${plan.waitOn.join(", ")} to report before it reserves ${plan.paths.join(", ")}`;
+}
+
+/**
+ * Waits until the children `plan` names have released, then plans again, until no child of this session blocks it any
+ * longer, and hands that plan to `use` in the same turn of the event loop: two starts woken by one release must not both
+ * find the paths free and then both claim them, so nothing awaits between the last plan and what `use` reserves. The plan
+ * again throws the refusal when something else holds a path by then. Holds nothing while it waits, and `signal` ends the
+ * wait. `onWait` hears each plan that waits.
+ */
+export async function awaitSiblings<T>(
+	team: Team,
+	plan: ReservationPlan,
+	replan: () => ReservationPlan,
+	signal: AbortSignal,
+	onWait: ((waiting: ReservationPlan) => void) | undefined,
+	use: (clear: ReservationPlan) => T,
+): Promise<T> {
+	let current = plan;
+	while (current.waitOn.length > 0) {
+		onWait?.(current);
+		await team.childLeases.released(current.waitOn, signal);
+		current = replan();
+	}
+	return use(current);
 }
 
 /** Reserves for the claimed run; its `release` then gives them back. Whether it could, and the conflicts when not. */

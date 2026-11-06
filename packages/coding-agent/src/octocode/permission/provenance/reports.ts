@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ToolResultEvent } from "../../../core/features/index.ts";
-import { AGENT_RESULT_TYPE } from "../../shared/messages.ts";
+import { AGENT_RESULT_TYPE, JOB_TYPE } from "../../shared/messages.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Permission } from "../ask.ts";
 import type { createProvenance } from "../provenance.ts";
 import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "./exposure.ts";
@@ -27,7 +28,10 @@ export function startPermissionState(
  * subagent sends its own state with its last word, at session end (`Permission.shutdown`, once before the lifecycle's own call).
  *
  * A background child's report arrives as a message rather than a tool result, but it is the same text from the same place:
- * it is indexed as the `agent` tool's result is (`Provenance.origin`).
+ * it is indexed as the `agent` tool's result is (`Provenance.origin`). So is the output of a background bash job (also a
+ * command that outlived its deadline): it is indexed as the foreground `bash` result of the job's command, so a
+ * backgrounded `curl` taints its text as a foreground one does. Only the tail the report carries is indexed; the log it
+ * names is not, as a foreground result's log is not.
  */
 export function recordChildReports(
 	api: Pick<ExtensionAPI, "on" | "events">,
@@ -42,18 +46,17 @@ export function recordChildReports(
 	if (isSubagent) api.on("session_shutdown", async (_event, ctx) => permission.shutdown(ctx, provenance.exposed()));
 	api.on("message_end", async (event, ctx) => {
 		const { message } = event;
-		if (message.role !== "custom" || message.customType !== AGENT_RESULT_TYPE) return;
+		if (message.role !== "custom") return;
 		const { content, details } = message;
+		let toolName: string;
+		let input: Record<string, unknown> = {};
+		if (message.customType === AGENT_RESULT_TYPE) toolName = "agent";
+		else if (message.customType === JOB_TYPE) {
+			toolName = "bash";
+			if (isRecord(details) && typeof details.command === "string") input = { command: details.command };
+		} else return;
 		provenance.record(
-			{
-				type: "tool_result",
-				toolCallId: "",
-				toolName: "agent",
-				input: {},
-				content,
-				isError: false,
-				details,
-			} as ToolResultEvent,
+			{ type: "tool_result", toolCallId: "", toolName, input, content, isError: false, details } as ToolResultEvent,
 			ctx,
 		);
 	});

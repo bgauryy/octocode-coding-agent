@@ -466,13 +466,13 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 
 	it("cycles project built-in extension overrides in config local mode", async () => {
 		const storage = new InMemorySettingsStorage();
-		storage.withLock("global", () => JSON.stringify({ extensions: ["-builtin:mcp"] }));
+		storage.withLock("global", () => JSON.stringify({ extensions: ["-builtin:llama.cpp"] }));
 		const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: true });
 		const resolvedPaths = await new DefaultPackageManager({
 			cwd: projectDir,
 			agentDir,
 			settingsManager,
-			builtinExtensions: ["mcp"],
+			builtinExtensions: ["llama.cpp"],
 		}).resolve();
 		const selector = new ConfigSelectorComponent(
 			{ global: resolvedPaths, project: resolvedPaths },
@@ -488,9 +488,9 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 
 		const list = selector.getResourceList();
 		list.handleInput(" ");
-		expect(settingsManager.getProjectSettings().extensions).toEqual(["+builtin:mcp"]);
+		expect(settingsManager.getProjectSettings().extensions).toEqual(["+builtin:llama.cpp"]);
 		list.handleInput(" ");
-		expect(settingsManager.getProjectSettings().extensions).toEqual(["-builtin:mcp"]);
+		expect(settingsManager.getProjectSettings().extensions).toEqual(["-builtin:llama.cpp"]);
 		list.handleInput(" ");
 		expect(settingsManager.getProjectSettings().extensions).toEqual([]);
 	});

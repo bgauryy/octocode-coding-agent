@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { Tool } from "./client/index.ts";
-import { hostVendors } from "./host.ts";
+import { hostIdentity, hostVendors } from "./host.ts";
 import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 import type { McpServerEntry } from "./config.ts";
 import { type McpExposure } from "./servers.ts";
@@ -47,6 +47,18 @@ export function getMcpConfigLocations(agentDir: string, cwd: string, projectTrus
 			exists: existsSync(file.path),
 		})),
 	};
+}
+
+/**
+ * Why project MCP files are not loaded: they exist, but the folder is untrusted. Undefined when the folder is trusted or
+ * no project file exists. One sentence for the CLI and the session notice.
+ */
+export function untrustedProjectNote(agentDir: string, cwd: string, projectTrusted: boolean): string | undefined {
+	if (projectTrusted) return undefined;
+	const present = mcpConfigFiles(agentDir, cwd).filter((file) => file.scope === "project" && existsSync(file.path));
+	if (present.length === 0) return undefined;
+	const app = hostIdentity().appName;
+	return `Project MCP configuration is ignored because the folder is not trusted. Run \`${app} trust add\` in it, or start ${app} there to trust it. Not loaded: ${present.map((file) => file.path).join(", ")}.`;
 }
 
 export function formatMcpConfigLocations(locations: ReturnType<typeof getMcpConfigLocations>): string {

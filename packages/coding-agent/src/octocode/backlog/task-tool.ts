@@ -5,6 +5,7 @@ import { type Static, Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
@@ -216,16 +217,23 @@ export function registerTaskTool(
 					]
 						.filter(Boolean)
 						.join(" ");
-					return toolHeader(theme, context, "Steps", target);
+					return toolHeader(theme, context, "Steps", withItemTitles(target, itemTitle));
 				},
 				renderResult(result, _options, theme, context) {
 					const text = contentText(result.content);
 					const details = (result.details ?? {}) as TaskToolDetails;
 					const op = context.args?.op;
-					const summary = context.isError ? (text.split("\n", 1)[0] ?? "") : taskSummary(op, details, text);
+					const summary = withItemTitles(
+						context.isError ? (text.split("\n", 1)[0] ?? "") : taskSummary(op, details, text),
+						itemTitle,
+					);
 					// A write's first line repeats its summary; a list shows every line.
 					const body = context.isError || op !== "list" ? text.split("\n").slice(1).join("\n") : text;
-					return resultBlock(theme, context, { summary, body, ...timingOf(result.details) });
+					return resultBlock(theme, context, {
+						summary,
+						body: withItemTitles(body, itemTitle),
+						...timingOf(result.details),
+					});
 				},
 			},
 			{ exclusive: true },

@@ -12,7 +12,7 @@ export const LAYER_RULES = [
 		name: "core-must-not-import-modes",
 		from: "coding-agent/src/core/",
 		to: "coding-agent/src/modes/",
-		baseline: ["coding-agent/src/core/export-html/tool-renderer.ts"],
+		baseline: [],
 	},
 	{
 		name: "core-must-not-import-octocode",

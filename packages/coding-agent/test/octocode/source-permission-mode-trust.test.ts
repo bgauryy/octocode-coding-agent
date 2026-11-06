@@ -10,7 +10,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 /**
  * A Claude `defaultMode: "acceptEdits"` lets workspace edits run unasked. Like an `allow` rule, it is an allowance, so an
- * untrusted project's `.claude/settings.json` must not turn it on; the user's own untracked `settings.local.json` may.
+ * untrusted project's `.claude/settings.json` or `settings.local.json` must not turn it on; a trusted project's may.
  * Manual mode asks before a workspace edit (the file tool's `file.workspace` check); with no UI the ask is a refusal.
  */
 const roots: string[] = [];
@@ -19,7 +19,7 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-async function editInManualMode(settingsFile: "settings.json" | "settings.local.json" | undefined) {
+async function editInManualMode(settingsFile: "settings.json" | "settings.local.json" | undefined, trusted = false) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "source-mode-trust-"));
 	roots.push(root);
 	const cwd = path.join(root, "work");
@@ -35,7 +35,7 @@ async function editInManualMode(settingsFile: "settings.json" | "settings.local.
 		);
 	}
 	const fake = fakeHost();
-	const ctx = { ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => false };
+	const ctx = { ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => trusted };
 	const policy = registerSourcePolicy(fake.api, home);
 	await policy.refresh(ctx);
 	const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });
@@ -57,8 +57,12 @@ it("ignores acceptEdits from an untrusted project's settings", async () => {
 	expect(await editInManualMode("settings.json")).toBe(false);
 });
 
-it("applies acceptEdits from the user's untracked local settings", async () => {
-	expect(await editInManualMode("settings.local.json")).toBe(true);
+it("ignores acceptEdits from an untrusted project's local settings", async () => {
+	expect(await editInManualMode("settings.local.json")).toBe(false);
+});
+
+it("applies acceptEdits from a trusted project's local settings", async () => {
+	expect(await editInManualMode("settings.local.json", true)).toBe(true);
 });
 
 it("asks without any Claude settings", async () => {

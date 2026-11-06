@@ -46,7 +46,11 @@ describe("system prompt section spec", () => {
 			MCPS_SECTION,
 			MCP_STATUS_SECTION,
 		];
-		for (const name of produced) expect(systemPromptSectionSpec(name), name).toBeDefined();
+		for (const name of produced)
+			expect(systemPromptSectionSpec(name), name).toMatchObject({
+				name,
+				tier: expect.stringMatching(/^(base|session|volatile)$/),
+			});
 	});
 
 	test("a custom prompt keeps tools, guidelines, MCP servers, skills and policy, and drops only docs and default lines", () => {

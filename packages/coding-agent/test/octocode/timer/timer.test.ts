@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, expire, leases, openDatabase, sessions, timers } from "../../../../db/src/api.ts";
 import { registeredWorkspace } from "../../../src/config/workspace-database.ts";
 import { TIMER_TYPE } from "../../../src/octocode/shared/messages.ts";
-import { STATUS } from "../../../src/octocode/shared/status.ts";
+import { runningWorkOf } from "../../../src/octocode/shared/running-work.ts";
 import { conditionChecker } from "../../../src/octocode/timer/condition.ts";
+import type { ConditionDeps } from "../../../src/octocode/timer/conditions/types.ts";
 import { type CheckOutcome, timerFields } from "../../../src/octocode/timer/model.ts";
 import { sendCustomMessage } from "../../../src/core/agent-session/prompting.ts";
 import { registerTimers } from "../../../src/octocode/timer/register.ts";
@@ -13,6 +14,16 @@ import { renderTimerMessage } from "../../../src/octocode/timer/render.ts";
 import { TimerScheduler } from "../../../src/octocode/timer/scheduler.ts";
 import { fakeCtx, fakeHost, rendered } from "../fake-host.ts";
 import { tmp } from "../helpers.ts";
+
+/** Conditions' host with nothing to read: a test sets only what it exercises. */
+const deps = (own: Pick<ConditionDeps, "reservation" | "context">): ConditionDeps => ({
+	item: () => undefined,
+	agentEnd: () => undefined,
+	watchDatabase: () => () => undefined,
+	roots: (cwd) => [cwd],
+	judge: async () => ({ verdict: "skipped", reason: "no judge in this test" }),
+	...own,
+});
 
 const T0 = Date.UTC(2026, 10, 5, 12);
 let root: string;
@@ -186,13 +197,23 @@ describe("the timer scheduler", () => {
 			T0,
 			T0 + 3_600_000,
 		);
-		const check = conditionChecker({
-			reservation: (absolute, display) =>
-				leases.conflicting(agent.db, registeredWorkspace(root, agent).root, "agent-b", Date.now(), absolute, [], "file")
-					? `${display} is reserved by agent-a`
-					: undefined,
-			context: () => undefined,
-		});
+		const check = conditionChecker(
+			deps({
+				reservation: (absolute, display) =>
+					leases.conflicting(
+						agent.db,
+						registeredWorkspace(root, agent).root,
+						"agent-b",
+						Date.now(),
+						absolute,
+						[],
+						"file",
+					)
+						? `${display} is reserved by agent-a`
+						: undefined,
+				context: () => undefined,
+			}),
+		);
 		add({ note: "edit src/a.ts now", until: { unlocked: "src/a.ts" } });
 		const woken: unknown[] = [];
 		const waiting = new TimerScheduler({ db: () => agent, sessionId: "s1", check, wake: (row) => woken.push(row) });
@@ -210,7 +231,7 @@ describe("the timer scheduler", () => {
 describe("timer conditions", () => {
 	it("runs an until-command on the bash path: exit 0 is met", async () => {
 		vi.useRealTimers();
-		const check = conditionChecker({ reservation: () => undefined, context: () => undefined });
+		const check = conditionChecker(deps({ reservation: () => undefined, context: () => undefined }));
 		const flag = path.join(root, "ready");
 		expect(await check({ kind: "command", command: `test -f ${flag}` }, root)).toMatchObject({ met: false, exit: 1 });
 		fs.writeFileSync(flag, "");
@@ -241,14 +262,24 @@ describe("the timer tool in a session", () => {
 			ctx,
 		);
 		expect(set.content[0].text).toMatch(/^Set \d+ · once/);
-		expect(ctx.ui.statuses.get(STATUS.timers)).toBe("1 timer");
+		// A typed row with the timer's id, what it waits for, its note and its time left.
+		expect(runningWorkOf(host.api).all()).toEqual([
+			{
+				kind: "timer",
+				id: expect.stringMatching(/^#\d+$/),
+				title: "after 2s",
+				detail: "rerun the flaky test",
+				startedAt: expect.any(Number),
+				dueAt: expect.any(Number),
+			},
+		]);
 		await vi.advanceTimersByTimeAsync(3000);
 		expect(host.sent).toHaveLength(1);
 		const [{ message, options }] = host.sent;
 		expect(message.customType).toBe(TIMER_TYPE);
 		expect(message.content).toContain("Note: rerun the flaky test");
 		expect(options).toMatchObject({ triggerTurn: true, deliverAs: "steer" });
-		expect(ctx.ui.statuses.get(STATUS.timers)).toBeUndefined();
+		expect(runningWorkOf(host.api).all()).toEqual([]);
 		const list = await tool.execute("call-2", { op: "list", all: true }, undefined, undefined, ctx);
 		expect(list.content[0].text).toContain("done (fired)");
 		await host.fire("session_shutdown", {}, ctx);
@@ -318,6 +349,59 @@ describe("the timer tool in a session", () => {
 		await tool.execute("c3", { op: "cancel", id: set.details.timer.id }, undefined, undefined, ctx);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(settled).toBe(true);
+		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("cancels by the id set returned, as clearTimeout: no wake after, a second cancel is a no-op, all stops the rest", async () => {
+		add({ note: "another session's", after: 5 }, "s2");
+		const host = fakeHost();
+		registerTimers(host.api, {
+			reservation: () => undefined,
+			agent: () => undefined,
+			env: { ...process.env, OCTOCODE_AGENT_DB: file },
+		});
+		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		const tool = host.tools.get("timer");
+		const run = (params: object) => tool.execute("c", params, undefined, undefined, ctx);
+		const text = (result: { content: { text: string }[] }) => result.content[0].text;
+
+		const once = await run({ op: "set", after: 5, note: "timeout" });
+		const id = once.details.timer.id as number;
+		expect(text(once)).toMatch(
+			new RegExp(`^Set ${id} · once · next wake in 5s · timeout\\nCancel it with id ${id}\\.$`),
+		);
+		const every = await run({ op: "set", every: 30, note: "interval" });
+		const everyId = every.details.timer.id as number;
+		await run({ op: "set", after: 600, note: "later" });
+
+		expect(text(await run({ op: "cancel", id }))).toMatch(new RegExp(`^Cancelled ${id} · once · cancelled`));
+		expect(text(await run({ op: "cancel", id }))).toMatch(
+			new RegExp(`^Timer ${id} already ended, nothing to cancel: ${id} · once · cancelled`),
+		);
+		await vi.advanceTimersByTimeAsync(31_000);
+		// Only the interval woke the session; its wake says how to stop it.
+		expect(host.sent.map(({ message }) => message.content)).toEqual([
+			expect.stringContaining(`It repeats: cancel id ${everyId} to stop it.`),
+		]);
+
+		const foreign = timers.forSession(agent.db, "s2")[0].id;
+		await expect(run({ op: "cancel", id: foreign })).rejects.toThrow(
+			new RegExp(`^No timer ${foreign} in this session\\. Active: \\d+, ${everyId}\\.$`),
+		);
+		await expect(run({ op: "cancel" })).rejects.toThrow(/^cancel needs the id set returned, or all: true\. Active: /);
+		await expect(run({ op: "cancel", id: everyId, all: true })).rejects.toThrow("cancel takes id or all, not both.");
+
+		const all = await run({ op: "cancel", all: true });
+		expect(text(all)).toMatch(/^Cancelled 2 timers:\n/);
+		expect(text(all)).toContain("interval");
+		expect(text(all)).toContain("later");
+		expect(text(await run({ op: "list" }))).toBe("No active timers.");
+		expect(text(await run({ op: "cancel", all: true }))).toBe("No active timers to cancel.");
+		// Another session's timer is untouched.
+		expect(timers.get(agent.db, foreign)?.status).toBe("active");
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(host.sent).toHaveLength(1);
 		await host.fire("session_shutdown", {}, ctx);
 	});
 

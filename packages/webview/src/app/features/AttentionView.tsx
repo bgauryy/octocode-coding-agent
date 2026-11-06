@@ -4,12 +4,14 @@ import { attention } from "../model/backlog.ts";
 import { ago, span } from "../model/format.ts";
 import { CheckIcon } from "../ui/icons.tsx";
 import { EmptyState } from "../ui/primitives.tsx";
-import { ItemLine } from "./shared.tsx";
+import { ItemLine, ShowClosedToggle, visibleIndex } from "./shared.tsx";
 
-export function AttentionView({ index }: ViewProps) {
+export function AttentionView({ index: full, params, setParams }: ViewProps) {
+	const index = useMemo(() => visibleIndex(full, params), [full, params]);
 	const { claims, idle } = useMemo(() => attention(index), [index]);
 	return (
 		<div className="view attention-view">
+			<ShowClosedToggle index={full} params={params} setParams={setParams} />
 			<section className="panel" aria-labelledby="stale-claims">
 				<header className="panel-header">
 					<h2 id="stale-claims">

@@ -4,7 +4,7 @@ import { openFile } from "../shared/open.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { doItPrompt } from "./actions.ts";
-import { type Backlog, openBacklog } from "./context.ts";
+import { type Backlog, openBacklog, userActor } from "./context.ts";
 import { boardText, isState, itemLine } from "./format.ts";
 import { taskLine } from "./task-format.ts";
 import { TASK_STATES, isOpenTask } from "@octocodeai/octocode-contracts/backlogs";
@@ -23,7 +23,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		say(ctx, `Opened the live backlog board at ${url}\nChanges are saved; keep this session open.`);
 	};
 
-	const { apply, handOff, move, remove, add, actions, tasks } = createItemActions(api, deps);
+	const { apply, handOff, move, closeItem, add, actions, tasks } = createItemActions(api, deps);
 
 	const doExport = (ctx: ExtensionCommandContext, backlog: Backlog) => {
 		try {
@@ -76,9 +76,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 					move: (item, state) =>
 						state === "done" || item.state === "done"
 							? "Open the item actions to complete or reopen with a result/reason."
-							: apply(ctx, () =>
-									backlog.store.update(item.ref, { state, version: item.version }, { ...backlog.actor, kind: "human" }),
-								),
+							: apply(ctx, () => backlog.store.update(item.ref, { state, version: item.version }, userActor(backlog))),
 				},
 				selected,
 			);
@@ -170,7 +168,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 			},
 		},
 	};
-	const itemActions = [...STATES, "delete"];
+	const itemActions = [...STATES, "close"];
 	const syntax = Object.entries(verbs).map(([name, verb]) => `${name}${verb.args ? ` ${verb.args}` : ""}`);
 	const usage = `[${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
 	return {
@@ -244,9 +242,9 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 						? say(ctx, refused, "warning")
 						: say(ctx, `Moved ${itemLine(backlog.store.get(item.ref)!, backlog.session)}`);
 				}
-				if (verb === "delete") {
-					if (!ctx.hasUI) return say(ctx, "Deleting needs a confirmation: run it in the interactive UI.", "warning");
-					return await remove(ctx, backlog, item, sanitizeTerminalText(item.title));
+				if (verb === "close") {
+					if (!ctx.hasUI) return say(ctx, "Closing asks for a reason: run it in the interactive UI.", "warning");
+					return await closeItem(ctx, backlog, item);
 				}
 				return say(ctx, `Unknown action "${verb}". Usage: /backlog ${usage}`, "warning");
 			} catch (error) {

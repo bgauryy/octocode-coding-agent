@@ -60,13 +60,16 @@ describe("workspace data and commands", () => {
 		expect(events.some((e) => e.entity === "backlog_comments" && e.actor.kind === "human")).toBe(true);
 		expect(events.some((e) => e.entity === "backlog" && (e.after as { plan?: string })?.plan === "Context")).toBe(true);
 		expect(() => db.db.prepare("DELETE FROM backlog_audits").run()).toThrow(/immutable/);
-		store.remove(item.ref, undefined, actor);
+		store.update(item.ref, { close: { kind: "obsolete", text: "superseded" } }, { ...actor, surface: "web" });
 		expect(
 			store
 				.audit(item.ref)
 				.some(
 					(e) =>
-						e.entity === "backlog" && e.action === "delete" && (e.before as { title: string }).title === "Build it",
+						e.entity === "backlog" &&
+						e.action === "update" &&
+						(e.after as { closed?: string }).closed?.includes("superseded") &&
+						e.actor.surface === "web",
 				),
 		).toBe(true);
 	});

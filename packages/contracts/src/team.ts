@@ -40,6 +40,15 @@ export interface Member {
 	locks?: string[];
 	/** Set by the process running this subagent, in what it lists: when the subagent last wrote output. */
 	lastOutputAt?: number;
+	/**
+	 * Set by the host that shows the user's dialogs: the member is blocked on the user (`approval`: a permission dialog;
+	 * `reply`: a question that waits for an answer). Absent for a member that does not wait; older snapshots omit it.
+	 */
+	waiting?: "approval" | "reply";
+	/** Set by the host that ran the subagent once its run ended: how it ended. Absent while it runs and in older snapshots. */
+	outcome?: "done" | "partial" | "blocked" | "failed" | "stopped";
+	/** One line on how the run ended (`outcome`). */
+	headline?: string;
 }
 
 /** One message as the user sees it in the feed: who talked to whom, and how far it got. */

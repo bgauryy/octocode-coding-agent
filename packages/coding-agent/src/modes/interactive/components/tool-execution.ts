@@ -12,7 +12,6 @@ import {
 	type TuiMouseEvent,
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
-
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { rowMark, uiStateOf } from "../../../octocode/shared/render/motion.ts";
 import { phaseOf } from "../../../octocode/shared/render/rows.ts";
@@ -20,7 +19,7 @@ import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../../../theme/theme.ts";
 import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
 import { GenericToolContent } from "./tool-execution/content.ts";
-import { reasonRow } from "./tool-execution/reason.ts";
+import { purposeRows, reasonRow } from "../../../octocode/ui/reason-row.ts";
 import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
@@ -290,7 +289,6 @@ export class ToolExecutionComponent extends Container {
 			}
 			const reason = reasonRow(this.toolName, this.args, this.result?.structuredContent);
 			if (reason) renderContainer.addChild(this.createResultRegion(reason));
-
 			if (this.result) {
 				const resultRenderer = this.getResultRenderer();
 				if (!resultRenderer) {
@@ -321,6 +319,8 @@ export class ToolExecutionComponent extends Container {
 						hasContent = true;
 					}
 				}
+				const purpose = purposeRows(this.toolName, this.args, this.result.structuredContent);
+				if (purpose) renderContainer.addChild(this.createResultRegion(purpose));
 			}
 		} else {
 			// A tool without a renderer wears the same mark as every other row.

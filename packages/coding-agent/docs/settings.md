@@ -175,8 +175,13 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `remote.transport` | `"ssh" \| "relay"` | `"ssh"` | How a published /remote link reaches the daemon: "ssh" prints a port forward to run; "relay" dials remote.relayUrl. |
 | `remote.relayUrl` | string |  | The ws:// or wss:// relay the daemon dials for relay links. |
 | `remote.autoStart` | `"off" \| "view" \| "control"` | `"off"` | Publish a link of that access ("view" or "control") when a session starts and print it. A project settings file can set "off" but never turn it on; the global value stands. |
+| `web` | object |  |  |
+| `web.sound` | boolean | `false` | Play a short chime with a web workspace notification (an approval or question waiting, a run finished or failed). The page makes the sound; the toggle in the workspace changes this setting. Notifications themselves need the browser's permission, which the page asks for from its own control. |
+| `web.theme` | `"system" \| "light" \| "dark"` | `"system"` | Colour theme of the web workspace: "system" follows the operating system, "light" and "dark" override it. The theme control in the workspace changes this setting. |
+| `web.window` | `"app" \| "browser"` | `"app"` | Where /web opens the workspace: "app" is a Chrome, Edge, Chromium or Brave app window with a temporary profile apart from your own (no extensions, cookies or history; removed when it closes); "browser" uses the default browser. Without an installed Chromium browser "app" falls back to the default browser. Applies to the next /web. |
 | `sessions` | object |  |  |
 | `sessions.autoTitle` | boolean | `true` | Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title. |
+| `timer` | object |  |  |
 | `optimizePrompts` | boolean | `false` | Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it. |
 | `queueMode` | `"all" \| "one-at-a-time"` |  | Legacy setting migrated to steeringMode. |
 | `websockets` | boolean |  | Legacy setting migrated to transport. |

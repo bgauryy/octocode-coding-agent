@@ -45,6 +45,15 @@ describe("daemon repository scope (read-only board)", () => {
 		expect(screen.queryByRole("button", { name: /Implement/ })).toBeNull();
 	});
 
+	it("draws no drag, inline add, or write entry on a card", async () => {
+		const user = userEvent.setup();
+		const { container } = render(page("repo"));
+		expect(container.querySelector("[draggable=true]")).toBeNull();
+		expect(screen.queryByRole("button", { name: /Add a card/ })).toBeNull();
+		await user.click(screen.getByRole("button", { name: "Actions for B1" }));
+		expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Open", "Copy ref"]);
+	});
+
 	it("leaves out Create new item from the palette and ignores the C shortcut", async () => {
 		const user = userEvent.setup();
 		render(page("repo"));

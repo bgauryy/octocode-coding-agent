@@ -143,15 +143,15 @@ export function registerSendMessageTool(
 			name: "sendMessage",
 			label: "Send message",
 			description:
-				"Queue steering, questions or evidence to teammates; unread departures are reported. Messages resume only reachable non-isolated background children (yours, or siblings via your parent).",
+				"Queue steering, questions or evidence to teammates; unread departures are reported. Messages resume only reachable non-isolated background children (yours, or siblings via your coordinator).",
 			promptGuidelines: renderInstruction("tools/send-message/guidelines.md").split("\n"),
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent"; use an exact id across parent trees. "all" reaches only your tree; omit with replyTo to answer its sender. Also another Octocode process by its name, or "coordinator" from a linked worktree: the session in the main checkout; if there is none or several, nothing is sent.'
-							: 'Agent id, role or "parent" in your tree; your parent relays beyond it. "all": the whole tree; omit with replyTo to answer its sender.',
+							? 'Agent id, role or "parent" (coordinator); use an exact id across trees. "all" reaches only your tree; omit with replyTo to answer its sender. Also another Octocode process by its name, or "coordinator" from a linked worktree: the session in the main checkout; if there is none or several, nothing is sent.'
+							: 'Agent id, role or "parent" (coordinator) in your tree; it relays beyond it. "all": the whole tree; omit with replyTo to answer its sender.',
 					}),
 				),
 				message: Type.Optional(Type.String()),
@@ -209,6 +209,7 @@ export function registerSendMessageTool(
 					id: result.id,
 					...(result.delivery ? { delivery: result.delivery } : {}),
 					...(result.departed?.length ? { departed: result.departed } : {}),
+					...(result.starting?.length ? { starting: result.starting } : {}),
 				};
 				if (result.resumed) return textResult(result.resumed, details);
 				// A foreground child's parent is inside this child's `agent` call: nothing it sends is read before its report.
@@ -218,7 +219,7 @@ export function registerSendMessageTool(
 						: "";
 				if (result.relayed)
 					return textResult(
-						`${result.sent.join(", ")} is not a live agent in your team: message #${result.id} goes through your parent ${result.relayed}, which resumes it with the message if it is a finished subagent it can resume. If not, you get a notice saying why.`,
+						`${result.sent.join(", ")} is not a live agent in your team: message #${result.id} goes through your coordinator ${result.relayed}, which resumes it with the message if it is a finished subagent it can resume. If not, you get a notice saying why.`,
 						{ ...details, relayed: result.relayed },
 					);
 				if (params.interrupt)
@@ -227,6 +228,9 @@ export function registerSendMessageTool(
 						details,
 					);
 				const departed = result.departed?.length ? ` Not sent to ${result.departed.join(", ")} (left the team).` : "";
+				const starting = result.starting?.length
+					? ` Not reached, still starting: ${result.starting.join(", ")}; send again once they have joined.`
+					: "";
 				const recipients = result.sent.join(", ");
 				// Told as it meets each recipient, so a sender knows an idle one will not act on an FYI alone, and which one is not answering.
 				const delivery = result.delivery ?? {};
@@ -245,7 +249,7 @@ export function registerSendMessageTool(
 						: "";
 				if (params.replyRequired === true)
 					return textResult(
-						`Queued message #${result.id} for ${recipients} as a request: ${recipients} ${result.sent.length > 1 ? "are" : "is"} woken and must answer with replyTo ${result.id}.${departed}${[
+						`Queued message #${result.id} for ${recipients} as a request: ${recipients} ${result.sent.length > 1 ? "are" : "is"} woken and must answer with replyTo ${result.id}.${departed}${starting}${[
 							pace,
 							stalled,
 						]
@@ -276,6 +280,7 @@ export function registerSendMessageTool(
 						.filter(Boolean)
 						.join(" ") +
 						departed +
+						starting +
 						waits,
 					details,
 				);

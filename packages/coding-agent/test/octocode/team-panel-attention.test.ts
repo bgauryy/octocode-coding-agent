@@ -5,7 +5,6 @@ import { FINISHED_MS } from "../../src/octocode/team/panel-compact.ts";
 import { FinishedTracker } from "../../src/octocode/team/panel-finished.ts";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
 import { panelState } from "../../src/octocode/team/panel-state.ts";
-import { WAITING_APPROVAL } from "../../src/octocode/team/session/approvals.ts";
 import { theme } from "./fake-host.ts";
 
 const NOW = 1_000_000;
@@ -61,7 +60,7 @@ describe("agents panel: the agent that needs you", () => {
 	});
 
 	it("treats a member waiting for an approval as needing the user", () => {
-		const out = lines([member("calm-heron", { activity: WAITING_APPROVAL }), member("swift-lynx")]);
+		const out = lines([member("calm-heron", { waiting: "approval" }), member("swift-lynx")]);
 		expect(out[0]).toContain("◇ 1 needs you");
 		expect(out[1]).toContain("◇ calm-heron");
 		expect(out[1]).toContain("needs you");
@@ -196,11 +195,12 @@ describe("agents panel: finished rows", () => {
 
 	it("keeps the outcome the host reports after the row left, for FINISHED_MS", () => {
 		const live = member("old-gecko");
-		const tracker = new FinishedTracker();
+		const reported: { end?: { outcome: "failed"; headline: string } } = {};
+		const tracker = new FinishedTracker(() => reported.end);
 		tracker.update(ME, [main, live], [live], NOW);
 		tracker.update(ME, [main], [], NOW + 1_000);
 		expect(tracker.finished[0]?.end).toBeUndefined();
-		tracker.noteEnd("old-gecko", { outcome: "failed", headline: "boom" }, NOW + 2_000);
+		reported.end = { outcome: "failed", headline: "boom" };
 		expect(tracker.finished[0]?.end).toEqual({ outcome: "failed", headline: "boom" });
 		const entry = { member: live, depth: 0, doneAt: NOW, end: { outcome: "failed" as const } };
 		expect(panelState(entry, NOW)).toEqual({ state: "failed", label: "failed" });

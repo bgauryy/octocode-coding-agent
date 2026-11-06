@@ -21,7 +21,7 @@ describe("session MCP servers handed to children", () => {
 		const events = createEventBus();
 		expect(getMcpSessionHandoff(events).servers).toEqual({});
 		const added: Record<string, typeof stdio> = { echo: stdio };
-		const off = registerMcpAddedServers(events, () => ({ servers: added, stopped: [] }));
+		const off = registerMcpAddedServers(events, () => ({ servers: added, stopped: [], available: [] }));
 		expect(getMcpSessionHandoff(events).servers).toEqual({ echo: stdio });
 		delete added.echo;
 		expect(getMcpSessionHandoff(events).servers).toEqual({});
@@ -35,7 +35,7 @@ describe("session MCP servers handed to children", () => {
 		expect(servers).toEqual({ echo: stdio });
 		expect(errors).toHaveLength(1);
 		expect(parseMcpSessionServers(serializeMcpSessionServers({ echo: stdio })!).servers).toEqual({ echo: stdio });
-		expect(() => parseMcpSessionServers('{"version":3,"servers":{}}')).toThrow("not a session server list");
+		expect(() => parseMcpSessionServers('{"version":4,"servers":{}}')).toThrow("not a session server list");
 	});
 
 	it("registers them only in a subagent that was given the file", () => {

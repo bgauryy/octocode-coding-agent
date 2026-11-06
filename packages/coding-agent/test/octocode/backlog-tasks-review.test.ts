@@ -55,27 +55,17 @@ describe("promoting a session task", () => {
 	});
 });
 
-describe("removing an item that has tasks", () => {
-	it("is refused while a task is open, naming it, and nothing is deleted", () => {
+describe("closing an item that has tasks", () => {
+	it("is refused while a task is open, naming it, and the item stays", () => {
 		const item = add("Has steps");
 		store.tasks.add({ goal: "Open step", item: item.ref }, user);
-		expect(() => store.remove(item.ref, undefined, user)).toThrow(
+		const close = { kind: "wont_do" as const, text: "dropped" };
+		expect(() => store.update(item.ref, { close }, user)).toThrow(
 			`${item.ref} has open tasks: T1: finish or drop them first.`,
 		);
-		expect(() => store.remove(item.ref, undefined, agent)).toThrow(/has open tasks/);
-		expect(store.get(item.ref)).toBeDefined();
+		expect(() => store.update(item.ref, { close }, agent)).toThrow(/has open tasks/);
+		expect(store.get(item.ref)?.state).not.toBe("done");
 		expect(store.tasks.list({ item: item.ref })).toHaveLength(1);
-	});
-
-	it("deletes closed tasks first and files their delete audit under the item", () => {
-		const item = add("Finished steps");
-		const task = store.tasks.add({ goal: "Done step", item: item.ref }, user);
-		store.tasks.update(task.ref, { state: "dropped", result: "not needed" }, user);
-		store.remove(item.ref, undefined, user);
-		expect(store.get(item.ref)).toBeUndefined();
-		expect(store.tasks.get(task.ref)).toBeUndefined();
-		expect(auditOf(item.ref).map((entry) => entry.action)).toEqual(["insert", "update", "delete"]);
-		expect(auditOf(task.ref)).toEqual([]);
 	});
 });
 

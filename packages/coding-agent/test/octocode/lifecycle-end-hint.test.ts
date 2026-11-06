@@ -76,11 +76,15 @@ describe("the end_hint migration", () => {
 		openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false }, plan);
 
 	it("is the first step, additive, and a migrated file has the shape of a new one", () => {
-		expect(SCHEMA_PLAN.version).toBe(4);
+		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`) and 7 (`backlog.rank`) came after these.
+		expect(SCHEMA_PLAN.version).toBe(7);
 		expect(SCHEMA_PLAN.migrations).toEqual([
 			expect.objectContaining({ to: 2, additive: true }),
 			expect.objectContaining({ to: 3, additive: true }),
 			expect.objectContaining({ to: 4, additive: true }),
+			expect.objectContaining({ to: 5, additive: true }),
+			expect.objectContaining({ to: 6, additive: true }),
+			expect.objectContaining({ to: 7, additive: true }),
 		]);
 		const old = path.join(root, "old.db");
 		const first = open(old, { version: 1, migrations: [] });
@@ -89,6 +93,11 @@ describe("the end_hint migration", () => {
 			first.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
 		first.db.exec("DROP TABLE agent_runs");
 		first.db.exec("DROP TABLE timers");
+		// Step 5 adds `backlog.closed` and recreates its audit triggers; a version 1 file has neither.
+		for (const name of ["insert", "update", "delete"]) first.db.exec(`DROP TRIGGER backlog_audits_${name}`);
+		first.db.exec("ALTER TABLE backlog DROP COLUMN closed");
+		// Step 7 adds `backlog.rank`.
+		first.db.exec("ALTER TABLE backlog DROP COLUMN rank");
 		first.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		first.close();
 		expect(columns(old, "agents")).not.toContain("end_hint");
@@ -100,7 +109,7 @@ describe("the end_hint migration", () => {
 		expect(columns(old, "agents")).toEqual(columns(fresh, "agents"));
 		const raw = new DatabaseSync(old, { readOnly: true });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
-		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 4 });
+		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_PLAN.version });
 		raw.close();
 	});
 

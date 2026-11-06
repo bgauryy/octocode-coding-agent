@@ -114,12 +114,12 @@ export function withUsageEstimate(
 		const previousPrompt = promptCache.get(sessionId);
 		if (previousPrompt) {
 			const cachedChars = commonPromptPrefixLength(previousPrompt, prompt);
-			cacheRead = Math.ceil(cachedChars / 4);
-			cacheWrite = Math.ceil((promptLength - cachedChars) / 4);
-			input = Math.max(0, promptTokens - cacheRead);
-		} else {
-			cacheWrite = promptTokens;
+			cacheRead = Math.min(promptTokens, Math.ceil(cachedChars / 4));
 		}
+		// As Anthropic reports it: input, cache reads and cache writes are disjoint parts of the prompt, and the faux
+		// cache writes every token it did not read.
+		cacheWrite = promptTokens - cacheRead;
+		input = 0;
 		promptCache.set(sessionId, prompt);
 	}
 

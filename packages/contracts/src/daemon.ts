@@ -55,6 +55,10 @@ export const DaemonStatusSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+/** `GET /api/access`: whether the presented token may change the board (launch and control tokens may, a view token may not). */
+export const DaemonAccessSchema = Type.Object({ writable: Type.Boolean() }, { additionalProperties: false });
+export type DaemonAccess = Static<typeof DaemonAccessSchema>;
+
 /** `<octocode home>/web/attach/<sessionId>.json` (owner-only): where a live session accepts the daemon, and its capability. */
 export const AttachRecordSchema = Type.Object(
 	{

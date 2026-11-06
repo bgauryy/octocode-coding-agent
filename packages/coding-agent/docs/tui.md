@@ -2,7 +2,7 @@
 
 > **Removed API.** Octocode no longer supports user code extensions, and the package root exports no extension API. This page describes the extension loader's last behavior and is removed with it.
 
-For user-facing command navigation, `/help` opens a searchable command picker and `/skills` filters it to loaded skills. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for command names and the combined status, models, and trust menus.
+For user-facing command navigation, `/help` opens a searchable command picker, skills included. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for command names and the combined status, models, and trust menus.
 
 The built-in footer reserves its own line for the coordinator's provider/model and thinking level. On narrower terminals it separates model identity from thinking so usage totals cannot hide either. Models without reasoning support show `thinking unavailable`; virtual selections additionally show the latest physical route. `/effort` changes reasoning effort, and `/context size` chooses a session context budget. Extension-provided replacement footers control their own layout.
 

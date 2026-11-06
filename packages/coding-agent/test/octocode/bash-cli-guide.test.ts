@@ -70,7 +70,8 @@ describe("renderCliGuide", () => {
 
 	it("opens with the probed host and gives only that platform's notes", () => {
 		const mac = renderCliGuide(host("darwin", ["yq"]));
-		expect(mac.split("\n")[0]).toMatch(/^Code research: /);
+		expect(mac.split("\n")[0]).toMatch(/^The commands below are for a quick look/);
+		expect(mac).not.toContain("Code research:");
 		expect(mac.split("\n")[1]).toBe(
 			"Host: macOS arm64. On PATH: git, rg; not found: yq. gh: logged in. Check any other tool with `command -v` before relying on it.",
 		);
@@ -90,7 +91,7 @@ describe("renderCliGuide", () => {
 		const withCli = renderCliGuide({ ...host("linux"), present: ["git", "rg", "octocode"] });
 		expect(withCli.split("\n")[1]).toContain("On PATH: git, rg, octocode.");
 		expect(withCli).toContain(
-			"Code research: when search and read tools are declared, find, search and read source with them, not with `rg`, `grep`, `find`, `cat`, `head` or `sed -n` here, unless you verified they cannot do it.",
+			"The commands below are for a quick look at one known file or log, a command's own output, binaries, processes, git and CI, and hosts without declared search and read tools.",
 		);
 		expect(withCli).not.toContain("`octocode");
 	});

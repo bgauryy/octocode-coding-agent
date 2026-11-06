@@ -14,6 +14,8 @@ export interface ItemRow<State extends string> {
 	plan: string;
 	state: State;
 	priority: number;
+	/** Manual position in a column (ascending), or null until the item is first ordered by hand. */
+	rank: number | null;
 	tags: string;
 	assignee: string | null;
 	created_by: string;
@@ -25,12 +27,14 @@ export interface ItemRow<State extends string> {
 	from_item: number | null;
 	from_seq: number | null;
 	version: number;
+	/** The JSON of a closed item, else null. */
+	closed: string | null;
 }
 
 /** Items with the number of the item each came from; filters and order use the `b.` alias. */
 const SELECT = "SELECT b.*, f.seq AS from_seq FROM backlog b LEFT JOIN backlog f ON f.id = b.from_item";
 
-const BOARD_ORDER = `CASE b.state WHEN 'ongoing' THEN 0 WHEN 'todo' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END, b.priority, b.updated_at DESC, b.seq DESC`;
+const BOARD_ORDER = `CASE b.state WHEN 'ongoing' THEN 0 WHEN 'todo' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END, b.rank IS NULL, b.rank, b.priority, b.updated_at DESC, b.seq DESC`;
 
 /** How a listing is ordered: `board` (state, priority, most recently updated), or newest first by update or creation. */
 export const ITEM_SORTS = ["board", "updated", "created"] as const;
@@ -71,8 +75,6 @@ export interface ItemFilter {
 	maxPriority?: number;
 	/** Whole tags, without `#`. */
 	tags?: readonly string[];
-	/** Prefixes of a stored path. */
-	pathPrefixes?: readonly string[];
 	/** Item refs (`B12`) a match depends on. */
 	dependsOn?: readonly string[];
 	/** true: a prerequisite is missing or not done; false: none is. */
@@ -93,8 +95,15 @@ const anyOf = (values: readonly string[], clause: string) =>
 
 /** The `WHERE` clause (aliased `b`) and its arguments for a filter. */
 function whereOf(filter: ItemFilter): { clause: string; args: Array<string | number> } {
-	const where = [`b.workspace_id = ?`, `b.state IN (${marks(filter.states)})`];
-	const args: Array<string | number> = [filter.repo, ...filter.states];
+	// `closed` is `done` underneath with a close record, but a different state to list: `done` leaves it out.
+	const stored = [...new Set(filter.states.filter((state) => state !== "done" && state !== "closed"))];
+	const clauses = [
+		...(stored.length ? [`b.state IN (${marks(stored)})`] : []),
+		...(filter.states.includes("done") ? ["(b.state = 'done' AND b.closed IS NULL)"] : []),
+		...(filter.states.includes("closed") ? ["(b.state = 'done' AND b.closed IS NOT NULL)"] : []),
+	];
+	const where = [`b.workspace_id = ?`, clauses.length ? `(${clauses.join(" OR ")})` : "0"];
+	const args: Array<string | number> = [filter.repo, ...stored];
 	const add = (clause: string, ...values: Array<string | number>) => {
 		where.push(clause);
 		args.push(...values);
@@ -125,12 +134,6 @@ function whereOf(filter: ItemFilter): { clause: string; args: Array<string | num
 		add(
 			anyOf(filter.tags, "(' ' || b.tags || ' ') LIKE ? ESCAPE '\\'"),
 			...filter.tags.map((tag) => `% ${likeEscape(tag)} %`),
-		);
-	if (filter.pathPrefixes)
-		// Paths are stored one per line: a prefix matches at the start of any line.
-		add(
-			anyOf(filter.pathPrefixes, "('\n' || b.paths) LIKE ? ESCAPE '\\'"),
-			...filter.pathPrefixes.map((prefix) => `%\n${likeEscape(prefix)}%`),
 		);
 	if (filter.dependsOn)
 		add(

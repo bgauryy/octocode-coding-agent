@@ -41,7 +41,7 @@ describe("built-in composition", () => {
 	});
 
 	it.each(["main", "config"])("shows default built-ins through %s without injected factories", async (entry) => {
-		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
+		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:llama.cpp"] }));
 		const args = ["config"];
 		await expect(entry === "main" ? main(args) : handleConfigCommand(args)).rejects.toBe(exited);
 
@@ -49,8 +49,9 @@ describe("built-in composition", () => {
 		expect(options).toBeDefined();
 		for (const scope of ["global", "project"] as const) {
 			const builtins = options.resolvedPaths[scope].extensions.filter((item) => item.path.startsWith("builtin:"));
-			expect(builtins.map((item) => item.path).sort()).toEqual(["builtin:llama.cpp", "builtin:mcp"]);
-			expect(builtins.find((item) => item.path === "builtin:mcp")?.enabled).toBe(false);
+			// MCP is core, so no row offers to switch it off.
+			expect(builtins.map((item) => item.path)).toEqual(["builtin:llama.cpp"]);
+			expect(builtins[0]?.enabled).toBe(false);
 		}
 	});
 

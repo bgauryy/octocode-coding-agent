@@ -1,8 +1,4 @@
-import {
-	isOctocodeTool,
-	LOCAL_RESEARCH_TOOLS,
-	OCTOCODE_TOOL_PREFIX,
-} from "../../../../mcp/src/presets/octocode/names.ts";
+import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 
 /** Every child can save files, communicate, track steps, wait with timers and recover history; local research is added separately. */
@@ -23,12 +19,22 @@ export const DEFAULT_CHILD_TOOLS = ["skill"] as const;
 export const MCP_ACCESS_TOOLS = ["mcp"] as const;
 
 /**
- * The MCP tools an allowlist gains. One naming tools of the Octocode server itself curates that catalog on purpose and
- * keeps only the local reader and search (the browser role leaves out structure, AST and LSP); one naming other servers'
- * tools keeps all local research; one naming no MCP tool keeps every server (`mcp__*`).
+ * The local research tools: every MCP tool the session's servers mark as a reader or a search (`roles` in a server
+ * entry, `mcp/src/roles.ts`), never a tool picked by name. Empty while no server has roles.
+ */
+export function localResearchTools(): readonly string[] {
+	const { readers, searches } = currentToolRoles();
+	return [...readers, ...searches];
+}
+
+/**
+ * The MCP tools an allowlist gains. One naming tools of the research server (the one with a reader and a search role)
+ * curates that catalog on purpose and keeps only its reader and its first search; one naming other servers' tools keeps
+ * all local research; one naming no MCP tool keeps every server (`mcp__*`).
  */
 export function mcpFloor(selected: readonly string[] | undefined): readonly string[] {
-	if (selected?.some(isOctocodeTool))
-		return ["localFetch", "localSearch"].map((name) => `${OCTOCODE_TOOL_PREFIX}${name}`);
-	return selected?.some(isMcpToolName) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"];
+	const research = currentToolRoles().research;
+	if (research && selected?.some((name) => name.startsWith(research.prefix)))
+		return [research.reader, research.search[0]];
+	return selected?.some(isMcpToolName) ? localResearchTools() : ["mcp__*"];
 }

@@ -2,6 +2,7 @@ import type { Component } from "@octocodeai/octocode-tui";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ansiLinesToHtml } from "../src/core/export-html/ansi-to-html.ts";
+import { purposeRows, reasonRow } from "../src/octocode/ui/reason-row.ts";
 import { createToolHtmlRenderer } from "../src/core/export-html/tool-renderer.ts";
 import type { ToolDefinition } from "../src/core/features/types.ts";
 import type { Theme } from "../src/theme/theme.ts";
@@ -33,6 +34,8 @@ describe("export HTML tool output whitespace", () => {
 			getToolRenderers: () => tool,
 			theme: {} as Theme,
 			cwd: "/tmp",
+			reasonRow,
+			purposeRows,
 		});
 
 		expect(renderer.renderResult("id", "custom", [], undefined, false)?.expanded).toBe(

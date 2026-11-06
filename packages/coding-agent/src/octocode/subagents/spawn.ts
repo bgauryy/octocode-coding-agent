@@ -8,7 +8,7 @@ import { modelLookup, textResult } from "../shared/util.ts";
 import { getMcpSessionHandoff } from "../../../../mcp/src/session-servers.ts";
 import { checkGoal } from "../team/identity.ts";
 import { launchOverlap } from "../team/overlap.ts";
-import { type AgentRuns, claimRun, joinTeam, planRun, type Run } from "./claim.ts";
+import { type AgentRuns, claimRun, planRun, type Run } from "./claim.ts";
 import type { Lingering } from "./linger.ts";
 import { runSubagent } from "./process.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
@@ -18,7 +18,7 @@ import { startGate } from "./rate-gate.ts";
 import { staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
-import { planReservation, takeReservation } from "./reservation.ts";
+import { awaitSiblings, planReservation, type ReservationPlan, takeReservation, waitingText } from "./reservation.ts";
 import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import type { agentToolSpec } from "./agent-tool.ts";
 import { resumableChild, resumedTask, resumeText } from "./children.ts";
@@ -32,6 +32,7 @@ import type { RunDetails } from "./run-types.ts";
 import { spawnRefusal } from "./spawn-limits.ts";
 import { childCacheGroup, taskSkillPlan, taskSkillText, withRoleSkills } from "./task-skills.ts";
 import { childTaskInput, taskReferences } from "./task-text.ts";
+import { resolveTaskServers } from "./task-servers.ts";
 import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking.ts";
 
 /** What starting a subagent reads of the `agent` tool's registration (`tool.ts`). */
@@ -94,7 +95,18 @@ export async function spawnAgent(
 		ctx,
 		env.getRefused?.(),
 	);
-	const reserving = planReservation(team, plan.profile, params);
+	// An unknown or disabled server name refuses the task before it claims anything.
+	const taskServers =
+		params.mcp === undefined
+			? undefined
+			: resolveTaskServers(api.events, params.mcp, plan.profile, resumed !== undefined);
+	let reserving = planReservation(team, plan.profile, params);
+	const replan = () => planReservation(team, plan.profile, params);
+	// A foreground start tells its row what it waits for; a background one says so in its result.
+	const waitingRow = (waiting: ReservationPlan) => {
+		const row = waitingUpdate(params.profile, goal, 0);
+		onUpdate?.({ ...row, content: [{ type: "text", text: waitingText(waiting) }] });
+	};
 	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.getCommands());
 	const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
@@ -102,13 +114,15 @@ export async function spawnAgent(
 	const slot = { held: false };
 	if (params.background) {
 		// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.
-		slot.held = startGate.remainingMs() === 0 && runs.slots.tryTake();
+		// So does one that waits for the reservations of a running child: it holds no slot and no lease until then.
+		slot.held = startGate.remainingMs() === 0 && reserving.waitOn.length === 0 && runs.slots.tryTake();
 	} else {
+		// Before a slot: a start that waits for a sibling's paths must not keep others from theirs.
+		reserving = await awaitSiblings(team, reserving, replan, launchSignal, waitingRow, (clear) => clear);
 		await startGate.wait(launchSignal);
 		await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
 		slot.held = true;
 	}
-	const queued = !slot.held;
 	let claimed: Run | undefined;
 	let grants: Awaited<ReturnType<typeof askSpawn>>;
 	try {
@@ -119,6 +133,18 @@ export async function spawnAgent(
 		// An isolated run's name must not repeat a saved ref: `/agents merge <name>` would be ambiguous.
 		const refs = params.isolate ? await pendingRefs(ctx.cwd) : [];
 		launchSignal.throwIfAborted();
+		// Siblings started while the user was asked (or a slot waited for) now hold paths: from here to the claim nothing
+		// awaits, so what this finds is what the claim reserves against.
+		reserving = replan();
+		while (reserving.waitOn.length > 0 && !params.background) {
+			waitingRow(reserving);
+			await team.childLeases.released(reserving.waitOn, launchSignal);
+			reserving = replan();
+		}
+		if (reserving.waitOn.length > 0 && slot.held) {
+			runs.slots.give();
+			slot.held = false;
+		}
 		// Parallel calls of one batch all passed the first check, and a foreground call may have waited long for its slot.
 		refuseOverSpend();
 		claimed = claimRun(
@@ -135,6 +161,7 @@ export async function spawnAgent(
 		if (!claimed && slot.held) runs.slots.give();
 	}
 	const run = claimed;
+	const queued = !slot.held;
 	const isolation = new Isolation(run.identity.id, linked?.ref);
 	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
@@ -150,7 +177,8 @@ export async function spawnAgent(
 	let handedOff = false;
 	// From the claim on, every failure goes through `finish`: the slot and the name are given back.
 	try {
-		const reserved = takeReservation(team, run, reserving);
+		const waitsForSiblings = reserving.waitOn.length > 0;
+		const reserved = waitsForSiblings ? `\n\n(${waitingText(reserving)}.)` : takeReservation(team, run, reserving);
 		if (resultContract) run.identity.resultContract = resultContract;
 		if (linked) run.identity.item = linked.ref;
 		// A lean child reads its skills inlined in the task; it loads none itself.
@@ -159,8 +187,13 @@ export async function spawnAgent(
 		run.profile = withRoleSkills(run.profile, skillPlan.roleSkills, skillResources);
 		// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
 		const { servers: addedServers, stopped } = getMcpSessionHandoff(api.events);
-		if (Object.keys(addedServers).length > 0) run.identity.mcpServers = addedServers;
+		const inherited = taskServers?.servers ?? addedServers;
+		if (Object.keys(inherited).length > 0) run.identity.mcpServers = inherited;
 		if (stopped.length > 0) run.identity.mcpStopped = stopped;
+		if (taskServers) {
+			run.identity.mcpOnly = taskServers.only;
+			run.identity.mcpNamed = taskServers.named;
+		}
 		// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
 		// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
 		run.identity.permission = {
@@ -177,7 +210,7 @@ export async function spawnAgent(
 		const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 		// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 		const lingers = params.background === true && !params.isolate;
-		const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking);
+		const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking, run.identity.mcpNamed);
 		const prefix = childCacheGroup(run, skillPlan, ctx.sessionManager.getSessionId());
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
 		/** The part of a start that needs its slot: a worktree exists only for a run that can use it, and the teammates are those of the moment it starts. */
@@ -193,7 +226,7 @@ export async function spawnAgent(
 			const assigned = { ...run.identity, background: params.background === true, why: params.reason };
 			const own = withIdentity(`${told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
 			run.identity.assignment = assignmentText(assigned, archive, parts, skillPlan.inline); // re-read after compacting
-			const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
+			const task = own;
 			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, warm?: () => void) => {
 				const tracked = track(update);
 				const progress: typeof tracked = (change) => {
@@ -216,12 +249,18 @@ export async function spawnAgent(
 		const sessionId = ctx.sessionManager.getSessionId();
 		if (queued) {
 			const whenFree = async (queueSignal: AbortSignal) => {
+				if (waitsForSiblings) {
+					// Leases first, then the slot: the run holds no lease while it waits here, and takes them in one step.
+					lateNote = await awaitSiblings(team, reserving, replan, queueSignal, undefined, (clear) =>
+						takeReservation(team, run, clear),
+					);
+				}
 				await startGate.wait(queueSignal);
 				await runs.slots.take(queueSignal);
 				slot.held = true;
 				queueSignal.throwIfAborted();
 				const started = await begin(queueSignal);
-				lateNote = started.warning;
+				lateNote = `${lateNote}${started.warning}`;
 				details.startedAt = Date.now();
 				delete details.queued;
 				return started.staggered()(queueSignal);
@@ -231,7 +270,7 @@ export async function spawnAgent(
 			details.status = "background";
 			details.queued = true;
 			return textResult(
-				`Queued ${run.identity.id} (${run.identity.role}: ${goal}) in the background: ${runs.running.size - 1} subagents are ahead of it or running, and it starts when a slot frees. Its report arrives as a message. Runs on ${routeSummary(run.route)}.${notes}`,
+				`Queued ${run.identity.id} (${run.identity.role}: ${goal}) in the background: ${waitsForSiblings ? "it holds no paths yet: it waits for the children holding them, then for a slot" : `${runs.running.size - 1} subagents are ahead of it or running, and it starts when a slot frees`}. Its report arrives as a message. Runs on ${routeSummary(run.route)}.${notes}`,
 				details,
 			);
 		}

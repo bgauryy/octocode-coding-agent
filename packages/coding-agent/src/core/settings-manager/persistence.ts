@@ -1,6 +1,7 @@
 import { retentionProblems } from "../../config/retention.ts";
 import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
+import { ignoredBuiltinSwitches } from "../features/builtin-ids.ts";
 import { describeIgnoredKeys, ignoredSettingsKeys } from "./ignored-keys.ts";
 import { migrateSettings } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
@@ -61,14 +62,16 @@ export class SettingsPersistence {
 	}
 
 	/**
-	 * Queue one warning naming every key of freshly loaded `settings` that Octocode does not read, and one for each invalid
-	 * `retention` value (a project file's `retention` is ignored: retention is global).
+	 * Queue one warning naming every key of freshly loaded `settings` that Octocode does not read, one for each `extensions`
+	 * entry that tries to switch off an always-on built-in, and one for each invalid `retention` value (a project file's
+	 * `retention` is ignored: retention is global).
 	 */
 	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
 		const path = this.state.settingsPaths[scope];
 		const ignored = describeIgnoredKeys(ignoredSettingsKeys(settings));
 		const messages = [
 			...(ignored ? [ignored] : []),
+			...ignoredBuiltinSwitches(settings.extensions ?? []),
 			...(scope === "project" && settings.retention !== undefined
 				? ['Setting "retention" is global only; a project settings file cannot set it, so it does nothing.']
 				: retentionProblems(settings.retention)),

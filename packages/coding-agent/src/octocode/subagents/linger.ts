@@ -269,7 +269,13 @@ export class Lingering {
 				throw new Error(`Subagent ${id} cannot resume: its saved transcript is missing. Start a new task instead.`);
 			// Keep the saved conversation, model and skill inventory, but renew authorization from the parent's current policy,
 			// and take the session's current MCP servers, as a new run would.
-			const { servers, stopped } = getMcpSessionHandoff(runs.api.events);
+			const handoff = getMcpSessionHandoff(runs.api.events);
+			const { stopped } = handoff;
+			// A child whose task named its servers keeps that list: the session's added servers outside it stay out.
+			const only = last.identity.mcpOnly;
+			const servers = only
+				? Object.fromEntries(Object.entries(handoff.servers).filter(([name]) => only.includes(name)))
+				: handoff.servers;
 			const identity = {
 				...withoutServers(last.identity),
 				...(Object.keys(servers).length > 0 ? { mcpServers: servers } : {}),
@@ -292,7 +298,7 @@ export class Lingering {
 							// The user's own message, created in this process for this resume; a relayed or forwarded one never is.
 							fromUser: from === USER_SENDER && request.message.from === USER_SENDER && !request.message.forwardedBy,
 						})
-					: `Follow-up from ${from === USER_SENDER ? "the user" : "your parent"}:\n${text}`,
+					: `Follow-up from ${from === USER_SENDER ? "the user" : "your coordinator"}:\n${text}`,
 			});
 		} catch (error) {
 			if (run) run.release();

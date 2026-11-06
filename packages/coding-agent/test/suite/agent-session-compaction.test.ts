@@ -567,7 +567,7 @@ describe("AgentSession compaction characterization", () => {
 
 	it("compacts and resumes after a length stop below the desired output limit", async () => {
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 8000, maxTokens: 100 }],
+			models: [{ id: "faux-1", contextWindow: 1300, maxTokens: 100 }],
 			tools: [],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
@@ -794,7 +794,7 @@ describe("AgentSession compaction characterization", () => {
 
 	it("stops after one compact-and-retry when a second response is also truncated", async () => {
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 1_000_000, maxTokens: 100 }],
+			models: [{ id: "faux-1", contextWindow: 1300, maxTokens: 800 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
 				(api) => {

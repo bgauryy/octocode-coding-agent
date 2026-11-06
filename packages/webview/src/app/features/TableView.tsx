@@ -12,11 +12,12 @@ import {
 import { FilterSelect, SearchField } from "../ui/fields.tsx";
 import { SortIcon } from "../ui/icons.tsx";
 import { Avatar, Button, PriorityIcon, RelativeTime, StatusLabel } from "../ui/primitives.tsx";
-import { compact, ResultCount, StaleBadge, Toolbar } from "./shared.tsx";
+import { ClosedPill, compact, ResultCount, ShowClosedToggle, StaleBadge, Toolbar, visibleIndex } from "./shared.tsx";
 
 type Filter = "q" | "state" | "p" | "tag" | "assignee" | "sort" | "dir";
 
-export function TableView({ index, params, setParams }: ViewProps) {
+export function TableView({ index: full, params, setParams }: ViewProps) {
+	const index = useMemo(() => visibleIndex(full, params), [full, params]);
 	const search = useRef<HTMLInputElement>(null);
 	const { q = "", state = "", p = "", tag = "", assignee = "" } = params;
 	const column =
@@ -32,7 +33,7 @@ export function TableView({ index, params, setParams }: ViewProps) {
 	const assignees = useMemo(() => distinct(index.items, (it) => (it.assignee ? [it.assignee] : [])), [index]);
 
 	function update(patch: Partial<Record<Filter, string>>) {
-		const next = { q, state, p, tag, assignee, sort, dir, ...patch };
+		const next = { q, state, p, tag, assignee, sort, dir, closed: params.closed ?? "", ...patch };
 		const plain = next.sort === DEFAULT_SORT.sort && next.dir === DEFAULT_SORT.dir;
 		setParams(compact({ ...next, sort: plain ? "" : next.sort, dir: plain ? "" : next.dir }));
 	}
@@ -83,6 +84,7 @@ export function TableView({ index, params, setParams }: ViewProps) {
 						Clear filters
 					</Button>
 				)}
+				<ShowClosedToggle index={full} params={params} setParams={setParams} />
 				<ResultCount shown={shown.length} total={index.items.length} />
 			</Toolbar>
 			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be keyboard-scrollable. */}
@@ -117,7 +119,7 @@ export function TableView({ index, params, setParams }: ViewProps) {
 									</a>
 								</td>
 								<td className="nowrap">
-									<StatusLabel state={it.state} /> <StaleBadge item={it} />
+									{it.closed ? <ClosedPill item={it} /> : <StatusLabel state={it.state} />} <StaleBadge item={it} />
 								</td>
 								<td className="nowrap">
 									<span className="priority-cell">

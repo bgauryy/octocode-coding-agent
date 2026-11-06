@@ -8,6 +8,7 @@ import { type Ask, UserQuestions } from "../team/asks.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describeMembers } from "../team/member-list.ts";
 import type { Team } from "../team/session.ts";
+import type { BudgetStanding } from "../team/model.ts";
 import { sessionChildren } from "../shared/session-children.ts";
 import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
@@ -63,6 +64,7 @@ export function agentsCommand(
 	background: Background,
 	foreground: Background = new Map(),
 	questions = new UserQuestions(),
+	standing?: (id: string) => BudgetStanding | undefined,
 ): Subcommand {
 	/** Each listed subagent's questions to its parent since it joined, with their answers. */
 	const asksOf = (members: readonly Member[]): Map<string, Ask[]> =>
@@ -213,7 +215,17 @@ export function agentsCommand(
 				return found ? say(ctx, agentDetailText(found)) : say(ctx, AGENTS_USAGE, "warning");
 			}
 			const { members, error } = team.snapshot();
-			const listing = describeMembers(members, team.id, Date.now(), asksOf(members), team.openQuestions());
+			// The same inputs as `coordinate list`: one renderer, so both views show the item, why and log lines.
+			const listing = describeMembers(
+				members,
+				team.id,
+				Date.now(),
+				asksOf(members),
+				team.openQuestions(),
+				standing,
+				team.stalled(),
+				team.audit.details(members),
+			);
 			const recent = recentRunsText(team.audit.recent());
 			say(ctx, error ? `${error}\n${listing}` : `${listing}${recent}`, error ? "warning" : "info");
 		},

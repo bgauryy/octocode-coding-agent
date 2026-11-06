@@ -67,6 +67,7 @@ describe("approval dialog while the user types", () => {
 		t!.press("\x7f");
 		await t!.type("x");
 		await t!.until(shows("abcx"), "the draft line");
+		expect(await t!.text()).not.toContain("abcdx");
 	});
 
 	it("Esc clears typed text first and denies only when there is none", async () => {
@@ -127,6 +128,9 @@ describe("Esc handling", () => {
 			() => (t!.host.session.messages as Array<{ stopReason?: string }>).at(-1)?.stopReason === "aborted",
 			"the aborted reply",
 		);
+		expect(t!.host.session.isStreaming).toBe(false);
+		expect((t!.host.session.messages as Array<{ stopReason?: string }>).at(-1)?.stopReason).toBe("aborted");
+		expect(t!.requests).toHaveLength(1);
 	});
 
 	it("does not open the Session Tree while Esc is mashed after an abort, and typed text stays in the editor", async () => {
@@ -151,6 +155,7 @@ describe("Esc handling", () => {
 		await sleep(100);
 		t!.press(KEY.esc);
 		await t!.until(shows("Session Tree"), "the tree selector");
+		expect(await t!.text()).toContain("Session Tree");
 	});
 });
 

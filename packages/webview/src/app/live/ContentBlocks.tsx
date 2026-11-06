@@ -13,6 +13,7 @@ import { Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
 import { type AssetLoader, AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { ToolPurposes } from "./ToolPurposes.tsx";
 
 interface ContentProps {
 	content: readonly ApplicationContentBlock[];
@@ -305,6 +306,7 @@ export function ToolContent({
 	if (ancestors.includes(toolCallId)) return <p className="muted">Nested tool reference: {name}</p>;
 	const path = [...ancestors, toolCallId];
 	const nested = tools.filter((item) => item.parentToolCallId === toolCallId);
+	const reason = toolReasonText(name, tool?.arguments ?? args, tool?.structuredContent);
 	return (
 		<section
 			className={`content-tool${tool?.status === "failed" && !tool.notRun ? " is-failed" : ""}`}
@@ -317,7 +319,7 @@ export function ToolContent({
 					{tool?.durationMs === undefined ? "" : ` · ${Math.round(tool.durationMs)} ms`}
 				</span>
 			</header>
-			<ToolReason name={name} args={tool?.arguments ?? args} structuredContent={tool?.structuredContent} />
+			<ToolReason reason={reason} />
 			{(tool?.arguments ?? args) !== undefined && <JsonDetails label="Arguments" value={tool?.arguments ?? args} />}
 			{tool?.content ? (
 				<ContentBlocks
@@ -330,6 +332,7 @@ export function ToolContent({
 			) : (
 				tool?.text && <pre className="text output">{tool.text}</pre>
 			)}
+			<ToolPurposes structuredContent={tool?.structuredContent} shown={reason} />
 			{tool?.structuredContent !== undefined && (
 				<JsonDetails label="Structured result" value={tool.structuredContent} />
 			)}
@@ -356,14 +359,18 @@ export function ToolContent({
  * argument (every native tool requires one), or for an MCP tool (`mcp__…`), whose input is its server's, only the goal
  * or reason its returned data states. A one-word reason (`Edit`) says no more than the name.
  */
-function ToolReason({ name, args, structuredContent }: { name: string; args: unknown; structuredContent: unknown }) {
+function toolReasonText(name: string, args: unknown, structuredContent: unknown): string {
 	const stated = name.startsWith("mcp__")
 		? returnedPurpose(structuredContent)
 		: args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
 			? args.reason
 			: undefined;
 	const reason = stated?.replace(/\s+/g, " ").trim() ?? "";
-	return reason.includes(" ") ? <p className="tool-reason">↳ {reason}</p> : null;
+	return reason.includes(" ") ? reason : "";
+}
+
+function ToolReason({ reason }: { reason: string }) {
+	return reason ? <p className="tool-reason">↳ {reason}</p> : null;
 }
 
 export function JsonDetails({ label, value }: { label: string; value: unknown }) {

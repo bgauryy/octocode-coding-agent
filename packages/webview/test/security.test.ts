@@ -132,7 +132,7 @@ describe("offline export security", () => {
 			if (hash === "#B1") expect(document.querySelector("#item-title")?.textContent).toBe(`${XSS} B1`);
 		}
 		expect(document.querySelector("h1")?.textContent).toBe(XSS);
-		expect(document.title).toBe("Backlog");
+		expect(document.title).toBe("Board · Octocode");
 		expect(errors).toEqual([]);
 		expect(hits).toEqual([]);
 	});

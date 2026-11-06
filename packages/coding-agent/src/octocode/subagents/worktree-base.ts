@@ -11,7 +11,7 @@ import { processStartTime } from "../shared/process.ts";
 export const REF_PREFIX = "refs/octocode/";
 /** Where an earlier version saved results; they are still listed and merged, never written. */
 export const LEGACY_REF_PREFIX = "refs/octocode/pi/";
-export const ID_PATTERN = /^[A-Za-z0-9._-]{1,80}$/;
+export const ID_PATTERN = /^(?!\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 
 export interface Worktree {
 	agentId: string;

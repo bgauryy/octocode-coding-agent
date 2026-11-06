@@ -21,11 +21,42 @@ CREATE INDEX agent_runs_registration ON agent_runs(registration_id);
 /**
  * Timers (`queries/timers.ts`): a session's own wakes. `once` wakes at `due_at`; `every` wakes every `interval_ms` until
  * `max_runs` or `deadline_at`; `until` checks its condition (`condition_kind`: `command` exits 0 in `cwd`, `unlocked`: no
- * other agent's reservation covers the path in `condition`) every `interval_ms` and wakes once when it is met or the
- * deadline passes. Only the owner session (`session_id`) fires a row; a fire claims it with one guarded UPDATE. A new file
- * creates the table with the rest, a version 3 file by migration 4.
+ * other agent's reservation covers the path in `condition`; `file`, `item`, `agent`, `port` and `check` store their fields
+ * as JSON in `condition`) every `interval_ms` and wakes once when it is met or the deadline passes. `baseline` is what a
+ * `file` or `check` condition compares against (set at creation); `checks` and `spent_usd` count a `check`'s model calls
+ * and their cost. Only the owner session (`session_id`) fires a row; a fire claims it with one guarded UPDATE. A new file
+ * creates the table with the rest, a version 3 file by migration 4 and version 5 by migration 6 (a rebuild: SQLite cannot
+ * widen a CHECK).
  */
-export const TIMERS_SCHEMA = `
+const timersTable = (name: string) => `
+CREATE TABLE ${name} (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL,
+  agent TEXT, tool_call_id TEXT, note TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('once','every','until')), due_at INTEGER NOT NULL, interval_ms INTEGER,
+  condition_kind TEXT CHECK(condition_kind IN ('command','unlocked','file','item','agent','port','check')), condition TEXT, cwd TEXT,
+  max_runs INTEGER, runs INTEGER NOT NULL DEFAULT 0, deadline_at INTEGER,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','done','cancelled','expired','failed')), stop_reason TEXT,
+  last_fired_at INTEGER, last_exit INTEGER, last_output TEXT,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ended_at INTEGER,
+  baseline TEXT, checks INTEGER NOT NULL DEFAULT 0, spent_usd REAL NOT NULL DEFAULT 0,
+  CHECK((kind = 'once') = (interval_ms IS NULL)),
+  CHECK((kind = 'until') = (condition_kind IS NOT NULL)),
+  CHECK((condition_kind IS NULL) = (condition IS NULL)));
+`;
+
+const TIMERS_INDEXES = `
+CREATE INDEX timers_due ON timers(session_id, due_at) WHERE status = 'active';
+CREATE INDEX timers_ended ON timers(ended_at) WHERE status <> 'active';
+`;
+
+const TIMERS_SCHEMA = `${timersTable("timers")}${TIMERS_INDEXES}`;
+
+/** The table migration 6 builds beside `timers`, copies into, and renames over it. */
+export const TIMERS_REBUILD_TABLE = timersTable("timers_next");
+export const TIMERS_REBUILD_INDEXES = TIMERS_INDEXES;
+
+/** `timers` as versions 4 and 5 created it: migration 4 still builds this shape, and migration 6 rebuilds it. */
+export const TIMERS_SCHEMA_V4 = `
 CREATE TABLE timers (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL,
   agent TEXT, tool_call_id TEXT, note TEXT NOT NULL,
@@ -38,9 +69,32 @@ CREATE TABLE timers (
   CHECK((kind = 'once') = (interval_ms IS NULL)),
   CHECK((kind = 'until') = (condition_kind IS NOT NULL)),
   CHECK((condition_kind IS NULL) = (condition IS NULL)));
-CREATE INDEX timers_due ON timers(session_id, due_at) WHERE status = 'active';
-CREATE INDEX timers_ended ON timers(ended_at) WHERE status <> 'active';
+${TIMERS_INDEXES}`;
+
+/**
+ * The audit triggers on `backlog`: every insert, update and delete files a row with the acting `octocode_audit_actor()`. One
+ * text for a new file and for the migration that adds `closed`, so both end with the same triggers.
+ */
+export const BACKLOG_AUDIT_TRIGGERS = `
+CREATE TRIGGER backlog_audits_insert AFTER INSERT ON backlog BEGIN
+ INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT NEW.workspace_id, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog', NULL, json_object('id', NEW.id, 'workspace_id', NEW.workspace_id, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id, 'closed', NEW.closed, 'rank', NEW.rank);
+END;
+CREATE TRIGGER backlog_audits_update AFTER UPDATE ON backlog BEGIN
+ INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT NEW.workspace_id, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'update', 'backlog', json_object('id', OLD.id, 'workspace_id', OLD.workspace_id, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id, 'closed', OLD.closed, 'rank', OLD.rank), json_object('id', NEW.id, 'workspace_id', NEW.workspace_id, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id, 'closed', NEW.closed, 'rank', NEW.rank);
+END;
+CREATE TRIGGER backlog_audits_delete AFTER DELETE ON backlog BEGIN
+ INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT OLD.workspace_id, 'B' || OLD.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog', json_object('id', OLD.id, 'workspace_id', OLD.workspace_id, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id, 'closed', OLD.closed, 'rank', OLD.rank), NULL;
+END;
 `;
+
+/** The triggers as migration 5 created them: the same text without `rank`, which a file at version 5 does not have yet. */
+export const BACKLOG_AUDIT_TRIGGERS_V5 = BACKLOG_AUDIT_TRIGGERS.replaceAll(", 'rank', NEW.rank", "").replaceAll(
+	", 'rank', OLD.rank",
+	"",
+);
 
 export const SCHEMA = `
 CREATE TABLE workspaces (
@@ -68,7 +122,7 @@ CREATE TABLE backlog (
   assignee TEXT, created_by TEXT NOT NULL, source_session TEXT,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, started_at INTEGER, done_at INTEGER,
   from_item INTEGER, version INTEGER NOT NULL DEFAULT 1,
-  type TEXT NOT NULL DEFAULT 'feature' CHECK(type IN ('epic','feature','bug','research')), parent_id INTEGER,
+  type TEXT NOT NULL DEFAULT 'feature' CHECK(type IN ('epic','feature','bug','research')), parent_id INTEGER, closed TEXT, rank REAL,
   UNIQUE(workspace_id, seq), UNIQUE(workspace_id, id),
   FOREIGN KEY(workspace_id, parent_id) REFERENCES backlog(workspace_id, id),
   FOREIGN KEY(workspace_id, from_item) REFERENCES backlog(workspace_id, id));
@@ -127,18 +181,7 @@ END;
 CREATE TRIGGER backlog_note_comment AFTER INSERT ON backlog_notes WHEN NEW.kind = 'note' BEGIN
  INSERT INTO backlog_comments(item, note_id, at, author, text) VALUES (NEW.item, NEW.id, NEW.at, NEW.author, NEW.text);
 END;
-CREATE TRIGGER backlog_audits_insert AFTER INSERT ON backlog BEGIN
- INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
- SELECT NEW.workspace_id, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog', NULL, json_object('id', NEW.id, 'workspace_id', NEW.workspace_id, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id);
-END;
-CREATE TRIGGER backlog_audits_update AFTER UPDATE ON backlog BEGIN
- INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
- SELECT NEW.workspace_id, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'update', 'backlog', json_object('id', OLD.id, 'workspace_id', OLD.workspace_id, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id), json_object('id', NEW.id, 'workspace_id', NEW.workspace_id, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id);
-END;
-CREATE TRIGGER backlog_audits_delete AFTER DELETE ON backlog BEGIN
- INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
- SELECT OLD.workspace_id, 'B' || OLD.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog', json_object('id', OLD.id, 'workspace_id', OLD.workspace_id, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id), NULL;
-END;
+${BACKLOG_AUDIT_TRIGGERS}
 CREATE TRIGGER backlog_links_audit_insert AFTER INSERT ON backlog_links BEGIN
  INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
  SELECT b.workspace_id, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog_links', NULL, json_object('item', NEW.item, 'relation', NEW.relation, 'target', NEW.target) FROM backlog b WHERE b.id = NEW.item;

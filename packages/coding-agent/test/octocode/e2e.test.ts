@@ -257,8 +257,13 @@ describe("with Octocode MCP (default)", () => {
 		// +2,569 chars (42,919 -> 45,488 in the same run setup).
 		// 46_100 (2026-11-05, B59): the octocode CLI research line, fallback clause and CLI-guide Scope clause, requested by
 		// the user, measured +410 in main; the rest from concurrent B60/B61 edits.
+		// 48_700 (2026-11-06, measured 48,667): the same user-requested growth `prompt-size.test.ts` itemizes for main:
+		// B150 `reason` rule +96, B156 backlog `updates` batch +1,508, B157 close instead of delete +about 820, B29 the agent
+		// tool's `mcp` field +302 (+2,726 in all).
+		// 49_723 (2026-11-06, measured 49,690; B170): the timer tool's closed `until` list, +953 in main (see
+		// `prompt-size.test.ts`); the other +70 since 48,667 came from concurrent edits. Slack over the measurement is 33.
 		expect(ownChars, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
-			46_100,
+			49_723,
 		);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
@@ -300,7 +305,7 @@ describe("with Octocode MCP (default)", () => {
 		expect(toolLines.length).toBeGreaterThan(0);
 		expect(toolLines.every((line) => /^- [\w-]+(?:__\*)?: \S/.test(line))).toBe(true);
 		expect(toolLines).toContain(
-			"- mcp__octocode__*: Code search and read; each tool's description says when to use it. Use before bash or web.",
+			"- mcp__octocode__*: Code search and read; each tool's description says when to use it.",
 		);
 		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
 			expect(

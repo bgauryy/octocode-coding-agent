@@ -22,7 +22,7 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 	[
 		"timer",
-		"gate/classify: an until-command is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; otherwise this session's own timers",
+		"gate/classify: an until-command (alone or as a check's trigger) is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; the other until kinds only stat, connect to loopback or read this workspace's rows, and until.check is read-only but spends money only after its own first-use ask; otherwise this session's own timers",
 	],
 ]);
 

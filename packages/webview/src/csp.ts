@@ -25,7 +25,8 @@ export function pagePolicy({ scripts, live, header = false }: PagePolicyOptions)
 		`script-src ${scripts.join(" ")}`,
 		"style-src 'unsafe-inline'",
 		live ? "img-src data: blob:" : "img-src data:",
-		...(live ? ["media-src blob:", "connect-src 'self'"] : []),
+		// The notification service worker is a script the host serves from its own origin.
+		...(live ? ["media-src blob:", "connect-src 'self'", "worker-src 'self'"] : []),
 		"base-uri 'none'",
 		"form-action 'none'",
 		...(header ? ["frame-ancestors 'none'"] : []),

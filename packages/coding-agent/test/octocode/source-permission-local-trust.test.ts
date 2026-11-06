@@ -10,7 +10,7 @@ afterEach(() => {
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	vi.unstubAllEnvs();
 });
-async function run(kind: "plain" | "tracked" | "symlink" | "project") {
+async function run(kind: "plain" | "tracked" | "symlink" | "project", trusted = false) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "local-permission-trust-"));
 	roots.push(root);
 	const cwd = path.join(root, "work"),
@@ -38,8 +38,8 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 	}
 	const fake = fakeHost();
 	const owner = registerSourcePolicy(fake.api, home);
-	// A session that does not trust the folder: only the user's own untracked local file may allow.
-	await owner.refresh({ ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => false });
+	// An untrusted folder grants nothing, whatever git says about its files; a trusted one may allow from either file.
+	await owner.refresh({ ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => trusted });
 	return owner.evaluate(
 		{
 			active: true,
@@ -50,10 +50,10 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 		cwd,
 	).decision;
 }
-it("loads untracked local source permission allowances without granting project hook trust", async () => {
-	expect(await run("plain")).toBe("allow");
+it("loads the local source permission allowance of a trusted project", async () => {
+	expect(await run("plain", true)).toBe("allow");
 });
-it.each(["tracked", "symlink", "project"] as const)(
+it.each(["plain", "tracked", "symlink", "project"] as const)(
 	"withholds %s allowances when the session does not trust the folder",
 	async (kind) => {
 		expect(await run(kind)).toBe("none");

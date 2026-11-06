@@ -911,6 +911,49 @@
       },
       "additionalProperties": false
     },
+    "web": {
+      "type": "object",
+      "properties": {
+        "sound": {
+          "type": "boolean",
+          "description": "Play a short chime with a web workspace notification (an approval or question waiting, a run finished or failed). The page makes the sound; the toggle in the workspace changes this setting. Notifications themselves need the browser's permission, which the page asks for from its own control.",
+          "default": false
+        },
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "system"
+            },
+            {
+              "type": "string",
+              "const": "light"
+            },
+            {
+              "type": "string",
+              "const": "dark"
+            }
+          ],
+          "description": "Colour theme of the web workspace: \"system\" follows the operating system, \"light\" and \"dark\" override it. The theme control in the workspace changes this setting.",
+          "default": "system"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "app"
+            },
+            {
+              "type": "string",
+              "const": "browser"
+            }
+          ],
+          "description": "Where /web opens the workspace: \"app\" is a Chrome, Edge, Chromium or Brave app window with a temporary profile apart from your own (no extensions, cookies or history; removed when it closes); \"browser\" uses the default browser. Without an installed Chromium browser \"app\" falls back to the default browser. Applies to the next /web.",
+          "default": "app"
+        }
+      },
+      "additionalProperties": false
+    },
     "sessions": {
       "type": "object",
       "properties": {
@@ -918,6 +961,23 @@
           "type": "boolean",
           "description": "Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title.",
           "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "timer": {
+      "type": "object",
+      "properties": {
+        "check": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Let a timer's until.check wait call a cheaper model to judge a condition after a deterministic trigger fires. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per wait, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
+              "default": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

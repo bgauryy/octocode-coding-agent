@@ -1,6 +1,6 @@
 import { HOOK_EVENTS } from "./catalog.ts";
 import type { HookSource, HookHandler, HookConfig } from "./contracts.ts";
-import { applyHttpPolicy } from "./http.ts";
+import { applyHttpPolicy, type HttpPolicySource } from "./http.ts";
 import fs from "node:fs";
 import { parseConfigDocument } from "../../utils/config-document.ts";
 import { pluginContext } from "../../core/plugin-context.ts";
@@ -95,7 +95,7 @@ export function loadHooks(
 	let disabled = false;
 	let codexEnabled = true;
 	const codexLayers = new Map<string, Set<string>>();
-	const httpPolicies: unknown[] = [];
+	const httpPolicies: HttpPolicySource[] = [];
 	const seen = new Set<string>();
 	for (const { source: origin, off } of hookSourcesFromDiscovery(cwd, projectTrusted, home, errors, options.toggles)) {
 		const file = origin.path;
@@ -142,7 +142,7 @@ export function loadHooks(
 						`${directory}: both hooks.json and inline TOML hooks are loaded; prefer one representation per layer`,
 					);
 			}
-			if (origin.dialect === "claude" && !off) httpPolicies.push(value);
+			if (origin.dialect === "claude" && !off) httpPolicies.push({ scope: origin.scope, value });
 			if (!off && isRecord(value) && value.disableAllHooks === true) {
 				disabled = true;
 				errors.push(`${file}: disableAllHooks disables all loaded hook sources in Octocode`);

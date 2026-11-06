@@ -5,6 +5,7 @@ import { type Subcommand, notify } from "../shared/commands.ts";
 import { timedTool } from "../shared/render/rows.ts";
 import { modelLookup, settleWithin } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
+import { runningWorkOf } from "../shared/running-work.ts";
 import { AgentsView } from "../team/panel.ts";
 import type { BudgetStanding } from "../team/model.ts";
 import type { Team } from "../team/session.ts";
@@ -81,7 +82,7 @@ export function registerAgentTool(
 ): AgentControl {
 	registerAgentMessageRenderer(api);
 	// Per registration, not per module: a replaced session starts clean.
-	const panel = new AgentsView(team);
+	const panel = new AgentsView(team, runningWorkOf(api));
 	const budgets = new RunningBudgets();
 	const runs: AgentRuns = {
 		api,
@@ -94,8 +95,8 @@ export function registerAgentTool(
 		running: new Map(),
 		slots: new Slots(),
 		session: 0,
-		changed: () => panel.setBackground(runs.background.size),
-		ended: (id, end) => panel.noteEnd(id, end),
+		changed: () => panel.setBackground([...runs.background.keys()]),
+		ended: (id, end) => team.approvals.noteEnd(id, end),
 	};
 	const { background } = runs;
 	api.on("tool_result", async (event, ctx) => {
@@ -142,7 +143,7 @@ export function registerAgentTool(
 			const session = childSession(run.identity);
 			const details = runDetails(run, session);
 			const track = tracker(run.identity, details, modelLookup(ctx), ctx);
-			const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking);
+			const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking, run.identity.mcpNamed);
 			const host = relayHost(ctx);
 			const launch = (signal: AbortSignal) =>
 				record(
@@ -280,10 +281,7 @@ export function registerAgentTool(
 			renderResult: renderAgentResult,
 		}),
 	);
-	team.setResumer(
-		(id, text, from, signal, request) => lingering.resume(id, text, from, signal, request),
-		(id) => runs.running.has(id),
-	);
+	team.setResumer((id, text, from, signal, request) => lingering.resume(id, text, from, signal, request), runs.running);
 	return {
 		// A lingering run has nothing running: stopping it ends its window.
 		stop: (id, by) => (lingering.forget(id) ? undefined : stopBackground(background, id, by)),
@@ -297,6 +295,6 @@ export function registerAgentTool(
 		running: () => [...runs.foreground.keys(), ...background.keys()],
 		stopAll,
 		parked: Lingering.parkedChildren,
-		command: agentsCommand(team, background, runs.foreground, questions),
+		command: agentsCommand(team, background, runs.foreground, questions, (id) => budgets.usage(id)),
 	};
 }

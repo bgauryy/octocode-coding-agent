@@ -3,16 +3,18 @@
  * The browser only carries the token it was given; the host decides what it authorizes.
  */
 const ACCESS_KEY = "backlog-access";
+const ITEM_REF = /^B\d{1,9}$/;
 
 /** `/web` launches with `#access=…&view=…`; the token moves to session storage and the hash becomes a plain view. */
 export function readLaunch(hash: string): { access: string; hash: string } | null {
 	if (!hash.startsWith("#access=")) return null;
 	const launch = new URLSearchParams(hash.slice(1));
 	const view = launch.get("view");
-	return {
-		access: launch.get("access") ?? "",
-		hash: view === "activity" || view === "backlog" ? `#${view}` : "#board",
-	};
+	const item = launch.get("item");
+	// An item ref opens that item's sheet (`#B12`); otherwise a known view, else the board.
+	const target =
+		item && ITEM_REF.test(item) ? `#${item}` : view === "activity" || view === "backlog" ? `#${view}` : "#board";
+	return { access: launch.get("access") ?? "", hash: target };
 }
 
 /** Moves a launch token from the URL into session storage and returns the current one. */

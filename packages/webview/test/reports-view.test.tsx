@@ -125,7 +125,10 @@ it("selects same-id research and brainstorm documents by kind", async () => {
 	render(<ResearchView index={index} params={{ id: "shared", kind: "brainstorm" }} setParams={() => {}} />);
 	expect(await screen.findByRole("heading", { name: "Brainstorm version" })).toBeInTheDocument();
 	expect(screen.queryByRole("heading", { name: "Research version" })).not.toBeInTheDocument();
-	expect(reportFile).toHaveBeenCalledWith("shared", "brainstorm", "brief.md", expect.any(AbortSignal));
+	// The heading renders in the same commit that schedules the selection effect, so wait for the call rather than assert it synchronously.
+	await waitFor(() =>
+		expect(reportFile).toHaveBeenCalledWith("shared", "brainstorm", "brief.md", expect.any(AbortSignal)),
+	);
 });
 
 it("links each listed report to the same kind its click opens, so a copied link opens the same document", async () => {

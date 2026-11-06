@@ -1,3 +1,4 @@
+import type { Closed } from "@octocodeai/octocode-contracts/backlogs";
 import type { ItemRow } from "../../../../db/src/api.ts";
 
 /** A persisted item, including the joined sequence number of its origin. */
@@ -22,6 +23,7 @@ export const toItem = <State extends string>(row: Row<State>) => ({
 	plan: row.plan,
 	state: row.state,
 	priority: row.priority,
+	...(row.rank == null ? {} : { rank: row.rank }),
 	tags: row.tags ? row.tags.split(" ") : [],
 	...(row.assignee ? { assignee: row.assignee } : {}),
 	createdBy: row.created_by,
@@ -32,4 +34,5 @@ export const toItem = <State extends string>(row: Row<State>) => ({
 	...(row.done_at ? { doneAt: row.done_at } : {}),
 	...(row.from_seq ? { from: row.from_seq } : {}),
 	version: row.version,
+	...(row.closed ? { closed: JSON.parse(row.closed) as Closed } : {}),
 });

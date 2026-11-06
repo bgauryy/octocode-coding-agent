@@ -6,7 +6,7 @@ import { getAgentDir } from "../../coding-agent/src/config.ts";
 import { listMcpFileEntries, loadMcpConfig, type McpServerEntry } from "../src/config.ts";
 import { mcpConfigFiles } from "../src/paths.ts";
 import { presetEntries } from "../src/preset.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import { requestMcpReload } from "../src/switch.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";
 
@@ -221,7 +221,7 @@ describe("MCP files of other agents", () => {
 		write(join(home, ".codex", "config.toml"), '[mcp_servers.octocode]\ncommand = "codex-octocode"\n');
 		write(join(home, ".octocode", "mcp.json"), { mcpServers: { shared: { command: "own" } } });
 		write(join(cwd, ".cursor", "mcp.json"), { mcpServers: { shared: { command: "cursor" } } });
-		const defaults = presetEntries([octocodePreset(() => [], {})]);
+		const defaults = presetEntries([defaultPreset({})]);
 		const loaded = loadMcpConfig({ ...options, defaults });
 		expect(loaded.errors).toEqual([]);
 		expect(loaded.servers.find((entry) => entry.name === "octocode")).toMatchObject({ scope: "default" });

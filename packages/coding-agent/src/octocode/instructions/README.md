@@ -9,7 +9,7 @@ instructions/
   shared/            one rule each, included by the policies that need it (`{{> shared/rule.md}}`)
   policy/            the parts of the `work`, `research`, `delegation`, `safety` and `communication` sections: work.md research.md delegation.md subagent.md safety.md communication.md scratch.md readonly.md
   lean/              lean.md                  (the whole policy of a `lean: true` child)
-  subagent/          identity.md worktree.md why.md team.md report.md   (a child's task message); role-skills.md (its role section)
+  subagent/          identity.md worktree.md why.md report.md   (a child's task message); role-skills.md (its role section)
   notices/           runtime messages the model reads: compaction, recovery, resume, subagents, mail, hooks, the loop guard
   tools/             each tool's snippet and guidelines (`tools/<tool>/snippet.md`, `guidelines.md`); `tools/bash/cli.md` is the CLI guide appended to the bash description
   system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md
@@ -47,7 +47,7 @@ Text here is for the agent reading it, so anything that depends on what a sessio
 
 ## A child's task message
 
-The facts only one child has ride in its first message, after the parent's task, so every child of a profile shares a cached system prompt: `subagent/worktree.md` (isolated checkouts), `subagent/why.md` (the reason of the agent call that started it), `subagent/identity.md` (`## You`, then the report contract from `subagent/report.md`) and `subagent/team.md` (collaborating children). `identityBlock` (`task.ts`) renders the worktree note, the why and the identity as one block, which `withIdentity` appends to the task and which can be sent again on its own; the identity names the run mode (background or foreground) only when the caller passes it. Code: `task.ts`, `report.ts` (the parsed outcome words and the 8 KB preview are values in the text, so the parent and the child agree).
+The facts only one child has ride in its first message, after the coordinator's task, so every child of a profile shares a cached system prompt: `subagent/worktree.md` (isolated checkouts), `subagent/why.md` (the reason of the agent call that started it), `subagent/identity.md` (`## You`, which also says every child works on its coordinator's team, then the report contract from `subagent/report.md`). `identityBlock` (`task.ts`) renders the worktree note, the why and the identity as one block, which `withIdentity` appends to the task and which can be sent again on its own; the identity names the run mode (background or foreground) only when the caller passes it. Code: `task.ts`, `report.ts` (the parsed outcome words and the 8 KB preview are values in the text, so the coordinator and the child agree).
 
 After a child's context is compacted, `subagents/identity-reminder.ts` sends the latest assignment its caller gave it again as a hidden message at the tail: the identity block, the browser mode line, the skill pointers and the result contract, rendered by the same functions (`task.ts`, `subagents/task-text.ts`). A task resume replaces the assignment, so the reminder carries the newest goal and item. It does not repeat the task text or inline skill bodies.
 

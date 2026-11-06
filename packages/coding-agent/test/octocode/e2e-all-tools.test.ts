@@ -199,10 +199,14 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("backlog", { op: "update", id: "B1", state: "ongoing" }), "Updated B1 [ongoing"),
 			answers(call("backlog", { op: "get", id: "B1" }), "Goal: It is proven", "Why: because"),
 			answers(
-				call("backlog", { op: "add", title: "Remove me", goal: "gone", why: "because", paths: ["a"], evidence: ["x"] }),
+				call("backlog", { op: "add", title: "Close me", goal: "gone", why: "because", paths: ["a"], evidence: ["x"] }),
 				"Added B2",
 			),
-			answers(call("backlog", { op: "remove", id: "B2" }), 'Removed B2 "Remove me"'),
+			answers(
+				call("backlog", { op: "update", id: "B2", close: { kind: "obsolete", text: "no longer needed" } }),
+				"Updated B2",
+				"closed",
+			),
 		],
 		fail: [
 			answers(call("backlog", { op: "get", id: "B999" }), "No backlog item B999"),
@@ -231,10 +235,12 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("timer", { op: "list" }), /^1 · once · next wake in \d+s · timer-marker$/),
 			answers(call("timer", { op: "cancel", id: 1 }), /^Cancelled 1 · once · cancelled/),
 			answers(call("timer", { op: "list" }), "No active timers."),
+			// As clearTimeout: cancelling a timer that already ended is a no-op, not an error.
+			answers(call("timer", { op: "cancel", id: 1 }), /^Timer 1 already ended, nothing to cancel/),
 		],
 		fail: [
 			answers(call("timer", { op: "set", after: 60 }), "set needs a note"),
-			answers(call("timer", { op: "cancel", id: 1 }), "No active timer 1 in this session."),
+			answers(call("timer", { op: "cancel", id: 99 }), "No timer 99 in this session. No timer is active."),
 		],
 	},
 	archive: {

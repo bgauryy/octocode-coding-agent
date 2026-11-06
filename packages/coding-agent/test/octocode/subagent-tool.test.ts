@@ -319,7 +319,7 @@ describe("agent tool with a scripted child", () => {
 		});
 		// The child's own facts ride in its task (after the task text), not in its system prompt.
 		expect(facts.task).toBe(
-			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work for \`${s.team.id}\`. Your scratch folder is \`${facts.scratch}\`. You run in the foreground: your parent reads your messages only with your report, so put a decision or approval you need in a \`blocked\` report; do not wait for an answer.\n\n## Report\n${reportContract()}`,
+			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work on a team led by your coordinator \`${s.team.id}\` (\`to\` \`parent\`): follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator. Your scratch folder is \`${facts.scratch}\`. You run in the foreground: your coordinator reads your messages only with your report, so put a decision or approval you need in a \`blocked\` report; do not wait for an answer.\n\n## Report\n${reportContract()}`,
 		);
 		expect(result.usage.cost.total).toBeCloseTo(0.01);
 		expect(fs.existsSync(result.details.shot)).toBe(true);
@@ -515,7 +515,7 @@ describe("agent tool with a scripted child", () => {
 		try {
 			const s = setup();
 			const line = (task: string) =>
-				task.split("\n").filter((text) => text.startsWith("Earlier history of your parent session"));
+				task.split("\n").filter((text) => text.startsWith("Earlier history of your coordinator's session"));
 			const without = reportOf((await s.run({ task: "report back" })).content[0].text as string);
 			expect(line(without.task)).toEqual([]);
 			writeSegment(
@@ -533,7 +533,7 @@ describe("agent tool with a scripted child", () => {
 				"body",
 			);
 			const library = existingLibrary()!;
-			const earlier = `Earlier history of your parent session is archived in ${path.dirname(library)} (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}`;
+			const earlier = `Earlier history of your coordinator's session is archived in ${path.dirname(library)} (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}`;
 			const withLibrary = reportOf((await s.run({ task: "report back" })).content[0].text as string);
 			// One line after the identity, in the task and not in the system prompt: the child's facts stay the same shape.
 			expect(line(withLibrary.task)).toEqual([earlier]);
@@ -556,11 +556,11 @@ describe("agent tool with a scripted child", () => {
 		vi.spyOn(s.team, "join").mockImplementation(() => {
 			throw new Error("Team database unavailable: locked");
 		});
-		const result = await s.run({ task: "report back", collaborate: true });
+		const result = await s.run({ task: "report back" });
 		const text = result.content[0].text as string;
 		const facts = reportOf(text);
 		expect(facts.parent).toBeUndefined();
-		expect(facts.task).not.toContain("## Teammates");
+		expect(facts.task).not.toContain("team led by");
 		expect(text).toContain("Started without the team: Team database unavailable: locked");
 	});
 
@@ -1098,7 +1098,9 @@ describe("agent tool with a scripted child", () => {
 			// The parent answers the first question; the second stays open. /agents shows the live count.
 			store.send(parentId, [id], "Postgres", { replyRequired: false, replyTo: first });
 			await s.commands.get("agents").handler("", s.ctx);
-			expect(s.ctx.ui.notes.at(-1)!.message).toMatch(/\n {2}2 asks \(1 answered in \d+s, 1 unanswered\) to its parent/);
+			expect(s.ctx.ui.notes.at(-1)!.message).toMatch(
+				/\n {2}2 asks \(1 answered in \d+s, 1 unanswered\) to its coordinator/,
+			);
 			fs.writeFileSync(gate, "");
 			await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 10_000 });
 		} finally {
@@ -1106,7 +1108,7 @@ describe("agent tool with a scripted child", () => {
 			delete process.env.OCTOCODE_FAKE_GATE;
 		}
 		const { message } = reports()[0];
-		expect(String(message.content)).toMatch(/\nAsks to its parent: 2 asks \(1 answered in \d+s, 1 unanswered\)\./);
+		expect(String(message.content)).toMatch(/\nAsks to its coordinator: 2 asks \(1 answered in \d+s, 1 unanswered\)\./);
 		// An unanswered ask keeps the child resumable, and the report says it waits for a reply.
 		expect(String(message.content)).toMatch(/is waiting for your reply to its question and stays resumable for 600 s/);
 		expect(message.details.asks).toEqual([
@@ -1152,7 +1154,7 @@ describe("agent tool with a scripted child", () => {
 				[first + 2, undefined],
 			]);
 			expect(result.content[0].text).toMatch(
-				/\nAsks to its parent: 2 asks \(1 answered in \d+s \(1 after askUser\), 1 unanswered\)\./,
+				/\nAsks to its coordinator: 2 asks \(1 answered in \d+s \(1 after askUser\), 1 unanswered\)\./,
 			);
 		} finally {
 			fs.writeFileSync(gate, "");
@@ -1163,20 +1165,15 @@ describe("agent tool with a scripted child", () => {
 	it("omits asks from a run that asked nothing", async () => {
 		const result = await s.run({ task: "report quickly" });
 		expect(result.details).not.toHaveProperty("asks");
-		expect(result.content[0].text).not.toContain("Asks to its parent");
+		expect(result.content[0].text).not.toContain("Asks to its coordinator");
 	});
 
-	it("tells parallel collaborating subagents about each other", async () => {
-		const first = await s.run({
-			task: "slow collaborator",
-			goal: "slow collaborator",
-			background: true,
-			collaborate: true,
-		});
-		const second = await s.run({ task: "report as collaborator", collaborate: true });
+	it("tells every subagent it works on a team led by its coordinator, with no opt-in", async () => {
+		const first = await s.run({ task: "slow teammate", goal: "slow teammate", background: true });
+		const second = await s.run({ task: "report as a teammate" });
 		const facts = reportOf(second.content[0].text);
-		expect(facts.task).toContain("## Teammates");
-		expect(facts.task).toContain(`\`${first.details.id}\`: general: slow collaborator`);
+		expect(facts.task).toContain(`You work on a team led by your coordinator \`${s.team.id}\``);
+		expect(facts.task).not.toContain("## Teammates");
 		await s.commands.get("agents").handler(`kill ${first.details.id}`, s.ctx);
 		await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toContain("cancelled by the user"), {
 			timeout: 10_000,

@@ -39,8 +39,8 @@ export interface HierarchyControls {
 	ItemTools: ComponentType<{ item: SnapshotItem; index: BacklogIndex }>;
 	/** Change a task's state and move it up or down among its owner's tasks. */
 	TaskTools: ComponentType<{ task: BacklogTask; siblings: readonly BacklogTask[] }>;
-	/** Change an item's state from its board card. */
-	StateControl: ComponentType<{ item: SnapshotItem }>;
+	/** Gives the board its writes: move, add and the Close dialog. Without it the board is read-only. */
+	BoardProvider: ComponentType<{ children: ReactNode }>;
 	/** An item's tasks in its detail sheet, with inline add and edit. */
 	ItemTasks: ComponentType<{ item: SnapshotItem }>;
 	/** Promote a session task to an item or move it under one. */
@@ -60,6 +60,14 @@ export interface EditorProps {
 	onClose: (ref?: string) => void;
 }
 
+export type Theme = "system" | "light" | "dark";
+
+/** The host-kept theme choice: browser storage does not survive an app-window launch, so the host holds it. */
+export interface ThemePrefs {
+	read(access: string): Promise<Theme>;
+	save(access: string, theme: Theme): Promise<void>;
+}
+
 /**
  * Everything that needs the authenticated local server. The offline export replaces this module with `null` at build
  * time, so it ships no transport, Markdown renderer or editor.
@@ -72,6 +80,10 @@ export interface LiveExtension {
 	views: readonly ViewDefinition[];
 	Provider: ComponentType<{ access: string; backlog: BacklogStore; children: ReactNode }>;
 	ConnectionStatus: ComponentType;
+	/** Reads and saves the theme on the host; the offline page has no such capability and keeps the choice for the visit. */
+	themePrefs: ThemePrefs;
+	/** The header's notification permission and sound controls; also raises the notifications. Inside `Provider`. */
+	Notifications: ComponentType;
 	/** What waits on the user in the session; a hook, called inside `Provider`. */
 	useNeedsYou: () => NeedsYou | undefined;
 	/** The waiting dialog, answerable inline from any view. */

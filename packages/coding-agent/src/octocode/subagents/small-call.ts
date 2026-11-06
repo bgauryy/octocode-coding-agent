@@ -1,5 +1,5 @@
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
-import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
+import type { Api, AssistantMessage, Model, SimpleStreamOptions, Usage } from "@octocodeai/octocode-ai/compat";
 import { completeSimple } from "@octocodeai/octocode-ai/compat";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ExtensionContext } from "../../core/features/index.ts";
@@ -22,7 +22,17 @@ export interface SmallCallOptions {
 	complete?: CompleteSmall;
 }
 
-export type SmallCallResult = { text: string; model: string } | { error: string };
+/** The `provider/id` the `small` purpose resolves to for this session, or undefined: no cheaper model, so a call would fail. */
+export function smallModelLabel(ctx: ExtensionContext): string | undefined {
+	if (!ctx.model) return undefined;
+	const chosen = resolveTier("small", ctx.modelRegistry.getAvailable(), ctx.model, currentCatalog());
+	return chosen ? `${chosen.provider}/${chosen.id}` : undefined;
+}
+
+/** A reply's text, the `provider/id` that wrote it and what the call used and cost (so a caller can record the spend). */
+export type SmallCallResult =
+	| { text: string; model: string; provider: string; modelId: string; usage: Usage }
+	| { error: string };
 
 /**
  * One call to the cheapest capable model the `small` purpose resolves to among the session's available models: no tools,
@@ -60,7 +70,9 @@ export async function callSmallModel(ctx: ExtensionContext, options: SmallCallOp
 		if (reply.stopReason === "aborted") return { error: "the call was cancelled" };
 		if (reply.stopReason === "error") return { error: reply.errorMessage || `${label} returned an error` };
 		const text = contentText(reply.content);
-		return text.trim() ? { text, model: label } : { error: `${label} returned an empty reply` };
+		return text.trim()
+			? { text, model: label, provider: model.provider, modelId: model.id, usage: reply.usage }
+			: { error: `${label} returned an empty reply` };
 	} catch (error) {
 		return { error: errorMessage(error) };
 	}

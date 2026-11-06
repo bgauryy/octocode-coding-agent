@@ -35,6 +35,12 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .dialog-answer { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--warning, #d97706); border-radius: var(--radius-sm); }
 .dialog-answer-title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .dialog-answer-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.dialog-answer-option { display: grid; gap: 2px; max-width: 28em; }
+.dialog-answer-description { font-size: 0.85em; overflow-wrap: anywhere; }
+.dialog-answer-card { display: grid; gap: 4px; }
+.dialog-answer-meta { margin: 0; font-size: 0.85em; overflow-wrap: anywhere; }
+.dialog-answer-body { margin: 0; padding-left: 10px; border-left: 2px solid var(--border, #8884); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24em; overflow: auto; }
+.dialog-answer-warning { margin: 0; color: var(--warning, #d97706); }
 .dialog-answer-text { display: flex; gap: 8px; }
 .dialog-answer-text input { flex: 1; min-width: 0; }
 .dialog-answer-status { margin: 0; }
@@ -117,6 +123,9 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .content-tool > header strong { font-family: var(--mono); }
 .content-tool > header span { color: var(--text-2); }
 .content-tool > .tool-reason { margin: 0; color: var(--text-3); font-size: 12px; font-style: italic; overflow-wrap: anywhere; }
+.content-tool > .tool-purposes { display: grid; gap: 2px; color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
+.tool-purposes > p { margin: 0; }
+.tool-purposes > .purpose-reasoning { font-style: italic; }
 .resource-reference, .unsupported-block { font-size: 13px; }
 .composer-attachments { display: grid; gap: 8px; }
 .attachment-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }

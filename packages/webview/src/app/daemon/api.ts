@@ -23,6 +23,11 @@ export function createDaemonApi(access: string) {
 			if (!isRecord(value) || !Array.isArray(value.repos)) throw new Error("Invalid repositories response");
 			return value as unknown as { repos: DaemonRepo[]; truncated?: boolean };
 		},
+		/** Whether this token may change the board. The page only hides controls by it; the daemon still refuses a write. */
+		access: async (signal?: AbortSignal): Promise<boolean> => {
+			const value = await requestJson(DAEMON_ROUTES.access, { headers, signal }, "Could not read the link's access");
+			return isRecord(value) && value.writable === true;
+		},
 		config: (repoId?: string): Promise<ConfigSnapshot> =>
 			requestJson<ConfigSnapshot>(
 				repoId ? `${DAEMON_ROUTES.config}?repoId=${encodeURIComponent(repoId)}` : DAEMON_ROUTES.config,

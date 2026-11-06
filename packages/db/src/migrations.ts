@@ -1,5 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
-import { AGENT_RUNS_SCHEMA, TIMERS_SCHEMA } from "./schema-sql.ts";
+import {
+	AGENT_RUNS_SCHEMA,
+	BACKLOG_AUDIT_TRIGGERS,
+	BACKLOG_AUDIT_TRIGGERS_V5,
+	TIMERS_REBUILD_INDEXES,
+	TIMERS_REBUILD_TABLE,
+	TIMERS_SCHEMA_V4,
+} from "./schema-sql.ts";
 
 /**
  * One step of the agent database's schema history. To change the schema: edit `schema-sql.ts` (a new file starts at the
@@ -63,11 +70,70 @@ const ADD_TIMERS: Migration = {
 	to: 4,
 	additive: true,
 	up: (db) => {
-		db.exec(TIMERS_SCHEMA);
+		db.exec(TIMERS_SCHEMA_V4);
 	},
 };
 
-export const SCHEMA_PLAN: SchemaPlan = { version: 4, migrations: [ADD_END_HINT, ADD_AGENT_RUNS, ADD_TIMERS] };
+/**
+ * 5: `backlog.closed`, the JSON of a closed item (kind, reason, optional duplicate target); an item with it is done
+ * underneath and has no completion. The audit triggers are recreated to record it. A nullable column, so an Octocode that
+ * knows only version 4 keeps using the file (it reads a closed item as done and never writes the column).
+ */
+const ADD_BACKLOG_CLOSED: Migration = {
+	to: 5,
+	additive: true,
+	up: (db) => {
+		db.exec("ALTER TABLE backlog ADD COLUMN closed TEXT");
+		for (const name of ["backlog_audits_insert", "backlog_audits_update", "backlog_audits_delete"])
+			db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+		db.exec(BACKLOG_AUDIT_TRIGGERS_V5);
+	},
+};
+
+/** The columns `timers` had before step 6, copied as they are. */
+const TIMERS_V4_COLUMNS = `id, workspace_id, session_id, agent, tool_call_id, note, kind, due_at, interval_ms, condition_kind,
+	condition, cwd, max_runs, runs, deadline_at, status, stop_reason, last_fired_at, last_exit, last_output, created_at,
+	updated_at, ended_at`;
+
+/**
+ * 6: `timers` accepts the condition kinds `file`, `item`, `agent`, `port` and `check`, and gains `baseline`, `checks` and
+ * `spent_usd`. SQLite cannot widen a CHECK, so the table is rebuilt: a copy beside it, then renamed over it, every row and
+ * id kept (the id sequence follows the copied maximum). Additive for an Octocode that knows only version 5: it inserts
+ * with named columns, so the new ones take their defaults, and a row of a kind it does not know has no condition for it,
+ * so it never fires that row.
+ */
+const WIDEN_TIMERS: Migration = {
+	to: 6,
+	additive: true,
+	up: (db) => {
+		db.exec(TIMERS_REBUILD_TABLE);
+		db.exec(`INSERT INTO timers_next (${TIMERS_V4_COLUMNS}) SELECT ${TIMERS_V4_COLUMNS} FROM timers`);
+		db.exec("DROP TABLE timers");
+		db.exec("ALTER TABLE timers_next RENAME TO timers");
+		db.exec(TIMERS_REBUILD_INDEXES);
+	},
+};
+
+/**
+ * 7: `backlog.rank`, a person's manual order of cards within a column (ascending, null until first ordered). The audit
+ * triggers are recreated to record it. A nullable column, so an Octocode that knows only version 6 keeps using the file
+ * (it never reads or writes the column, and the old triggers simply leave it out of the audit).
+ */
+const ADD_BACKLOG_RANK: Migration = {
+	to: 7,
+	additive: true,
+	up: (db) => {
+		db.exec("ALTER TABLE backlog ADD COLUMN rank REAL");
+		for (const name of ["backlog_audits_insert", "backlog_audits_update", "backlog_audits_delete"])
+			db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+		db.exec(BACKLOG_AUDIT_TRIGGERS);
+	},
+};
+
+export const SCHEMA_PLAN: SchemaPlan = {
+	version: 7,
+	migrations: [ADD_END_HINT, ADD_AGENT_RUNS, ADD_TIMERS, ADD_BACKLOG_CLOSED, WIDEN_TIMERS, ADD_BACKLOG_RANK],
+};
 
 /** The oldest version that can use a file at `version`: the last step up to it that was not additive, else the first version. */
 export function readableFromFor(plan: SchemaPlan, version: number): number {

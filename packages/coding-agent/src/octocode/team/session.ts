@@ -66,13 +66,13 @@ export class Team {
 	private stopParentWatch: (() => void) | undefined;
 	/** Subagents this session started that have finished: id → where their report went, for a later message to them. */
 	private readonly finished = new Map<string, string>();
-	/** Resumes a finished subagent that still lingers, and says which subagents have yet to report (set by the subagents domain); its receipt, else undefined. */
-	setResumer(resume: Resumer, reporting?: (id: string) => boolean): void {
+	/** Resumes a finished subagent that still lingers; `running` holds the subagents that have yet to report, by id (set by the subagents domain). */
+	setResumer(resume: Resumer, running?: ReadonlyMap<string, unknown>): void {
 		this.resumer = resume;
-		this.reporting = reporting;
+		this.running = running;
 	}
 	private resumer: Resumer | undefined;
-	private reporting: ((id: string) => boolean) | undefined;
+	private running: ReadonlyMap<string, unknown> | undefined;
 	private messageHook: MessageHook | undefined;
 	setMessageHook(hook: MessageHook): void {
 		this.messageHook = hook;
@@ -113,7 +113,7 @@ export class Team {
 				headless: () => this.headless(),
 				heartbeat: (db) => this.activity.heartbeat(db),
 				relays: (db) => this.relays.take(db),
-				reporting: (id) => this.reporting?.(id) === true,
+				reporting: (id) => this.running?.has(id) === true,
 				checkIn: () => checkInConfig(api.getSettings().subagents, this.env),
 			},
 			this.mail,
@@ -294,7 +294,6 @@ export class Team {
 	unansweredPeerAsks(agentId: string): number {
 		return refs.unansweredPeerAsks(this.sendHost(), agentId);
 	}
-
 	/** The team as sending and references see it (`session/send.ts`, `session/references.ts`). */
 	private sendHost(): refs.ReferenceHost {
 		return {
@@ -304,7 +303,8 @@ export class Team {
 			store: () => this.database.store(),
 			parentId: () => this.parentId,
 			finished: this.finished,
-			reporting: (id) => this.reporting?.(id) === true,
+			reporting: (id) => this.running?.has(id) === true,
+			starting: () => [...(this.running?.keys() ?? [])],
 			resumer: () => this.resumer,
 			messageHook: () => this.messageHook,
 			signed: (id, recipient, text) => this.vouches.signed(id, recipient, text),

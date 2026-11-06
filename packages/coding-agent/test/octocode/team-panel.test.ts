@@ -420,20 +420,20 @@ describe("panel traffic", () => {
 });
 
 describe("background subagents in the footer", () => {
-	it("counts them while the panel shows no rows (the team database is off or unused), and clears at zero", () => {
+	it("counts them while the panel shows no team rows (the team database is off or unused), and clears at none", () => {
 		const f = fakeHost();
 		const team = new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "none", "team.sqlite") });
 		const ctx = fakeCtx({ cwd: tmp() });
 		team.start(ctx);
 		const view = new AgentsView(team);
 		view.start(ctx);
-		view.setBackground(2);
-		expect(ctx.ui.statuses.get("octocode-subagents")).toContain("2 background agents");
-		view.setBackground(0);
-		expect(ctx.ui.statuses.get("octocode-subagents")).toBeUndefined();
-		view.setBackground(1);
+		view.setBackground(["general-1a2b", "general-3c4d"]);
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("2 agents");
+		view.setBackground([]);
+		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
+		view.setBackground(["general-1a2b"]);
 		view.stop(ctx);
-		expect(ctx.ui.statuses.get("octocode-subagents")).toBeUndefined();
+		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
 		team.stop();
 	});
 });

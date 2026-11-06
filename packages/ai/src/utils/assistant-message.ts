@@ -21,19 +21,21 @@ interface UsageCounts {
 	cacheWrite?: number;
 	/** Subset of `output` the provider reports as reasoning tokens; omitted when the provider has no such breakdown. */
 	reasoning?: number;
-	/** Total the provider reported. Preferred over the component sum when it is non-zero. */
+	/** Total the provider reported. Preferred over the component sum when it is larger. */
 	totalTokens?: number;
 }
 
 /**
- * Total tokens of a usage: the provider's own total when it reported one, otherwise input, output and cache reads and
- * writes (reasoning is already part of output).
+ * Total tokens of a usage: input, output and cache reads and writes (reasoning is already part of output), or the
+ * provider's own total when it is larger. A provider total below the components left something out (Bedrock documents
+ * its total only as input plus output), and compaction reads this total as the context size, so it never undercounts.
  */
 export function sumUsageTokens(
 	usage: Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite">,
 	providerTotal?: number,
 ): number {
-	return nonZeroOr(usage.input + usage.output + usage.cacheRead + usage.cacheWrite, providerTotal);
+	const sum = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+	return Math.max(sum, nonZeroOr(sum, providerTotal));
 }
 
 /** Usage with zero cost for reported counts; price it with `calculateCost`. */

@@ -304,7 +304,10 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 			["echo x > $OUT", /target the guard cannot resolve: `\$OUT` is not a plain path/],
 			["for c in a b; do touch $c; done", /cannot resolve: `\$c` is an expansion/],
 			['bash -c "$X"', /cannot resolve: `bash` runs a script the guard cannot read/],
-			["git commit -m x", /`git commit` \(it changes files or repository state without naming a path\)/],
+			[
+				"git commit -m x",
+				/`git commit` \(an opaque command: it changes files or repository state without naming a path, so its effect cannot be checked; use the declared read tools, or give your coordinator the exact command/,
+			],
 		];
 		for (const [command, expected] of cases) expect(await attempt("bash", { command }), command).toMatch(expected);
 		expect(await attempt("bash", { command: "echo $HOME" })).toBeUndefined();

@@ -226,15 +226,6 @@ export function getSlashCommands(
 				(command) => command.name,
 				(command) => ({ value: command.name, label: command.name, description: command.description }),
 			);
-	const skillsCommand = slashCommands.find((command) => command.name === "skills");
-	if (skillsCommand)
-		skillsCommand.getArgumentCompletions = (prefix) =>
-			createFuzzyAutocompleteItems(
-				host.session.resourceLoader.getSkills().skills,
-				prefix,
-				(skill) => skill.name,
-				(skill) => ({ value: skill.name, label: skill.name, description: skill.description }),
-			);
 	return allCommands;
 }
 

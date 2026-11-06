@@ -547,7 +547,7 @@ async function scenario() {
 				errorMessage: '401 {"type":"error","error":{"type":"authentication_error","message":"api_key_expired"}}',
 			},
 		});
-	} else if (/^(?:Follow-up from your parent:\n)?error/.test(task)) {
+	} else if (/^(?:Follow-up from your coordinator:\n)?error/.test(task)) {
 		emit(say("partial findings", { stopReason: "error", errorMessage: "provider down" }));
 	} else if (task.startsWith("length")) {
 		emit(say("unfinished findings", { stopReason: "length" }));

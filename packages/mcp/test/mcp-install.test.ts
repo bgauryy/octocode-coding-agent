@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { McpServerEntry } from "../src/config.ts";
+import { hostIdentity, installMcpHost } from "../src/host.ts";
 import {
 	installMcpServer,
 	mcpInstallDir,
@@ -130,6 +131,18 @@ describe("install.hostDependency", () => {
 		]);
 		expect(npm.calls).toEqual([]);
 		expect(takeLaunchWarnings()).toEqual([]);
+	});
+
+	it("runs the package under node, not the host's own binary, from a compiled standalone agent", async () => {
+		const packageDir = hostPackage();
+		const identity = hostIdentity();
+		installMcpHost({ identity: { ...identity, isBunBinary: () => true } });
+		try {
+			const launched = await resolveInstalledLaunch(entry(), { agentDir, packageDir, runNpm: fakeNpm() });
+			expect((launched.config as { command: string }).command).toBe("node");
+		} finally {
+			installMcpHost({ identity });
+		}
 	});
 
 	// `{ import }` is octocode-mcp's published shape: a `require` lookup of it fails with ERR_PACKAGE_PATH_NOT_EXPORTED.

@@ -90,15 +90,14 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 		expect(() => store.update("B2", { dependsOn: ["B2"] }, actor)).toThrow();
 	});
 
-	it("refuses removing an item with children or dependants, and removes a free one", () => {
-		const store = fixtureBacklog(() => sharedAgentDb(), "remove");
+	it("refuses closing an epic with open children, and closes a free item", () => {
+		const store = fixtureBacklog(() => sharedAgentDb(), "close");
 		store.add({ ...base, title: "epic", state: "todo", type: "epic" });
 		store.add({ ...base, title: "child", state: "todo", parentId: "B1" });
-		store.add({ ...base, title: "needs child", state: "todo", dependsOn: ["B2"] });
 		store.add({ ...base, title: "free", state: "todo" });
-		for (const ref of ["B1", "B2"])
-			expect(() => store.remove(ref)).toThrow(/Reparent children and remove dependencies/);
-		expect(store.remove("B4").ref).toBe("B4");
+		const close = { kind: "obsolete" as const, text: "not needed" };
+		expect(() => store.update("B1", { close }, { id: "me" })).toThrow(/child/);
+		expect(store.update("B3", { close }, { id: "me" }).closed).toMatchObject({ kind: "obsolete", by: "me" });
 	});
 });
 

@@ -8,7 +8,7 @@ import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { formatDuration } from "../../../../octocode/shared/format.ts";
 import { keyHint } from "../keybinding-hints.ts";
-import { reasonRow } from "./reason.ts";
+import { purposeRows, reasonRow } from "../../../../octocode/ui/reason-row.ts";
 import type { ToolExecutionResult } from "./types.ts";
 
 interface GenericToolDisplay {
@@ -118,5 +118,11 @@ export class GenericToolContent extends Container {
 					display.background,
 				),
 			);
+		const purpose = display.result && purposeRows(display.toolName, display.args, display.result.structuredContent);
+		if (purpose) {
+			const row = new Box(display.outputPad, 0, display.background);
+			row.addChild(purpose);
+			this.addChild(row);
+		}
 	}
 }

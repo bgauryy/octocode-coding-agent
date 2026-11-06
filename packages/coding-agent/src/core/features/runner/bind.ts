@@ -49,6 +49,10 @@ export function bindRunnerCore(
 	host.runtime.appendEntry = actions.appendEntry;
 	host.runtime.createUsageRecorder = (kind) =>
 		createSessionUsageRecorder(host.sessionManager, kind, contextActions.onUsageRecorded);
+	host.runtime.recordUsage = (kind, provider, model, usage) => {
+		const entry = host.sessionManager.appendUsage(kind, provider, model, usage);
+		contextActions.onUsageRecorded?.(entry);
+	};
 	host.runtime.setSessionName = actions.setSessionName;
 	host.runtime.getSessionName = actions.getSessionName;
 	host.runtime.setLabel = actions.setLabel;

@@ -11,6 +11,7 @@ import { clipText, firstLine, optionalString, stringOrEmpty } from "../../shared
 import type { registerBackgroundHooks } from "../background.ts";
 import { limitCodexContext } from "../context-limit.ts";
 import { hookLabel } from "../config.ts";
+import { httpDecisionNote, labelHttpVerdict } from "../http-origin.ts";
 import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
@@ -213,17 +214,23 @@ export function createDispatcher(
 				),
 			);
 			if (race && signal?.aborted) return {};
-			const verdict =
+			const verdict = labelHttpVerdict(
+				hook,
 				hook.type === "prompt"
 					? event === "PermissionRequest"
 						? observePermissionPrompt(ctx, hook, interpretPromptHook(event, run))
 						: interpretPromptHook(event, run, hook.continueOnBlock)
-					: interpret(event, run, hook.protocol);
+					: interpret(event, run, hook.protocol),
+			);
+			const decision = signal?.aborted ? undefined : httpDecisionNote(hook, verdict);
+			if (decision) onFailure?.([`${event} ${stringOrEmpty(payload.tool_name)}`.trim()], decision, true);
 			if (verdict.systemMessage) say(ctx, verdict.systemMessage, "warning");
 			if (hook.protocol === "codex" && verdict.context)
 				verdict.context = limitCodexContext(verdict.context, hook.additionalContextLimit);
 			const gate = event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
-			const failure = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
+			// Failure text can hold what a server or a script printed, so it is redacted before it is shown or audited.
+			const reported = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
+			const failure = reported === undefined ? undefined : redactSecrets(reported);
 			const message = asRecord(payload.message);
 			const target =
 				gate === "PreMessageSend"

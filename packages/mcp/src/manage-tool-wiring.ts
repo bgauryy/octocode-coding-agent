@@ -25,6 +25,7 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 				.map((server) => [server.entry.name, server.entry.config]),
 		),
 		stopped: state.servers.filter((server) => server.connection?.isStopped).map((server) => server.entry.name),
+		available: state.servers.filter(isEnabled).map((server) => server.entry.name),
 	}));
 	// Inactive on registration: the default tool selection includes it (`core/native-tools.ts`), so `noTools` and `--tools` apply.
 	api.registerTool({

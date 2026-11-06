@@ -19,9 +19,13 @@ const stdio = { command: "node", args: ["server.js"] };
 describe("servers the parent stopped for the session", () => {
 	it("answers handoff requests with added servers and stopped names", () => {
 		const events = createEventBus();
-		expect(getMcpSessionHandoff(events)).toEqual({ servers: {}, stopped: [] });
-		const off = registerMcpAddedServers(events, () => ({ servers: { echo: stdio }, stopped: ["cfg"] }));
-		expect(getMcpSessionHandoff(events)).toEqual({ servers: { echo: stdio }, stopped: ["cfg"] });
+		expect(getMcpSessionHandoff(events)).toEqual({ servers: {}, stopped: [], available: [] });
+		const off = registerMcpAddedServers(events, () => ({
+			servers: { echo: stdio },
+			stopped: ["cfg"],
+			available: ["echo"],
+		}));
+		expect(getMcpSessionHandoff(events)).toEqual({ servers: { echo: stdio }, stopped: ["cfg"], available: ["echo"] });
 		off();
 	});
 
@@ -33,7 +37,7 @@ describe("servers the parent stopped for the session", () => {
 		expect(parseMcpSessionServers(text)).toEqual({ servers: {}, stopped: ["cfg"], errors: [] });
 		// A version 1 file carries no stopped names, even when the field is present.
 		expect(parseMcpSessionServers('{"version":1,"servers":{},"stopped":["cfg"]}').stopped).toEqual([]);
-		expect(() => parseMcpSessionServers('{"version":3,"servers":{}}')).toThrow("not a session server list");
+		expect(() => parseMcpSessionServers('{"version":4,"servers":{}}')).toThrow("not a session server list");
 	});
 
 	it("returns the stopped names from the file a child registers", () => {
@@ -41,10 +45,10 @@ describe("servers the parent stopped for the session", () => {
 		const file = path.join(dir, "servers.json");
 		fs.writeFileSync(file, serializeMcpSessionServers({}, ["cfg"])!);
 		const api = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
-		expect(registerInheritedMcpServers(api, { [MCP_SESSION_SERVERS_FILE_ENV]: file })).toEqual([]);
-		expect(registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file })).toEqual([
-			"cfg",
-		]);
+		expect(registerInheritedMcpServers(api, { [MCP_SESSION_SERVERS_FILE_ENV]: file })).toEqual({ stopped: [] });
+		expect(registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file })).toEqual({
+			stopped: ["cfg"],
+		});
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 

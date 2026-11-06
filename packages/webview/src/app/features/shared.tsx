@@ -1,10 +1,11 @@
+import type { CloseKind } from "@octocodeai/octocode-contracts/backlogs";
 import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import type { ReactNode } from "react";
 import type { BacklogIndex } from "../model/backlog.ts";
 import { isStale } from "../model/backlog.ts";
 import { isEpic, shownState } from "../model/hierarchy.ts";
 import type { Params } from "../model/route.ts";
-import { Badge, StatusIcon } from "../ui/primitives.tsx";
+import { Badge, Button, StatusIcon } from "../ui/primitives.tsx";
 
 export function StaleBadge({ item }: { item: SnapshotItem }) {
 	if (!isStale(item)) return null;
@@ -18,6 +19,64 @@ export function StaleBadge({ item }: { item: SnapshotItem }) {
 	);
 }
 
+const CLOSED_TITLES: Record<CloseKind, string> = { obsolete: "Obsolete", duplicate: "Duplicate", wont_do: "Won't do" };
+
+/** Why an item was closed, for the pill's tooltip: kind, reason, duplicate target and who closed it. */
+function closedTitle(item: SnapshotItem): string {
+	const closed = item.closed;
+	if (!closed) return "";
+	const kind = CLOSED_TITLES[closed.kind];
+	const target = closed.of ? ` of ${closed.of}` : "";
+	return `${kind}${target}: ${closed.text} (closed by ${closed.by})`;
+}
+
+/** "Closed" instead of "Done" for an item that was closed rather than completed. */
+export function ClosedPill({ item }: { item: SnapshotItem }) {
+	if (!item.closed) return null;
+	return (
+		<Badge tone="neutral" title={closedTitle(item)}>
+			Closed
+		</Badge>
+	);
+}
+
+/** Hidden by default, like the board: `closed=show` keeps closed items in a list view. */
+function showsClosed(params: Params): boolean {
+	return params.closed === "show";
+}
+
+/** The index without its closed items, so counts, trees and attention lists agree with what the view shows. */
+export function visibleIndex(index: BacklogIndex, params: Params): BacklogIndex {
+	if (showsClosed(params)) return index;
+	const items = index.items.filter((item) => !item.closed);
+	if (items.length === index.items.length) return index;
+	return { ...index, items, byRef: new Map(items.map((item) => [item.ref, item])) };
+}
+
+/** The same "Show closed" toggle as the board's filters, for the views that have no filter bar. */
+export function ShowClosedToggle({
+	index,
+	params,
+	setParams,
+}: {
+	index: BacklogIndex;
+	params: Params;
+	setParams: (params: Params) => void;
+}) {
+	const hidden = index.items.filter((item) => item.closed).length;
+	if (!hidden && !showsClosed(params)) return null;
+	return (
+		<Button
+			size="sm"
+			className="toggle"
+			aria-pressed={showsClosed(params)}
+			onClick={() => setParams(compact({ ...params, closed: showsClosed(params) ? "" : "show" }))}
+		>
+			Show closed
+		</Button>
+	);
+}
+
 /** One line per item: status, reference and title, with optional trailing detail. */
 export function ItemLine({ item, children }: { item: SnapshotItem; children?: ReactNode }) {
 	const state = shownState(item);
@@ -25,6 +84,7 @@ export function ItemLine({ item, children }: { item: SnapshotItem; children?: Re
 		<span className={`item-line state-${state}`}>
 			<StatusIcon state={state} />
 			<span className="ref">{item.ref}</span>
+			<ClosedPill item={item} />
 			{isEpic(item) && <Badge>epic</Badge>}
 			<a className="item-line-title" href={`#${item.ref}`}>
 				{item.title}

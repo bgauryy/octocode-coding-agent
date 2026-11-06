@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import { McpExtensionState } from "../src/state.ts";
 
 function catalog(name: string, config: Pick<McpServerEntry["config"], "exposure" | "toolExposure"> = {}) {
 	const state = new McpExtensionState({ events: { on: () => () => {} } } as unknown as ExtensionAPI, {
-		presets: [octocodePreset(() => [], {})],
+		presets: [defaultPreset({})],
 	});
 	const entry: McpServerEntry = { name, config: { command: "fixture", ...config }, source: "test" };
 	const tools = Array.from({ length: 40 }, (_, index) => ({

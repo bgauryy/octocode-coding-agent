@@ -7,7 +7,7 @@ import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 import { addAutoDiscoveredResources } from "./auto-discovery.ts";
 import { getGitInstallPath, installGit } from "./git.ts";
 import { getNpmInstallPath, installedNpmMatchesConfiguredVersion, installNpm } from "./npm.ts";
-import { applyAutoloadDisabledPatterns, getOverridePatterns, isEnabledByOverrides } from "./patterns.ts";
+import { builtinEnablement } from "./builtin-state.ts";
 import {
 	addResource,
 	collectPackageResources,
@@ -80,21 +80,11 @@ export async function resolvePackages(
 
 	addAutoDiscoveredResources(host, accumulator, globalSettings, projectSettings, globalBaseDir, projectBaseDir);
 
-	// Built-in extensions are enabled unless the user `extensions` setting excludes them, for example
-	// with `-builtin:mcp`. A matching `+`, `-`, or `!` entry in the project setting overrides that.
+	// Built-in extensions are on unless the `extensions` setting excludes them (see `builtinEnablement`).
 	for (const name of host.builtinExtensions) {
 		const path = `${BUILTIN_PATH_PREFIX}${name}`;
-		const projectEnabled = applyAutoloadDisabledPatterns(
-			[path],
-			getOverridePatterns(projectSettings.extensions ?? []),
-			projectBaseDir,
-		).get(path);
-		addResource(
-			accumulator.extensions,
-			path,
-			{ source: "builtin", scope: projectEnabled === undefined ? "user" : "project", origin: "top-level" },
-			projectEnabled ?? isEnabledByOverrides(path, globalSettings.extensions ?? [], globalBaseDir),
-		);
+		const { enabled, scope } = builtinEnablement(path, globalSettings, projectSettings, globalBaseDir, projectBaseDir);
+		addResource(accumulator.extensions, path, { source: "builtin", scope, origin: "top-level" }, enabled);
 	}
 
 	return toResolvedPaths(accumulator);

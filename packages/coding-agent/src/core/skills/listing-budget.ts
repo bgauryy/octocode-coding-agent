@@ -35,6 +35,6 @@ export function skillListingBudgetWarning(input: {
 	const noun = count === 1 ? "skill" : "skills";
 	return {
 		type: "warning",
-		message: `Skill listing over budget: ${count} ${noun}, ${chars} chars > ${budget} budget (1% of the context window). Nothing is cut. Rewrite long descriptions with \`octocode context check\` and \`octocode context apply\`, or run /skills to disable some skills (or /harness to switch harnesses off).`,
+		message: `Skill listing over budget: ${count} ${noun}, ${chars} chars > ${budget} budget (1% of the context window). Nothing is cut. Rewrite long descriptions with \`octocode context check\` and \`octocode context apply\`, or switch skills or whole harnesses off in /harness.`,
 	};
 }

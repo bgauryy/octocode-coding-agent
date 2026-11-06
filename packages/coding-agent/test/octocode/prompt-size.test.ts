@@ -245,7 +245,17 @@ const BACKLOG_ENTITIES_CEILING = 2_250;
 // 39_600 (2026-11-05, measured 39_501 without entity fields; requested by the user): the B55 bash CLI guide (+2_305 in
 // the bash description) and B59's `octocode` CLI line in the research section (+110 in the policy).
 // 39_700 (2026-11-06, measured 39_660; B150): the same +96 `reason` rule as the specialist ceiling.
-const MAIN_CEILING = 39_700;
+// 41_208 (2026-11-06, measured 41_168; B156, user-requested): the backlog `updates` batch field (+1_463) and its id/why
+// text (+45); measured main 39_660 before, so the ceiling rises by the measured +1_508.
+// 42_330 (2026-11-06, measured 42_289 without entity fields): B157 +about 820 and B29 +about 300 over the 41_168 of B156.
+// B157 (close instead of delete): the shared `close` shape (about 330) at the top level with a short description (about
+// 380) and in each `updates` entry (about 330), the description's close sentence, the "still needed?" guideline line,
+// less the `remove` op text. B29: the `mcp` field of the agent tool (+302).
+// 43_283 (2026-11-06, measured 43_257; B170): the timer tool's closed `until` list. With only the timer tool surface
+// reverted, main measures 42_304, so the surface costs +953: the `until` schema's `file`, `item`, `agent` and `port`
+// objects with short field descriptions, `check` as one question string beside a trigger, the description's close
+// sentence and the snippet's longer clause. The slack over the measurement stays 26, as before.
+const MAIN_CEILING = 43_283;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -308,7 +318,12 @@ const MAIN_CEILING = 39_700;
 // 26_480 (2026-11-06, measured 26_465; B150): the one-line rule that `reason` belongs to native tools and MCP tools take
 // only their declared fields (+96 in the policy; the test host reaches MCP, so it renders), after the declared default
 // made small models copy `reason` into 21 of 359 MCP calls.
-const SPECIALIST_CEILING = 26_480;
+// 27_988 (2026-11-06, measured 27_956; B156): the same +1_508 for the backlog batch update field.
+// 28_715 (2026-11-06, measured 28_675): B157's close shape at the top level and in `updates` (+about 720 with the `remove`
+// op text gone and the field descriptions of B29's `mcp` rule); a subagent gets no new guideline line.
+// 29_668 (2026-11-06, measured 29_643; B170): the same +953 timer tool surface (specialist 28_690 without it), which every
+// agent declares; the slack over the measurement stays 25.
+const SPECIALIST_CEILING = 29_668;
 
 describe("prompt size", () => {
 	it("main session", async () => {

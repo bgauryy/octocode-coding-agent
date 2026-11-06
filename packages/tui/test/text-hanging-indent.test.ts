@@ -15,4 +15,29 @@ describe("Text hanging indent", () => {
 		text.setHangingIndent(true);
 		assert.deepStrictEqual(plain(text.render(16)), ["[Skills]", "  alpha, beta,", "  gamma, delta,", "  epsilon"]);
 	});
+
+	it("continues under the text of a line that starts with a glyph marker", () => {
+		const warning = "\x1b[33m⚠ Skill names collide, so the first found is used here\x1b[39m";
+		const text = new Text(warning, 0, 0);
+		text.setHangingIndent(true);
+		const rows = plain(text.render(40));
+		assert.ok(rows.length > 1);
+		for (const row of rows.slice(1)) assert.ok(row.startsWith("  ") && row[2] !== " ", row);
+		const bullet = new Text("• alpha, beta, gamma, delta, epsilon", 0, 0);
+		bullet.setHangingIndent(true);
+		assert.deepStrictEqual(plain(bullet.render(16)), ["• alpha, beta,", "  gamma, delta,", "  epsilon"]);
+	});
+
+	it("does not indent under a first word or when the glyph is not followed by a space", () => {
+		const text = new Text("alpha beta gamma delta epsilon", 0, 0);
+		text.setHangingIndent(true);
+		assert.deepStrictEqual(plain(text.render(16)), ["alpha beta gamma", "delta epsilon"]);
+		const bracket = new Text("[Skills] alpha beta gamma delta", 0, 0);
+		bracket.setHangingIndent(true);
+		assert.ok(
+			plain(bracket.render(16))
+				.slice(1)
+				.every((row) => !row.startsWith(" ")),
+		);
+	});
 });

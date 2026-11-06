@@ -179,6 +179,11 @@ export function createExtensionAPI(
 			return runtime.createUsageRecorder(kind);
 		},
 
+		recordUsage(kind, provider, model, usage) {
+			assertActive();
+			runtime.recordUsage(kind, provider, model, usage);
+		},
+
 		appendEntry(customType: string, data?: unknown): void {
 			assertActive();
 			runtime.appendEntry(customType, data);

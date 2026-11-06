@@ -1,5 +1,11 @@
 import {
-	STATES,
+	type PathMatch,
+	comparePathMatch,
+	matchPaths,
+	normalizeRepoPath,
+} from "@octocodeai/octocode-contracts/backlogs";
+import {
+	LIST_STATES,
 	type State,
 	type Note,
 	type BacklogComment,
@@ -62,10 +68,9 @@ function filterOf(db: Db, repo: string, query: ListQuery): backlog.ItemFilter {
 	if (query.parentId !== undefined && !parent)
 		throw new BacklogError(`No backlog item ${visibleControls(query.parentId)}.`);
 	const tags = query.tags?.map((tag) => tag.trim().replace(/^#+/, "")).filter(Boolean);
-	const paths = query.paths?.map((path) => path.trim().replace(/^\.\//, "")).filter(Boolean);
 	return {
 		repo,
-		states: query.states?.length ? [...new Set(query.states)] : [...STATES],
+		states: query.states?.length ? [...new Set(query.states)] : [...LIST_STATES],
 		...(text ? { text } : {}),
 		...(query.from !== undefined ? { fromItem: origin(db, repo, query.from) } : {}),
 		...(query.ids ? { seqs: query.ids.map(seqOf) } : {}),
@@ -74,7 +79,6 @@ function filterOf(db: Db, repo: string, query: ListQuery): backlog.ItemFilter {
 		...(query.types ? { types: query.types } : {}),
 		...(query.maxPriority !== undefined ? { maxPriority: query.maxPriority } : {}),
 		...(tags?.length ? { tags } : {}),
-		...(paths?.length ? { pathPrefixes: paths } : {}),
 		...(query.dependsOn ? { dependsOn: query.dependsOn.map((ref) => `B${seqOf(ref)}`) } : {}),
 		...(query.blocked !== undefined ? { blocked: query.blocked } : {}),
 		...(query.assignees ? { assignees: query.assignees } : {}),
@@ -83,9 +87,39 @@ function filterOf(db: Db, repo: string, query: ListQuery): backlog.ItemFilter {
 	};
 }
 
-/** Items matching `query` (every state when `states` is unset) in its sort order, board order by default; `total` counts past the limit. */
-export function list(db: Db, repo: string, query: ListQuery = {}): { items: Item[]; total: number } {
+/** The path filter of a query: its entries normalized, none when the filter is absent or names only the repository root. */
+const pathQueries = (query: ListQuery): string[] => (query.paths ?? []).map(normalizeRepoPath).filter(Boolean);
+
+/**
+ * Items matching `query` (every state when `states` is unset) in its sort order, board order by default; `total` counts
+ * past the limit. With `paths`, items are ranked by how they touch a path (`matchPaths`) before that order, and
+ * `pathMatches` says why each matched.
+ */
+export function list(
+	db: Db,
+	repo: string,
+	query: ListQuery = {},
+): { items: Item[]; total: number; pathMatches?: Map<string, PathMatch> } {
 	const filter = filterOf(db, repo, query);
+	const paths = pathQueries(query);
+	if (paths.length) {
+		// Matching reads paths, evidence and links, so it runs on the enriched items that pass the other filters.
+		const rows = backlog.listItems(db, filter, -1, 0, query.sort) as Row<State>[];
+		const pathMatches = new Map<string, PathMatch>();
+		const matched = enrichItems(db, repo, rows.map(toItem)).filter((item) => {
+			const match = matchPaths(item, paths);
+			if (match) pathMatches.set(item.ref, match);
+			return match !== undefined;
+		});
+		// Array.sort is stable: equal matches keep the requested order.
+		matched.sort((a, b) => comparePathMatch(pathMatches.get(a.ref)!, pathMatches.get(b.ref)!));
+		const start = query.offset ?? 0;
+		const items = matched.slice(
+			start,
+			query.limit === undefined ? undefined : start + Math.max(0, Math.floor(query.limit)),
+		);
+		return { items, total: matched.length, pathMatches };
+	}
 	const total = backlog.countItems(db, filter);
 	const limit = query.limit === undefined ? -1 : Math.max(0, Math.floor(query.limit));
 	const rows = backlog.listItems(db, filter, limit, query.offset ?? 0, query.sort) as Row<State>[];
@@ -99,6 +133,7 @@ export function counts(db: Db, repo: string): BacklogCounts {
 			key: String(row.id),
 			type: row.type,
 			state: row.state as State,
+			closed: row.closed === 1,
 			...(row.parent_id === null ? {} : { parent: String(row.parent_id) }),
 		})),
 	);

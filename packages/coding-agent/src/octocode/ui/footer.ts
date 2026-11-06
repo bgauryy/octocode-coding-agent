@@ -198,8 +198,7 @@ export function footerLines(
 			},
 			ctx,
 			{ text: status(OWN.team), priority: 90, keep: true },
-			{ text: status(OWN.subagents), priority: 90, keep: true },
-			{ text: status(OWN.bash), priority: 90, keep: true },
+			{ text: status(OWN.running), priority: 90, keep: true },
 			// Messages waiting for the run to end: the user should see theirs did not get lost.
 			{ text: status(OWN.queued), priority: 85, keep: true },
 			// Last of the left parts: its clock grows, so nothing else on the row moves with it.

@@ -7,11 +7,9 @@ export interface BacklogToolDetails {
 	/** list: items shown and matched. */
 	shown?: number;
 	total?: number;
-	/** remove: the removed item's ref. */
-	removed?: string;
 }
 
-/** The `⎿` line: `B12 → done`, `Added B3`, `Removed B1`, `3 items`. */
+/** The `⎿` line: `B12 → done`, `Added B3`, `3 items`. */
 export function backlogSummary(op: unknown, details: BacklogToolDetails, text: string): string {
 	const item = details.item;
 	if (op === "list" && details.total !== undefined)
@@ -20,9 +18,8 @@ export function backlogSummary(op: unknown, details: BacklogToolDetails, text: s
 			: details.total > (details.shown ?? 0)
 				? `${details.shown} of ${plural(details.total, "item")}`
 				: plural(details.total, "item");
-	if (op === "remove" && details.removed) return `Removed ${details.removed}`;
 	if (item && op === "add") return `Added ${item.ref} · ${item.state}`;
-	if (item && op === "update") return `${item.ref} → ${item.state}`;
+	if (item && op === "update") return `${item.ref} → ${item.closed ? "closed" : item.state}`;
 	if (item) return `${item.ref} · ${item.state} · ${item.title}`;
 	return text.split("\n", 1)[0] ?? "";
 }
@@ -42,12 +39,12 @@ export function backlogPrompt(subagent: boolean): {
 		// The same text for every role, so parent and child declare identical bytes; a role's limits are stated when it hits them.
 		"Repository work items by state: backlog proposed, todo accepted, ongoing claimed, done completed. " +
 		"An item another running session holds takes only notes. " +
-		"Claiming (ongoing) needs why and goal; done needs completion.";
+		"Claiming (ongoing) needs why and goal; done needs completion; close (obsolete, duplicate of, wont_do) needs a reason. Items are never deleted.";
 	const ops =
 		"list/get: read (list: all filters apply); follow Next for more. " +
 		(subagent
-			? "add: propose; update: ongoing/done or notes"
-			: "add: propose; update: edit, claim (ongoing) or add notes; remove: only duplicates or user-requested items without history");
+			? "add: propose; update: ongoing, done, close or notes"
+			: "add: propose; update: edit, claim (ongoing), close or add notes");
 	return {
 		// The snippet says when to use the tool for every role; the description and `op` say how.
 		promptSnippet: renderInstruction("tools/backlog/snippet.md"),

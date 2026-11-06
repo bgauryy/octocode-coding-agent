@@ -1,6 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { createHash } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
@@ -16,7 +15,7 @@ import {
 } from "./result-schema.ts";
 import { asRecord, errorMessage as describeError } from "@octocodeai/octocode-contracts/guards";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { snapshotReport, type ReportArtifact } from "../shared/report-artifact.ts";
+import { appendScratchFile, snapshotReport, writeScratchFile, type ReportArtifact } from "../shared/report-artifact.ts";
 import { cutText } from "../../../../common/src/text.ts";
 
 const REPORT_MAX_LINES = 200;
@@ -188,6 +187,10 @@ export class ReportTracker {
 	private artifact: ReportArtifact | undefined;
 	private partialFile: string | undefined;
 	private spillFailed = false;
+	/** Why the whole report could not be saved to its scratch folder (a refused link, a full disk); the preview says so. */
+	private unsaved: string | undefined;
+	/** The same for a partial answer, which belongs to a report that has no section yet. */
+	private partialUnsaved: string | undefined;
 	private structured: StructuredResultV1 | undefined;
 	/** The notice of the child's own background job that woke it after it reported: the next section is a follow-up. */
 	private job: string | undefined;
@@ -245,13 +248,15 @@ export class ReportTracker {
 		this.lastText = preview(text);
 		if (stopReason === "toolUse" || failed) {
 			this.partialFile = undefined;
+			this.partialUnsaved = undefined;
 			if (this.sections === 0 && this.lastText !== text && this.scratch) {
 				try {
 					const file = path.join(this.scratch, "partial-report.md");
-					fs.writeFileSync(file, text);
+					writeScratchFile(file, text);
 					this.partialFile = file;
-				} catch {
-					/* Keep the bounded partial answer when disk is unavailable. */
+				} catch (error) {
+					// Keep the bounded partial answer, and say why the whole one was not saved.
+					this.partialUnsaved = describeError(error);
 				}
 			}
 			return;
@@ -292,24 +297,28 @@ export class ReportTracker {
 		const capped = headPreview(whole);
 		try {
 			if (this.file) {
-				if (!append) fs.truncateSync(this.file, this.sectionStart);
-				fs.appendFileSync(this.file, section);
+				appendScratchFile(this.file, section, append ? undefined : this.sectionStart);
 			} else if (
 				!this.spillFailed &&
 				(whole.bytes > REPORT_MAX_BYTES || whole.lines > REPORT_MAX_LINES) &&
 				this.scratch
 			) {
 				const file = path.join(this.scratch, "report.md");
-				fs.writeFileSync(file, this.before.head + section);
+				writeScratchFile(file, this.before.head + section);
 				this.file = file;
 			}
-		} catch {
-			// A disk failure must not discard the bounded answer or advertise an incomplete report.
+		} catch (error) {
+			// A disk failure or a refused path must not discard the bounded answer or advertise an incomplete report.
 			this.file = undefined;
 			this.spillFailed = true;
+			this.unsaved = describeError(error);
 		}
 		this.full = whole;
 		this.text = capped;
+	}
+
+	private unsavedNote(why: string): string {
+		return `[The whole report was not saved to a file: ${why}.]`;
 	}
 
 	/**
@@ -334,16 +343,21 @@ export class ReportTracker {
 						file: shortPath(this.partialFile),
 					})
 				: undefined;
+			const body =
+				this.partialUnsaved && !pointer
+					? `${this.lastText}\n\n${this.unsavedNote(this.partialUnsaved)}`
+					: this.lastText;
 			return {
-				text: `${this.lastText}${pointer ? `\n${pointer}` : ""}`,
-				body: this.lastText,
+				text: `${body}${pointer ? `\n${pointer}` : ""}`,
+				body,
 				...(pointer ? { pointer } : {}),
 				answered: false,
 				...(this.failure ? { error: this.failure } : {}),
 				...(this.resultContract ? { structured: unavailableResult(this.resultContract) } : {}),
 			};
 		}
-		const body = this.failure ? `${this.text}${SEPARATOR}(A later follow-up turn failed: ${this.failure})` : this.text;
+		const shown = this.unsaved && !this.file ? `${this.text}\n\n${this.unsavedNote(this.unsaved)}` : this.text;
+		const body = this.failure ? `${shown}${SEPARATOR}(A later follow-up turn failed: ${this.failure})` : shown;
 		if (!this.artifact) {
 			try {
 				this.artifact = this.file ? snapshotReport(this.file) : { sha256: sha256(body) };

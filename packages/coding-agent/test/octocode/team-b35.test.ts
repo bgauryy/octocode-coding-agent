@@ -54,7 +54,7 @@ describe("B35 team mail and liveness", () => {
 			for (const each of [member("p-1"), member("a-1", "p-1")]) store.save(each);
 			const result = await sendMessage(child(store, "a-1"), "octocode-rpc-df792784", "ping");
 			expect(result).toMatchObject({ error: expect.stringContaining("subagents have no route to other processes") });
-			expect((result as { error: string }).error).toContain('Send to "parent" (p-1)');
+			expect((result as { error: string }).error).toContain('Send to "parent" (your coordinator p-1)');
 			expect(store.refs.relays("p-1")).toEqual([]);
 		} finally {
 			store.close();

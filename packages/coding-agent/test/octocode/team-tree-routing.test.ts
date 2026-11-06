@@ -43,7 +43,7 @@ const ids = (result: Member[] | string) => (typeof result === "string" ? result 
 describe("resolveTarget for a subagent sender", () => {
 	it("refuses an agent of another tree, by id or role, naming its parent as the route", () => {
 		expect(resolveTarget(members, "kid-a1", "kid-b1", "main-a")).toBe(
-			"kid-b1 is outside your team; ask your parent (main-a) to relay.",
+			"kid-b1 is outside your team; ask your coordinator (main-a) to relay.",
 		);
 		expect(resolveTarget(members, "kid-a1", "main-b", "main-a")).toMatch(/^main-b is outside your team/);
 		expect(resolveTarget(members, "kid-a1", "reviewer", "main-a")).toMatch(/^Every "reviewer" is outside your team/);
@@ -113,7 +113,7 @@ describe("messages between real teams", () => {
 		const kid = await agent(mainA.id, "kid-a1");
 		const other = await agent(mainB.id, "kid-b1");
 		expect(await kid.send("kid-b1", "hi")).toEqual({
-			error: `kid-b1 is outside your team; ask your parent (${mainA.id}) to relay.`,
+			error: `kid-b1 is outside your team; ask your coordinator (${mainA.id}) to relay.`,
 		});
 		expect(await kid.send(mainB.id, "hi")).toEqual({ error: expect.stringContaining("outside your team") });
 		expect(await mainA.send("kid-b1", "hi")).toMatchObject({ sent: ["kid-b1"] });

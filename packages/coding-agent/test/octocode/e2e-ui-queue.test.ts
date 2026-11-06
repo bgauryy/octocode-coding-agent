@@ -78,6 +78,9 @@ describe("queue while streaming", () => {
 		for (const ch of "steer two") t!.press(ch);
 		t!.press(KEY.enter);
 		await t!.until(shows(/2 queued · 2 next turn · 0 after run/), "both messages in the queue list");
+		const listed = await t!.text();
+		expect(listed).toContain("steer one");
+		expect(listed).toContain("steer two");
 	});
 
 	it("Alt+Up takes the last queued message back into the editor and it is not sent", async () => {

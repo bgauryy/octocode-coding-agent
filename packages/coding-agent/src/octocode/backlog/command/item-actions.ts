@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { say } from "../../shared/commands.ts";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { delegatePrompt, doItPrompt } from "../actions.ts";
-import type { Backlog, BacklogOptions } from "../context.ts";
+import { type Backlog, type BacklogOptions, userActor } from "../context.ts";
+import { CLOSE_KINDS, type CloseKind } from "@octocodeai/octocode-contracts/backlogs";
 import { isState, itemDetail, itemLine } from "../format.ts";
 import { refText } from "../row.ts";
 import { type BacklogStore, type Item, PRIORITIES, type UpdateInput } from "../store.ts";
@@ -50,7 +50,7 @@ export interface CommandDeps extends BacklogOptions {
 	changed(ctx: ExtensionCommandContext): void;
 }
 
-/** What the user does to backlog items from `/backlog`: add, edit, move, delete, and hand one to the agent. */
+/** What the user does to backlog items from `/backlog`: add, edit, move, close, and hand one to the agent. */
 export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 	/** Runs one store change and repaints; returns the refusal text instead of throwing. */
 	const apply = (ctx: ExtensionCommandContext, change: () => void): string | undefined => {
@@ -110,7 +110,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 			backlog.store.dispatch(
 				item.ref,
 				item.version,
-				{ ...backlog.actor, kind: "human" },
+				userActor(backlog),
 				(next) => {
 					claimed = next;
 					api.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
@@ -160,13 +160,23 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 			if (!note) return "Reopen cancelled.";
 			patch.note = note;
 		}
-		return apply(ctx, () => backlog.store.update(item.ref, patch, { ...backlog.actor, kind: "human" }));
+		return apply(ctx, () => backlog.store.update(item.ref, patch, userActor(backlog)));
 	};
 
-	/** Deletes `item` after the user confirms (`detail` is the dialog text). */
-	const remove = async (ctx: ExtensionCommandContext, backlog: Backlog, item: Item, detail: string): Promise<void> => {
-		if (!(await ctx.ui.confirm(`Delete ${item.ref}?`, detail))) return;
-		applyAndSay(ctx, () => backlog.store.remove(item.ref, item.version), `Deleted ${item.ref}.`);
+	/** Closes `item` (never deletes): asks the kind, the reason and for a duplicate its original; the item keeps its history. */
+	const closeItem = async (ctx: ExtensionCommandContext, backlog: Backlog, item: Item): Promise<void> => {
+		const kind = await ctx.ui.select(`Close ${item.ref}: why is it not needed?`, [...CLOSE_KINDS]);
+		if (!kind || !CLOSE_KINDS.includes(kind as CloseKind)) return;
+		const of = kind === "duplicate" ? (await ctx.ui.input("Duplicate of which item?", "B12"))?.trim() : undefined;
+		if (kind === "duplicate" && !of) return;
+		const text = (await ctx.ui.input("Reason", "why this item is closed"))?.trim();
+		if (!text) return;
+		const close = { kind: kind as CloseKind, text, ...(of ? { of } : {}) };
+		applyAndSay(
+			ctx,
+			() => backlog.store.update(item.ref, { close, version: item.version, force: true }, userActor(backlog)),
+			`Closed ${item.ref}.`,
+		);
 	};
 
 	const add = async (ctx: ExtensionCommandContext, backlog: Backlog, given: string): Promise<void> => {
@@ -197,11 +207,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		const patch = field.patch(text.trim());
 		if (name === "Title" && !patch.title) return say(ctx, "Not saved: the title is empty.", "warning");
 		applyAndSay(ctx, () =>
-			backlog.store.update(
-				item.ref,
-				{ ...patch, version: item.version, force: true },
-				{ ...backlog.actor, kind: "human" },
-			),
+			backlog.store.update(item.ref, { ...patch, version: item.version, force: true }, userActor(backlog)),
 		);
 	};
 
@@ -262,7 +268,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 							backlog.store.update(
 								item.ref,
 								{ priority: index, version: item.version, force: true },
-								{ ...backlog.actor, kind: "human" },
+								userActor(backlog),
 							),
 						);
 				},
@@ -279,7 +285,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 							backlog.store.update(
 								item.ref,
 								{ from: ref.trim() === "" ? null : ref.trim(), version: item.version, force: true },
-								{ ...backlog.actor, kind: "human" },
+								userActor(backlog),
 							),
 						);
 				},
@@ -292,14 +298,9 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 				},
 			},
 			{
-				label: "Delete",
+				label: "Close",
 				run: async () => {
-					await remove(
-						ctx,
-						backlog,
-						item,
-						`${sanitizeTerminalText(item.title)}\n\nThe item and its notes are removed for every session.`,
-					);
+					await closeItem(ctx, backlog, item);
 					return undefined;
 				},
 			},
@@ -310,5 +311,5 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		);
 		return (await choices.find(({ label }) => label === choice)?.run()) === true;
 	};
-	return { apply, handOff, move, remove, add, actions, tasks };
+	return { apply, handOff, move, closeItem, add, actions, tasks };
 }

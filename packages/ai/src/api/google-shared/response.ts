@@ -77,8 +77,10 @@ export function normalizeGoogleUsage(metadata: GenerateContentResponseUsageMetad
 	const cacheRead = Math.min(prompt, reportedCache);
 	const reasoning = count(metadata.thoughtsTokenCount);
 	const output = count(metadata.candidatesTokenCount) + reasoning;
+	// Tool-use prompts (search, code execution results) are input beside the prompt, and in the reported total.
+	const toolUse = count(metadata.toolUsePromptTokenCount);
 	return createUsage({
-		input: prompt - cacheRead,
+		input: prompt - cacheRead + toolUse,
 		output,
 		cacheRead,
 		reasoning,

@@ -135,7 +135,7 @@ describe("resuming a subagent of this session by id", () => {
 			);
 			const [report] = resumed.reports();
 			expect(report).toContain(`--session-dir ${dir} --session-id ${sessionId}`);
-			expect(report).toContain("Follow-up from your parent:\nlinger again");
+			expect(report).toContain("Follow-up from your coordinator:\nlinger again");
 			const failed = await resumed.call({ goal: "Recover", task: "error please", resume: id, background: true });
 			await resumed.control.settle();
 			const failure = resumed.f.sent.find((entry) => entry.message.details?.runId === failed.details.runId);
@@ -180,7 +180,7 @@ describe("resuming a child that crashed while starting", () => {
 			expect(result.details.id).toBe(id);
 			const text = result.content[0].text;
 			expect(text).toContain("RECOVERED on start 3: startup until 3");
-			expect(text).toContain("Follow-up from your parent:\ngo on");
+			expect(text).toContain("Follow-up from your coordinator:\ngo on");
 		} finally {
 			await resumed.control.stopAll();
 			resumed.team.stop();

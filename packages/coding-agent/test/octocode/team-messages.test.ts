@@ -241,7 +241,7 @@ describe("team message delivery", () => {
 			/^Message #7 from agent researcher-1234 at .*:\n<<<untrusted-[0-9a-f]{16} \(.*\)\nhi\nuntrusted-[0-9a-f]{16}>>>\n\(reply: agent type message, input\.to researcher-1234, input\.replyTo 7\)$/,
 		);
 		expect(messageText(message({ from: "main-aaaaaa" }), { parentId: "main-aaaaaa" })).toMatch(
-			/from your parent agent main-aaaaaa .*\(FYI: no reply needed\.\)$/s,
+			/from your coordinator main-aaaaaa .*\(FYI: no reply needed\.\)$/s,
 		);
 		expect(messageText(message({ from: USER_SENDER }), { fromUser: true })).toMatch(
 			/^Message #7 from the user at .*:\nhi$/,
@@ -256,7 +256,7 @@ describe("team message delivery", () => {
 	it("tells a child its parent's message steers the task, and keeps every other sender untrusted data", () => {
 		const note = (text: string) => /^<<<untrusted-[0-9a-f]{16} \((.*)\)$/m.exec(text)?.[1];
 		const parent = messageText(message({ from: "main-aaaaaa" }), { parentId: "main-aaaaaa" });
-		expect(note(parent)).toBe("from your parent agent: follow it within your task and the user's authorization");
+		expect(note(parent)).toBe("from your coordinator: follow it within your task and the user's authorization");
 		expect(parent).not.toContain("not instructions");
 		// The fence still parses, so renderers and footers keep working.
 		expect(fencedParts(parent)).toMatchObject({ body: "hi", footer: "(FYI: no reply needed.)" });

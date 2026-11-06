@@ -1,3 +1,4 @@
+import { builtinEffect } from "../features/builtin-ids.ts";
 import { VENDORS } from "../discovery/vendors/registry.ts";
 import { vendorDefaultOn } from "../discovery/vendors/switch.ts";
 import { type VendorId, vendorToggleId } from "../discovery/vendors/types.ts";
@@ -80,7 +81,8 @@ export function switchItem(
 		if (own && item.resource.metadata.origin === "package") settings.togglePackageResource(item.resource, on);
 		else if (own) settings.toggleTopLevelResource(item.resource, on);
 		else settings.setProjectResourceOverride(item.resource, on ? "load" : "unload");
-		return `${item.label} switched ${on ? "on" : "off"} ${where}.`;
+		const effect = on ? undefined : builtinEffect(item.resource.path);
+		return `${item.label} switched ${on ? "on" : "off"} ${where}.${effect ? ` Switching it off ${effect}.` : ""}`;
 	}
 	const parentOn = isSwitchedOn(item.parents ?? [], manager.getToggles(), scope === "project");
 	manager.setToggle(scope, item.id, on === parentOn ? undefined : on);

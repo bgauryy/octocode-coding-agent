@@ -151,7 +151,13 @@ describe("the real assembled prefix of a main session", () => {
 	// them, and the system prompt keeps only each server's instructions. The same server text moves from system (68,532 before)
 	// to tools (39,517 before), and the schema as sent is longer than the typed notation it replaced. Server text is not
 	// ours to trim (M14); our own text keeps its cap in `e2e.test.ts` and `prompt-size.test.ts`.
-	const REAL_PREFIX_CEILING = 125_500;
+	// 131_500 (2026-11-06, measured 131,414: system 24,915, tools 91,918, AGENTS.md 14,581): the sibling server added its
+	// `securityCheck` tool (3,497 declared bytes, server text), our itemized B150/B156/B157/B29 growth (+2,726, capped in
+	// `e2e.test.ts`), and about 1,160 from other server and AGENTS.md text.
+	// 132_624 (2026-11-06, measured 132,538: system 24,970, tools 92,987, AGENTS.md 14,581; B170): the timer tool's closed
+	// `until` list, +953 in tools (`prompt-size.test.ts` itemizes it); the other +171 since 131,414 came from concurrent
+	// edits. Slack over the measurement is 86, as before.
+	const REAL_PREFIX_CEILING = 132_624;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");

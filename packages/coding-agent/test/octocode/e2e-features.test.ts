@@ -254,8 +254,9 @@ describe("Native features through the SDK", () => {
 		// CLI's own output is the result, a warning when it exits with an error. No case here may sign in for real.
 		await session.prompt("/octocode --version");
 		expect(ui.notes.at(-1)).toMatchObject({ message: expect.stringMatching(/^octocode \d+\.\d+\.\d+$/), type: "info" });
-		await session.prompt("/octocode no-such-subcommand");
-		expect(ui.notes.at(-1)).toMatchObject({ message: expect.stringContaining("no-such-subcommand"), type: "warning" });
+		// An unknown option still goes to the CLI (only an unknown first word that is not an option becomes a prompt).
+		await session.prompt("/octocode --no-such-flag");
+		expect(ui.notes.at(-1)).toMatchObject({ message: expect.stringContaining("no-such-flag"), type: "warning" });
 		expect(turns).toHaveLength(beforeRequests);
 		await session.prompt("/agents");
 		// A mode change reaches the model as one hidden message, never through the cached system prompt.

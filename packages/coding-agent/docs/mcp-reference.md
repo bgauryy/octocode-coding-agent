@@ -64,7 +64,9 @@ The provider token is sent as a bearer token on each request, including after re
 
 ## Connections and caching
 
-`octocode mcp list` connects enabled servers, reports errors, and exits 1 on invalid entries or failed connections. `/mcp` shows server state and failed stdio stderr; notifications also go to rotated `<agent directory>/mcp.log`.
+`octocode mcp list` connects enabled servers, reports errors, and exits 1 on invalid entries or failed connections. `/mcp` shows server state and failed stdio stderr; notifications also go to rotated `<agent directory>/mcp.log`. It also lists the servers enabled plugins declare (`plugin:<plugin>:<server>`, scope `extension`), read from the settings in effect as a session registers them; a plugin that cannot be read adds an error.
+
+In an untrusted folder a workspace `mcp.json` is not loaded. A session shows one warning that names the files, at start and at each `/reload`; `octocode mcp list` and `tools` print the same text. Trust the folder (`octocode trust add`, or start Octocode there) and `/reload`.
 
 Connections begin in the background, for the servers the session's tool selection reaches; the others are not started. The first prompt waits up to 10 seconds for servers with declared tools, so sessions with the same servers start from the same cached prefix. A call waits for its target server. Transient HTTP connection failures get two retries; three consecutive failures trigger a 5–60 second backoff until restart. Dropped connections reconnect on the next call. An expired HTTP session gets one fresh-session retry; ordinary tool calls are not retried because they may have changed server state.
 
@@ -122,6 +124,8 @@ A server is assigned as a unit, its generated file and its tools, with the tool 
 
 The model's `mcp` tool supports `list` (state, tool count and last error of every server, or of one with `server`), `tools`, `restart` and `stop`. `tools` can inspect full descriptions and schemas without executing tools. `restart` also starts a stopped or failed server at once; a second restart of a connected server within 10 seconds is refused. `stop` withdraws tools until a restart; a dropped connection does not (calls fail until it reconnects, which the next call starts, or until `restart`). The earlier `status`, `connect`, `add` and `remove` intents return an error naming their replacement: `list`, `restart`, and the user's `/mcp` or `octocode mcp add`/`remove`. These operations do not edit configuration. Child agents use their own connections and inherit eligible session registrations for their run.
 
+**Servers per task.** The `agent` task's optional `mcp` list names the servers a child gets. Omitted, nothing changes: the child runs the servers its profile selects and the session's. With a list, the child runs the named servers, plus the servers its own tools name explicitly (the research floor every specialist keeps, and `mcp__<server>__…` entries in the profile's `tools`; a wildcard such as `mcp__*` names none), and every other configured server stays out, as do the session's added servers outside that set. The list narrows the inherited set; it never replaces the profile's requirements, so a read-only profile keeps its policy limits and the research floor stays. A named server whose `defaultActive` is off still starts, because its tools join the child's selection. `[]` gives the child only the profile's own servers. A name that is not an enabled server of the session refuses the task with one line naming the configured servers; a lean profile (no MCP) and `resume` (the child keeps its servers) refuse `mcp` too. The list travels in the child's transient handoff file (version 3, `only`), never in `mcp.json`, and the child's configuration loader skips any configured server outside it. A background child that lingers and is resumed by a message keeps its list.
+
 Model MCP calls use the normal tool pipeline, including extension handlers and permission gates. Hook-initiated `mcp_tool` calls bypass repeated extension handlers but still check availability and permissions. Only an explicit `destructiveHint: true` annotation affects permission, and only by adding an ask (`mcp.destructive`). Role-declared reads are `mcp.read` and never ask; other calls are `mcp.write`; see [MCP permissions](permissions.md#mcp-tools) and [hook calls](permissions.md#hook-initiated-mcp-calls).
 
 ## Migrate from another client
@@ -130,4 +134,4 @@ Claude Code, Codex and Cursor files are read in place once their harness is on (
 
 ## Built-in MCP host
 
-Disable built-in MCP for one run with `--no-mcp`, or persistently through Built-in settings / `"-builtin:mcp"`. Shell `octocode mcp` commands do not start a session.
+Disable built-in MCP for one run with `--no-mcp`. It cannot be switched off persistently: `"-builtin:mcp"` in `extensions` is ignored with a warning; turn servers off in `/mcp` or `mcp.json`. Shell `octocode mcp` commands do not start a session.

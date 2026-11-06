@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { peerDbPath, peerRegistryDir } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
-import { PEER_APPLICATION_ID, PEER_SCHEMA_VERSIONS, PeerLeases } from "../../src/octocode/team/peer-leases.ts";
+import {
+	PEER_APPLICATION_ID,
+	PEER_SCHEMA_VERSION,
+	PEER_SCHEMA_VERSIONS,
+	PeerLeases,
+} from "../../src/octocode/team/peer-leases.ts";
 import { PEER_REGISTRY_GRACE_MS, PEER_REGISTRY_VERSION, PeerRegistry } from "../../src/octocode/team/peer-registry.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -31,6 +36,7 @@ function peerDb(file: string, leases: Lease[], options: { sessionExpiresAt?: num
 	const { DatabaseSync } = loadSqlite();
 	const db = new DatabaseSync(file);
 	db.exec(SCHEMA);
+	db.prepare("INSERT INTO workspaces VALUES(?,?)").run("/w", "/w");
 	const session = db.prepare(
 		"INSERT INTO sessions (id, workspace, name, vendor, vendorSession, expiresAt) VALUES (?, ?, ?, ?, ?, ?)",
 	);
@@ -80,7 +86,7 @@ describe("peer leases (agents-communication database, read-only)", () => {
 	it("relies on the schema this reads", () => {
 		expect(SCHEMA).toContain(`PRAGMA application_id=${PEER_APPLICATION_ID}`);
 		const version = Number(/PRAGMA user_version=(\d+)/.exec(SCHEMA)?.[1]);
-		expect(PEER_SCHEMA_VERSIONS).toContain(version);
+		expect(PEER_SCHEMA_VERSION).toBe(version);
 		// The columns the lease query selects: what makes a schema version safe to read.
 		const { DatabaseSync } = loadSqlite();
 		const db = new DatabaseSync(":memory:");
@@ -94,13 +100,9 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		db.close();
 	});
 
-	// v8 only changed messages and records (parts, contextId, outcome); leases and sessions are the v7 columns.
-	it.each([7, 8])("reads leases from a schema version %i database", (version) => {
+	it("reads leases from the current schema", () => {
 		const file = path.join(home(), "communication.sqlite");
 		peerDb(file, [{ path: "/w/a.ts", reason: "auth" }]);
-		const raw = new (loadSqlite().DatabaseSync)(file);
-		raw.exec(`PRAGMA user_version=${version}`);
-		raw.close();
 		const warnings: string[] = [];
 		const found = peers(file, { warn: (text) => (warnings.push(text), true) });
 		expect(found.conflict("/w/a.ts")?.reason).toBe("auth");
@@ -184,35 +186,50 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		expect(found.conflict("/w/a.ts")?.reason).toBe("late");
 	});
 
-	it("skips a database it does not know, with one warning, and tries again later", () => {
+	it.each([7, 8])("reads leases from the older schema %i, which has the same lease and session columns", (version) => {
 		const file = path.join(home(), "communication.sqlite");
-		peerDb(file, [{ path: "/w/a.ts" }]);
+		peerDb(file, [{ path: "/w/a.ts", reason: "auth" }]);
 		const raw = new (loadSqlite().DatabaseSync)(file);
-		raw.exec("PRAGMA user_version=9");
+		raw.exec(`PRAGMA user_version=${version}`);
 		raw.close();
 		const warnings: string[] = [];
-		let now = NOW;
-		const found = peers(file, {
-			warn: (text) => {
-				warnings.push(text);
-				return true;
-			},
-			now: () => now,
-		});
-		expect(found.conflict("/w/a.ts")).toBeUndefined();
-		now += 31_000;
-		expect(found.conflict("/w/a.ts")).toBeUndefined();
-		expect(warnings).toHaveLength(1);
-		expect(warnings[0]).toContain("schema version 9");
-		expect(warnings[0]).toContain("reads versions 7, 8");
-		expect(warnings[0]).toContain("path leases are not checked");
-		// Once the file is the version this reads, the next attempt uses it.
-		const fixed = new (loadSqlite().DatabaseSync)(file);
-		fixed.exec("PRAGMA user_version=8");
-		fixed.close();
-		now += 31_000;
-		expect(found.conflict("/w/a.ts")?.owner).toBe("s1");
+		const found = peers(file, { warn: (text) => (warnings.push(text), true) });
+		expect(found.conflict("/w/a.ts")?.reason).toBe("auth");
+		expect(warnings).toEqual([]);
 	});
+
+	it.each([PEER_SCHEMA_VERSION + 1, PEER_SCHEMA_VERSION + 2])(
+		"refuses unknown schema %i with one warning and retries later",
+		(version) => {
+			const file = path.join(home(), "communication.sqlite");
+			peerDb(file, [{ path: "/w/a.ts" }]);
+			const raw = new (loadSqlite().DatabaseSync)(file);
+			raw.exec(`PRAGMA user_version=${version}`);
+			raw.close();
+			const warnings: string[] = [];
+			let now = NOW;
+			const found = peers(file, {
+				warn: (text) => {
+					warnings.push(text);
+					return true;
+				},
+				now: () => now,
+			});
+			expect(found.conflict("/w/a.ts")).toBeUndefined();
+			now += 31_000;
+			expect(found.conflict("/w/a.ts")).toBeUndefined();
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain(`schema version ${version}`);
+			expect(warnings[0]).toContain(`reads versions ${PEER_SCHEMA_VERSIONS.join(", ")}`);
+			expect(warnings[0]).toContain("path leases are not checked");
+			// Once the file is the version this reads, the next attempt uses it.
+			const fixed = new (loadSqlite().DatabaseSync)(file);
+			fixed.exec(`PRAGMA user_version=${PEER_SCHEMA_VERSION}`);
+			fixed.close();
+			now += 31_000;
+			expect(found.conflict("/w/a.ts")?.owner).toBe("s1");
+		},
+	);
 
 	it("skips a file that is not the package's database, and an uninitialized one silently", () => {
 		const other = path.join(home(), "other.sqlite");

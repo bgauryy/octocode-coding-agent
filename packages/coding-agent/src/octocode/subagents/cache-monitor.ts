@@ -1,6 +1,6 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { finiteOrZero } from "../shared/util.ts";
-import { formatTokens } from "../shared/format.ts";
+import { cachedPercent, formatTokens } from "../shared/format.ts";
 
 /** Conversation requests only: compaction, warming and nested tools have separate usage receipts. */
 export interface ChildCacheMetrics {
@@ -13,7 +13,8 @@ export interface ChildCacheMetrics {
 
 /** Read share is token-weighted; an empty provider receipt cannot establish a rate. */
 export function childCacheLabel(cache: Pick<ChildCacheMetrics, "promptTokens" | "cacheRead" | "cacheWrite">): string {
-	const rate = cache.promptTokens > 0 ? `${Math.round((cache.cacheRead / cache.promptTokens) * 100)}%` : "n/a";
+	const percent = cachedPercent(cache.cacheRead, cache.promptTokens);
+	const rate = percent === undefined ? "n/a" : `${percent}%`;
 	return `${rate} cached · ${formatTokens(cache.cacheRead)} read · ${formatTokens(cache.cacheWrite)} written`;
 }
 

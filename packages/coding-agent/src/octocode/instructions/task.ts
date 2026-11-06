@@ -5,25 +5,19 @@ import { rebasePath } from "../shared/prompt-root.ts";
 import { reportContract } from "./report.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 
-/** The task a collaborating subagent receives: its own task plus who else is on the team (`name`: `role: goal`) and how to reach them (`subagent/team.md`). */
-export function teamTask(task: string, parentId: string, others: Array<[string, string]>): string {
-	const teammates = others.map(([id, line]) => `- \`${id}\`: ${line}`).join("\n");
-	return `${task}\n\n${renderInstruction("subagent/team.md", { parentId, teammates })}`;
-}
-
-/** The facts that identify one child to itself; the parent sets them at spawn and may change the assignment on resume. */
+/** The facts that identify one child to itself; the coordinator sets them at spawn and may change the assignment on resume. */
 export interface ChildIdentity {
 	id: string;
 	role?: string;
 	goal?: string;
-	/** Why the parent started this run: the `reason` of the agent call that started or resumed it. */
+	/** Why the coordinator started this run: the `reason` of the agent call that started or resumed it. */
 	why?: string;
 	parentId?: string;
 	scratch?: string;
 	isolation?: { path: string; repo: string; cwd: string };
-	/** The backlog item the parent started it for: the only one it may update. */
+	/** The backlog item the coordinator started it for: the only one it may update. */
 	item?: string;
-	/** Paths the parent reserved for it until it reports. */
+	/** Paths the coordinator reserved for it until it reports. */
 	reservedPaths?: readonly string[];
 	/** The run mode: true for a background run, false for a foreground run; omitted, the identity names none. */
 	background?: boolean;

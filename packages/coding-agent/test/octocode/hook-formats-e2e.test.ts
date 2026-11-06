@@ -200,7 +200,13 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 
 	it("registers reviewed plugin MCP servers", () => {
 		const { runtime } = loader.getExtensions();
-		for (const { name } of plugins) expect(runtime.mcpServers.get(`plugin:${name}:echo`), name).toBeDefined();
+		const registered = runtime.mcpServers.list().filter((server) => server.name.startsWith("plugin:"));
+		expect(registered.map((server) => server.name)).toEqual(
+			expect.arrayContaining(plugins.map(({ name }) => `plugin:${name}:echo`)),
+		);
+		for (const { name } of plugins) {
+			expect(runtime.mcpServers.get(`plugin:${name}:echo`)?.config, name).toMatchObject({ command: "node" });
+		}
 	});
 
 	it("lists but never runs code extensions in the extensions folder and in a local package", () => {

@@ -66,11 +66,16 @@ describe("the agent_runs table", () => {
 		for (const column of ["cwd", "branch", "process_title"]) old.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
 		old.db.exec("DROP TABLE agent_runs");
 		old.db.exec("DROP TABLE timers");
+		// Version 5 added `backlog.closed` with its audit triggers; a version 2 file has neither.
+		for (const name of ["insert", "update", "delete"]) old.db.exec(`DROP TRIGGER backlog_audits_${name}`);
+		old.db.exec("ALTER TABLE backlog DROP COLUMN closed");
+		// Step 7 adds `backlog.rank`.
+		old.db.exec("ALTER TABLE backlog DROP COLUMN rank");
 		old.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		old.close();
 		open().close();
 		const raw = new DatabaseSync(file, { readOnly: true });
-		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 4 });
+		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_PLAN.version });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "1" });
 		expect((raw.prepare("PRAGMA table_info(agent_runs)").all() as { name: string }[]).map((c) => c.name)).toContain(

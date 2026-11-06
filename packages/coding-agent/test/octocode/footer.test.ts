@@ -30,7 +30,7 @@ const state: FooterState = {
 const statuses = new Map([
 	["mcp", "mcp 3/3"],
 	["octocode-team", "agents 1/2 ↑1k ↓2k"],
-	["octocode-bash", "1 bash job"],
+	["octocode-running", "1 bash"],
 	["octocode-permission", "⏸ permission: manual · shift+tab"],
 	["octocode-speed", "58 tok/s"],
 	["other-ext", "lint ok"],
@@ -49,7 +49,7 @@ describe("footer", () => {
 	it("shows the model, context, mode and running work first, and where you are second", () => {
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 170);
 		expect(top).toMatch(
-			/^claude-opus-5-5 · ⏸ permission: manual · shift\+tab · thinking high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
+			/^claude-opus-5-5 · ⏸ permission: manual · shift\+tab · thinking high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash +58 tok\/s · ≈\$0\.84$/,
 		);
 		expect(bottom).toBe("~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok");
 		expect(visibleWidth(top)).toBe(170);
@@ -97,7 +97,7 @@ describe("footer", () => {
 			state,
 			null,
 			new Map([
-				[STATUS.subagents, `${hostile}2 sub\u202eagents\u001b[2J`],
+				[STATUS.running, `${hostile}2 sub\u202eagents\u001b[2J`],
 				[STATUS.queued, `\u001b[31m✉ 1 queued\u001b[39m\r${hostile}`],
 				["other-ext", `\u001b[32mlint ok\u001b[39m${hostile}\u2028done`],
 			]),
@@ -179,7 +179,7 @@ describe("footer", () => {
 		expect(visibleWidth(top)).toBeLessThanOrEqual(75);
 		expect(visibleWidth(bottom)).toBeLessThanOrEqual(75);
 		expect(bottom).toContain("feature/a-very-long-bran…");
-		for (const kept of ["claude-opus-5-5", "42%", "manual", "agents 1/2", "1 bash job"]) expect(top).toContain(kept);
+		for (const kept of ["claude-opus-5-5", "42%", "manual", "agents 1/2", "1 bash"]) expect(top).toContain(kept);
 		expect(top).not.toContain("tok/s");
 		expect(bottom).not.toContain("lint ok");
 		// At 40 columns the mode chip is still there, in its short form (just the mode).
@@ -205,10 +205,10 @@ describe("footer", () => {
 });
 
 describe("footer line 1 work statuses", () => {
-	it("keeps queued messages and background subagents on line 1 when other parts drop", () => {
-		const work = new Map([...statuses, [STATUS.queued, "✉ 2 queued"], [STATUS.subagents, "2 subagents"]]);
+	it("keeps queued messages and the typed running-work counts on line 1 when other parts drop", () => {
+		const work = new Map([...statuses, [STATUS.queued, "✉ 2 queued"], [STATUS.running, "2 agents · 1 bash · 1 timer"]]);
 		const [wide, bottom] = footerLines(state, "main", work, theme, 200);
-		expect(wide).toContain("2 subagents");
+		expect(wide).toContain("2 agents · 1 bash · 1 timer");
 		expect(wide).toContain("✉ 2 queued");
 		expect(bottom).not.toContain("queued");
 		// 110, not 90: context and thinking now outrank the queued counter, which needs the extra cells (footer audit F2).
@@ -259,8 +259,7 @@ describe("footer under a busy status row", () => {
 	const busy = new Map([
 		["octocode-permission", "⏸ permission: manual · shift+tab"],
 		["octocode-team", "agents 3/6 ↑12k ↓34k"],
-		["octocode-subagents", "3 background agents"],
-		["octocode-bash", "2 bash jobs"],
+		["octocode-running", "3 agents · 2 bash · 1 timer"],
 		["octocode-queued", "✉ 2 queued"],
 		["octocode-hooks", "hook running 12s"],
 	]);

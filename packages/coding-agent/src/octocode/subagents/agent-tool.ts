@@ -21,6 +21,12 @@ export function agentToolSpec() {
 						"Skills the child needs: one named only in the task text is rarely loaded. Omit for profile skills or the loaded catalog; [] for none.",
 				}),
 			),
+			mcp: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"MCP servers the child gets: these configured servers plus any its profile names; other servers stay out. Omit for the profile's servers and the session's; [] for the profile's own only. An unknown or disabled name refuses the task.",
+				}),
+			),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({
 				description:
@@ -66,12 +72,6 @@ export function agentToolSpec() {
 					description: "Return at once for independent work.",
 				}),
 			),
-			collaborate: Type.Optional(
-				Type.Boolean({
-					description:
-						"Adds teammate context for shared work; does not enable messaging or grant authority. Name each task's owner.",
-				}),
-			),
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
@@ -87,7 +87,7 @@ export function agentToolSpec() {
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						'Files, or "dir/" for a tree, the child will edit: reserved for it from start to report, so you need no lock or unlock. A path another agent holds refuses the start. No effect with isolate or a read-only profile.',
+						'Files, or "dir/" for a tree, the child will edit: reserved for it from start to report, so you need no lock or unlock. A path held by another child of this session queues the start until it reports; any other holder refuses it. No effect with isolate or a read-only profile.',
 				}),
 			),
 			// The `agent` call's own reason (`octocode/agent-tool.ts` passes it to a type that declares one): the child's why.

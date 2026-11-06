@@ -77,12 +77,13 @@ Details: [modes](permissions.md#modes), [project trust](permissions.md#project-t
 - Ask the agent to create an epic and its items: the `backlog` tool takes `type: "epic"` for the epic and `parentId` on each child. `backlog list` with `parentId` lists an epic's items; `backlog get` on the epic shows its derived state and a done count.
 - Steps of one piece of work are tasks under the item you claim: the `steps` tool (`add`, `list`, `update`). An item cannot be done while it has open tasks.
 - To see the hierarchy, run `/web backlogs` and open the **Tree** view (epic, item, task). `/backlog tui` shows the terminal board.
+- Close an item that is not needed instead of deleting it: ask the agent (`backlog update` with `close`), run `/backlog B12 close`, or use **Close** on the web board. Give a kind (obsolete, duplicate of another item, won't do) and a reason; the item is kept, hidden from the default board and lists, and shown with `states: ["closed"]`. Reopen it with a note to bring it back. `backlog get B12` ends with the audit trail: who changed what, through which surface, with the before and after.
 
 Details: [backlog view](web-workspace.md#backlog-view), [web controls for epics, items and tasks](web-workspace.md#web-controls-for-epics-items-and-tasks).
 
 ## Load a skill, and write your own
 
-- `/skills` lists discovered skills; `/skills info <name>` shows where one came from; `/skills enable|disable <name>` switches it. Run a skill yourself by typing its command, `/<name>` (`/skill:<name>` when names collide). The agent loads one itself when its description fits the task.
+- `/harness list skills` lists discovered skills with where each came from; `/harness enable|disable <name>` switches one. Run a skill yourself by typing its command, `/<name>` (`/skill:<name>` when names collide). The agent loads one itself when its description fits the task.
 - To write one, create `<name>/SKILL.md` with `name` and `description` front matter, then the instructions. Put it in `.octocode/skills/` (the project) or `~/.octocode/octocodecode/skills/` (all projects), then run `/reload`.
 - Say in the description what the skill does and when to use it.
 

@@ -14,7 +14,7 @@ import { computeCacheWaste } from "../../../core/cache-stats.ts";
 import { formatCacheWarmingStatus } from "../../../core/cache-warmer.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
 import { getUsageCostBreakdown } from "../../../core/usage-totals.ts";
-import { formatTokens } from "../../../octocode/shared/format.ts";
+import { cachedPercent, formatTokens } from "../../../octocode/shared/format.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../components/dynamic-border.ts";
 import { formatKeyText, keyText } from "../components/keybinding-hints.ts";
@@ -74,7 +74,7 @@ export function handleSessionCommand(host: InfoCommandsHost): void {
 		const promptTokens = input + cacheRead + cacheWrite;
 		info += `${theme.fg("dim", "Input:")} ${promptTokens.toLocaleString()}\n`;
 		if (promptTokens > 0 && (cacheRead > 0 || cacheWrite > 0)) {
-			const hitRate = theme.fg("dim", `(${((cacheRead / promptTokens) * 100).toFixed(1)}%)`);
+			const hitRate = theme.fg("dim", `(${cachedPercent(cacheRead, promptTokens, 1)?.toFixed(1)}%)`);
 			info += `  ${theme.fg("dim", "Cached:")} ${cacheRead.toLocaleString()} ${hitRate}\n`;
 			const written = cacheWrite > 0 ? ` ${theme.fg("dim", `(${cacheWrite.toLocaleString()} written to cache)`)}` : "";
 			info += `  ${theme.fg("dim", "Uncached:")} ${(input + cacheWrite).toLocaleString()}${written}\n`;

@@ -81,7 +81,8 @@ describe.skipIf(process.platform === "win32")("git worktree list -z", () => {
 		const refused = path.join(bin, "refused");
 		writeFileSync(
 			path.join(bin, "git"),
-			`#!/bin/sh\nfor a in "$@"; do [ "$a" = "-z" ] && [ "$1" = worktree ] && { : > "${refused}"; echo "error: unknown switch z" >&2; exit 129; }; done\nexec "${real}" "$@"\n`,
+			// The subcommand may follow global options (`git -c core.fsmonitor=false worktree list -z`), as with a real git.
+			`#!/bin/sh\ncase " $* " in *" worktree "*) for a in "$@"; do [ "$a" = "-z" ] && { : > "${refused}"; echo "error: unknown switch z" >&2; exit 129; }; done;; esac\nexec "${real}" "$@"\n`,
 		);
 		chmodSync(path.join(bin, "git"), 0o755);
 		process.env.PATH = `${bin}${path.delimiter}${process.env.PATH ?? ""}`;

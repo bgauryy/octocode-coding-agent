@@ -70,6 +70,8 @@ describe("backlog planning", () => {
 				)}
 			/>,
 		);
+		// Implement lives in the card's ⋯ menu, apart from the title link.
+		await user.click(screen.getByRole("button", { name: "Actions for B2" }));
 		await user.click(screen.getByRole("button", { name: "Implement B2" }));
 		expect(implement).toHaveBeenCalledWith("B2");
 		expect(location.hash).toBe("#board");

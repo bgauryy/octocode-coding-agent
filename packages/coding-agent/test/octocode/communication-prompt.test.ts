@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
-import { teamTask } from "../../src/octocode/instructions/task.ts";
+import { identityBlock } from "../../src/octocode/instructions/task.ts";
 import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
 import type { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -19,21 +19,23 @@ describe("communication prompt contracts", () => {
 		);
 	});
 
-	it("describes collaboration as context rather than a communication permission", () => {
-		const collaborate = agentToolSpec().parameters.properties.collaborate;
-		expect(collaborate).toHaveProperty("description", expect.stringContaining("Adds teammate context"));
-		expect(collaborate).toHaveProperty(
-			"description",
-			expect.stringContaining("does not enable messaging or grant authority"),
+	it("puts every child on a team led by its coordinator, with no opt-in parameter", () => {
+		expect(agentToolSpec().parameters.properties).not.toHaveProperty("collaborate");
+		const identity = identityBlock({ id: "a-1", parentId: "main-1" });
+		expect(identity.split("a team led by your coordinator `main-1`")).toHaveLength(2);
+		expect(identity).toMatch(
+			/follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator/,
 		);
+		// Without a team (its database is unusable) nobody leads it, so the text does not claim one.
+		expect(identityBlock({ id: "a-1" })).not.toContain("team led by");
 	});
 
-	it("gives one cross-tree rule per tier and keeps peer messages below parent authority", () => {
+	it("gives one cross-tree rule per tier and keeps peer messages below coordinator authority", () => {
 		// The top-level session reaches other trees and names their owning parent; a child reaches only its own session
 		// tree and asks its parent to relay (the routing B103 enforces in `team/`).
 		const rules = {
-			true: "Across parent trees (agents another session started), share evidence; send scope changes and shared interfaces to that tree's owning parent.",
-			false: "never guess or loop (your parent relays beyond your session tree)",
+			true: "Across coordinator trees (agents another session started), share evidence; send scope changes and shared interfaces to that tree's coordinator.",
+			false: "never guess or loop (your coordinator relays beyond your tree)",
 		};
 		for (const canDelegate of [true, false]) {
 			const prompt = octocodePrompt({ research: undefined, profiles: [], canDelegate });
@@ -47,7 +49,7 @@ describe("communication prompt contracts", () => {
 		const main = { research: undefined, profiles: [], canDelegate: true };
 		const prompt = octocodePrompt(main);
 		for (const line of [
-			"As the top-level session, only you reach other Octocode processes and other parent trees; relay for a child that asks.",
+			"As the top-level session, only you reach other Octocode processes and other trees; relay for a child that asks.",
 			"In a linked worktree with finished work: `to` `coordinator`",
 			"Never merge into the main checkout yourself.",
 			"A merge request in the main checkout: review it, `coordinate` `merge` its `branch`",
@@ -59,17 +61,20 @@ describe("communication prompt contracts", () => {
 		// Without the agent tool it names nothing.
 		const withoutAgent = octocodePrompt({ ...main, canUseAgent: false });
 		expect(withoutAgent).not.toContain("only you reach");
-		expect(withoutAgent).not.toContain("coordinator");
+		expect(withoutAgent).not.toContain("`to` `coordinator`");
 		// Children cannot reach another process and do not land merges.
 		for (const child of [
 			octocodePrompt({ research: undefined, profiles: [], canDelegate: false }),
 			octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true, canSave: false }),
 		]) {
 			expect(child).not.toContain("only you reach");
-			expect(child).not.toContain("coordinator");
+			expect(child).not.toContain("`to` `coordinator`");
 		}
 		// Every byte is in every request: the section stays this small.
-		const section = prompt.slice(prompt.indexOf("- As the top-level session"), prompt.indexOf("- Across parent trees"));
+		const section = prompt.slice(
+			prompt.indexOf("- As the top-level session"),
+			prompt.indexOf("- Across coordinator trees"),
+		);
 		expect(Buffer.byteLength(section)).toBeLessThan(800);
 	});
 
@@ -81,14 +86,18 @@ describe("communication prompt contracts", () => {
 		const message = fake.tools.get("sendMessage");
 		expect(coordinate.promptGuidelines.join(" ")).toContain("`agent` type `coordinate`");
 		expect(coordinate.promptGuidelines.join(" ")).not.toContain("input.");
-		expect(teamTask("Inspect", "parent-1", [])).toContain("`agent` type `coordinate`");
-		expect(message.parameters.properties.to.description).toContain("exact id across parent trees");
+		// A read-only role is not told to lock paths: the condition is that it edits.
+		expect(coordinate.promptGuidelines.join(" ")).toContain("if you edit files, lock your paths first");
+		expect(identityBlock({ id: "a-1", parentId: "parent-1" })).toContain(
+			"coordinate with teammates through reservations",
+		);
+		expect(message.parameters.properties.to.description).toContain("exact id across trees");
 		expect(message.parameters.properties.to.description).toContain('"all" reaches only your tree');
 		// A subagent (no peers) reaches only its own session tree; its parent relays beyond it.
 		const child = fakeHost();
 		registerCollab(child.api, {} as Team);
 		const childTo = child.tools.get("sendMessage").parameters.properties.to.description;
-		expect(childTo).not.toContain("across parent trees");
-		expect(childTo).toContain("in your tree; your parent relays beyond it");
+		expect(childTo).not.toContain("across coordinator trees");
+		expect(childTo).toContain("in your tree; it relays beyond it");
 	});
 });

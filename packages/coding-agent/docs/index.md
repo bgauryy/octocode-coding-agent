@@ -14,6 +14,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Add hooks and plugins](../../../PLUGINS.md)
 - [Configuration and Pi compatibility](configuration.md)
 - [Permissions and source-rule compatibility](permissions.md)
+- [Glossary: coordinator, subagent, team, worktree agent and other core terms](GLOSSARY.md)
 - [Agent instructions and subagent roles](instructions.md)
 - [Settings reference](settings.md)
 - [Environment variables](environment-variables.md)

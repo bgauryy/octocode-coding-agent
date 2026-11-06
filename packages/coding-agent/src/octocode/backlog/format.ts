@@ -19,11 +19,11 @@ export const STATE_TITLE: Record<State, string> = {
 /** Board and export order: the flow an item follows, so the board's ←/→ step up/down the sections as drawn. */
 export const BOARD_ORDER: readonly State[] = STATES;
 
-/** Who holds an item, from the reader's side: `(you)`, `(parent)` (a subagent's parent), `(@main-1a2b)`, or nothing. */
+/** Who holds an item, from the reader's side: `(you)`, `XX, `(@main-1a2b)`, or nothing. */
 function holder(item: Item, self?: string, parents?: ReadonlySet<string>): string {
 	if (!item.assignee || item.state !== "ongoing") return "";
 	if (item.assignee === self) return " (you)";
-	return parents?.has(item.assignee) ? " (parent)" : ` (@${visibleControls(item.assignee)})`;
+	return parents?.has(item.assignee) ? " (coordinator)" : ` (@${visibleControls(item.assignee)})`;
 }
 
 /** ` (from B12)` when the item came from another one. */
@@ -47,7 +47,7 @@ export function itemLine(item: Item, self?: string, parents?: ReadonlySet<string
 	const type = item.type === "feature" ? "" : ` ${item.type}`;
 	const parent = item.parentId && !marks.hideParent ? ` ⊂${item.parentId}` : "";
 	const stale = marks.stale ? " (stale: holder ended)" : "";
-	return `${item.ref} [${item.state} ${priorityName(item.priority)}${type}] ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${stale}`;
+	return `${item.ref} [${item.closed ? "closed" : item.state} ${priorityName(item.priority)}${type}] ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${stale}`;
 }
 
 const ago = (at: number, now: number) => formatAgo(now - at);
@@ -59,9 +59,9 @@ function stamp(at: number): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** Who wrote a note or holds an item, from the reader's side: `you`, `your parent`, or the id. */
+/** Who wrote a note or holds an item, from the reader's side: `you`, `your coordinator`, or the id. */
 const who = (id: string, self?: string, parents?: ReadonlySet<string>) =>
-	id === self ? "you" : parents?.has(id) ? "your parent" : visibleControls(id);
+	id === self ? "you" : parents?.has(id) ? "your coordinator" : visibleControls(id);
 
 /**
  * When things happened to an item, oldest first: `created 2026-10-09 14:00 (3d ago) by agent · claimed 2h ago by you ·
@@ -108,6 +108,10 @@ function itemFields(item: Item): string[] {
 	const lines: string[] = [`Type: ${item.type}`];
 	if (item.parentId) lines.push(`Parent: ${item.parentId}`);
 	if (item.dependsOn.length) lines.push(`Depends on: ${item.dependsOn.map((ref) => ref.id).join(", ")}`);
+	if (item.closed)
+		lines.push(
+			`Closed (${item.closed.kind}${item.closed.of ? ` of ${item.closed.of}` : ""}): ${visibleControls(item.closed.text)}`,
+		);
 	const completion = item.completions.at(-1);
 	if (completion)
 		lines.push(
@@ -128,7 +132,7 @@ function itemFields(item: Item): string[] {
 interface DetailOptions {
 	noteOffset?: number;
 	self?: string;
-	/** A subagent's parent sessions, shown as `(parent)`. */
+	/** A subagent's parent sessions, shown as `(coordinator)`. */
 	parents?: ReadonlySet<string>;
 	/** Show the version (the board uses it for stale-edit checks; the tool has no use for it). */
 	version?: boolean;
@@ -216,10 +220,12 @@ export function itemDetail(
  * derived from its items, and this session's own tasks follow.
  */
 export function boardText(store: BacklogStore, self?: string): string {
-	const { items } = store.list();
+	const { items } = store.list({ states: STATES });
+	const closed = store.counts().closed;
 	const open = store.tasks.list({ states: ["todo", "ongoing"] });
 	const own = open.filter((task) => task.owner.kind === "session" && task.owner.id === self);
-	if (items.length === 0 && own.length === 0) return "The backlog is empty. Add an item: /backlog add <title>";
+	if (items.length === 0 && own.length === 0 && closed === 0)
+		return "The backlog is empty. Add an item: /backlog add <title>";
 	const derived = (item: Item) => {
 		const shown = store.epicState(item);
 		return item.type === "epic" && shown !== item.state ? ` (items say ${shown})` : "";
@@ -238,6 +244,7 @@ export function boardText(store: BacklogStore, self?: string): string {
 					]),
 				];
 	});
+	if (closed > 0) sections.push(`Closed (${closed}, hidden): list with states ["closed"]`);
 	if (own.length > 0)
 		sections.push(`Session steps (${own.length})`, ...own.map((task) => `  ${taskLine(task, { owner: false })}`));
 	return sections.join("\n");
@@ -260,6 +267,7 @@ export function countsText(counts: BacklogCounts, tasks = 0): string {
 		items.todo ? `${items.todo} todo` : "",
 		items.backlog ? `${items.backlog} to triage` : "",
 		epics ? `${epics} epic${epics === 1 ? "" : "s"}` : "",
+		counts.closed ? `${counts.closed} closed` : "",
 		tasks ? `${tasks} task${tasks === 1 ? "" : "s"}` : "",
 	].filter(Boolean);
 	return ["/web · backlogs & activity", ...parts].join(" · ");
@@ -280,10 +288,16 @@ export function exportMarkdown(store: BacklogStore, repoName: string, now: numbe
 		"",
 	];
 	if (items.length === 0) lines.push("_Empty._", "");
-	for (const state of BOARD_ORDER) {
-		const rows = items.filter((item) => item.state === state);
+	const groups = [
+		...BOARD_ORDER.map((state) => ({
+			title: STATE_TITLE[state],
+			rows: items.filter((i) => i.state === state && !i.closed),
+		})),
+		{ title: "Closed", rows: items.filter((item) => item.closed) },
+	];
+	for (const { title, rows } of groups) {
 		if (rows.length === 0) continue;
-		lines.push(`## ${STATE_TITLE[state]} (${rows.length})`, "");
+		lines.push(`## ${title} (${rows.length})`, "");
 		for (const item of rows) {
 			const tags = item.tags.map((tag) => ` #${tag}`).join("");
 			const owner = item.assignee ? ` — ${visibleControls(item.assignee)}` : "";
@@ -298,7 +312,7 @@ export function exportMarkdown(store: BacklogStore, repoName: string, now: numbe
 			const times = [
 				`created ${stamp(item.createdAt)} by ${visibleControls(item.createdBy)}`,
 				item.startedAt ? `claimed ${stamp(item.startedAt)}` : "",
-				item.doneAt ? `done ${stamp(item.doneAt)}` : "",
+				item.doneAt ? `${item.closed ? "closed" : "done"} ${stamp(item.doneAt)}` : "",
 			];
 			lines.push(`  _${times.filter(Boolean).join(" · ")}_`);
 			for (const line of item.body ? visibleControls(item.body).split("\n") : []) lines.push(`  ${line}`.trimEnd());

@@ -3,6 +3,7 @@ import { type SubmitEvent, useId, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
+import { DialogAnswerCard } from "./DialogAnswerCard.tsx";
 import { useLive } from "./session.tsx";
 
 type Awaiting = NonNullable<ApplicationSnapshot["awaiting"]>;
@@ -69,19 +70,28 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 					<span className="muted">{awaiting.kind === "approval" ? "Approval" : "Question"}</span> {awaiting.title}
 				</p>
 			) : null}
+			<DialogAnswerCard awaiting={awaiting} />
 			{awaiting.options?.length ? (
 				<div className="dialog-answer-options">
-					{awaiting.options.map((option) => (
-						<Button
-							key={option}
-							variant={awaiting.kind === "approval" && /deny|reject|no\b/i.test(option) ? "danger" : "primary"}
-							loading={pending === option}
-							disabled={!connected || pending !== undefined}
-							onClick={() => void send({ choice: option })}
-						>
-							{option}
-						</Button>
-					))}
+					{awaiting.options.map((option, index) => {
+						const info = awaiting.optionInfo?.[index];
+						const danger = info?.danger ?? (awaiting.kind === "approval" && /deny|reject|no\b/i.test(option));
+						return (
+							<div className="dialog-answer-option" key={option}>
+								<Button
+									variant={danger ? "danger" : "primary"}
+									loading={pending === option}
+									disabled={!connected || pending !== undefined}
+									onClick={() => void send({ choice: option })}
+								>
+									{option}
+									{info?.recommended ? " ★" : ""}
+									{awaiting.writeIn === option ? " ✎" : ""}
+								</Button>
+								{info?.description ? <span className="muted dialog-answer-description">{info.description}</span> : null}
+							</div>
+						);
+					})}
 				</div>
 			) : null}
 			{awaiting.allowsText ? (

@@ -20,9 +20,9 @@ const BROWSER_RULE =
 	"Use the browser tools to interact with your own isolated browser as far as the task requires, within the task and the user's authorization; call other MCP tools only when they cannot change files or external state.";
 const MCP_RULE =
 	"Call only MCP tools that cannot change files or external state; the permission layer does not check other servers' tools for you.";
-const BACKGROUND = "You run in the background: your parent can answer a message while you work.";
+const BACKGROUND = "You run in the background: your coordinator can answer a message while you work.";
 const FOREGROUND =
-	"You run in the foreground: your parent reads your messages only with your report, so put a decision or approval you need in a `blocked` report; do not wait for an answer.";
+	"You run in the foreground: your coordinator reads your messages only with your report, so put a decision or approval you need in a `blocked` report; do not wait for an answer.";
 
 const profile = (name: string, permissions: string[] = []) =>
 	[name, { name, description: name, readOnly: true, permissions } as never] as const;

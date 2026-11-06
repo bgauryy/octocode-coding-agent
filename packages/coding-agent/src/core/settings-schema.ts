@@ -6,6 +6,8 @@ import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts"
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
+import { TimerSettingsProperties } from "./settings-schema/timer.ts";
+import { WebSettingsProperties } from "./settings-schema/web.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import {
@@ -307,6 +309,7 @@ export const SettingsSchema = Type.Object(
 				{ additionalProperties: false },
 			),
 		),
+		...WebSettingsProperties,
 		sessions: Type.Optional(
 			Type.Object(
 				{
@@ -321,6 +324,7 @@ export const SettingsSchema = Type.Object(
 				{ additionalProperties: false },
 			),
 		),
+		...TimerSettingsProperties,
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
 				description:

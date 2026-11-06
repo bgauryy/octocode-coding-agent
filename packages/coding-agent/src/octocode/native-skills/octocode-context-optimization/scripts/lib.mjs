@@ -1,4 +1,4 @@
-// Shared by generate.mjs, check.mjs and apply.mjs. They only run `octocode mcp compact`: conversion, hashing, the
+// Shared by generate.mjs, check.mjs and apply.mjs. They only call the product's MCP compaction commands: conversion, hashing, the
 // fidelity check and storage live in the product.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -31,7 +31,7 @@ export function savedCatalog(work, server) {
 	return existsSync(file) ? file : undefined;
 }
 
-/** Runs `octocode mcp compact <args>` (`OCTOCODE_BIN` names another executable) and returns its output and status. */
+/** Runs a product MCP compaction command (`OCTOCODE_BIN` names another executable) and returns its output and status. */
 export function compact(args, { capture = false } = {}) {
 	const run = spawnSync(process.env.OCTOCODE_BIN || "octocode", ["mcp", "compact", ...args], {
 		encoding: "utf8",

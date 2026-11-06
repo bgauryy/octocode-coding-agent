@@ -7,6 +7,7 @@ import {
 	TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../utils/clipboard.ts";
+import { openItemLink, setItemClicksIntercepted } from "../../octocode/shared/item-ref.ts";
 import { openBrowser } from "../../../../common/src/open-browser.ts";
 import { keyText } from "./components/keybinding-hints.ts";
 import { theme } from "../../theme/theme.ts";
@@ -28,6 +29,8 @@ export function createInteractiveTui(options: InteractiveTuiOptions & { readonly
 export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScreen | TuiAltScreen;
 export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScreen | TuiAltScreen {
 	const terminal = options.terminal ?? new ProcessTerminal();
+	// Drawn backlog ids are links only where this mode routes their click (`openUrl` below).
+	setItemClicksIntercepted(options.tuiMode === "fullscreen");
 	if (options.tuiMode === "fullscreen") {
 		const styleSearchMatch = (text: string) => theme.bg("searchMatchBg", theme.fg("searchMatchText", text));
 		return new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, {
@@ -39,7 +42,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 				const label = ` ↓ Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;
 				return theme.bg("selectedBg", theme.fg("text", label));
 			},
-			openUrl: openBrowser,
+			openUrl: (url) => openItemLink(url, openBrowser),
 			onRightClickPaste: options.onRightClickPaste,
 			copyOnSelect: options.fullscreenCopyOnSelect,
 			wheelScrollLines: options.fullscreenWheelScrollLines ?? "auto",

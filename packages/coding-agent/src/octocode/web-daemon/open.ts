@@ -1,6 +1,8 @@
-import type { ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
-import { openFile } from "../shared/open.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
+import { createAppWindow, type WebWindowMode } from "../shared/browser-app.ts";
+import { say } from "../shared/commands.ts";
 import type { SessionAttach } from "./attach-register.ts";
+import { openOnHost, planOpen } from "../shared/host-opener.ts";
 import { LAUNCH_CODE_ROUTE, LAUNCH_DOOR_PREFIX } from "./launch-code.ts";
 import { daemonRequest, ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOptions } from "./launcher.ts";
 import { webDaemonEnabled } from "./paths.ts";
@@ -40,18 +42,33 @@ async function launchCode(daemon: LaunchedDaemon): Promise<string | undefined> {
  */
 export function daemonOpener(
 	attach: SessionAttach,
-	options: LaunchOptions & { open?: (url: string) => Promise<void>; sessionWaitMs?: number } = {},
-): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<boolean> {
-	return async (ctx, view) => {
+	options: LaunchOptions & {
+		open?: (url: string) => Promise<string | void>;
+		/** The `web.window` setting, read when the page opens. */
+		window?: () => WebWindowMode;
+		sessionWaitMs?: number;
+	} = {},
+): (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<boolean> {
+	// The daemon outlives this session, so its window is never closed with it: it ends with the browser, and a profile
+	// left by an earlier crash is removed at the next launch.
+	const appWindow = createAppWindow(options.window ? { mode: options.window } : {});
+	return async (ctx, view, item) => {
 		// A page opened before the daemon can reach this session would show an error: use the per-session server instead.
 		const daemon = await attachedDaemon(attach, ctx, options);
 		if (!daemon) return false;
 		const code = await launchCode(daemon);
 		const url = new URL(daemon.origin + (code ? `${LAUNCH_DOOR_PREFIX}${code}` : "/"));
 		url.searchParams.set("s", daemon.sessionId);
-		if (code) url.searchParams.set("view", view);
-		else url.hash = new URLSearchParams({ access: daemon.token, view }).toString();
-		await (options.open ?? openFile)(url.href);
+		if (code) {
+			url.searchParams.set("view", view);
+			if (item) url.searchParams.set("item", item);
+		} else {
+			url.hash = new URLSearchParams({ access: daemon.token, view, ...(item ? { item } : {}) }).toString();
+		}
+		const open = options.open ?? appWindow.open;
+		// An item opened from a click or `/web item` may run over SSH or headless: give the address there.
+		const notice = item ? await openOnHost(url.href, open, planOpen(options.env)) : await open(url.href);
+		if (notice) say(ctx, notice, "warning");
 		return true;
 	};
 }

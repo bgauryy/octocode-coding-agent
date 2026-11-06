@@ -7,6 +7,8 @@ import { needsYou } from "./panel-attention.ts";
 import { hasPriority, noteLine, sentMessages } from "./panel-traffic.ts";
 import { roster } from "./panel-roster.ts";
 import { memberRowGroups, rootRow, totalTokens, treePrefixes } from "./panel-rows.ts";
+import { workRows } from "./panel-work.ts";
+import type { WorkRow } from "../shared/running-work.ts";
 import { needsAttention, type PanelEntry, panelState } from "./panel-state.ts";
 
 const MAX_ROWS = 6;
@@ -69,10 +71,25 @@ export function widgetLines(
 	rows?: number,
 	/** Agents that left the team less than `FINISHED_MS` ago: shown with their outcome, or neutral `left`, last. */
 	finished: Finished[] = [],
+	/** Running work that is not a team member (bash jobs, timers, ...): its rows follow the agents, or stand alone when there are none. */
+	work: readonly WorkRow[] = [],
+	/** Seconds in the work rows' clock cells; false: whole minutes, for a panel that repaints once a minute. */
+	precise = true,
 ): string[] {
 	const needs = needsYou(members, traffic, selfId);
 	const { others, tree } = roster(members, selfId, now, finished, needs);
-	if (others.length === 0 || !selfId) return [];
+	const budget = rows === undefined ? undefined : panelBudget(rows);
+	// With agents the work block leaves them three rows of the budget; without, it may take all of it.
+	const workBlock = workRows(
+		work,
+		now,
+		theme,
+		width,
+		{ live: GLYPH.live, waiting: GLYPH.waiting },
+		budget === undefined ? undefined : others.length > 0 && selfId ? Math.max(1, budget - 3) : budget,
+		precise,
+	);
+	if (others.length === 0 || !selfId) return workBlock;
 	const sent = sentMessages(traffic, others, selfId);
 	const { attention, summary } = tally(tree, others, now);
 	const self = members.find((member) => member.id === selfId);
@@ -101,15 +118,15 @@ export function widgetLines(
 			...(hidden.length > 0 ? [moreRow(hidden)] : []),
 		];
 	};
-	const budget = rows === undefined ? undefined : panelBudget(rows);
+	const agentBudget = budget === undefined ? undefined : Math.max(3, budget - workBlock.length);
 	const shown = tree.slice(0, MAX_ROWS);
 	const [full, priority, collapsed, bare] = TIERS;
 	const roomy = build(full, shown);
-	if (budget === undefined || roomy.length <= budget) return roomy;
+	if (agentBudget === undefined || roomy.length <= agentBudget) return [...roomy, ...workBlock];
 	const trimmed = build(priority, shown);
-	if (trimmed.length <= budget) return trimmed;
+	if (trimmed.length <= agentBudget) return [...trimmed, ...workBlock];
 	// Few terminal rows: one row per agent, as many as fit beside the header and a "+N more" row; the lines that wait on the user stay while they fit.
-	const fits = tree.length + 1 <= budget ? tree : tree.slice(0, Math.max(1, budget - 2));
+	const fits = tree.length + 1 <= agentBudget ? tree : tree.slice(0, Math.max(1, agentBudget - 2));
 	const short = build(collapsed, fits);
-	return short.length <= budget ? short : build(bare, fits);
+	return [...(short.length <= agentBudget ? short : build(bare, fits)), ...workBlock];
 }

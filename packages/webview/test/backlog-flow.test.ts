@@ -29,7 +29,8 @@ it("implements a task from the generated Backlog page and preserves the receipt 
 		idleMs: 1000,
 		items: [item],
 	};
-	const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+	const fetch = vi.fn(async (url: string, init: RequestInit) => {
+		if (url === "/api/web-prefs") return { ok: true, json: async () => ({ sound: false, theme: "system" }) };
 		const command = JSON.parse(String(init.body));
 		return {
 			ok: true,
@@ -45,6 +46,8 @@ it("implements a task from the generated Backlog page and preserves the receipt 
 			}),
 		};
 	});
+	/** The command requests; the page also reads the theme preference once on load. */
+	const commands = () => fetch.mock.calls.filter(([url]) => url !== "/api/web-prefs");
 	const dom = new JSDOM(renderBacklogHtml({ ...snapshot, items: [] }, true), {
 		url: "http://localhost/#access=test&view=backlog",
 		runScripts: "dangerously",
@@ -61,14 +64,16 @@ it("implements a task from the generated Backlog page and preserves the receipt 
 	const socket = FakeSocket.instances.at(-1)!;
 	socket.receive("workspace", { sessionId: "main", agents: [], traffic: [], events: [], receipts: [] });
 	socket.receive("snapshot", snapshot);
+	// Implement lives in the card's ⋯ menu, apart from the title link.
+	(await screen.findByRole<HTMLButtonElement>("button", { name: "Actions for B12" })).click();
 	const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Implement B12" });
 	expect(dom.window.location.hash).toBe("#backlog");
 	expect(dom.window.sessionStorage.getItem("backlog-access")).toBe("test");
 	await vi.waitFor(() => expect(button.disabled).toBe(false));
 	button.click();
 	button.click();
-	await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-	const [url, request] = fetch.mock.calls[0];
+	await vi.waitFor(() => expect(commands()).toHaveLength(1));
+	const [url, request] = commands()[0];
 	expect(url).toBe("/api/workspace");
 	expect(request.headers).toMatchObject({ Authorization: "Bearer test" });
 	expect(JSON.parse(String(request.body))).toEqual({
@@ -89,7 +94,7 @@ it("implements a task from the generated Backlog page and preserves the receipt 
 	const detailButton = detail.getByRole<HTMLButtonElement>("button", { name: "Implement B12" });
 	expect(detailButton.disabled).toBe(true);
 	detailButton.click();
-	expect(fetch).toHaveBeenCalledOnce();
+	expect(commands()).toHaveLength(1);
 
 	socket.receive("snapshot", {
 		...snapshot,

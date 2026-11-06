@@ -96,7 +96,7 @@ describe("the agent tool's goal", () => {
 		expect(facts).toMatchObject({ role: "reviewer", goal: GOAL, parent: s.team.id });
 		expect(result.details).toMatchObject({ id: facts.id, profile: "reviewer", goal: GOAL });
 		expect(facts.task).toContain(
-			`## You\nYour name is \`${facts.id}\` (reviewer). Your goal: ${GOAL}. You work for \`${s.team.id}\`.`,
+			`## You\nYour name is \`${facts.id}\` (reviewer). Your goal: ${GOAL}. You work on a team led by your coordinator \`${s.team.id}\` (\`to\` \`parent\`): follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator.`,
 		);
 	});
 
@@ -105,7 +105,7 @@ describe("the agent tool's goal", () => {
 		const result = await s.run({ task: "report", goal: GOAL, reason: "The refresh  flow\nchanged in #42" });
 		const facts = reportOf(result.content[0].text as string);
 		expect(facts.task).toContain("Why you were started: The refresh flow changed in #42.\n\n## You\n");
-		expect(facts.task).toContain(`Your goal: ${GOAL}. You work for`);
+		expect(facts.task).toContain(`Your goal: ${GOAL}. You work on a team led by your coordinator`);
 		const bare = reportOf((await s.run({ task: "report", goal: GOAL })).content[0].text as string);
 		expect(bare.task).not.toContain("Why you were started");
 	});
@@ -232,7 +232,7 @@ describe("child identity", () => {
 				scratch: "/tmp/s",
 			}),
 		).toBe(
-			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work for \`salty-squid\`. Your scratch folder is \`/tmp/s\`.\n\n## Report\n${reportContract()}`,
+			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work on a team led by your coordinator \`salty-squid\` (\`to\` \`parent\`): follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator. Your scratch folder is \`/tmp/s\`.\n\n## Report\n${reportContract()}`,
 		);
 	});
 
@@ -245,7 +245,7 @@ describe("child identity", () => {
 		const [you, report] = base.split("\n\n## Report\n");
 		expect(report).toBe(reportContract());
 		expect(withIdentity("do it", identity, { library })).toBe(
-			`${you}\nEarlier history of your parent session is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}\n\n## Report\n${report}`,
+			`${you}\nEarlier history of your coordinator's session is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}\n\n## Report\n${report}`,
 		);
 	});
 
@@ -254,7 +254,7 @@ describe("child identity", () => {
 		const library = "/home/u/.octocode/agent/sessions/s/archive/LIBRARY.md";
 		const line = withIdentity("do it", identity, { library })
 			.split("\n")
-			.find((text) => text.startsWith("Earlier history of your parent session"))!;
+			.find((text) => text.startsWith("Earlier history of your coordinator's session"))!;
 		expect(line).toContain("with the `archive` tool");
 		expect(line).toContain("`rg -n -C 8 <term>` in the folder");
 	});

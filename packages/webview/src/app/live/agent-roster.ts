@@ -2,7 +2,7 @@ import type { Member, Traffic } from "@octocodeai/octocode-contracts";
 
 export interface AgentNode {
 	agent: Member;
-	/** Messages wait on this agent's answer, or a message to it is still awaiting reply. */
+	/** The host marked it `waiting` for the user, messages wait on its answer, or a message to it is still awaiting reply. */
 	attention: boolean;
 	/** The newest message this agent sent or received. */
 	last: Traffic | undefined;
@@ -42,7 +42,7 @@ export function buildRoster(agents: readonly Member[], traffic: readonly Traffic
 			agent.id,
 			{
 				agent,
-				attention: (agent.pending ?? 0) > 0 || waiting.has(agent.id),
+				attention: Boolean(agent.waiting) || (agent.pending ?? 0) > 0 || waiting.has(agent.id),
 				last: lastMessage(agent.id, traffic),
 				children: [],
 			},

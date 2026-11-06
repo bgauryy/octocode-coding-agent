@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getCliInvocation, VERSION } from "../src/config.ts";
 import { RpcClient } from "../src/modes/rpc/rpc-client.ts";
 import { RPC_PROTOCOL_VERSION } from "../src/modes/rpc/session-identity.ts";
+import { leadsProcessGroup } from "../src/utils/shell.ts";
 import {
 	createSandbox,
 	observeSessions,
+	stopChildTree,
 	QUIET_ARGS,
 	SCRIPTED_MODEL_ARGS,
 	type ModelServer,
@@ -23,7 +25,7 @@ let server: ModelServer | undefined;
 const children: ChildProcessWithoutNullStreams[] = [];
 
 afterEach(async () => {
-	for (const child of children.splice(0)) child.kill("SIGKILL");
+	await Promise.all(children.splice(0).map(stopChildTree));
 	await server?.close();
 	sandbox?.cleanup();
 	sandbox = undefined;
@@ -38,6 +40,7 @@ function cli(box: Sandbox, args: string[]) {
 		cwd: box.project,
 		env: box.env,
 		stdio: "pipe",
+		detached: leadsProcessGroup(),
 	});
 	children.push(child);
 	const records: WireRecord[] = [];
@@ -97,6 +100,7 @@ describe("RPC startup records", () => {
 		const ready = vi.fn();
 		const events: string[] = [];
 		const client = new RpcClient({
+			ownProcessTree: true,
 			invocation: { command: invocation.command, args: invocation.prefix },
 			cwd: box.project,
 			args: [...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS],
@@ -139,6 +143,7 @@ describe("RPC startup records", () => {
 
 		const invocation = getCliInvocation();
 		const client = new RpcClient({
+			ownProcessTree: true,
 			invocation: { command: invocation.command, args: invocation.prefix },
 			cwd: sandbox.project,
 			args: QUIET_ARGS,

@@ -127,7 +127,10 @@ export function childCacheGroup(run: Run, plan: TaskSkillPlan, parentSession: st
 		tools: profileTools(run.profile),
 		lean: run.profile?.lean,
 		readOnly: run.profile?.readOnly,
-		mcpServers: Object.keys(run.identity.mcpServers ?? {}),
+		mcpServers: [
+			...Object.keys(run.identity.mcpServers ?? {}),
+			...(run.identity.mcpOnly ?? []).map((name) => `only:${name}`),
+		],
 	});
 	run.identity.promptCacheKey = childPromptCacheKey(parentSession, prefix);
 	return prefix;

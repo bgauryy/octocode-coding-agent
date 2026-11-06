@@ -181,7 +181,7 @@ export function promoteTask(
 	input: PromoteTaskInput,
 	actor: Actor,
 ): { item: Item; task: BacklogTask } {
-	if (actor.owners) throw new TaskError("A subagent cannot promote a task to an item; report it to your parent.");
+	if (actor.owners) throw new TaskError("A subagent cannot promote a task to an item; report it to your coordinator.");
 	if (input.type === "epic")
 		throw new TaskError("An epic groups items and takes no tasks: promote to feature, bug or research.");
 	return agentDb.withActor(auditActor(actor), () =>

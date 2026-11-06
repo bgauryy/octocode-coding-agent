@@ -1180,7 +1180,7 @@ Content`,
 		});
 
 		it("should skip built-in extensions disabled in settings", async () => {
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:llama"] }));
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -1194,13 +1194,13 @@ Content`,
 			});
 			await loader.reload();
 
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:llama"]);
+			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:mcp"]);
 			expect(loader.getExtensions().extensions[0].sourceInfo).toMatchObject({
-				path: "builtin:llama",
+				path: "builtin:mcp",
 				source: "builtin",
 			});
 			expect(loader.getExtensions().extensions[0].hidden).toBe(true);
-			expect(loaded).toEqual(["llama"]);
+			expect(loaded).toEqual(["mcp"]);
 		});
 
 		it("should skip disabledFeatures even when settings enable them", async () => {

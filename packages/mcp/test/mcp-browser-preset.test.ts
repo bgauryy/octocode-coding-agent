@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadMcpConfig } from "../src/config.ts";
 import { presetEntries } from "../src/preset.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import { browserPreset } from "../src/presets/browser/index.ts";
 import { browserLaunch, browserMcpEntry } from "../src/presets/browser/launch.ts";
 import { BROWSER_SERVER } from "../../common/src/mcp-names.ts";
@@ -51,7 +51,7 @@ describe("browser MCP preset", () => {
 	it("is not enabled when OCTOCODE_MCP_BROWSER=0, and leaves the Octocode preset and a user server alone", () => {
 		const env = { OCTOCODE_MCP_BROWSER: "0" };
 		expect(presetEntries([browserPreset({})])[0].config.enabled).toBe(true);
-		const defaults = presetEntries([octocodePreset(() => [], env), browserPreset(env)]);
+		const defaults = presetEntries([defaultPreset(env), browserPreset(env)]);
 		expect(defaults.map(({ name, config }) => [name, config.enabled])).toEqual([
 			["octocode", true],
 			[BROWSER_SERVER, false],

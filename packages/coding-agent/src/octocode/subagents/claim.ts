@@ -4,7 +4,6 @@ import os from "node:os";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../instructions/report.ts";
-import { teamTask } from "../instructions/task.ts";
 import { envInt } from "../../../../common/src/env.ts";
 import { shortPath } from "../shared/format.ts";
 import { sessionFolderNames } from "../shared/home.ts";
@@ -147,7 +146,7 @@ export interface AgentRuns {
 	reports: ReportQueue;
 	read: ReadReports;
 	/** Subagents running now (foreground and background), by name. */
-	running: Map<string, string | undefined>; // A `role: goal` line is present once a collaborating run launches.
+	running: Map<string, undefined>; // The ids of the running subagents (a map because the team session reads it as one).
 	/** Their slots under the limit, taken before the spawn ask and given back by `Run.release`. */
 	slots: Slots;
 	/** Called when a background run starts or ends: the footer counts them while the agents panel cannot show them. */
@@ -158,7 +157,7 @@ export interface AgentRuns {
 	session: number;
 }
 
-/** What a call asks for: its goal (already checked by `checkGoal`), a profile and model to plan with, and whether its subagents work together. */
+/** What a call asks for: its goal (already checked by `checkGoal`), a profile and model to plan with. */
 interface AgentParams {
 	goal: string;
 	/** The name of the child a continued run is (`resume`): it keeps it, and with it its saved conversation. */
@@ -167,7 +166,6 @@ interface AgentParams {
 	profile?: string;
 	model?: string;
 	headless?: boolean;
-	collaborate?: boolean;
 }
 
 /** A claimed subagent run: who it is, who started it, where it hands files back, and how it gives its slot back. */
@@ -277,7 +275,7 @@ export function planRun(
 export function claimRun(
 	runs: AgentRuns,
 	plan: RunPlan,
-	params: Pick<AgentParams, "goal" | "collaborate" | "name" | "sessionId">,
+	params: Pick<AgentParams, "goal" | "name" | "sessionId">,
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
@@ -293,7 +291,6 @@ export function claimRun(
 	} catch (error) {
 		teamNote = `\n\n(Started without the team: ${errorMessage(error)}. It cannot message you or its teammates.)`;
 	}
-	const collaborate = parentId !== undefined && params.collaborate === true;
 	if (params.name && runs.running.has(params.name)) throw new Error(`${params.name} is running.`);
 	// A resumed run continues as the same agent: name, role, goal, scratch folder and permission.
 	const identity: Run["identity"] = resumed ?? {
@@ -306,7 +303,6 @@ export function claimRun(
 		parentSession: ctx.sessionManager.getSessionId(),
 		parentTranscript: ctx.sessionManager.getSessionFile(),
 		...(parentId ? { parentId } : {}),
-		...(collaborate ? { collaborate } : {}),
 	};
 	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.
 	const childModel = ctx.modelRegistry
@@ -333,12 +329,4 @@ export function claimRun(
 		);
 	};
 	return { identity, profile, route, teamNote, release };
-}
-
-/** A collaborating run's task, listing its running teammates (they find the newcomer with `coordinate list`). */
-export function joinTeam(runs: AgentRuns, run: Run, task: string): string {
-	const others = [...runs.running].filter((entry): entry is [string, string] => entry[1] !== undefined);
-	const withTeam = teamTask(task, run.identity.parentId ?? "your parent", others);
-	runs.running.set(run.identity.id, `${run.identity.role}: ${run.identity.goal}`);
-	return withTeam;
 }

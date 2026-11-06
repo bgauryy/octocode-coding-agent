@@ -251,14 +251,16 @@ describe("incremental subagent reports", () => {
 		const report = new ReportTracker(scratch);
 		const first = "verified evidence\n".repeat(1000);
 		report.answer(first, "stop");
-		const append = vi.spyOn(fs, "appendFileSync").mockImplementationOnce(() => {
+		const append = vi.spyOn(fs, "writeFileSync").mockImplementationOnce(() => {
 			throw new Error("disk full");
 		});
 		try {
 			report.incoming("custom");
 			report.answer("later evidence", "stop");
 			expect(fs.readFileSync(path.join(scratch, "report.md"), "utf8")).toBe(first);
-			expect(report.result().text).toBe(capOutput(`${first}\n\n---\n\nlater evidence`, REPORT_MAX_BYTES, 200));
+			expect(report.result().text).toBe(
+				`${capOutput(`${first}\n\n---\n\nlater evidence`, REPORT_MAX_BYTES, 200)}\n\n[The whole report was not saved to a file: disk full.]`,
+			);
 			expect(report.result().text).not.toContain("Full report:");
 		} finally {
 			append.mockRestore();

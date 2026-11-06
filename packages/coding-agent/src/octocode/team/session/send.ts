@@ -35,6 +35,8 @@ export type SendResult =
 			sent: string[];
 			id: number;
 			departed?: string[];
+			/** A broadcast's children that were still starting (or writing their report): named, not reached. */
+			starting?: string[];
 			resumed?: string;
 			relayed?: string;
 			delivery?: Record<string, DeliveryStatus>;
@@ -53,6 +55,8 @@ export interface SendHost {
 	readonly finished: ReadonlyMap<string, string>;
 	/** Whether subagent `id` of this session has yet to report. */
 	reporting(id: string): boolean;
+	/** The subagents of this session that have yet to report (a superset of `reporting`'s ids); for a broadcast's receipt. */
+	starting?(): readonly string[];
 	resumer(): Resumer | undefined;
 	messageHook(): MessageHook | undefined;
 	signed(id: number, recipient: string, text: string): string | undefined;
@@ -169,7 +173,7 @@ export async function sendMessage(
 	if (to === undefined)
 		return {
 			error:
-				'Say who to send to: `to` (an agent id, role, "parent" or "all"), or `replyTo` (the message you answer). Nothing was sent.',
+				'Say who to send to: `to` (an agent id, role, "parent" (your coordinator) or "all"), or `replyTo` (the message you answer). Nothing was sent.',
 		};
 	// A broadcast stays in the sender's session tree; the user's and an API client's in this session's tree.
 	const scope = outside(from) ? host.me()?.id : from;
@@ -178,7 +182,7 @@ export async function sendMessage(
 	if (to === "all" && options.wake)
 		return {
 			error:
-				'`wake` starts an idle agent\'s turn, so it needs a named recipient (an id, role or "parent"), not "all". Nothing was sent.',
+				'`wake` starts an idle agent\'s turn, so it needs a named recipient (an id, role or "parent", your coordinator), not "all". Nothing was sent.',
 		};
 	const members = db.list();
 	// A stalled member (process running, silent for `STALE_MS`) is hidden but still reads its mail: its name reaches it.
@@ -187,6 +191,9 @@ export async function sendMessage(
 	const answering =
 		answered && options.replyTo !== undefined && db.refs.received(options.replyTo, from) ? answered.from : undefined;
 	const targets = resolveTarget(members, from, to, host.parentId(), scope, stalled, answering);
+	// A broadcast reaches joined members only: a child between `agent` naming it and its join has no row to deliver to.
+	const known = new Set([...members, ...stalled].map((member) => member.id));
+	const starting = to === "all" ? (host.starting?.() ?? []).filter((id) => id !== from && !known.has(id)) : [];
 	// A message is FYI unless the sender says it needs an answer: a default that asked for answers made two agents wake each other forever.
 	const replyRequired = options.replyRequired ?? false;
 	// What a PreMessageSend hook sees: the question, the wake (a question wakes, and so does `wake`) and the interrupt.
@@ -199,12 +206,16 @@ export async function sendMessage(
 	// Stored with controls shown as escapes: every reader (the model, the panel, other processes) gets text that cannot steer a terminal, and the evidence stays.
 	const stored = () => spilledMessage(visibleControls(text), from);
 	if (typeof targets === "string") {
+		if (to === "all" && starting.length > 0)
+			return {
+				error: `${targets} Still starting, so not reached: ${starting.join(", ")}. Nothing was sent; send again once they have joined.`,
+			};
 		const finished = host.finished.has(to);
 		const parent = host.parentId();
 		// A subagent has no route to another Octocode process; its parent has (the session API), so the parent must send it.
 		if (parent !== undefined && !outside(from) && isProcessName(to))
 			return {
-				error: `${to} is an Octocode process, and subagents have no route to other processes: nothing was sent. Send to "parent" (${parent}) and ask it to message ${to}.`,
+				error: `${to} is an Octocode process, and subagents have no route to other processes: nothing was sent. Send to "parent" (your coordinator ${parent}) and ask it to message ${to}.`,
 			};
 		const relay =
 			!finished &&
@@ -233,7 +244,7 @@ export async function sendMessage(
 		if (relay) {
 			const id = db.refs.relay(from, parent, to, delivered, { replyRequired, ...reply });
 			return id === undefined
-				? { error: `${targets} Your parent ${parent} left, so it could not be relayed. Nothing was sent.` }
+				? { error: `${targets} Your coordinator ${parent} left, so it could not be relayed. Nothing was sent.` }
 				: { sent: [to], id, relayed: parent };
 		}
 		const resumed = await resumeWith(
@@ -297,5 +308,11 @@ export async function sendMessage(
 					? "next-step"
 					: "queued-quiet";
 	if (from === USER_SENDER) host.mail.createdForUser(id, delivered, sent);
-	return { sent, id, delivery, ...(departed.length > 0 ? { departed } : {}) };
+	return {
+		sent,
+		id,
+		delivery,
+		...(departed.length > 0 ? { departed } : {}),
+		...(starting.length > 0 ? { starting } : {}),
+	};
 }

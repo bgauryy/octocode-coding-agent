@@ -269,7 +269,7 @@ describe("team tools on a fake Octocode", () => {
 		expect(properties.replyRequired.description).toContain("Default false");
 		expect(properties.replyRequired.description).toContain("a request you need answered");
 		expect(send.description).toContain("Messages resume only reachable non-isolated background children");
-		expect(send.description).toContain("(yours, or siblings via your parent)");
+		expect(send.description).toContain("(yours, or siblings via your coordinator)");
 		expect(properties.forward.description).toContain("message becomes an optional note");
 		expect(send.description).not.toContain("cannot receive");
 		// The same text serves a parent and a child (a child cannot start tasks), so it names no role.
@@ -496,6 +496,23 @@ describe("team tools on a fake Octocode", () => {
 			type: "warning",
 			message: expect.stringContaining("Usage: /agents"),
 		});
+	});
+
+	it("/agents shows the item, why and log lines `coordinate list` shows", async () => {
+		const { a, b } = await pair();
+		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
+		const details = new Map([
+			[
+				b.team.id!,
+				{ item: { seq: 7, title: "Fix parity", why: "Views must agree", more: 0 }, transcripts: "/tmp/octo-logs" },
+			],
+		]);
+		vi.spyOn(a.team.audit, "details").mockReturnValue(details);
+		await a.commands.get("agents").handler("", a.ctx);
+		const shown = a.ctx.ui.notes.at(-1)!.message;
+		expect(shown).toContain("item B7 Fix parity");
+		expect(shown).toContain("why: Views must agree");
+		expect(shown).toContain("log: /tmp/octo-logs");
 	});
 
 	it("/agents warns when the team database is unusable", async () => {

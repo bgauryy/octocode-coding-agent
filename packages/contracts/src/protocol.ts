@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
-import { EntityFields, ITEM_TYPES } from "./backlogs.ts";
+import { CloseInputSchema, EntityFields, ITEM_TYPES } from "./backlogs.ts";
 import { STATES } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
 import type { WorkspaceSnapshot } from "./workspace.ts";
@@ -23,6 +23,8 @@ export const WORKSPACE_ROUTES = {
  */
 export const DAEMON_ROUTES = {
 	health: "/api/health",
+	/** GET with any token: whether it may change the board (`{ writable }`); the page only hides controls by it, the daemon still refuses. */
+	access: "/api/access",
 	config: "/api/config",
 	/** Launch capability only (under `/api/admin/`): POST one `ConfigSettingCommand`; the reply is the fresh `ConfigSnapshot`. */
 	configSettings: "/api/admin/config/settings",
@@ -90,7 +92,8 @@ export const BacklogMutationSchema = Type.Object(
 	{
 		...EntityFields,
 		type: Type.Optional(StringEnum(ITEM_TYPES)),
-		op: StringEnum(["add", "update", "remove", "comment"] as const),
+		op: StringEnum(["add", "update", "comment"] as const),
+		close: Type.Optional(CloseInputSchema),
 		id: Type.Optional(Type.String()),
 		title: Type.Optional(Type.String()),
 		goal: Type.Optional(Type.String()),

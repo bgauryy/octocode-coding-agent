@@ -7,10 +7,19 @@ import {
 	type HookRun,
 } from "./contracts.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { isLinkLocalIp, isLoopbackIp, isMetadataIp } from "../../../../common/src/ip-address.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { bareHostname, pinnedFetch } from "../../../../common/src/web-guard.ts";
 
 const RESPONSE_LIMIT = HOOK_OUTPUT_MAX_BYTES;
 const stringArray = (value: unknown): value is string[] =>
 	Array.isArray(value) && value.every((item) => typeof item === "string");
+
+/** localhost, 127.0.0.0/8 and ::1: the hosts plain http may reach, because the request never leaves this machine. */
+function isLoopbackHost(hostname: string): boolean {
+	const host = bareHostname(hostname).toLowerCase().replace(/\.$/, "");
+	return host === "localhost" || isLoopbackIp(host);
+}
 
 export function parseHttpHook(
 	value: Record<string, unknown>,
@@ -28,6 +37,8 @@ export function parseHttpHook(
 		url = undefined;
 		problems.push("HTTP hook requires an http(s) URL without embedded credentials");
 	}
+	if (url?.protocol === "http:" && !isLoopbackHost(url.hostname))
+		problems.push("plain http is allowed only for loopback hosts (localhost, 127.0.0.0/8, ::1); use https");
 	const extra = Object.keys(value).filter(
 		(key) =>
 			!["type", "url", "headers", "allowedEnvVars", "timeout", "onFailure", "failClosed", "statusMessage"].includes(
@@ -90,19 +101,33 @@ function matchesUrl(url: string, pattern: string): boolean {
 	return new RegExp(`^${escaped}$`).test(canonicalPattern(url));
 }
 
-/** All trusted Claude settings sources contribute to the shared HTTP restrictions. */
-export function applyHttpPolicy(config: HookConfig, sources: unknown[], errors: string[]): void {
-	const collect = (key: string): string[] | undefined => {
-		const values = sources
-			.filter(isRecord)
-			.filter((source) => key in source)
-			.map((source) => source[key]);
-		if (!values.length) return undefined;
-		if (!values.every(stringArray)) {
-			errors.push(`${key} must be an array of strings; HTTP hooks restricted`);
-			return [];
+/** A loaded Claude settings document and the scope of the file it came from. */
+export interface HttpPolicySource {
+	scope: HookSource["scope"];
+	value: unknown;
+}
+
+/**
+ * The HTTP restrictions of the trusted Claude settings sources. User files set a list (their lists merge); a project
+ * file can only narrow it: a destination or variable must pass the user list and every project list, so a project
+ * `*` changes nothing and no project list widens what the user allowed. Without a user list, a project list is the
+ * only restriction, which still can only remove destinations from the unrestricted default.
+ */
+export function applyHttpPolicy(config: HookConfig, sources: HttpPolicySource[], errors: string[]): void {
+	const collect = (key: string): string[][] | undefined => {
+		let user: string[] | undefined;
+		const narrowing: string[][] = [];
+		for (const { scope, value } of sources) {
+			if (!isRecord(value) || !(key in value)) continue;
+			const list = value[key];
+			if (!stringArray(list)) {
+				errors.push(`${key} must be an array of strings; HTTP hooks restricted`);
+				narrowing.push([]);
+			} else if (scope === "user") user = [...new Set([...(user ?? []), ...list])];
+			else narrowing.push(list);
 		}
-		return [...new Set(values.flat())];
+		const lists = user ? [user, ...narrowing] : narrowing;
+		return lists.length ? lists : undefined;
 	};
 	const urls = collect("allowedHttpHookUrls");
 	const env = collect("httpHookAllowedEnvVars");
@@ -110,13 +135,21 @@ export function applyHttpPolicy(config: HookConfig, sources: unknown[], errors: 
 		for (const group of groups)
 			for (const hook of group.hooks) {
 				if (hook.type !== "http") continue;
-				if (urls && !urls.some((pattern) => matchesUrl(hook.url, pattern))) {
+				if (urls && !urls.every((list) => list.some((pattern) => matchesUrl(hook.url, pattern)))) {
 					hook.configurationError = "HTTP URL is not allowed by allowedHttpHookUrls";
 					errors.push(`${hook.source}: ${hook.configurationError}`);
 				}
-				if (env) hook.allowedEnvVars = hook.allowedEnvVars.filter((name) => env.includes(name));
+				if (env) hook.allowedEnvVars = hook.allowedEnvVars.filter((name) => env.every((list) => list.includes(name)));
 			}
 }
+
+/** Link-local and cloud metadata addresses hand out credentials of the machine or its network; a hook never reaches them. Loopback and private ranges stay allowed for local servers. */
+const refuseAddress =
+	(host: string) =>
+	(address: string): string | undefined =>
+		isLinkLocalIp(address) || isMetadataIp(address)
+			? `refused: ${host} resolves to ${address}, a link-local or cloud metadata address`
+			: undefined;
 
 export async function runHttpHook(
 	hook: HookHttp,
@@ -149,13 +182,18 @@ export async function runHttpHook(
 				),
 			);
 		headers.set("Content-Type", "application/json");
-		const response = await fetch(hook.url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(input),
-			signal: abort.signal,
-			redirect: "manual",
-		});
+		// Every resolved address is checked and the connection is pinned to them; a redirect answer is never followed.
+		const response = await pinnedFetch(
+			hook.url,
+			{
+				method: "POST",
+				headers: Object.fromEntries(headers),
+				body: JSON.stringify(input),
+				redirect: "error",
+				signal: abort.signal,
+			},
+			{ refuse: refuseAddress(new URL(hook.url).host) },
+		);
 		if (!response.ok) {
 			await response.body?.cancel();
 			throw new Error(`HTTP status ${response.status}`);
@@ -172,10 +210,19 @@ export async function runHttpHook(
 				chunks.push(chunk);
 			}
 		const stdout = Buffer.concat(chunks).toString("utf8");
-		if (stdout.trim() && !isRecord(JSON.parse(stdout))) throw new Error("HTTP response must be a JSON object or empty");
+		if (stdout.trim()) {
+			// A fixed message: the parser's own error quotes the start of the body, which is the server's text.
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(stdout);
+			} catch {
+				throw new Error("HTTP response is not valid JSON");
+			}
+			if (!isRecord(parsed)) throw new Error("HTTP response must be a JSON object or empty");
+		}
 		return { ...empty, code: 0, stdout };
 	} catch (error) {
-		return { ...empty, timedOut, stderr: signal?.aborted ? "" : errorMessage(error) };
+		return { ...empty, timedOut, stderr: signal?.aborted ? "" : redactSecrets(errorMessage(error)) };
 	} finally {
 		clearTimeout(timer);
 		signal?.removeEventListener("abort", cancel);

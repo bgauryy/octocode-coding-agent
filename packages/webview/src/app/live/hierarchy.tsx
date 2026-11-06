@@ -5,15 +5,14 @@ import {
 	type TaskState,
 } from "@octocodeai/octocode-contracts/backlogs";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
+import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
 import { type ComponentProps, type SubmitEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { TaskList } from "../features/Tasks.tsx";
 import type { HierarchyControls } from "../extension.ts";
-import { navigate } from "../hooks.ts";
-import { STATE_TITLES } from "../model/backlog.ts";
 import { epicsFor, isEpic, movedPosition, TASK_STATE_TITLES } from "../model/hierarchy.ts";
 import { Select } from "../ui/fields.tsx";
 import { Button, Section } from "../ui/primitives.tsx";
+import { BoardProvider } from "./board-actions.tsx";
 import { useLive } from "./session.tsx";
 
 /**
@@ -268,30 +267,6 @@ function ItemTasks({ item }: { item: SnapshotItem }) {
 	);
 }
 
-/** A board card's state, changed in place. Closing needs a result, so it opens the editor instead. */
-function StateControl({ item }: { item: SnapshotItem }) {
-	const { api, backlog } = useLive();
-	const { run, pending, error } = useEdit();
-	const states: readonly State[] = backlog.getState().snapshot.states;
-	return (
-		<div className="state-control">
-			<Select
-				aria-label={`State of ${item.ref}`}
-				value={item.state}
-				disabled={pending}
-				options={states.map((value) => ({ value, label: STATE_TITLES[value] }))}
-				onChange={(event) => {
-					const state = event.target.value as State;
-					if (state === "done") navigate(`#${item.ref}/edit`);
-					else
-						void run(() => api.backlogCommand({ command: "item.state", id: item.ref, version: item.version, state }));
-				}}
-			/>
-			<Refusal error={error} />
-		</div>
-	);
-}
-
 /** Promote a session task to an item, or hand it to an existing item. */
 function SessionTaskTools({ task, index }: ComponentProps<HierarchyControls["SessionTaskTools"]>) {
 	const { api } = useLive();
@@ -337,4 +312,10 @@ function SessionTaskTools({ task, index }: ComponentProps<HierarchyControls["Ses
 	);
 }
 
-export const hierarchyControls: HierarchyControls = { ItemTools, TaskTools, StateControl, ItemTasks, SessionTaskTools };
+export const hierarchyControls: HierarchyControls = {
+	ItemTools,
+	TaskTools,
+	BoardProvider,
+	ItemTasks,
+	SessionTaskTools,
+};

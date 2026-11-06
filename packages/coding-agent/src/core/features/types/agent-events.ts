@@ -9,6 +9,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 } from "@octocodeai/octocode-ai";
+import type { ExtensionUIAskView } from "./ui.ts";
 import type { RunOutcome } from "../../agent-session/run-outcome.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { ContextEditEntry, ProjectedSessionEntry } from "../../session-manager.ts";
@@ -153,6 +154,8 @@ export interface UIPromptStartEvent {
 	options?: string[];
 	allowsText?: boolean;
 	approval?: boolean;
+	/** The card the dialog draws, for clients that draw it too. */
+	ask?: ExtensionUIAskView;
 	blocking?: boolean;
 	nested?: boolean;
 }

@@ -1,4 +1,16 @@
-import type { NewTimer, TimerResult, TimerRow } from "../../../../db/src/api.ts";
+import type { NewTimer, TimerRow } from "../../../../db/src/api.ts";
+import {
+	conditionBaseline,
+	conditionTiming,
+	decodeCondition,
+	describeCondition,
+	encodeCondition,
+	parseUntil,
+} from "./conditions/index.ts";
+import { CHECK_CAPS } from "./judge.ts";
+import type { CheckOutcome, ConditionDeps, TimerCondition } from "./conditions/types.ts";
+
+export type { CheckOutcome, TimerCondition };
 
 /** Active timers one session may hold. */
 export const MAX_ACTIVE = 10;
@@ -6,23 +18,18 @@ export const MAX_ACTIVE = 10;
 export const MIN_EVERY_SECONDS = 30;
 /** Wakes of an `every` timer without its own maxRuns. */
 const DEFAULT_MAX_RUNS = 20;
-/** How often an `until` condition is checked by default, and at least; checks wake nobody until one is met. */
-const DEFAULT_CHECK_SECONDS = 15;
+/** At least how often an `until` condition is checked; the default is its kind's (`conditionTiming`). Checks wake nobody until one is met. */
 const MIN_CHECK_SECONDS = 5;
 /** How long an `until` timer waits without a deadline of its own. */
 const DEFAULT_UNTIL_DEADLINE_SECONDS = 3600;
-/** Characters of a check's output kept on the row and shown on wake. */
-export const OUTPUT_CAP = 2000;
-
-/** A condition the code checks: a closed union, so a new kind is one entry here and one in `condition.ts`. */
-export type TimerCondition = { kind: "command"; command: string } | { kind: "unlocked"; path: string };
 
 /** The `set` arguments of the `timer` tool. */
 export interface TimerSetInput {
 	note?: string;
 	after?: number;
 	every?: number;
-	until?: { command?: string; unlocked?: string };
+	/** Exactly one condition of the closed list (`conditions/index.ts`); validated by `parseUntil`. */
+	until?: unknown;
 	maxRuns?: number;
 	deadline?: number;
 }
@@ -33,17 +40,6 @@ const seconds = (value: number | undefined, name: string): number | undefined =>
 	return value;
 };
 
-/** The condition `until` names, or undefined; exactly one kind. */
-function parseCondition(until: TimerSetInput["until"]): TimerCondition | undefined {
-	if (!until) return undefined;
-	const command = until.command?.trim();
-	const unlocked = until.unlocked?.trim();
-	if (command && unlocked) throw new Error("until takes one condition: command or unlocked, not both.");
-	if (command) return { kind: "command", command };
-	if (unlocked) return { kind: "unlocked", path: unlocked };
-	throw new Error("until needs command (exit 0 stops the wait) or unlocked (a path no other agent reserves).");
-}
-
 /**
  * The stored fields of a timer from the tool's `set` arguments: `until` makes an `until` timer (checked every `every`
  * seconds, default 15, until met or the deadline, default an hour), `every` a repeating one (at most maxRuns wakes,
@@ -53,10 +49,11 @@ export function timerFields(
 	input: TimerSetInput,
 	now: number,
 	owner: { workspaceId: string; sessionId: string; agent?: string; toolCallId?: string; cwd: string },
+	deps?: ConditionDeps,
 ): NewTimer {
 	const note = input.note?.trim();
 	if (!note) throw new Error("set needs a note: what to do when the timer wakes you.");
-	const condition = parseCondition(input.until);
+	const condition = parseUntil(input.until);
 	const after = seconds(input.after, "after");
 	const every = seconds(input.every, "every");
 	const deadline = seconds(input.deadline, "deadline");
@@ -72,7 +69,8 @@ export function timerFields(
 	};
 	if (condition) {
 		if (input.maxRuns !== undefined) throw new Error("maxRuns counts wakes of every; an until timer wakes once.");
-		const interval = every ?? DEFAULT_CHECK_SECONDS;
+		const timing = conditionTiming(condition);
+		const interval = every ?? (timing.watched ? timing.safetyMs : timing.pollMs) / 1000;
 		if (interval < MIN_CHECK_SECONDS) throw new Error(`every with until is at least ${MIN_CHECK_SECONDS} seconds.`);
 		return {
 			...base,
@@ -81,8 +79,9 @@ export function timerFields(
 			intervalMs: interval * 1000,
 			condition: {
 				kind: condition.kind,
-				value: condition.kind === "command" ? condition.command : condition.path,
+				value: encodeCondition(condition),
 				cwd: owner.cwd,
+				...(deps ? withBaseline(conditionBaseline(condition, owner.cwd, deps)) : {}),
 			},
 			deadlineAt: now + (deadline ?? DEFAULT_UNTIL_DEADLINE_SECONDS) * 1000,
 		};
@@ -105,15 +104,12 @@ export function timerFields(
 	return { ...base, kind: "once", dueAt: now + after * 1000 };
 }
 
+const withBaseline = (baseline: string | undefined) => (baseline === undefined ? {} : { baseline });
+
 /** The stored condition of an `until` row. */
 export function rowCondition(row: TimerRow): TimerCondition | undefined {
-	if (row.condition_kind === "command" && row.condition) return { kind: "command", command: row.condition };
-	if (row.condition_kind === "unlocked" && row.condition) return { kind: "unlocked", path: row.condition };
-	return undefined;
+	return row.condition_kind && row.condition ? decodeCondition(row.condition_kind, row.condition) : undefined;
 }
-
-/** A check of a condition: met, not yet, or not possible (refused or unrunnable: the timer fails). */
-export type CheckOutcome = TimerResult & { met: boolean; refused?: string };
 
 /** What a claimed fire does next: wake now (ending the timer with a status, or not), or stay silent until the next check. */
 export type FireDecision =
@@ -134,8 +130,12 @@ export function decideFire(row: TimerRow, check?: CheckOutcome): FireDecision {
 	return pastDeadline ? { wake: true, end: { status: "expired", reason: "deadline" } } : { wake: false };
 }
 
-const describeCondition = (row: TimerRow) =>
-	row.condition_kind === "unlocked" ? `${row.condition} unlocked` : `\`${row.condition}\` exits 0`;
+const describeRow = (row: TimerRow) => {
+	const condition = rowCondition(row);
+	return condition
+		? describeCondition(condition)
+		: `${row.condition_kind ?? "condition"} (not readable by this version)`;
+};
 
 /** Why a wake happened, in a few words: the headline of the notice and of the model's message. */
 function wakeReason(row: TimerRow): string {
@@ -146,8 +146,8 @@ function wakeReason(row: TimerRow): string {
 		if (row.stop_reason === "deadline") return `${run}, deadline reached: the last`;
 		return run;
 	}
-	if (row.stop_reason === "met") return `condition met: ${describeCondition(row)}`;
-	if (row.stop_reason === "deadline") return `deadline reached before ${describeCondition(row)}`;
+	if (row.stop_reason === "met") return `condition met: ${describeRow(row)}`;
+	if (row.stop_reason === "deadline") return `deadline reached before ${describeRow(row)}`;
 	return `stopped: ${row.stop_reason ?? "condition could not be checked"}`;
 }
 
@@ -162,6 +162,10 @@ export interface TimerWakeDetails {
 	maxRuns: number | null;
 	exit: number | null;
 	output: string | null;
+	/** The condition's kind, and for a `check` the model calls it made and what they cost. */
+	conditionKind: TimerRow["condition_kind"];
+	checks: number;
+	spentUsd: number;
 }
 
 export function wakeDetails(row: TimerRow): TimerWakeDetails {
@@ -175,6 +179,9 @@ export function wakeDetails(row: TimerRow): TimerWakeDetails {
 		maxRuns: row.max_runs,
 		exit: row.last_exit,
 		output: row.last_output,
+		conditionKind: row.condition_kind,
+		checks: row.checks,
+		spentUsd: row.spent_usd,
 	};
 }
 
@@ -182,24 +189,42 @@ export function wakeDetails(row: TimerRow): TimerWakeDetails {
 export function wakeText(row: TimerRow): string {
 	const ended = row.status === "active" ? "" : ` (timer ${row.status})`;
 	const lines = [`Timer ${row.id} fired: ${wakeReason(row)}${ended}.`, `Note: ${row.note}`];
+	if (row.status === "active" && row.kind === "every") lines.push(`It repeats: cancel id ${row.id} to stop it.`);
 	if (row.last_output !== null || row.last_exit !== null)
 		lines.push(
 			`Last check${row.last_exit !== null ? ` (exit ${row.last_exit})` : ""}: ${row.last_output?.trim() || "(no output)"}`,
 		);
+	if (row.condition_kind === "check" && row.checks > 0)
+		lines.push(
+			`A small model judged this (${row.checks} judgment${row.checks === 1 ? "" : "s"}, $${row.spent_usd.toFixed(4)}): verify before relying on it.`,
+		);
 	return lines.join("\n");
+}
+
+/** How an active `until` row learns of a change: an event source with a safety-net poll, or polling. */
+function untilMode(row: TimerRow): string {
+	const condition = rowCondition(row);
+	if (row.kind !== "until" || !condition) return "";
+	const timing = conditionTiming(condition);
+	const mode = timing.watched ? "watching" : `polling every ${(row.interval_ms ?? 0) / 1000}s`;
+	const spend =
+		row.condition_kind === "check"
+			? `, judged ${row.checks}/${CHECK_CAPS.perWaitChecks} for $${row.spent_usd.toFixed(4)}/$${CHECK_CAPS.perWaitUsd.toFixed(2)}`
+			: "";
+	return ` (${mode}${spend})`;
 }
 
 /** One line per timer for `list`. */
 export function timerLine(row: TimerRow, now: number): string {
 	const when =
 		row.status === "active"
-			? `next ${row.kind === "until" ? "check" : "wake"} in ${Math.max(0, Math.round((row.due_at - now) / 1000))}s`
+			? `next ${row.kind === "until" ? "check" : "wake"} in ${Math.max(0, Math.round((row.due_at - now) / 1000))}s${untilMode(row)}`
 			: `${row.status}${row.stop_reason ? ` (${row.stop_reason})` : ""}`;
 	const schedule =
 		row.kind === "once"
 			? "once"
 			: row.kind === "every"
 				? `every ${row.interval_ms! / 1000}s, ${row.runs}/${row.max_runs ?? "∞"} runs`
-				: `until ${describeCondition(row)}`;
+				: `until ${describeRow(row)}`;
 	return `${row.id} · ${schedule} · ${when} · ${row.note}`;
 }

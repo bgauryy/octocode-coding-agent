@@ -146,6 +146,11 @@ function asPreviousRequest(message: AssistantMessage, reportedCache: boolean): P
 	};
 }
 
+/**
+ * Walks entries in file order. The previous request of an entry is the state after its parent, not after the entry
+ * written just before it: after `/tree` or a fork point the file holds several branches, and a reply on one branch
+ * must not be compared with the prompt of another.
+ */
 function scan(
 	entries: SessionEntry[],
 	models: ModelPriceSource,
@@ -153,16 +158,16 @@ function scan(
 	let prev: PreviousRequest | undefined;
 	const totals: CacheWasteTotals = { missedTokens: 0, missedCost: 0, missCount: 0 };
 	const misses = new Map<AssistantMessage, CacheMiss>();
+	const stateAfter = new Map<string, PreviousRequest | undefined>();
 
 	for (const entry of entries) {
+		prev = entry.parentId ? stateAfter.get(entry.parentId) : undefined;
 		if (entry.type === "compaction" || entry.type === "branch_summary") {
 			// The context legitimately changed; the next turn's prompt is new content,
 			// not re-billed content. Model switches are NOT exempt: they re-bill the
 			// full prompt and should be counted.
 			prev = undefined;
-			continue;
-		}
-		if (entry.type === "usage" && entry.kind === "cache_warm") {
+		} else if (entry.type === "usage" && entry.kind === "cache_warm") {
 			const promptTokens = entry.usage.input + entry.usage.cacheRead + entry.usage.cacheWrite;
 			if (promptTokens > 0) {
 				prev = {
@@ -185,6 +190,7 @@ function scan(
 			}
 			prev = asPreviousRequest(entry.message, prev?.reportedCache ?? false) ?? prev;
 		}
+		stateAfter.set(entry.id, prev);
 	}
 	return { prev, totals, misses };
 }

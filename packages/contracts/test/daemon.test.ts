@@ -7,6 +7,7 @@ import {
 	AttachRequestSchema,
 	AttachResponseSchema,
 	DAEMON_PROTOCOL_VERSION,
+	DaemonAccessSchema,
 	DaemonHealthSchema,
 	DaemonRecordSchema,
 	DaemonSessionsSchema,
@@ -138,4 +139,11 @@ it("describes remote publication: a transport, an access level, links with their
 	expect(Value.Check(RemoteStatusSchema, { links: [], relay: { url: "wss://r", state: "open", peers: 0 } })).toBe(
 		false,
 	);
+});
+
+it("answers a token's board access with one boolean and nothing else", () => {
+	expect(Value.Check(DaemonAccessSchema, { writable: true })).toBe(true);
+	expect(Value.Check(DaemonAccessSchema, { writable: "yes" })).toBe(false);
+	expect(Value.Check(DaemonAccessSchema, { writable: false, token: "x" })).toBe(false);
+	expect(DAEMON_ROUTES.access).toBe("/api/access");
 });

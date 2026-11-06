@@ -99,6 +99,30 @@ export function isBlockedIp(ip: string): boolean {
 	);
 }
 
+/** Whether `ip` is link-local (169.254.0.0/16, fe80::/10), also spelled inside an IPv6 address (`::ffff:169.254.1.1`). */
+export function isLinkLocalIp(ip: string): boolean {
+	const bare = ip.replace(/%.*$/, "");
+	const version = net.isIP(bare);
+	if (version === 4) return inV4(ipv4ToInt(bare)!, "169.254.0.0", 16);
+	if (version !== 6) return false;
+	const groups = expandIpv6(bare);
+	if (groups === null) return false;
+	return (groups[0] & 0xffc0) === 0xfe80 || embeddedIpv4(groups).some(isLinkLocalIp);
+}
+
+/** Whether `ip` is loopback (127.0.0.0/8, ::1), also spelled inside an IPv6 address (`::ffff:127.0.0.1`). */
+export function isLoopbackIp(ip: string): boolean {
+	const bare = ip.replace(/%.*$/, "");
+	const version = net.isIP(bare);
+	if (version === 4) return inV4(ipv4ToInt(bare)!, "127.0.0.0", 8);
+	if (version !== 6) return false;
+	const groups = expandIpv6(bare);
+	if (groups === null) return false;
+	return (
+		(groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) || embeddedIpv4(groups).some(isLoopbackIp)
+	);
+}
+
 /** Cloud instance metadata addresses: a request there returns the machine's credentials to whoever asked. */
 const METADATA_ADDRESSES = ["169.254.169.254", "168.63.129.16"];
 const METADATA_V6 = expandIpv6("fd00:ec2::254")!;

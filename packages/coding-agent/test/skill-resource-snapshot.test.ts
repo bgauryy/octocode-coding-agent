@@ -8,7 +8,10 @@ import {
 	adoptSkillResourceSnapshot,
 	readSkillResourceSnapshot,
 } from "../src/core/skill-resource-snapshot.ts";
-import { loadedSkillDirectories, type Skill } from "../src/core/skills.ts";
+import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
+import { SettingsManager } from "../src/core/settings-manager.ts";
+import { loadedSkillDirectories, loadSkills, type Skill } from "../src/core/skills.ts";
+import { createHarness } from "./suite/harness.ts";
 
 function selectSkillResourceSnapshot(
 	snapshot: Parameters<typeof adoptSkillResourceSnapshot>[0],
@@ -297,8 +300,6 @@ it("adopts snapshot skills authoritatively without default paths or skill overri
 	const { root, make } = fixture();
 	const skill = make("accepted"),
 		extra = make("unrelated");
-	const { DefaultResourceLoader } = await import("../src/core/resource-loader.ts");
-	const { SettingsManager } = await import("../src/core/settings-manager.ts");
 	const loader = new DefaultResourceLoader({
 		cwd: root,
 		agentDir: path.join(root, "agent"),
@@ -339,7 +340,6 @@ it("the bound extension API selects healthy resources without inspecting unrelat
 	const { make } = fixture();
 	const good = make("good"),
 		bad = { ...make("bad"), filePath: "<inline:bad>" };
-	const { createHarness } = await import("./suite/harness.ts");
 	let api: ExtensionAPI | undefined;
 	const h = await createHarness({
 		extensionFactories: [
@@ -378,7 +378,6 @@ it.each(["model-only", "claude"] as const)(
 		fs.mkdirSync(parent, { recursive: true });
 		const alias = path.join(parent, "route");
 		fs.symlinkSync(original.baseDir, alias);
-		const { loadSkills } = await import("../src/core/skills.ts");
 		const loaded = loadSkills({
 			cwd: root,
 			agentDir: path.join(root, "agent"),
@@ -399,8 +398,6 @@ it("recaptures an override's changed file path without inheriting the old canoni
 	const { root, make } = fixture();
 	const original = make("route", "original"),
 		replacement = make("replacement");
-	const { DefaultResourceLoader } = await import("../src/core/resource-loader.ts");
-	const { SettingsManager } = await import("../src/core/settings-manager.ts");
 	const loader = new DefaultResourceLoader({
 		cwd: root,
 		agentDir: path.join(root, "agent"),
@@ -433,7 +430,6 @@ it("reads Codex sidecar policy beside the canonical skill file", async () => {
 	fs.writeFileSync(path.join(target.baseDir, "agents/openai.yaml"), "policy:\n  allow_implicit_invocation: false\n");
 	const alias = path.join(aliasDir, "SKILL.md");
 	fs.symlinkSync(target.filePath, alias);
-	const { loadSkills } = await import("../src/core/skills.ts");
 	const loaded = loadSkills({
 		cwd: root,
 		agentDir: path.join(root, "agent"),

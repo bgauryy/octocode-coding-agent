@@ -77,9 +77,16 @@ function compressor(name: string, rest: Word[]): WriterEffect {
 	// Printing, listing, testing and `-c` (stdout) leave the operands as they are.
 	if (given(rest, "clthVL", "--stdout", "--to-stdout", "--list", "--test", "--help", "--version", "--license"))
 		return { writes: [], areas: [] };
+	const zstd = name.endsWith("zstd");
+	// zstd's `--output-dir-flat d` and `--output-dir-mirror d` write each output under `d`.
+	const outputDirs = ["--output-dir-flat", "--output-dir-mirror"];
 	const valued = name.includes("zip") && !name.includes("bzip") ? ["-S", "--suffix"] : ["-S", "-T", "-M"];
-	const output = name.endsWith("zstd") ? optionValues(rest, "o", ["--output"]) : [];
-	return { writes: [...operandsWithout(rest, valued), ...output], areas: [] };
+	if (!zstd) return { writes: operandsWithout(rest, valued), areas: [] };
+	const output = optionValues(rest, "o", ["--output"]);
+	return {
+		writes: [...operandsWithout(rest, [...valued, ...outputDirs]), ...output],
+		areas: optionValues(rest, "", outputDirs),
+	};
 }
 
 function splitter(name: string, rest: Word[]): WriterEffect {
@@ -182,7 +189,10 @@ function effectOf(name: string, rest: Word[]): WriterEffect {
 			if (given(rest, "V", "--help", "--version")) return none;
 			// `script f` logs to `f` (`typescript` when none is named); util-linux's `-I`, `-O`, `-B` and `-T` name logs too.
 			const logs = optionValues(rest, "IOBT", []);
-			const operands = operandsWithout(rest, ["-c", "-E", "-m", "-o", "-I", "-O", "-B", "-T"]);
+			// BSD and macOS `-t` takes a number (`script -t 0 f cmd`); util-linux's `-t` takes no separate value.
+			const bsdTime = (word: Word, at: number) => rest[at - 1] === "-t" && /^\d+(?:\.\d+)?$/.test(word ?? "");
+			const words = rest.filter((word, at) => !bsdTime(word, at));
+			const operands = operandsWithout(words, ["-c", "-E", "-m", "-o", "-I", "-O", "-B", "-T"]);
 			return {
 				writes: [...logs, ...(operands.length > 0 ? operands.slice(0, 1) : logs.length > 0 ? [] : ["typescript"])],
 				areas: [],

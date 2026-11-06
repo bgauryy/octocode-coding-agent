@@ -91,10 +91,12 @@ describe("shared MCP host capabilities", () => {
 			{ entry: { name: "file", source: "mcp.json", scope: "global", config } },
 		];
 		registerMcpManageTool(state);
-		// The stopped server is not handed over as an addition, but its name is, so children skip it too.
+		// The stopped server is not handed over as an addition, but its name is, so children skip it too. `available` names
+		// every enabled server of the session (what a task may name), the stopped and file-configured ones included.
 		expect(getMcpSessionHandoff(fake.api.events)).toEqual({
 			servers: { plugin: config },
 			stopped: [stopped.entry.name],
+			available: ["plugin", "stopped", "file"],
 		});
 		await stopped.close();
 	});

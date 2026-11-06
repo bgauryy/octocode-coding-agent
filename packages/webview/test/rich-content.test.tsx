@@ -176,6 +176,51 @@ it("shows an MCP call's purpose only when its returned data states one", () => {
 	expect(rendered({ results: [{ data: { mainGoal: "Trace the parser" } }] })).toBe("↳ Trace the parser");
 });
 
+it("lists each query row's returned goal and reasoning below the tool output, never from the arguments", () => {
+	const name = "mcp__other__search";
+	const rendered = (structuredContent: unknown) => {
+		const tool: ApplicationTool = {
+			toolCallId: "p",
+			toolName: name,
+			text: "output",
+			status: "completed",
+			arguments: { queries: [{ mainGoal: "From the input" }] },
+			structuredContent,
+			content: [{ id: "out", type: "text", text: "Tool result" }],
+		};
+		const events = project(
+			[message([{ id: "call", type: "toolCall", toolCallId: "p", name, arguments: tool.arguments }])],
+			[tool],
+		);
+		const { container, unmount } = render(<ResultCard event={events[0]} />, { wrapper: Wrapper });
+		const lines = [...container.querySelectorAll(".content-tool > .tool-purposes > p")].map((line) => line.textContent);
+		const order = container.textContent;
+		const reason = container.querySelector(".content-tool > .tool-reason")?.textContent;
+		unmount();
+		return { lines, order, reason };
+	};
+	const shared = rendered({
+		results: [
+			{ index: 0, mainGoal: "Map the parser", reasoning: "Entry point" },
+			{ index: 1, mainGoal: "Map the parser", reasoning: "Its callers" },
+		],
+	});
+	// The shared goal is the one-line reason under the name, so the block lists the reasoning rows.
+	expect(shared.lines).toEqual(["· #0 Entry point", "· #1 Its callers"]);
+	expect(shared.order.indexOf("Tool result")).toBeLessThan(shared.order.indexOf("Entry point"));
+	expect(
+		rendered({
+			results: [
+				{ index: 0, mainGoal: "Find the loader" },
+				{ index: 1, mainGoal: "Find the writer" },
+			],
+		}).lines,
+	).toEqual(["#1 Find the writer"]);
+	const none = rendered({ results: [{ data: {} }] });
+	expect(none.lines).toEqual([]);
+	expect(none.reason).toBeUndefined();
+});
+
 it("renders reasoning, citations, resource references and unsupported content without external media requests", () => {
 	const [event] = project([
 		message([

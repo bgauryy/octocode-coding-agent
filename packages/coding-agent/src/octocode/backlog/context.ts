@@ -1,4 +1,4 @@
-import type { ExtensionContext, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../../config/database.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { historyWindows } from "../../config/retention.ts";
@@ -38,19 +38,28 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 			() => agent,
 			() => historyWindows(env),
 		);
-		return { store, actor: { id: session }, session, repoName: workspace.name, repoRoot: workspace.root };
+		return {
+			store,
+			actor: { id: session, surface: "tool" },
+			session,
+			repoName: workspace.name,
+			repoRoot: workspace.root,
+		};
 	}
 	const id = options.agentId?.() || session;
 	// A subagent never claims: it may update only what the session that started it holds (named by the parent, not inferred).
 	const parent = env[PARENT_SESSION_ENV];
 	if (!parent)
 		throw new Error(
-			`This subagent's parent session is unknown (${PARENT_SESSION_ENV} is unset), so no backlog item is its parent's to update: report changes and proposals to your parent.`,
+			`This subagent's parent session is unknown (${PARENT_SESSION_ENV} is unset), so no backlog item is its coordinator's to update: report changes and proposals to your coordinator.`,
 		);
 	const item = env[BACKLOG_ITEM_ENV];
-	const actor: Actor = { id, owners: new Set([parent]), ...(item ? { item } : {}) };
+	const actor: Actor = { id, surface: "tool", owners: new Set([parent]), ...(item ? { item } : {}) };
 	return { store, actor, session, repoName: workspace.name, repoRoot: workspace.root };
 }
+
+/** The user acting from `/backlog`: the session's actor as a human, recorded in the audit with the command surface. */
+export const userActor = (backlog: Backlog): Actor => ({ ...backlog.actor, kind: "human", surface: "command" });
 
 export interface BacklogWeb {
 	url: string;
@@ -61,8 +70,4 @@ export interface BacklogWeb {
 	isUp?: () => boolean;
 }
 
-export type OpenBacklogWeb = (
-	ctx: ExtensionCommandContext,
-	backlog: Backlog,
-	changed: () => void,
-) => Promise<BacklogWeb>;
+export type OpenBacklogWeb = (ctx: ExtensionContext, backlog: Backlog, changed: () => void) => Promise<BacklogWeb>;

@@ -10,9 +10,9 @@ import type { LoadedMcpConfig } from "./config.ts";
 import { startConnection } from "./connections.ts";
 import { isSelected } from "./exposure.ts";
 import type { McpContext } from "./host/types.ts";
+import { sayUntrustedProject } from "./notice.ts";
 import { reportProblems } from "./report.ts";
 import { isEnabled, type McpServer } from "./server.ts";
-import { isParentStopped } from "./session-servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import type { McpReloadResult } from "./switch.ts";
 import { hideTools } from "./tool-registry.ts";
@@ -67,6 +67,7 @@ export async function reloadMcpConfig(
 ): Promise<McpReloadResult> {
 	state.session.signal.throwIfAborted();
 	const loaded = load();
+	sayUntrustedProject(ctx);
 	state.configErrors = loaded.errors;
 	state.projectConfig = loaded.projectConfig;
 	state.globalConfig = loaded.globalConfig;
@@ -77,7 +78,7 @@ export async function reloadMcpConfig(
 	const desired: McpServer[] = [
 		...loaded.servers
 			.filter((entry) => !taken.has(mcpNamespace(entry.name)))
-			.filter((entry) => !isParentStopped(state.parentStopped, entry.name, state.api))
+			.filter((entry) => !state.leavesOut(entry.name))
 			.map((entry) => ({ entry })),
 		...registered.servers,
 	];

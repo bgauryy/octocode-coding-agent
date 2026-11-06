@@ -216,14 +216,14 @@ describe("a conflict at the start", () => {
 		expect((await s.run({ task: "report back" })).details.status).toBe("done");
 	});
 
-	it("refuses a sibling started after it, tree against file, naming the first child", async () => {
+	it("queues a sibling started after it, tree against file, naming the first child (B204; it used to refuse)", async () => {
 		const s = setup();
 		const first = await s.run({ task: "slow background", goal: "rewrite src", background: true, paths: ["src/"] });
 		const id = first.details.id as string;
-		await expect(s.run({ task: "report back", paths: ["src/a.ts"] })).rejects.toThrow(
-			new RegExp(`src/a\\.ts is covered by ${id}, working on "rewrite src" \\(src/; locked`),
-		);
-		expect(s.control.running()).toEqual([id]);
+		const queued = await s.run({ task: "report back", background: true, paths: ["src/a.ts"] });
+		expect(textOf(queued)).toContain(`waiting for ${id} to report before it reserves src/a.ts`);
+		expect(queued.details.queued).toBe(true);
+		expect(s.leases().map((lease) => lease.owner)).toEqual([id]);
 		await s.control.stopAll();
 	});
 

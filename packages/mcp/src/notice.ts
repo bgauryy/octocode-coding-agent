@@ -1,4 +1,6 @@
-import type { McpCommandContext } from "./host/types.ts";
+import { hostPaths } from "./host.ts";
+import type { McpCommandContext, McpContext } from "./host/types.ts";
+import { untrustedProjectNote } from "./inspection.ts";
 import { sanitizeTerminalText } from "../../common/src/sanitize.ts";
 
 /**
@@ -14,4 +16,10 @@ export function say(
 	const shown = sanitizeTerminalText(text);
 	ctx.ui.notify(shown, level);
 	if (!ctx.hasUI) process.stderr.write(`${shown}\n`);
+}
+
+/** Tells the user, once per call, that an untrusted folder's project MCP files were not loaded; silent when trusted or absent. */
+export function sayUntrustedProject(ctx: McpContext): void {
+	const note = untrustedProjectNote(hostPaths().agentDir(), ctx.cwd, ctx.isProjectTrusted());
+	if (note) say(ctx, note, "warning");
 }

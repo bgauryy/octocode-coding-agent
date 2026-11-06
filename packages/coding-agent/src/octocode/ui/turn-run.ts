@@ -1,4 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { cachedPercent } from "../shared/format.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { addReply, emptyTotals, type ModelLookup, spendOf, unpricedModel, type UsageTotals } from "../shared/util.ts";
 
@@ -64,7 +65,7 @@ export class TurnRun {
 			agents: this.agents.size + this.anonymousAgents,
 			cost: this.all.cost,
 			unpriced: this.all.unpriced,
-			cache: this.main.input > 0 ? Math.round((this.main.cacheRead / this.main.input) * 100) : undefined,
+			cache: cachedPercent(this.main.cacheRead, this.main.input),
 		};
 	}
 

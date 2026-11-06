@@ -40,6 +40,8 @@ export interface PanelEntry {
 	end?: AgentEnd;
 	/** Set while the agent waits for the user. */
 	need?: Need;
+	/** Set when it works in its own worktree (a checkout other than this session's): the worktree's folder. */
+	isolated?: { folder: string };
 }
 
 /** What a panel row says about an agent: the design state (mark and colour) and its word. */

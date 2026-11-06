@@ -1,122 +1,90 @@
-import { PRIORITIES } from "@octocodeai/octocode-contracts/backlogs";
 import type { ReactNode } from "react";
 import type { ViewDefinition } from "../extension.ts";
-import { type BacklogIndex, backlogStats, STATE_TITLES } from "../model/backlog.ts";
-import { span, stamp } from "../model/format.ts";
+import type { BacklogIndex } from "../model/backlog.ts";
 import { hashFor, type Params } from "../model/route.ts";
 import { SearchIcon } from "../ui/icons.tsx";
 import { cx, Kbd } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
+import { HeaderMenu } from "./HeaderMenu.tsx";
 
+/** The shell's one 48 px row: brand, view tabs, then what waits on you, the palette, New item and the menu. */
 export function AppHeader({
 	index,
 	loaded = true,
 	live,
+	views,
+	current,
+	saved,
+	badges,
 	status,
 	needsYou,
 	actions,
+	menu,
 	onOpenPalette,
 }: {
 	index: BacklogIndex;
 	loaded?: boolean;
 	live: boolean;
+	views: readonly ViewDefinition[];
+	current: string;
+	saved: Record<string, Params>;
+	badges: Record<string, number>;
 	status?: ReactNode;
 	/** Something waits on the user: the pill opens or focuses the dialog from any view. */
 	needsYou?: { count: number; open: boolean; controls: string; onToggle: () => void };
+	/** Primary actions that stay in the row (New item). */
 	actions?: ReactNode;
+	/** Settings inside the menu popover (theme, notifications, terminal). */
+	menu?: ReactNode;
 	onOpenPalette: () => void;
 }) {
-	const stats = backlogStats(index);
-	const done = stats.byState.done ?? 0;
 	return (
-		<div className="header-main">
-			<div className="header-row">
-				<div className="brand">
-					<span className="brand-mark" aria-hidden="true" />
-					<span>Octocode</span>
-					<span className="brand-sep" aria-hidden="true">
-						/
-					</span>
-					<span className="muted">Workspace</span>
-				</div>
-				<div className="header-actions">
-					{needsYou && (
-						<button
-							type="button"
-							id="needs-you-pill"
-							className="needs-pill"
-							aria-expanded={needsYou.open}
-							aria-controls={needsYou.open ? needsYou.controls : undefined}
-							onClick={needsYou.onToggle}
-						>
-							<StateMark state="waiting" size={12} />
-							{needsYou.count} needs you
-						</button>
-					)}
-					{status}
+		<div className="header-row">
+			<div className="brand">
+				<span className="brand-mark" aria-hidden="true" />
+				<span>Octocode</span>
+				<span className="brand-sep" aria-hidden="true">
+					/
+				</span>
+				<h1>{index.repo}</h1>
+			</div>
+			<Tabs views={views} current={current} saved={saved} badges={badges} />
+			<div className="header-actions">
+				{needsYou && (
 					<button
 						type="button"
-						className="palette-trigger"
-						onClick={onOpenPalette}
-						aria-keyshortcuts="Meta+K Control+K"
+						id="needs-you-pill"
+						className="needs-pill"
+						aria-expanded={needsYou.open}
+						aria-controls={needsYou.open ? needsYou.controls : undefined}
+						onClick={needsYou.onToggle}
 					>
-						<SearchIcon />
-						<span>Search or jump to…</span>
-						<Kbd>⌘K</Kbd>
+						<StateMark state="waiting" size={12} />
+						{needsYou.count} needs you
 					</button>
-					{actions}
-				</div>
+				)}
+				{status}
+				<button
+					type="button"
+					className="palette-trigger"
+					onClick={onOpenPalette}
+					aria-keyshortcuts="Meta+K Control+K"
+					title="Search or jump to…"
+				>
+					<SearchIcon />
+					<span className="palette-label">Search or jump to…</span>
+					<Kbd>⌘K</Kbd>
+				</button>
+				{actions}
+				<HeaderMenu index={index} live={live} loaded={loaded}>
+					{menu}
+				</HeaderMenu>
 			</div>
-			<div className="title-row">
-				<h1>{index.repo}</h1>
-				<div className="progress-summary" hidden={!loaded}>
-					<span>{stats.total} items</span>
-					<progress
-						className="progress"
-						max={stats.total || 1}
-						value={done}
-						aria-label={`${done} of ${stats.total} items completed`}
-					/>
-					<span>{done} completed</span>
-				</div>
-			</div>
-			<details className="snapshot-info">
-				<summary>
-					{live ? "Board snapshot · Updated " : "Read-only snapshot · "}
-					{stamp(index.now)}
-				</summary>
-				<p>
-					{live
-						? "Saved to this repository. Updates appear automatically while connected."
-						: "Run /web backlogs to open the live board. This export is read-only."}
-				</p>
-				<dl className="stats">
-					{index.states.map((state) => (
-						<Stat key={state} label={STATE_TITLES[state]} value={stats.byState[state] ?? 0} />
-					))}
-					{PRIORITIES.map((p) => (
-						<Stat key={p} label={p} value={stats.byPriority[p] ?? 0} />
-					))}
-					<Stat
-						label="Median cycle (started to done)"
-						value={stats.medianCycle === undefined ? "none yet" : `${span(stats.medianCycle)} over ${stats.cycles}`}
-					/>
-				</dl>
-			</details>
 		</div>
 	);
 }
 
-function Stat({ label, value }: { label: string; value: ReactNode }) {
-	return (
-		<div className="stat">
-			<dt>{label}</dt>
-			<dd>{value}</dd>
-		</div>
-	);
-}
-
-export function Tabs({
+function Tabs({
 	views,
 	current,
 	saved,

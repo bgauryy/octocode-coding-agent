@@ -23,6 +23,7 @@ import { isEnabled, type McpServer } from "./server.ts";
 import { setMcpSessionStatus } from "./status.ts";
 import type { McpToolDetails } from "./tools.ts";
 
+import { isParentStopped } from "./session-servers.ts";
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
 import { expandLaunchTemplates } from "./launch-templates.ts";
 import { publishToolRoles, resolveToolRoles } from "./roles.ts";
@@ -77,6 +78,16 @@ export class McpExtensionState {
 	globalConfig: string | undefined;
 	/** In a subagent: servers its parent stopped for the session (`isParentStopped` decides which stay out). */
 	parentStopped: ReadonlySet<string> = new Set();
+	/** In a subagent whose task named its servers: the configured servers it runs; any other stays out. */
+	taskServers: ReadonlySet<string> | undefined;
+
+	/** Whether this subagent leaves the configured server `name` out: its task did not name it, or its parent stopped it. */
+	leavesOut(name: string): boolean {
+		return (
+			(this.taskServers !== undefined && !this.taskServers.has(name)) ||
+			isParentStopped(this.parentStopped, name, this.api)
+		);
+	}
 	/** Registered servers that `mcp.json` overrides, shown in `/mcp`. */
 	overridden: string[] = [];
 	pending: Promise<unknown> | undefined;

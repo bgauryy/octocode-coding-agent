@@ -141,7 +141,7 @@ describe("array targets", () => {
 		expect(
 			(await parsedAs("rm", [flag("Recurse"), { param: "Path", text: "-Path" }, { text: "'C:\\a','C:\\'" }]))
 				.destructive,
-		).toBeDefined();
+		).toMatch(/^Remove-Item -Recurse on .*C:\\/);
 		expect(
 			(
 				await parsedAs("rm", [
@@ -149,7 +149,7 @@ describe("array targets", () => {
 					{ param: "LiteralPath", arg: "'C:\\a','C:\\Users\\x'", text: "-LiteralPath:'C:\\a','C:\\Users\\x'" },
 				])
 			).destructive,
-		).toBeDefined();
+		).toMatch(/^Remove-Item -Force on .*C:\\Users\\x/);
 	});
 
 	it("keeps a comma inside quotes as part of one target", async () => {

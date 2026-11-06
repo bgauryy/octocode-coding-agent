@@ -2,6 +2,7 @@
 
 import { contentText } from "@octocodeai/octocode-ai";
 import { getThemeByName, theme } from "../../theme/theme.ts";
+import type { ToolRowView } from "../export-html/tool-renderer.ts";
 import type { ToolHtmlRenderer } from "../export-html/index.ts";
 import type { ToolDefinition } from "../features/index.ts";
 import type { SessionManager } from "../session-manager.ts";
@@ -34,20 +35,24 @@ export async function exportToHtml(
 	getToolDefinition: (name: string) => ToolDefinition | undefined,
 	outputPath: string | undefined,
 	options: { themeName?: string },
+	loadToolRows: () => Promise<{ reasonRow: ToolRowView; purposeRows: ToolRowView }>,
 ): Promise<string> {
 	const themeName = [options.themeName, session.settingsManager.getTheme()].find(
 		(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
 	);
 
-	const [{ exportSessionToHtml }, { createToolHtmlRenderer }] = await Promise.all([
+	const [{ exportSessionToHtml }, { createToolHtmlRenderer }, { reasonRow, purposeRows }] = await Promise.all([
 		import("../export-html/index.ts"),
 		import("../export-html/tool-renderer.ts"),
+		loadToolRows(),
 	]);
 	// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
 	const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({
 		getToolRenderers: (name) => session.extensionRunner.resolveToolRenderers(name, () => getToolDefinition(name)),
 		theme,
 		cwd: session.sessionManager.getCwd(),
+		reasonRow,
+		purposeRows,
 	});
 
 	return exportSessionToHtml(session.sessionManager, session.agent.state, {

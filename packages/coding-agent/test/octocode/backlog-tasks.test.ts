@@ -113,17 +113,6 @@ describe("task lifecycle", () => {
 		expect(store.tasks.update("T1", { state: "done", version: 2 }, agent).state).toBe("done");
 	});
 
-	it("never reuses a number, even after the newest task goes with its item", () => {
-		const item = add("Removable");
-		const task = store.tasks.add({ goal: "gone soon", item: item.ref }, user);
-		// An item with an open task is not removed; once the task is closed it goes with the item.
-		expect(() => store.remove(item.ref)).toThrow(/has open tasks/);
-		store.tasks.update(task.ref, { state: "dropped", result: "not needed" }, user);
-		expect(store.remove(item.ref).ref).toBe(item.ref);
-		expect(store.tasks.get("T1")).toBeUndefined();
-		expect(store.tasks.add({ goal: "next", session: "s" }, { id: "s" }).ref).toBe("T2");
-	});
-
 	it("records task changes in the audit trail under the item, and under T<n> for a session task", () => {
 		const item = claimed();
 		store.tasks.add({ goal: "Audited", item: item.ref }, agent);
@@ -219,13 +208,13 @@ describe("task ownership", () => {
 			kind: "item",
 			ref: held.ref,
 		});
-		expect(() => store.tasks.add({ goal: "x", item: free.ref }, child())).toThrow(/not claimed by your parent/);
+		expect(() => store.tasks.add({ goal: "x", item: free.ref }, child())).toThrow(/not claimed by your coordinator/);
 		expect(() => store.tasks.add({ goal: "x", item: held.ref }, child("B999"))).toThrow(/not your item/);
 		expect(store.tasks.add({ goal: "x", item: held.ref }, child(held.ref)).seq).toBeGreaterThan(0);
 		const own = store.tasks.add({ goal: "Scratch" }, child());
 		expect(own.owner).toEqual({ kind: "session", id: "child-1" });
 		expect(() => store.tasks.update("T1", { state: "todo" }, { id: "child-2", owners: new Set(["nobody"]) })).toThrow(
-			/not claimed by your parent/,
+			/not claimed by your coordinator/,
 		);
 		expect(() =>
 			store.tasks.update(own.ref, { state: "done" }, { id: "child-2", owners: new Set([agent.id]) }),

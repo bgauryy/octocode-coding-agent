@@ -9,6 +9,13 @@ export const DOCS_ROUTES = {
 	mermaid: "/api/docs/mermaid",
 } as const;
 
+/** Paths of repository documents (git-tracked Markdown outside `.octocode/`) start with this; the rest is relative to the workspace root. */
+export const REPO_DOC_PREFIX = "@repo/";
+
+export function isRepoDocPath(path: string): boolean {
+	return path.startsWith(REPO_DOC_PREFIX);
+}
+
 /** What a document is, read from the `.octocode/` folder (or file name) it sits in. */
 export const DOC_KINDS = ["rfc", "research", "brainstorm", "review", "audit", "plan", "contract", "report"] as const;
 
@@ -35,6 +42,8 @@ export const DocsIndexSchema = Type.Object(
 		truncated: Type.Boolean(),
 		/** True when this list includes the scratch folder `tmp/`. */
 		tmp: Type.Boolean(),
+		/** True when the project is not trusted, so the host left repository documents out without listing them. */
+		repoDocsHidden: Type.Optional(Type.Boolean()),
 	},
 	{ additionalProperties: false },
 );

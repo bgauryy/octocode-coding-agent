@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setCapabilityOverrides, Text, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, it } from "vitest";
+import { purposeRows, reasonRow } from "../../src/octocode/ui/reason-row.ts";
 import { createToolHtmlRenderer } from "../../src/core/export-html/tool-renderer.ts";
 import type { ToolDefinition } from "../../src/core/features/types.ts";
 import { ToolExecutionComponent } from "../../src/modes/interactive/components/tool-execution.ts";
@@ -156,6 +157,8 @@ describe("the reason in an exported call", () => {
 			getToolRenderers: (name) => definition(name),
 			theme,
 			cwd: process.cwd(),
+			reasonRow,
+			purposeRows,
 		}).renderCall;
 		expect(render("c1", "bash", { command: "ls", reason: "list the folder" })).toContain("↳ list the folder");
 		expect(render("c2", "bash", { command: "ls" })).not.toContain("↳");

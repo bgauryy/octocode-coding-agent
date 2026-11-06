@@ -348,7 +348,7 @@ describe("/backlog html", () => {
 			expect(open.mock.calls[2][0]).toBe(urls[1].href);
 			await t.commands.get("web")!.handler("unknown", ctx);
 			expect(open).toHaveBeenCalledTimes(3);
-			expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /web [backlogs]");
+			expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /web [backlogs | item <id>]");
 			await t.fire("session_start", {}, ctx);
 			await expect(fetch(urls[0].origin)).rejects.toThrow();
 			await t.commands.get("web")!.handler("", ctx);
@@ -475,22 +475,5 @@ describe("backlog store fixes found by the HTML review", () => {
 		).toBe("two lines here");
 		expect(store.update("B1", { title: "a\n\nb" }, { id: "agent" }).title).toBe("a b");
 		expect(() => store.update("B1", { title: " \n " }, { id: "agent" })).toThrow(/needs a title/);
-	});
-
-	it("counts clearing the link of a derived item (its origin was removed) as an update", () => {
-		let at = 1_000;
-		const store = fixtureBacklog(
-			() => sharedAgentDb(),
-			"removed",
-			() => at,
-		);
-		store.add({ title: "origin", goal: "g", why: "Required work", createdBy: "agent" });
-		store.add({ title: "child", goal: "g", why: "Required work", createdBy: "agent", from: "B1" });
-		at = 9_000;
-		store.remove("B1");
-		const child = store.get("B2")!;
-		expect(child.from).toBeUndefined();
-		expect(child.updatedAt).toBe(9_000);
-		expect(store.notes(child, 5).at(-1)!.at).toBe(9_000);
 	});
 });

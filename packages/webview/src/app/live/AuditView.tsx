@@ -18,7 +18,7 @@ interface Page {
 
 const FIRST_PAGE: Page = { pages: [], loading: true, error: "" };
 
-/** Change history, newest first, including deleted items; older pages load on request. */
+/** Change history, newest first, including closed items; older pages load on request. */
 export function AuditView({ params }: ViewProps) {
 	const { api } = useLive();
 	const backlogId = params.backlogId;
@@ -63,7 +63,7 @@ export function AuditView({ params }: ViewProps) {
 			<div className="view-heading">
 				<h2>{backlogId ? `Audit for ${backlogId}` : "Workspace audit"}</h2>
 				<p className="muted">
-					Change history, including deleted items. {backlogId && <a href="#audit">Show the whole workspace</a>}
+					Change history, including closed items. {backlogId && <a href="#audit">Show the whole workspace</a>}
 				</p>
 			</div>
 			{page.loading && !page.pages.length && <ListSkeleton label="Loading audit history" rows={4} />}

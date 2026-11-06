@@ -8,7 +8,7 @@
  * - `settings.json`: `core/settings-manager/storage.ts` (project settings, which also name plugins, hooks and packages);
  * - `mcp.json`: `packages/mcp/src/paths.ts` (project MCP servers, which start programs);
  * - `lsp-servers.json`: the language servers the research server starts in a trusted project
- *   (`packages/mcp/src/presets/octocode/launch.ts`);
+ *   (`packages/mcp/src/recommended/octocode.json`, `OCTOCODE_TRUST_PROJECT_LSP_CONFIG`);
  * - `hooks.json`: `core/discovery/vendors/octocode.ts` (hook commands), and `hooks/` for the scripts it points at;
  * - `skills`, `prompts`, `themes`: `core/discovery/vendors/octocode.ts`, `core/skills.ts`, `core/prompt-templates.ts`,
  *   `core/resource-loader/themes.ts`;

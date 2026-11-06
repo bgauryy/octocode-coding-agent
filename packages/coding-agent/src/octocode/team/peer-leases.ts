@@ -21,12 +21,10 @@ import { PeerRegistry } from "./peer-registry.ts";
 
 /** `PRAGMA application_id` of the package database (`assets/schema.sql` of the package: it spells "OCTO" ... "COMM"); a different file is not ours. */
 export const PEER_APPLICATION_ID = 1329678147;
-/**
- * `PRAGMA user_version`s of the package schema (`assets/schema.sql`) this reads; any other is skipped with one warning.
- * Version 8 reworked only `messages` and `records` (message parts, `contextId`, `outcome`): `leases` and `sessions`, the
- * only tables read, kept the version 7 columns, so both are read. Add a version here only after comparing those two tables.
- */
-export const PEER_SCHEMA_VERSIONS: readonly number[] = [7, 8];
+/** The current agents-communication schema. */
+export const PEER_SCHEMA_VERSION = 9;
+/** The schema versions whose `leases` and `sessions` columns the query reads: a database of any other version is skipped with one warning. */
+export const PEER_SCHEMA_VERSIONS: readonly number[] = [7, 8, PEER_SCHEMA_VERSION];
 /** How long a read waits for the package's writer: a refusal is advisory, so an edit never stalls on it. */
 const BUSY_MS = 200;
 /** After a failed open or read, how long before the next attempt: the file may finish a write. */

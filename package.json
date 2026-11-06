@@ -30,6 +30,7 @@
 		"profile:tui": "node scripts/profile-coding-agent-node.mjs --mode tui",
 		"profile:rpc": "node scripts/profile-coding-agent-node.mjs --mode rpc",
 		"test": "node scripts/test-workspaces.mjs",
+		"test:changed": "yarn workspace @octocodeai/octocodecode run vitest --run --config vitest.octocode.config.ts --changed",
 		"test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/*.test.ts\" \"scripts/agent-eval/test/*.test.mjs\"",
 		"test:tmux": "yarn workspace @octocodeai/octocode-tui run test:tmux && yarn workspace @octocodeai/octocodecode run test:tmux",
 		"test:mcp-conformance": "node packages/mcp/test/conformance/run.ts",

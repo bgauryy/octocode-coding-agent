@@ -119,7 +119,7 @@ describe("ask counts and the askUser windows", () => {
 		expect(asksNote([])).toBe("");
 		expect(asksLabel([ask(1)])).toBe("1 ask (1 unanswered)");
 		expect(asksLabel([ask(1, 41_000), ask(3, 3_601_000), ask(5)])).toBe("3 asks (2 answered in 40s, 1h, 1 unanswered)");
-		expect(asksNote([ask(1, 41_000)])).toBe("Asks to its parent: 1 ask (1 answered in 40s).");
+		expect(asksNote([ask(1, 41_000)])).toBe("Asks to its coordinator: 1 ask (1 answered in 40s).");
 	});
 
 	it("marks an answer only when an askUser call started after the question and ended before the answer", () => {
@@ -145,8 +145,8 @@ describe("ask counts and the askUser windows", () => {
 		const asks = new Map([["child-0001", [ask(1, 41_000)]]]);
 		expect(describeMembers(members, "main-aaaaaa")).not.toContain("asks");
 		const listing = describeMembers(members, "main-aaaaaa", Date.now(), asks);
-		expect(listing).toContain("  1 ask (1 answered in 40s) to its parent");
-		expect(listing.match(/to its parent/g)).toHaveLength(1);
+		expect(listing).toContain("  1 ask (1 answered in 40s) to its coordinator");
+		expect(listing.match(/to its coordinator/g)).toHaveLength(1);
 	});
 
 	it("names each question still waiting on the parent, with its age and start", () => {
@@ -154,8 +154,8 @@ describe("ask counts and the askUser windows", () => {
 		const open = { ...ask(7), text: "which schema?\nmore detail", askedAt: 0 };
 		delete open.answer;
 		const listing = describeMembers(members, "main-aaaaaa", 90_000, new Map([["child-0001", [open]]]));
-		expect(listing).toContain("  1 ask (1 unanswered) to its parent");
-		expect(listing).toContain("#7 waiting on its parent (1m ago): which schema?");
+		expect(listing).toContain("  1 ask (1 unanswered) to its coordinator");
+		expect(listing).toContain("#7 waiting on its coordinator (1m ago): which schema?");
 		expect(listing).not.toContain("more detail");
 	});
 

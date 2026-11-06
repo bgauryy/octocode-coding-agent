@@ -93,7 +93,8 @@ export interface PublicFetchInit {
  * only, and a host that resolves only to public addresses. The connection goes to the checked addresses, so a DNS
  * answer that changes after the check (rebinding) cannot point it somewhere private. `firstHopPrivate` lets the first
  * request (the URL the user approved as a `net.private` ask) reach a private address; every redirect target is still
- * checked, so a redirect never leads there.
+ * checked, so a redirect never leads there. That first request is resolved once too: it is refused when any address
+ * is a cloud metadata address, and the connection goes to those addresses only.
  */
 export async function publicFetch(
 	url: string,
@@ -108,7 +109,11 @@ export async function publicFetch(
 		const response = await send(
 			target,
 			init,
-			hop === 0 && options.firstHopPrivate ? undefined : await publicAddresses(target, options.lookup),
+			hop === 0 && options.firstHopPrivate
+				? await checkedAddresses(target, options.lookup, (address) =>
+						isMetadataIp(address) ? metadataRefusal(target.host) : undefined,
+					)
+				: await publicAddresses(target, options.lookup),
 		);
 		const location = response.headers.get("location");
 		if (response.status < 300 || response.status >= 400 || location === null) return response;
@@ -131,6 +136,46 @@ async function publicAddresses(url: URL, lookup?: HostLookup): Promise<string[]>
 			`Blocked private or non-public address: ${url.host}. Do not retry it. A redirect is never followed to a private address; a local page the user wants read is a \`web\` URL of its own (the user is asked first), or use \`browser\`.`,
 		);
 	return host.addresses;
+}
+
+/**
+ * One request to `url` without following redirects, for a caller with its own address rule (loopback and private
+ * hosts allowed, say): every address the host resolves to goes through `refuse`, which returns the reason to refuse it
+ * or undefined. The connection then goes to those addresses only, so a DNS answer that changes after the check cannot
+ * point it elsewhere. A host that does not resolve is refused too.
+ */
+export async function pinnedFetch(
+	url: string,
+	init: PublicFetchInit,
+	options: { refuse: (address: string) => string | undefined; lookup?: HostLookup },
+): Promise<Response> {
+	const target = new URL(url);
+	if (!isHttpUrl(target)) throw new Error(`only http(s) URLs are requested, not ${target.protocol}`);
+	return send(target, init, await checkedAddresses(target, options.lookup, options.refuse));
+}
+
+/** Every address `url`'s host is, or resolves to (once), after `refuse` accepted each; throws on the first refusal or when it does not resolve. */
+async function checkedAddresses(
+	url: URL,
+	lookup: HostLookup | undefined,
+	refuse: (address: string) => string | undefined,
+): Promise<string[]> {
+	const hostname = bareHostname(url.hostname);
+	let addresses: string[];
+	if (net.isIP(hostname)) addresses = [hostname];
+	else {
+		try {
+			addresses = (await (lookup ?? defaultLookup)(hostname)).map(({ address }) => address);
+		} catch (error) {
+			throw new Error(`Could not resolve ${hostname}: ${errorMessage(error)}`, { cause: error });
+		}
+		if (addresses.length === 0) throw new Error(`Could not resolve ${hostname}: no addresses`);
+	}
+	for (const address of addresses) {
+		const reason = refuse(address);
+		if (reason) throw new Error(reason);
+	}
+	return addresses;
 }
 
 /** Statuses whose response has no body. */

@@ -33,6 +33,19 @@ export function formatTokens(count: number): string {
 	return count < 999_500 ? short(count / 1_000, "k") : short(count / 1_000_000, "M");
 }
 
+/**
+ * The share of `prompt` tokens read from cache, in percent rounded to `digits` decimals, or undefined without prompt
+ * tokens. Rounding never claims more than happened: below a full read it stays under 100, above none it stays over 0.
+ */
+export function cachedPercent(read: number, prompt: number, digits = 0): number | undefined {
+	if (!(prompt > 0)) return undefined;
+	const step = 10 ** -digits;
+	const rounded = Math.round((read / prompt) * 100 * 10 ** digits) / 10 ** digits;
+	if (read >= prompt) return 100;
+	if (read <= 0) return 0;
+	return Math.min(100 - step, Math.max(step, rounded));
+}
+
 /** Prompt tokens that were not read from cache: uncached input and cache writes. */
 export const newPromptTokens = (usage: Pick<UsageTotals, "input" | "cacheRead">): number =>
 	Math.max(0, usage.input - usage.cacheRead);

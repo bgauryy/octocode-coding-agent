@@ -10,7 +10,6 @@ import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
-import { handleSkillsCommand } from "./skills-command.ts";
 import { unknownCommandWarning } from "./command-suggestion.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
@@ -87,11 +86,11 @@ async function runNativeCommand(host: CommandDispatchHost, name: string, args = 
 	return true;
 }
 
-function showCommandPicker(host: CommandDispatchHost, query = "", skillsOnly = false): void {
-	const commands = host.getSlashCommands(true).filter((command) => !skillsOnly || host.skillCommands.has(command.name));
+function showCommandPicker(host: CommandDispatchHost, query = ""): void {
+	const commands = host.getSlashCommands(true);
 	host.showSelector((done) => {
 		const selector = new CommandSelectorComponent(
-			skillsOnly ? "Skills" : "Commands",
+			"Commands",
 			commands,
 			(name) => {
 				done();
@@ -138,9 +137,6 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "help":
 			showCommandPicker(host, args);
-			return;
-		case "skills":
-			if (!(await handleSkillsCommand(host, args || "list"))) showCommandPicker(host, args, true);
 			return;
 		case "settings":
 			host.showSettingsSelector();

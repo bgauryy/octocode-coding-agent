@@ -45,10 +45,10 @@ export function asksLabel(asks: readonly Ask[] | undefined): string {
 	return `${asks.length} ${asks.length === 1 ? "ask" : "asks"} (${parts.join(", ")})`;
 }
 
-/** The footer line of a run's report: `Asks to its parent: 2 asks (…).` Empty for no asks. */
+/** The footer line of a run's report: `Asks to its coordinator: 2 asks (…).` Empty for no asks. */
 export function asksNote(asks: readonly Ask[] | undefined): string {
 	const label = asksLabel(asks);
-	return label ? `Asks to its parent: ${label}.` : "";
+	return label ? `Asks to its coordinator: ${label}.` : "";
 }
 
 /** Each child of `parent` among `members` with its questions to `parent` since it joined: what `coordinate list` shows a parent. */

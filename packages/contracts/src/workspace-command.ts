@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { TASK_STATES } from "./backlogs.ts";
+import { CLOSE_KINDS, TASK_STATES } from "./backlogs.ts";
 import { StringEnum } from "./schema.ts";
 import { STATES } from "./snapshot.ts";
 
@@ -100,6 +100,20 @@ export const BacklogCommandSchema = Type.Union([
 		},
 		{ additionalProperties: false },
 	),
+	/**
+	 * Puts an item at a place in its column. `after` is the card that ends up directly above it, `before` the card directly
+	 * below; the host ranks it between them (above `after` when only `before` is named). Name at least one.
+	 */
+	Type.Object(
+		{
+			command: Type.Literal("item.rank"),
+			id: Ref("B"),
+			version: Version,
+			before: Type.Optional(Ref("B")),
+			after: Type.Optional(Ref("B")),
+		},
+		{ additionalProperties: false },
+	),
 	/** A state change with no other edit; closing an item still needs its completion record, which the editor collects. */
 	Type.Object(
 		{
@@ -107,6 +121,20 @@ export const BacklogCommandSchema = Type.Union([
 			id: Ref("B"),
 			version: Version,
 			state: StringEnum(STATES),
+			/** Why: the store requires it to reopen a done or closed item. */
+			note: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+		},
+		{ additionalProperties: false },
+	),
+	/** Closes an item instead of deleting it: a kind, the reason in words and, for a duplicate, the original. */
+	Type.Object(
+		{
+			command: Type.Literal("item.close"),
+			id: Ref("B"),
+			version: Version,
+			kind: StringEnum(CLOSE_KINDS),
+			text: Type.String({ minLength: 1, maxLength: 2000 }),
+			of: Type.Optional(Ref("B")),
 		},
 		{ additionalProperties: false },
 	),

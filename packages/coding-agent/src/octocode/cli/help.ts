@@ -42,25 +42,43 @@ export function parseCliHelp(help: string): CliHelp {
 const helps = new Map<string, CliHelp>();
 
 /**
+ * `octocode <path> --help`, run synchronously with a short timeout (completion is synchronous): its exit status and
+ * output, or undefined when the CLI does not resolve.
+ */
+function runHelp(path: readonly string[]): { status: number | null; stdout: string } | undefined {
+	const cli = resolveOctocodeCli();
+	if (!cli) return undefined;
+	const run = spawnProcessSync(cliRuntime(), [cli.bin, ...path, "--help"], {
+		encoding: "utf8",
+		timeout: 5000,
+		env: getShellEnv(),
+		windowsHide: true,
+	});
+	return { status: run.status, stdout: run.stdout ?? "" };
+}
+
+/**
  * The help of `octocode <path>`, read once per path and cached for the process; empty when the CLI does not resolve or
- * its help cannot be read. Run synchronously with a short timeout: completion is synchronous.
+ * its help cannot be read.
  */
 function cliHelp(path: readonly string[]): CliHelp {
 	const key = path.join(" ");
 	const cached = helps.get(key);
 	if (cached) return cached;
-	const cli = resolveOctocodeCli();
-	const help = cli
-		? (spawnProcessSync(cliRuntime(), [cli.bin, ...path, "--help"], {
-				encoding: "utf8",
-				timeout: 5000,
-				env: getShellEnv(),
-				windowsHide: true,
-			}).stdout ?? "")
-		: "";
-	const parsed = parseCliHelp(help);
+	const parsed = parseCliHelp(runHelp(path)?.stdout ?? "");
 	helps.set(key, parsed);
 	return parsed;
+}
+
+/**
+ * Whether the CLI has a top-level command `word`: its help lists it, or the CLI accepts it unlisted (`help`), asked of
+ * the CLI itself (`octocode <word> --help` exits 0). True when the help cannot be read: with no list to judge by, the
+ * word goes to the CLI.
+ */
+export function isCliCommand(word: string): boolean {
+	const { commands } = cliHelp([]);
+	if (commands.length === 0 || commands.some(([name]) => name === word)) return true;
+	return runHelp([word])?.status === 0;
 }
 
 /**

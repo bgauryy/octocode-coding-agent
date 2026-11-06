@@ -4,10 +4,9 @@ import { describe, expect, it } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { ROLE_PROMPT_FILE_ENV, readRolePrompt, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
-import { teamTask } from "../../src/octocode/instructions/task.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
+import { publishRoles, RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
 import { machineSubagents, maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
@@ -15,7 +14,7 @@ import { FAILED_NEXT, failedNext } from "../../src/octocode/subagents/report-tex
 import { assistantText } from "../../src/octocode/subagents/events.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { taskSkillPlan } from "../../src/octocode/subagents/task-skills.ts";
-import { mcpFloor } from "../../src/octocode/subagents/core-tools.ts";
+import { localResearchTools, mcpFloor } from "../../src/octocode/subagents/core-tools.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { askSpawn, loadProfiles, parseProfile, profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -24,6 +23,8 @@ import { tmp } from "./helpers.ts";
 
 /** A child's saved session, as `childSession` names it. */
 const SESSION = { dir: "/s/session", id: "inky-kraken" };
+
+useResearchRoles();
 
 describe("legacy direct child skill paths", () => {
 	it("retains the direct launch path option independently of native resource snapshots", () => {
@@ -186,13 +187,7 @@ describe("profile permissions", () => {
 });
 
 describe("subagents", () => {
-	it("collaborate mode: lists teammates in the task", () => {
-		expect(teamTask("Fix A", "main-1", [["researcher-2", "Trace B"]])).toBe(
-			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B",
-		);
-		expect(teamTask("Fix A", "main-1", [])).toMatch(
-			/none yet; `agent` type `coordinate` shows teammates that start later/,
-		);
+	it("names the session a child works for, and keeps an inherited value out", () => {
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
 			subagentProcessEnv(undefined, { OCTOCODE_PARENT_SESSION: "old" }, { id: "a-1", parentSession: "s-1" })
@@ -229,7 +224,7 @@ describe("subagents", () => {
 		// Parent/child and teammate communication share one policy: a child messages its parent for a decision, and its
 		// parent relays anything outside its session tree.
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user; ask whoever can settle it, never guess or loop \(your parent relays beyond your session tree\):\n\n```mermaid/,
+			/You cannot ask the user; ask whoever can settle it, never guess or loop \(your coordinator relays beyond your tree\):\n\n```mermaid/,
 		);
 	});
 
@@ -310,7 +305,7 @@ describe("subagents", () => {
 			"--session-id",
 			SESSION.id,
 			"--tools",
-			["bash", "file", "agent", "steps", "timer", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS]
+			["bash", "file", "agent", "steps", "timer", "archive", "skill", "mcp", ...localResearchTools()]
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",
@@ -366,13 +361,31 @@ describe("subagents", () => {
 		expect(taskSkillPlan(profiles.get("implementer"), ["octocode-roast"]).names).toEqual(["octocode-roast"]);
 	});
 
-	it("relaxes the local research floor only for an allowlist that names Octocode server tools", () => {
+	it("derives the local research floor from tool roles, narrowed only for an allowlist naming the research server", () => {
+		publishRoles([
+			{
+				name: RESEARCH.server,
+				config: {
+					command: "research-server",
+					roles: {
+						reader: ["read_file"],
+						search: ["search_code", "search_ast"],
+						readOnly: ["list_files", "fetch_remote"],
+					},
+				},
+			},
+		]);
 		const names = (tools: string | undefined) => (tools ?? "").split(",");
-		const curated = names(parseProfile("c", "---\ntools: mcp__octocode__clasify\n---\nTask").tools);
-		expect(curated).toEqual(expect.arrayContaining(["mcp__octocode__localFetch", "mcp__octocode__localSearch"]));
-		expect(curated).not.toContain("mcp__octocode__astSearch");
+		const curated = names(parseProfile("c", "---\ntools: mcp__research__list_files\n---\nTask").tools);
+		expect(curated).toEqual(expect.arrayContaining([RESEARCH.reader, RESEARCH.search]));
+		expect(curated).not.toContain("mcp__research__search_ast");
 		const other = names(parseProfile("o", "---\ntools: mcp__example__lookup\n---\nTask").tools);
-		expect(other).toEqual(expect.arrayContaining(LOCAL_RESEARCH_TOOLS));
+		expect(other).toEqual(expect.arrayContaining([RESEARCH.reader, RESEARCH.search, "mcp__research__search_ast"]));
+		// A tool with only a read-only role, or none, is not local research.
+		expect(other).not.toContain(RESEARCH.readOnly);
+		expect(other).not.toContain(RESEARCH.other);
+		publishRoles([]);
+		expect(localResearchTools()).toEqual([]);
 	});
 
 	it("gives the browser role its server and the specialist MCP floor without naming a research server's tools", () => {
@@ -525,10 +538,6 @@ describe("subagents", () => {
 		const agent = tools.find((tool) => tool.name === "agent")!;
 		expect(agent.parameters.properties.task?.maxLength).toBeUndefined();
 		expect(agent.parameters.properties).toHaveProperty("isolate");
-		// The parameter owns the collaborate guidance; the prompt does not repeat it.
-		expect(agent.parameters.properties.collaborate?.description).toMatch(
-			/Adds teammate context.*does not enable messaging or grant authority/,
-		);
 		expect(agent.parameters.properties.model?.description).toMatch(
 			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Default: the profile's.*no profile: medium; thinking medium/,
 		);

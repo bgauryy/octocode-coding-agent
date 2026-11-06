@@ -413,12 +413,10 @@ describe("collaboration prompt", () => {
 			{ view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
 			fakePermission(),
 		);
-		expect(tools[0].parameters.properties.collaborate?.description).toMatch(
-			/Adds teammate context.*does not enable messaging or grant authority/,
-		);
+		expect(tools[0].parameters.properties).not.toHaveProperty("collaborate");
 		// A child names its parent generically: its own id and parent arrive in its task.
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
-			/your parent[\s\S]*agent[\s\S]*message/,
+			/your coordinator[\s\S]*agent[\s\S]*message/,
 		);
 	});
 });
@@ -493,7 +491,7 @@ describe("Team", () => {
 			vi.advanceTimersByTime(1_000);
 			expect(childLog).toHaveLength(1);
 			const content = childLog[0].message.content;
-			expect(content).toContain(`from your parent agent ${parent.id}`);
+			expect(content).toContain(`from your coordinator ${parent.id}`);
 			expect(content).toContain("also check tests");
 			expect(content).toContain(`replyTo ${(asked as { id: number }).id}`);
 			expect(childLog[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });

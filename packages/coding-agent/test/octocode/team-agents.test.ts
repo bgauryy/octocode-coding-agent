@@ -224,7 +224,7 @@ describe("what the team shows about an agent", () => {
 				{ ...base, from: "inky-kraken", sender: { role: "reviewer", goal: "audit auth token refresh" } },
 				{ parentId: "inky-kraken" },
 			),
-		).toContain("from your parent agent inky-kraken (reviewer: audit auth token refresh) at ");
+		).toContain("from your coordinator inky-kraken (reviewer: audit auth token refresh) at ");
 		expect(messageText({ ...base, from: "inky-kraken", sender: { role: "reviewer" } })).toContain(
 			"from agent inky-kraken (reviewer) at ",
 		);

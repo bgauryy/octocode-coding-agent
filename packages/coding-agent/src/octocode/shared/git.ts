@@ -10,6 +10,12 @@ const execFileAsync = promisify(execFile);
 /** Config that keeps the repository's hooks from running in a git command Octocode starts on its own. */
 export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
 
+/**
+ * Every git command Octocode starts runs with the repository's `core.fsmonitor` hook off. A checkout the agent or a child
+ * wrote can configure that command, and `status`, `diff`, `ls-files --modified` and `add` would run it outside any sandbox.
+ */
+const NO_FSMONITOR: readonly string[] = ["-c", "core.fsmonitor=false"];
+
 // Project operations must exclude private runtime files even if the repository overrides ignore rules.
 const stateGlob = `**/${WORKSPACE_STATE.split(path.sep).join("/")}/**`;
 export const WORKSPACE_STATE_PATHSPEC = `:(top,glob,icase)${stateGlob}`;
@@ -61,12 +67,12 @@ export class GitError extends Error {
 }
 
 /**
- * Runs `git args` in `cwd` with no terminal prompt (`GIT_TERMINAL_PROMPT=0`) and a 16 MB output buffer. Resolves to
+ * Runs `git args` in `cwd` with no terminal prompt (`GIT_TERMINAL_PROMPT=0`), the fsmonitor hook off and a 16 MB output buffer. Resolves to
  * stdout without trailing whitespace; rejects with a `GitError`.
  */
 export async function git(cwd: string, args: readonly string[], options: GitOptions = {}): Promise<string> {
 	try {
-		const { stdout } = await execFileAsync("git", [...args], {
+		const { stdout } = await execFileAsync("git", [...NO_FSMONITOR, ...args], {
 			cwd,
 			maxBuffer: options.maxBuffer ?? DEFAULT_MAX_BUFFER,
 			env: { ...process.env, ...options.env, GIT_TERMINAL_PROMPT: "0" },

@@ -149,7 +149,7 @@ export function createMemoryActions(
 					case "set":
 					case "delete": {
 						if (options.isSubagent)
-							throw new Error("Memory is read-only in a subagent: report it to your parent instead.");
+							throw new Error("Memory is read-only in a subagent: report it to your coordinator instead.");
 						const current = id === undefined ? undefined : store.get(id);
 						if (params.op === "delete") {
 							if (current) {

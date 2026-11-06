@@ -33,6 +33,7 @@ import { agentState, headerOverride } from "./render-state.ts";
 
 import type { RunDetails, ResultDetails } from "./run-types.ts";
 import { bodyLines, clip, plural } from "../shared/render/text.ts";
+import { itemTitle, withItemTitles, withItemTitlesIn } from "../shared/render/item-titles.ts";
 import type { RenderContext } from "../shared/render/types.ts";
 import { ReportView } from "../shared/render/report.ts";
 import { displayReport } from "./report-display.ts";
@@ -238,7 +239,7 @@ export function renderAgentResult(
 	const details = result.details as RunDetails | undefined;
 	const raw = contentText(result.content);
 	const fenced = fencedParts(raw);
-	const body = fenced ? [fenced.body, fenced.footer].filter(Boolean).join("\n\n") : raw;
+	const body = fenced ? [fenced.body, withItemTitles(fenced.footer, itemTitle)].filter(Boolean).join("\n\n") : raw;
 	const task = argsOf(context).task;
 	if (context.isError || !details) {
 		const [head = "", ...rest] = raw.split("\n");
@@ -347,7 +348,8 @@ function reportBlock(
 export const renderAgentMessage: MessageRenderer = (message, { expanded, outputPad }, theme) => {
 	const details = (message.details ?? {}) as Partial<ResultDetails>;
 	const presentation = presentAgentReport(message.content, details);
-	const report = presentation.body;
+	const footer = fencedParts(contentText(message.content).split("\n").slice(1).join("\n"))?.footer ?? "";
+	const report = withItemTitlesIn(presentation.body, footer, itemTitle);
 	const stopped = details.status === "stopped";
 	// A stop (asked for or not) is an interruption, not a failure: drawn `◼` in the warning colour.
 	const context = {

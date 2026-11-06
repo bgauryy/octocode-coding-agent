@@ -5,7 +5,7 @@ import { type InteractiveHarness, type Outcome, startInteractive } from "./e2e-c
 /**
  * Every slash command the terminal offers (built-in, native, extension and skill commands, read from the live
  * registry), submitted through the editor like a user would, against a real session with the native extension and the
- * Octocode MCP server. Only external boundaries are replaced: the scripted model, the browser opener and process exit.
+ * Octocode MCP server. Only external boundaries are replaced: the scripted model, the browser opener (the default-browser opener and the app window) and process exit.
  * A command without a case below fails the coverage check, so a new command needs an observable assertion here.
  */
 const opened = vi.hoisted(() => [] as string[]);
@@ -13,6 +13,14 @@ vi.mock("../../src/octocode/shared/open.ts", () => ({
 	openFile: async (file: string) => {
 		opened.push(file);
 	},
+}));
+// `/web` opens an app window by default: it is the external boundary, so no run can start a real browser.
+vi.mock("../../src/octocode/shared/browser-app.ts", async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	createAppWindow: () => ({
+		open: async (url: string) => void opened.push(url),
+		close: async () => undefined,
+	}),
 }));
 
 interface Run extends Outcome {
@@ -125,7 +133,6 @@ const CASES: Record<string, Case> = {
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),
 	},
-	skills: { check: asks(/SKILL\.md/) },
 	bug: { check: asks(/Report a bug/) },
 	// Guarded: nothing to act on yet, or a confirmation the user declines.
 	share: {
@@ -232,11 +239,10 @@ describe("every slash command through the terminal editor", () => {
 		expect(bare.requests).toBe(0);
 		const help = await run("octocode", "--help");
 		expect(help.text).toMatch(/Native Octocode research tools/);
-		// `login` is not rewritten to `auth login`: the CLI answers for itself.
+		// `login` is not rewritten to `auth login`, and it is no CLI command: the whole line goes to the agent as a prompt.
 		const login = await run("octocode", "login");
 		expect(login.settled).toBe(true);
-		expect(login.text).toMatch(/login/);
-		expect(login.text).not.toMatch(/needs an interactive terminal/);
-		expect(login.requests).toBe(0);
+		expect(login.text).not.toMatch(/unrecognized subcommand|needs an interactive terminal/);
+		expect(login.requests).toBe(1);
 	});
 });

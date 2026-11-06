@@ -7,6 +7,7 @@ import { AgentSession } from "../agent-session.ts";
 import type { AgentSessionServices } from "../agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "../auth-guidance.ts";
 import { CacheWarmer } from "../cache-warmer.ts";
+import { forkPromptCacheKey } from "../session-manager/cache-key.ts";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.ts";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "../features/index.ts";
 import { findInitialModel } from "../model-resolver.ts";
@@ -183,6 +184,14 @@ export async function createSessionFromServices(
 		() => settingsManager.getCacheWarmingMode(),
 		async (event) => extensionRunnerRef.current?.emitCacheWarmingDecision(event) ?? event.action,
 	);
+	// Resolved once per session id: walking the fork chain reads parent headers from disk.
+	let forkKey: { sessionId: string; key: string | undefined } | undefined;
+	const sessionPromptCacheKey = (requestSessionId: string | undefined) => {
+		if (requestSessionId === undefined || requestSessionId !== sessionManager.getSessionId()) return undefined;
+		if (forkKey?.sessionId !== requestSessionId)
+			forkKey = { sessionId: requestSessionId, key: forkPromptCacheKey(sessionManager.getHeader()) };
+		return forkKey.key;
+	};
 	const buildRequestOptions = (
 		requestModel: Model<any>,
 		options: ModelsSimpleStreamOptions = {},
@@ -194,6 +203,7 @@ export async function createSessionFromServices(
 			modelRuntime.getCachePolicy(physical, options, settingsManager.getCachePreferenceLayers()).options;
 		return {
 			...options,
+			promptCacheKey: options.promptCacheKey ?? sessionPromptCacheKey(options.sessionId),
 			// A virtual model's request is resolved for the model it routes to.
 			...(isVirtualModel(requestModel) ? { resolveCache } : resolveCache(requestModel)),
 			timeoutMs: options.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs,

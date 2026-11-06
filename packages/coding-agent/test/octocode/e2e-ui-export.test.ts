@@ -67,6 +67,8 @@ describe("/export", () => {
 		await ask("hello", "fine");
 		await command(`/export ${path.join(t.cwd, "app.ts", "x.jsonl")}`);
 		await t.until(shows(/Failed to export session/), "error shown");
+		expect(await t.text()).toMatch(/Failed to export session/);
+		expect(await t.text()).not.toContain("Session exported to:");
 	});
 });
 
@@ -119,5 +121,8 @@ describe("/export then /import", () => {
 		await t.until(shows("Replace current session"), "import confirmation");
 		t.press(KEY.enter);
 		await t.until(shows(/Failed to import session/), "error shown");
+		expect(await t.text()).toMatch(/Failed to import session/);
+		expect(await t.text()).not.toContain("Session imported from:");
+		expect(conversation()).toEqual([]);
 	});
 });

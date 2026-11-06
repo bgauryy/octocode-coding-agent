@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type http from "node:http";
 import type { Reply } from "./http-util.ts";
+import { ITEM_REF } from "../shared/item-ref.ts";
 
 /**
  * What `/web` opens instead of the launch token. A URL given to `xdg-open` or a browser sits in a process argument, which
@@ -13,7 +14,7 @@ import type { Reply } from "./http-util.ts";
 
 /** The route that hands out a code (launch capability only, under `/api/admin/`). */
 export const LAUNCH_CODE_ROUTE = "/api/admin/launch-code";
-/** The page's one-time door: `/open/<code>?s=<session>&view=<view>`; takes no bearer token. */
+/** The page's one-time door: `/open/<code>?s=<session>&view=<view>&item=<B12>`; takes no bearer token. */
 export const LAUNCH_DOOR_PREFIX = "/open/";
 const CODE_LIFETIME_MS = 5 * 60_000;
 const VIEW = /^[a-z]{1,32}$/;
@@ -56,10 +57,12 @@ export function openDoor(
 		return reply(401, { error: "This link was already used or has expired. Run /web again." });
 	const session = url.searchParams.get("s");
 	const view = url.searchParams.get("view");
+	const item = url.searchParams.get("item");
 	const query = session && SESSION.test(session) ? `?s=${session}` : "";
 	const fragment = new URLSearchParams({
 		access: launchToken,
 		...(view && VIEW.test(view) ? { view } : {}),
+		...(item && ITEM_REF.test(item) ? { item } : {}),
 	});
 	res.writeHead(303, {
 		location: `/${query}#${fragment.toString()}`,

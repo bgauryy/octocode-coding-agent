@@ -42,21 +42,22 @@ Use relative paths from the skill directory when referring to bundled files. Oct
 
 ## Find and control skills
 
-Run `/skills` (or `/skills list`) to inspect all discovered skills, including disabled ones: it shows load state, model/user invocation eligibility, source, and file path. Select a row to insert a loaded skill's command, see details, or change its state. `/skills <search>` keeps the quick picker for loaded, user-invocable skills.
+`/harness` lists and switches skills with everything else Octocode loads. Each skill row shows its on/off state, where it comes from and its file; the list holds skills from the harnesses that are on, so a skill in a switched-off harness's folder (Claude Code, Codex and Cursor are off by default) has no row until you switch that harness on.
 
-| Command                          | Effect                                                             |
-| -------------------------------- | ------------------------------------------------------------------ |
-| `/skills info <name-or-path>`    | Show source, state, and exact file                                 |
-| `/skills disable <name-or-path>` | Save an exclusion in user or trusted project settings, then reload |
-| `/skills enable <name-or-path>`  | Save an inclusion in the same scope, then reload                   |
+| Command                                     | Effect                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------ |
+| `/harness`                                  | Open the switch list; Skills is one of its sections                |
+| `/harness list skills`                      | Print the skill rows with their IDs                                |
+| `/harness disable <id-or-name> [--project]` | Save an exclusion in user or trusted project settings, then reload |
+| `/harness enable <id-or-name> [--project]`  | Save an inclusion in the same scope, then reload                   |
 
-Use the exact path when names collide. A session-only or synthetic skill cannot be persisted with these commands. The commands change Octocode settings only; a shared skill file may have a different enable state in Claude, Codex, or OpenCode. `/skills list` may show an enabled skill as “not loaded” when its file is invalid, another skill won the same-name collision, or automatic skill loading is off; inspect startup diagnostics before assuming it reached the model. `octocode config` remains the broader terminal manager for skills and other resources.
+Use the row ID when names collide. Switching changes Octocode settings only; a shared skill file may have a different enable state in Claude, Codex, or OpenCode. Pi's global skills are listed read-only, because Pi's own settings decide them; `/harness disable pi` switches every Pi skill off. A session-only skill and the core skills that ship with Octocode have no row. Run `/help <search>` to find a loaded skill's command.
 
 ## Understand how skills load
 
 At startup, Octocode scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-The catalog lists every skill a model may use, each with its full description: there is no cut and no skill dropped from the list, however many skills are loaded. A size budget only informs you: when the rendered catalog passes 1% of the model's context window in characters (window tokens × 4 × 0.01; 8,000 characters on 200,000 tokens, which also applies when the window is unknown), the loader diagnostic `Skill listing over budget: N skills, X chars > Y budget` names the count, size and budget, and suggests rewriting long descriptions with `octocode context check` and `octocode context apply` or disabling skills with `/skills`. The warning never changes the prompt. The catalog's first line tells the model that several skills can apply and to load each one that matches, with one `skill` tool call per name. The tool returns a skill's `SKILL.md` whole, with its directory. A description over the 1,024-character Agent Skills limit still draws a loader warning, and `octocode context check` still rejects a stored rewrite over 1,024 characters, but the prompt shows the description as written. The catalog still passes through the [context-optimization stage](#optimized-descriptions): a stored rewrite replaces the description, and the catalog shows it as it is stored.
+The catalog lists every skill a model may use, each with its full description: there is no cut and no skill dropped from the list, however many skills are loaded. A size budget only informs you: when the rendered catalog passes 1% of the model's context window in characters (window tokens × 4 × 0.01; 8,000 characters on 200,000 tokens, which also applies when the window is unknown), the loader diagnostic `Skill listing over budget: N skills, X chars > Y budget` names the count, size and budget, and suggests rewriting long descriptions with `octocode context check` and `octocode context apply` or switching skills or harnesses off in `/harness`. The warning never changes the prompt. The catalog's first line tells the model that several skills can apply and to load each one that matches, with one `skill` tool call per name. The tool returns a skill's `SKILL.md` whole, with its directory. A description over the 1,024-character Agent Skills limit still draws a loader warning, and `octocode context check` still rejects a stored rewrite over 1,024 characters, but the prompt shows the description as written. The catalog still passes through the [context-optimization stage](#optimized-descriptions): a stored rewrite replaces the description, and the catalog shows it as it is stored.
 
 ### Optimized descriptions
 
@@ -87,7 +88,7 @@ The automatically managed Octocode MCP server allows reads inside each loaded sk
 
 Extension-discovered skills are included before the first model request; changed skill roots reconnect the affected server. This does not grant access to unrelated sibling directories or symlinks that escape the allowed roots. Configure explicit allowed paths when your server needs a different workspace or access policy.
 
-Use `/skills` in the terminal to find a loaded skill by name or description. Selecting it inserts its command in the editor. A skill named `pdf-tools` is available as `/pdf-tools` when that name does not conflict with a core command, an extension command, a prompt template, or another skill. `/skill:pdf-tools` remains a supported fallback.
+Use `/help <search>` in the terminal to find a loaded skill by name or description. Selecting it inserts its command in the editor. A skill named `pdf-tools` is available as `/pdf-tools` when that name does not conflict with a core command, an extension command, a prompt template, or another skill. `/skill:pdf-tools` remains a supported fallback.
 
 A skill whose name conflicts with a command appears in discovery with the `skill:` prefix. When two discovered skills share a name, the first one found loads and the other is skipped with a collision warning (see [Write portable frontmatter](#write-portable-frontmatter)).
 
@@ -99,7 +100,7 @@ Native skill arguments after the command are appended to the loaded instructions
 
 Skills discovered under `.claude/skills` and configured Claude plugin skills use Claude’s zero-based `$0` / `$ARGUMENTS[0]`, raw `$ARGUMENTS`, and named placeholders from `arguments`. Inserted values are not expanded recursively. A single backslash escapes a recognized argument placeholder; missing indexed values stay literal. Arguments are appended with `ARGUMENTS:` only when no placeholder consumes them. This expansion happens at the user-command boundary; arbitrary model file reads do not apply it. After inserting arguments, explicit invocations replace `${CLAUDE_SESSION_ID}`, `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PROJECT_DIR}` with the current session, skill directory and the same project root used by hooks. Configured Claude plugin skills also replace `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` using the same local plugin identity as hooks. Unknown or unavailable variables stay literal, and inserted path values are not recursively expanded. `${CLAUDE_EFFORT}`, permission-rule substitution and dynamic execution remain compatibility gaps.
 
-Set `disable-model-invocation: true` to omit a skill from the model’s advertised skill list. This does not prevent arbitrary file reads. Set `user-invocable: false` to hide its user commands and prevent direct or qualified command expansion while retaining model discovery. The `enableSkillCommands` setting controls whether skill commands appear in editor autocomplete; `/skills` and `/help` can still find them, and manually entered direct and `/skill:name` commands still work. RPC `get_commands` also retains loaded skills when interactive suggestions are disabled.
+Set `disable-model-invocation: true` to omit a skill from the model’s advertised skill list. This does not prevent arbitrary file reads. Set `user-invocable: false` to hide its user commands and prevent direct or qualified command expansion while retaining model discovery. The `enableSkillCommands` setting controls whether skill commands appear in editor autocomplete; `/help` can still find them, and manually entered direct and `/skill:name` commands still work. RPC `get_commands` also retains loaded skills when interactive suggestions are disabled.
 
 ## Select skills with Codex mentions
 
@@ -131,7 +132,7 @@ Inheritance supplies instructions and reference roots. It does not activate exec
 
 ## Add it to Octocode
 
-Every loaded skill belongs to one of three groups, which the agent's skill list (`<core_skills>`, `<octocode_skills>` and `<external_skills>` in that order), `/skills` and the startup and `/harness config` source labels (`core`, `octocode`, and the external folder's own label) keep apart:
+Every loaded skill belongs to one of three groups, which the agent's skill list (`<core_skills>`, `<octocode_skills>` and `<external_skills>` in that order) and the startup and `/harness config` source labels (`core`, `octocode`, and the external folder's own label) keep apart:
 
 | Group    | What it is                                                               | Where it comes from                                                               |
 | -------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
@@ -182,7 +183,7 @@ The application also ships its core skills (in `octocode/native-skills/` of the 
 
 Extra user skill discovery honors `CLAUDE_CONFIG_DIR/skills` and `CODEX_HOME/skills` when those environment variables are set. Claude skills retain their description fallback, argument syntax and boolean parsing under a custom directory, including when discovery filters out the `synced/` subtree. Codex canonicalizes its selected home and requires it to exist. Missing or invalid selected homes do not fall back to another user profile; project roots and their trust checks are unchanged. These settings select local discovery paths, not vendor credentials or cloud connections.
 
-Octocode accepts some standalone Markdown skills, but a directory containing `SKILL.md` is the portable form and should be preferred. A standalone file without a `name` is named after the file, so `deploy.md` becomes `deploy`. In a Claude skills folder, standalone Markdown needs a `description` in frontmatter: a `README.md` is never a skill candidate, so `/skills` does not list it. See Settings and [Octocode Packages](packages.md) for additional locations.
+Octocode accepts some standalone Markdown skills, but a directory containing `SKILL.md` is the portable form and should be preferred. A standalone file without a `name` is named after the file, so `deploy.md` becomes `deploy`. In a Claude skills folder, standalone Markdown needs a `description` in frontmatter: a `README.md` is never a skill candidate, so `/harness` does not list it. See Settings and [Octocode Packages](packages.md) for additional locations.
 
 Project skills can instruct the model to run scripts or modify files. Review unfamiliar skills and their supporting files before granting project trust.
 
@@ -226,7 +227,7 @@ The parser is compared with retained fixtures from the pinned Codex Rust impleme
 
 ## Validate and share a skill
 
-Run Octocode from a location where the skill is discoverable, then inspect the startup diagnostics and `/skills` picker. Run `/reload` after editing a skill during an active session.
+Run Octocode from a location where the skill is discoverable, then inspect the startup diagnostics and `/harness list skills`. Run `/reload` after editing a skill during an active session.
 
 Discovery does not prove that the model uses a skill. Test a realistic request without naming the skill, then inspect the tool calls and the answer:
 

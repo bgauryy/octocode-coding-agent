@@ -6,24 +6,28 @@ import { tmp } from "./helpers.ts";
 
 describe("bash guard command substitutions", () => {
 	it("blocks substitutions in unquoted heredoc bodies even when nothing pipes them to a shell", () => {
-		for (const command of [
-			"cat <<EOF\n$(rm -rf /)\nEOF",
-			"cat <<EOF\nhello `rm -rf ~` world\nEOF",
-			"cat > notes.md <<EOF\nline\n$(echo $(mkfs.ext4 /dev/sda))\nEOF",
-			"cat <<-EOF\n\t$(shutdown -h now)\n\tEOF",
-			"cat <<EOF\n$(cat <<INNER\n$(reboot)\nINNER\n)\nEOF",
-			"cat <<A <<B\nfirst\nA\n$(rm -rf /)\nB",
-			"cat <<EOF\n$(rm -rf /)",
+		for (const [command, reason] of [
+			["cat <<EOF\n$(rm -rf /)\nEOF", /^recursive removal of \/$/],
+			["cat <<EOF\nhello `rm -rf ~` world\nEOF", /^recursive removal of ~ /],
+			["cat > notes.md <<EOF\nline\n$(echo $(mkfs.ext4 /dev/sda))\nEOF", /^`mkfs\.ext4`$/],
+			["cat <<-EOF\n\t$(shutdown -h now)\n\tEOF", /^`shutdown`$/],
+			["cat <<EOF\n$(cat <<INNER\n$(reboot)\nINNER\n)\nEOF", /^`reboot`$/],
+			["cat <<A <<B\nfirst\nA\n$(rm -rf /)\nB", /^recursive removal of \/$/],
+			["cat <<EOF\n$(rm -rf /)", /^recursive removal of \/$/],
 			// Double quotes inside a heredoc body are literal; the substitution still runs.
-			'cat <<EOF\n"$(rm -rf /)"\nEOF',
-		]) {
-			expect(catastrophicCommand(command), command).toBeDefined();
+			['cat <<EOF\n"$(rm -rf /)"\nEOF', /^recursive removal of \/$/],
+		] as const) {
+			expect(catastrophicCommand(command), command).toMatch(reason);
 		}
 	});
 
 	it("blocks substitutions inside double-quoted strings", () => {
-		for (const command of ['echo "$(rm -rf ~)"', 'echo "x `rm -rf /` y"', 'git commit -m "$(shutdown -h now)"']) {
-			expect(catastrophicCommand(command), command).toBeDefined();
+		for (const [command, reason] of [
+			['echo "$(rm -rf ~)"', /^recursive removal of ~ /],
+			['echo "x `rm -rf /` y"', /^recursive removal of \/$/],
+			['git commit -m "$(shutdown -h now)"', /^`shutdown`$/],
+		] as const) {
+			expect(catastrophicCommand(command), command).toMatch(reason);
 		}
 	});
 

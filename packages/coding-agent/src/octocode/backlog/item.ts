@@ -1,6 +1,7 @@
 import {
 	type ItemType,
 	type BacklogRef,
+	type Closed,
 	type Completion,
 	PRIORITIES,
 	type WorkLink,
@@ -39,6 +40,8 @@ export interface Item {
 	plan: string;
 	state: State;
 	priority: number;
+	/** Manual position in its column (ascending); set when a person orders cards by hand. */
+	rank?: number;
 	tags: string[];
 	assignee?: string;
 	createdBy: string;
@@ -48,6 +51,8 @@ export interface Item {
 	/** When the item was last claimed (moved to ongoing, or taken over); kept when it is done, cleared when released. */
 	startedAt?: number;
 	doneAt?: number;
+	/** Set when the item was closed instead of completed; it is `done` underneath and has no completion. */
+	closed?: Closed;
 	/** The item this one came from, by number (`B<from>`). */
 	from?: number;
 	version: number;
@@ -57,16 +62,25 @@ export interface Item {
 export interface Actor {
 	id: string;
 	kind?: "human" | "agent";
+	/** Where the change comes from, recorded in the audit with the actor. */
+	surface?: Surface;
 	/** Set for a subagent: its parent's sessions, the only assignees whose items it may update (it never claims). */
 	owners?: ReadonlySet<string>;
 	/** Set for a subagent its parent started for one item (`B12`): the only item it may update; it may still propose. */
 	item?: string;
 }
 
-/** Who the agent database records as making a change: `actor`, else the user; without a kind, the user is human. */
-export const auditActor = (actor: Actor | undefined): { id: string; kind: "human" | "agent" } => ({
+/** Where a backlog change came from: the agent's tool, the web board or its HTTP API, or the /backlog command. */
+export type Surface = "tool" | "web" | "command";
+
+/**
+ * Who the agent database records as making a change, and through what: `actor`, else the user; without a kind, the user
+ * is human. The audit trigger files this JSON as the row's actor, so every row carries id, kind and surface.
+ */
+export const auditActor = (actor: Actor | undefined): { id: string; kind: "human" | "agent"; surface?: Surface } => ({
 	id: actor?.id ?? USER_AUTHOR,
 	kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent"),
+	...(actor?.surface ? { surface: actor.surface } : {}),
 });
 
 export class BacklogError extends Error {

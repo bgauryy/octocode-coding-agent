@@ -38,6 +38,9 @@ export class ChildLeases {
 	/** Runs holding reservations now, by child id, with the row their parent wrote. */
 	private readonly rows = new Map<string, Member>();
 
+	/** Starts that wait for a child to release (`released`): each is called after any release and checks again. */
+	private readonly releaseWaiters = new Set<() => void>();
+
 	private readonly host: () => ReservationHost;
 	constructor(host: () => ReservationHost) {
 		this.host = host;
@@ -50,6 +53,42 @@ export class ChildLeases {
 		const db = host.existing();
 		const team = db ? requests.flatMap((request) => teamConflict(db, request)) : [];
 		return [...team.map(asGiven), ...peerConflicts(host, requests).map(asGiven)];
+	}
+
+	/**
+	 * The children of this session whose running reservations hold everything in `conflicts`, when they alone do: a start
+	 * blocked by them only can wait for their release. Empty when something else (another session, a lock of the parent or
+	 * the user, an agent outside the team) also blocks it, and when nothing does.
+	 */
+	siblingsHolding(conflicts: readonly LeaseConflict[]): string[] {
+		if (!conflicts.every((conflict) => this.rows.has(conflict.heldBy.owner))) return [];
+		return [...new Set(conflicts.map((conflict) => conflict.heldBy.owner))];
+	}
+
+	/**
+	 * Resolves when none of the children `ids` holds a reservation of this process (at once when none does). Rejects when
+	 * `signal` aborts. Holds nothing itself: whoever waits is no part of a deadlock.
+	 */
+	async released(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+		while (ids.some((id) => this.rows.has(id))) {
+			signal?.throwIfAborted();
+			await new Promise<void>((resolve, reject) => {
+				const stop = () => {
+					this.releaseWaiters.delete(wake);
+					signal?.removeEventListener("abort", cancel);
+				};
+				const wake = () => {
+					stop();
+					resolve();
+				};
+				const cancel = () => {
+					stop();
+					reject(new Error("Cancelled while waiting for a running child's reservations."));
+				};
+				this.releaseWaiters.add(wake);
+				signal?.addEventListener("abort", cancel, { once: true });
+			});
+		}
 	}
 
 	/** Reserves `paths` for `child`, all or none; the paths it holds, as given. Throws when the database is unusable. */
@@ -85,6 +124,8 @@ export class ChildLeases {
 			if (db && !db.remove(id, Date.now(), row)) db.unlock(id);
 		} catch {
 			// They lapse.
+		} finally {
+			for (const wake of this.releaseWaiters) wake();
 		}
 	}
 

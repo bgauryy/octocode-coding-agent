@@ -7,9 +7,11 @@ import type { AgentControl } from "./subagents/tool.ts";
 import type { Team } from "./team/session.ts";
 import { stopRowTimers } from "./shared/render/rows.ts";
 import { interactive } from "./shared/interactive.ts";
-import { MINUTE_MS, settleWithin } from "./shared/util.ts";
+import { contentText, MINUTE_MS, settleWithin } from "./shared/util.ts";
+import { reportStatus } from "./subagents/report.ts";
 import { holdFailedRun } from "./held-failure.ts";
 import { registerWakeRetry } from "./wake-retry.ts";
+import { callSmallModel, smallModelLabel } from "./subagents/small-call.ts";
 import { registerTimers } from "./timer/register.ts";
 import { CHILD_JOB_HOLD_MS, holdForOwnJobs, JOB_HOLD_TYPE } from "./files/bash/child-hold.ts";
 import type { BashJob } from "./files/bash-jobs/types.ts";
@@ -36,6 +38,7 @@ export function registerNativeSessionLifecycle(
 	const timers = registerTimers(api, {
 		reservation: (absolute, display) => team.reservation(absolute, display),
 		agent: () => team.id,
+		small: { call: callSmallModel, label: smallModelLabel },
 	});
 	/** Whether this run already held for a report after a failure (`held-failure.ts`). */
 	const held = { value: false };
@@ -68,8 +71,11 @@ export function registerNativeSessionLifecycle(
 			try {
 				const notify = (text: string) =>
 					void api.sendMessage({ customType: JOB_HOLD_TYPE, content: text, display: true }, { triggerTurn: false });
-				if (await holdForOwnJobs(jobs, warnedJobs, notify, stop, options.jobHoldMs ?? CHILD_JOB_HOLD_MS))
-					return { continue: true };
+				// After the hold note, an answer that names no outcome is still waiting; a report ends the run (B193).
+				const answer = event.context.contextMessages.findLast((message) => message.role === "assistant");
+				const reported = answer !== undefined && reportStatus(contentText(answer.content)) !== undefined;
+				const holdMs = options.jobHoldMs ?? CHILD_JOB_HOLD_MS;
+				if (await holdForOwnJobs(jobs, warnedJobs, notify, stop, holdMs, reported)) return { continue: true };
 			} finally {
 				clearInterval(holding);
 			}

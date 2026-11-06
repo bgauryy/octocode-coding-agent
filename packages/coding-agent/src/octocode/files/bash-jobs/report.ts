@@ -35,10 +35,15 @@ function jobHeader(job: BashJob, exit: JobExit, lines: number): string {
 	return `[${[status, `${exit.seconds}s`, size, `log: ${shortPath(job.log, job.cwd)}`].join(" · ")}]`;
 }
 
-/** The details of a job's report message; `quiet` when it starts no turn (read by `subagents/report.ts` `jobNotice`). */
+/**
+ * The details of a job's report message; `quiet` when it starts no turn (read by `subagents/report.ts` `jobNotice`). The
+ * `command` lets provenance index the output as the foreground result of that command would be
+ * (`permission/provenance/reports.ts`).
+ */
 export function jobDetails(job: BashJob, wake: boolean) {
 	return {
 		id: job.id,
+		command: job.command,
 		log: job.log,
 		...(job.verification ? { verification: job.verification } : {}),
 		...(wake ? {} : { quiet: true as const }),

@@ -22,6 +22,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		sendUserMessage: notInitialized,
 		appendEntry: notInitialized,
 		createUsageRecorder: notInitialized,
+		recordUsage: notInitialized,
 		setSessionName: notInitialized,
 		getSessionName: notInitialized,
 		setLabel: notInitialized,

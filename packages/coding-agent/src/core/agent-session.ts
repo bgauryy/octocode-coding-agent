@@ -312,7 +312,13 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		return readUntrackedDiff(root, file);
 	}
 	async exportToHtml(outputPath?: string, options: { themeName?: string } = {}): Promise<string> {
-		return exportToHtml(this, (name) => this.getToolDefinition(name), outputPath, options);
+		return exportToHtml(
+			this,
+			(name) => this.getToolDefinition(name),
+			outputPath,
+			options,
+			async () => import("../octocode/ui/reason-row.ts"),
+		);
 	}
 	exportToJsonl(outputPath?: string): string {
 		return exportSessionToJsonl(this.sessionManager, outputPath);

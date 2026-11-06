@@ -1,8 +1,16 @@
+import path from "node:path";
 import { GLYPH, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { STATE_COLOR } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { formatCost, formatDuration, formatTokens, newPromptTokens, toolCallCount } from "../shared/format.ts";
+import {
+	cachedPercent,
+	formatCost,
+	formatDuration,
+	formatTokens,
+	newPromptTokens,
+	toolCallCount,
+} from "../shared/format.ts";
 import { plural } from "../shared/render/text.ts";
 import { GOAL_SHOWN_CHARS } from "./identity.ts";
 import { fitName, NAME_MIN, safe } from "./panel-compact.ts";
@@ -22,12 +30,14 @@ const GOAL_MIN = 12;
 /** The activity is shown only with at least this many cells; a shorter stub is left out. */
 const ACTIVITY_MIN = 10;
 /** Columns right of the goal, in order. They line up down the list; tokens, model, state and time always stay. */
-const RIGHT = ["flags", "model", "state", "age", "tokens", "cache", "tools", "cost"] as const;
+const RIGHT = ["flags", "where", "model", "state", "age", "tokens", "cache", "tools", "cost"] as const;
 type Right = (typeof RIGHT)[number];
 /** Shown only when the whole goal still fits beside them. */
 const WIDE_ONLY = ["cost", "tools"] as const;
 /** Give way, in order, only when the goal would be cut below `GOAL_MIN`. */
-const GIVE_WAY = ["cache", "role"] as const;
+const GIVE_WAY = ["cache", "branch", "role"] as const;
+/** The branch or folder shown after `worktree`, cut to this many cells. */
+const WHERE_MAX = 28;
 
 /**
  * `anthropic/claude-opus-4-5:high` → `claude-opus-4-5:high`: the provider adds width, not meaning, in a one-line row. A
@@ -41,6 +51,17 @@ function modelLabel(model: string | undefined): string {
 	return `${safe(name.slice(0, colon), Math.max(1, MODEL_MAX - (name.length - colon)))}${name.slice(colon)}`;
 }
 
+/**
+ * The badge of an agent that works in its own worktree: `worktree ⎇ branch`, or `worktree folder` without a branch.
+ * `short` is the bare word, for rows too narrow for the name. Both empty for an agent in this session's checkout.
+ */
+function worktreeBadge(entry: PanelEntry): { full: string; short: string } {
+	if (!entry.isolated) return { full: "", short: "" };
+	const { branch } = entry.member;
+	const name = branch ? `⎇ ${safe(branch, WHERE_MAX)}` : safe(path.basename(entry.isolated.folder), WHERE_MAX);
+	return { full: name ? `worktree ${name}` : "worktree", short: "worktree" };
+}
+
 type Usage = Pick<Member, "input" | "cacheRead" | "output">;
 /** Every token an agent used: new prompt tokens, cache reads and output. */
 export const totalTokens = (usage: Usage) => newPromptTokens(usage) + usage.cacheRead + usage.output;
@@ -48,7 +69,7 @@ const tokensText = (usage: Usage) => (totalTokens(usage) > 0 ? `${formatTokens(t
 /** The share of prompt tokens read from cache: high means cheap re-reads of the conversation. */
 function cachedShare(usage: Usage): string {
 	const prompt = newPromptTokens(usage) + usage.cacheRead;
-	return usage.cacheRead > 0 ? `${Math.round((usage.cacheRead / prompt) * 100)}% cached` : "";
+	return usage.cacheRead > 0 ? `${cachedPercent(usage.cacheRead, prompt)}% cached` : "";
 }
 
 /** Tree connectors for each entry: `├ ` with later siblings, `└ ` for the last, `│ ` beside a deeper row. */
@@ -78,6 +99,8 @@ interface Row {
 	goal: string;
 	activity: string;
 	right: Record<Right, Cell>;
+	/** The `where` cell without the branch, for when the row is short of room. */
+	whereShort: string;
 }
 
 function row(entry: PanelEntry, now: number, theme: Theme): Row {
@@ -90,8 +113,10 @@ function row(entry: PanelEntry, now: number, theme: Theme): Row {
 	const locks = member.locks?.length ? plural(member.locks.length, "lock") : "";
 	const flags = [pending, locks].filter(Boolean);
 	const paintedFlags = [pending && theme.fg("warning", pending), locks && theme.fg("dim", locks)].filter(Boolean);
+	const where = worktreeBadge(entry);
 	return {
 		entry,
+		whereShort: where.short,
 		mark: panelMark(theme, state, now),
 		working: lively,
 		name: safe(member.id, 64),
@@ -101,6 +126,7 @@ function row(entry: PanelEntry, now: number, theme: Theme): Row {
 		activity: working ? safe(member.activity) : "",
 		right: {
 			flags: { text: flags.join(SEPARATOR), color: "dim", painted: paintedFlags.join(theme.fg("dim", SEPARATOR)) },
+			where: { text: where.full, color: "accent" },
 			model: { text: modelLabel(member.model), color: "muted" },
 			state: { text: state.label, color: panelColor(state) },
 			age: { text: formatDuration((entry.doneAt ?? now) - member.joinedAt), color: "dim", right: true },
@@ -156,6 +182,7 @@ export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, w
 	for (const giving of GIVE_WAY) {
 		if (fits()) break;
 		if (giving === "role") withRole = false;
+		else if (giving === "branch") for (const r of rows) r.right.where.text = r.whereShort;
 		else columns = columns.filter((column) => column !== giving);
 	}
 	if (!fits()) return narrowRows(rows, prefixes, theme, width);
@@ -213,9 +240,15 @@ function narrowRows(rows: Row[], prefixes: string[], theme: Theme, width: number
 		// The detail sits under the name, with the tree line continuing beside it.
 		const under = ` ${theme.fg("dim", prefix.replace("├", "│").replace("└", " "))}  `;
 		const detail = detailTier === 2 ? r.activity || r.goal : detailTier === 1 ? r.goal : "";
+		// An isolated agent's worktree leads its detail row: where it works matters as much as what it does.
+		const badge = right.where.text
+			? `${theme.fg("accent", right.where.text)}${detail ? theme.fg("dim", SEPARATOR) : ""}`
+			: "";
 		return [
 			truncateToWidth(head, Math.max(1, width), "…"),
-			...(detail ? [truncateToWidth(`${under}${theme.fg("muted", detail)}`, Math.max(1, width), "…")] : []),
+			...(badge || detail
+				? [truncateToWidth(`${under}${badge}${theme.fg("muted", detail)}`, Math.max(1, width), "…")]
+				: []),
 		];
 	});
 }

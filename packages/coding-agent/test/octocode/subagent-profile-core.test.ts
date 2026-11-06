@@ -16,8 +16,11 @@ import {
 	loadProfiles,
 	parseProfile,
 } from "../../src/octocode/subagents/profiles.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
+import { localResearchTools } from "../../src/octocode/subagents/core-tools.ts";
+import { useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";
+
+useResearchRoles();
 
 const SESSION = { dir: "/tmp/session", id: "core-test" };
 const profile = (frontmatter: string) => parseProfile("core", `---\n${frontmatter}\n---\nTask`);
@@ -143,7 +146,7 @@ describe("core tools of a subagent profile", () => {
 		const parsed = profile("excludeTools: browser");
 		expect(parsed.tools).toBeUndefined();
 		expect(parseArgs(buildAgentArgs(parsed, undefined, SESSION)).tools).toEqual(
-			[...SHELL_TOOLS, ...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map(
+			[...SHELL_TOOLS, ...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...localResearchTools()].map(
 				(name) => `+${name}`,
 			),
 		);
@@ -163,12 +166,15 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: file", ["file"]],
 		["tools: -file", ["file"]],
 		["excludeTools: mcp", ["mcp"]],
-		["excludeTools: mcp__octocode__localFetch", ["mcp__octocode__localFetch"]],
+		["excludeTools: mcp__research__read_file", ["mcp__research__read_file"]],
 		['excludeTools: "agent,browser"', ["agent"]],
 		["excludeTools: archive", ["archive"]],
 		["excludeTools: steps", ["steps"]],
 		["tools: -steps", ["steps"]],
-		['excludeTools: "*"', [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS]],
+		[
+			'excludeTools: "*"',
+			[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, "mcp__research__read_file", "mcp__research__search_code"],
+		],
 		['excludeTools: "agent*"', ["agent"]],
 		['tools: "-archive"', ["archive"]],
 		['tools: "edit,bash"\nexcludeTools: agent', ["agent"]],

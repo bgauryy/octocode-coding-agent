@@ -84,7 +84,7 @@ describe("the subagent git-state invariant", () => {
 		const verdict = await gate(call("git add -A"), ctx);
 		expect(verdict?.block).toBe(true);
 		expect(verdict?.reason).toContain("`git add`");
-		expect(verdict?.reason).toContain("Leave git state to your parent");
+		expect(verdict?.reason).toContain("Leave git state to your coordinator");
 		expect(await gate(call("git status"), ctx)).toBeUndefined();
 		expect(await gate(call("git stash", "powershell"), ctx)).toMatchObject({ block: true });
 		expect(await gate({ ...call("x"), toolName: "file", input: { path: "a" } }, ctx)).toBeUndefined();

@@ -40,6 +40,7 @@ describe("one-line rows drawn from extension and model text", () => {
 				getSessionId: () => "s",
 				getLeafId: () => null,
 				getEntries: () => [],
+				getBranch: () => [],
 				getCwd: () => "/tmp",
 				getSessionName: () => undefined,
 			},

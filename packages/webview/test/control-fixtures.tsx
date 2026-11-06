@@ -8,7 +8,11 @@ import { LiveProvider } from "../src/app/live/session.tsx";
 import { FakeSocket } from "./helpers.ts";
 
 export const fetchControl = vi.fn<typeof fetch>();
-export const posted = () => fetchControl.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+/** The JSON bodies the page sent; reads (the theme preference, no body) are not commands. */
+export const posted = () =>
+	fetchControl.mock.calls
+		.filter(([, init]) => init?.body !== undefined)
+		.map(([, init]) => JSON.parse(String(init?.body)));
 export function receipt(init: RequestInit | undefined, status = "accepted", message = "Delivered") {
 	const command = JSON.parse(String(init?.body));
 	return new Response(

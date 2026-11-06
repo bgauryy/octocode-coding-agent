@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import type { ViewProps } from "../extension.ts";
 import { plural } from "../model/format.ts";
-import { DOC_KIND_LABELS, filterDocs, groupDocs } from "../model/docs.ts";
+import { DOC_KIND_LABELS, displayDocPath, filterDocs, groupDocs, splitDocSources } from "../model/docs.ts";
 import { hashFor } from "../model/route.ts";
 import { Badge, Button, EmptyState } from "../ui/primitives.tsx";
 import { DocBody } from "./DocBody.tsx";
@@ -17,7 +17,7 @@ interface ListState {
 }
 type DocumentState = { path: string; markdown: string } | { path: string; error: string };
 
-/** Every Markdown document under this workspace's `.octocode/`, read by the authenticated host. */
+/** Markdown under this workspace's `.octocode/` and, in a trusted project, its git-tracked files; read by the authenticated host. */
 export function DocsView({ params, setParams, index }: ViewProps) {
 	const { api } = useLive();
 	const includeTmp = params.tmp === "1";
@@ -85,12 +85,17 @@ function DocsList({
 	onRetry: () => void;
 }) {
 	const shown = useMemo(() => filterDocs(list.index?.docs ?? [], kind, query), [list.index, kind, query]);
-	const groups = useMemo(() => groupDocs(shown), [shown]);
+	const sources = useMemo(() => splitDocSources(shown), [shown]);
+	const labeled = sources.repo.length > 0;
+	const hidden = list.index?.repoDocsHidden === true;
 	return (
 		<div className="view docs-view">
 			<header className="view-head">
 				<h2>Docs</h2>
-				<p className="muted">Every Markdown document under .octocode/, grouped by kind and folder, newest first.</p>
+				<p className="muted">
+					Markdown under .octocode/ and, in a trusted project, the repository's git-tracked Markdown, grouped by kind
+					and folder, newest first.
+				</p>
 			</header>
 			<search className="docs-filters">
 				<input
@@ -125,27 +130,60 @@ function DocsList({
 					title={list.index?.docs.length ? "No document matches these filters." : "No documents under .octocode/ yet."}
 				/>
 			) : (
-				groups.map((group) => (
-					<section key={group.kind} aria-label={DOC_KIND_LABELS[group.kind]}>
-						<h3>{DOC_KIND_LABELS[group.kind]}</h3>
-						{group.topics.map(({ topic, docs }) => (
-							<div key={topic} className="docs-topic">
-								{topic ? <h4 className="muted">{topic}/</h4> : null}
-								<ul className="plain-list report-list">
-									{docs.map((doc) => (
-										<DocRow key={doc.path} doc={doc} params={params} />
-									))}
-								</ul>
-							</div>
-						))}
-					</section>
-				))
+				<>
+					<DocSource title=".octocode docs" docs={sources.octocode} labeled={labeled} params={params} />
+					<DocSource title="Repository docs (git-tracked)" docs={sources.repo} labeled params={params} />
+				</>
 			)}
+			{hidden ? (
+				<p className="muted">
+					Repository documents are hidden because this project is not trusted. Run `octocode trust add` in a terminal to
+					show them.
+				</p>
+			) : null}
 			{list.index?.truncated ? (
 				<p className="muted">More documents exist than this list carries; narrow it with the filters.</p>
 			) : null}
 			{list.error ? <Button onClick={onRetry}>Retry loading documents</Button> : null}
 		</div>
+	);
+}
+
+function DocSource({
+	title,
+	docs,
+	labeled,
+	params,
+}: {
+	title: string;
+	docs: DocSummary[];
+	labeled: boolean;
+	params: ViewProps["params"];
+}) {
+	const groups = useMemo(() => groupDocs(docs), [docs]);
+	if (!groups.length) return null;
+	return (
+		<section className="docs-source" aria-label={title}>
+			{labeled ? <h3 className="docs-source-title">{title}</h3> : null}
+			{groups.map((group) => (
+				<section
+					key={group.kind}
+					aria-label={labeled ? `${title}: ${DOC_KIND_LABELS[group.kind]}` : DOC_KIND_LABELS[group.kind]}
+				>
+					<h3>{DOC_KIND_LABELS[group.kind]}</h3>
+					{group.topics.map(({ topic, docs: topicDocs }) => (
+						<div key={topic} className="docs-topic">
+							{topic ? <h4 className="muted">{topic}/</h4> : null}
+							<ul className="plain-list report-list">
+								{topicDocs.map((doc) => (
+									<DocRow key={doc.path} doc={doc} params={params} />
+								))}
+							</ul>
+						</div>
+					))}
+				</section>
+			))}
+		</section>
 	);
 }
 
@@ -158,7 +196,7 @@ function DocRow({ doc, params }: { doc: DocSummary; params: ViewProps["params"] 
 			</a>
 			{doc.question ? <p className="muted">{doc.question}</p> : null}
 			<p className="muted">
-				{doc.updated.slice(0, 10)} · {doc.path} · {plural(doc.bytes, "byte")}
+				{doc.updated.slice(0, 10)} · {displayDocPath(doc.path)} · {plural(doc.bytes, "byte")}
 			</p>
 		</li>
 	);
@@ -211,12 +249,12 @@ function DocumentPage({
 						Back to all docs
 					</a>
 				</p>
-				<h2>{doc?.title ?? path}</h2>
+				<h2>{doc?.title ?? displayDocPath(path)}</h2>
 				<p>
 					{doc ? <Badge>{DOC_KIND_LABELS[doc.kind]}</Badge> : null}
 					{doc?.status ? <Badge tone="accent">{doc.status}</Badge> : null}
 					<span className="muted">
-						{path}
+						{displayDocPath(path)}
 						{doc ? ` · ${doc.updated.slice(0, 10)}` : ""}
 					</span>
 				</p>

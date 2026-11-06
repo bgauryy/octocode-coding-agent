@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadMcpConfig } from "../src/config.ts";
 import { type McpServerPreset, presetEntries } from "../src/preset.ts";
 import { recommendedPresets } from "../src/recommended/index.ts";
-import { octocodePreset } from "../src/presets/octocode/index.ts";
+import { defaultPreset } from "./mcp-default-preset.ts";
 import { saveConfig, setExposure } from "../src/persistence.ts";
 import { reconnect } from "../src/connections.ts";
 import { getMcpSessionStatus } from "../src/status.ts";
@@ -14,7 +14,7 @@ import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 
 const echo = join(import.meta.dirname, "../../coding-agent/test/octocode/fixtures/echo-mcp.mjs");
 const progress = join(import.meta.dirname, "../../coding-agent/test/octocode/fixtures/progress-mcp.mjs");
-const defaults = () => presetEntries([octocodePreset(() => [], {})]);
+const defaults = () => presetEntries([defaultPreset({})]);
 const hosts: ReturnType<typeof mcpHost>[] = [];
 const host = (options: Parameters<typeof mcpHost>[0] = {}) => {
 	const result = mcpHost({
@@ -44,11 +44,9 @@ describe("default MCP in the shared host", () => {
 			join(cwd, ".octocode/mcp.json"),
 			JSON.stringify({ mcpServers: { octocode: { command: "replacement" } } }),
 		);
-		// The replacement keeps the preset's purpose, which the prompt shows; nothing else of the preset.
-		expect(loadMcpConfig(options).servers[0].config).toEqual({
-			command: "replacement",
-			description: defaults()[0].config.description,
-		});
+		// The replacement keeps the preset's purpose (shown in the prompt), roles and launch env templates; not its command.
+		const { description, env, roles } = defaults()[0].config as { description: string; env: object; roles: object };
+		expect(loadMcpConfig(options).servers[0].config).toEqual({ command: "replacement", description, env, roles });
 		expect(loadMcpConfig({ ...options, projectTrusted: false }).servers[0].config.enabled).toBe(false);
 	});
 	it("saves default enablement as a canonical global or trusted project override", async () => {
@@ -241,7 +239,7 @@ describe("default MCP in the shared host", () => {
 		await expect(h.call("mcp__octocode__localFetch", { queries: [] })).rejects.toThrow(/no longer available/);
 	});
 	it("does not launch a disabled preset", async () => {
-		const h = host({ presets: [octocodePreset(() => [], { OCTOCODE_MCP: "0" })] });
+		const h = host({ presets: [defaultPreset({ OCTOCODE_MCP: "0" })] });
 		await h.start();
 		await h.prompt();
 		expect(h.transports).toHaveLength(0);

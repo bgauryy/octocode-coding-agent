@@ -4,14 +4,29 @@ import type { ViewProps } from "../extension.ts";
 import { filterBoard, STATE_TITLES } from "../model/backlog.ts";
 import { StatusIcon } from "../ui/primitives.tsx";
 import { BacklogFilters } from "./BacklogFilters.tsx";
-import { BoardCard } from "./BoardCard.tsx";
+import { CardMeta } from "./BoardCard.tsx";
+import { BoardDialogs } from "./BoardDialogs.tsx";
+import { doneChildren } from "./board-dnd.ts";
+import { BoardScope, useBoardFlow } from "./board-flow.tsx";
+import { CardMenu } from "./CardMenu.tsx";
+import { QuickAdd } from "./QuickAdd.tsx";
+import { Toast } from "./Toast.tsx";
 
 const PLANNING_STATES: readonly State[] = ["todo", "backlog"];
 
-/** A planning queue separate from the delivery board, with the same searchable item details. */
-export function BacklogView({ index, params, setParams, ItemAction }: ViewProps) {
+/** A planning queue separate from the delivery board: compact rows in manual order, then priority. */
+export function BacklogView(props: ViewProps) {
+	return (
+		<BoardScope index={props.index} controls={props.controls}>
+			<Backlog {...props} />
+		</BoardScope>
+	);
+}
+
+function Backlog({ index, params, setParams, ItemAction }: ViewProps) {
+	const flow = useBoardFlow();
 	const planning = useMemo(
-		() => ({ ...index, items: index.items.filter((item) => PLANNING_STATES.includes(item.state)) }),
+		() => ({ ...index, items: index.items.filter((item) => PLANNING_STATES.includes(item.state) && !item.closed) }),
 		[index],
 	);
 	const shown = useMemo(() => filterBoard(planning, params), [planning, params]);
@@ -31,7 +46,7 @@ export function BacklogView({ index, params, setParams, ItemAction }: ViewProps)
 			</div>
 			<BacklogFilters index={planning} params={params} setParams={setParams} shown={shown.length} />
 			{PLANNING_STATES.map((state) => {
-				const items = shown.filter((item) => item.state === state);
+				const items = shown.filter((item) => flow.shownIn(item) === state);
 				return (
 					<section key={state} className={`backlog-group state-${state}`} aria-labelledby={`backlog-${state}`}>
 						<div className="backlog-group-heading">
@@ -46,11 +61,18 @@ export function BacklogView({ index, params, setParams, ItemAction }: ViewProps)
 							</p>
 						</div>
 						{items.length ? (
-							<div className="backlog-items">
+							<ul className="backlog-items">
 								{items.map((item) => (
-									<BoardCard key={item.ref} item={item} index={index} ItemAction={ItemAction} />
+									<li key={item.ref} className="backlog-row" data-ref={item.ref}>
+										<span className="ref">{item.ref}</span>
+										<a className="backlog-row-title" href={`#${item.ref}`}>
+											{item.title}
+										</a>
+										<CardMeta item={item} childrenDone={doneChildren(index, item)} showRef={false} />
+										<CardMenu item={item} ItemAction={ItemAction} />
+									</li>
 								))}
-							</div>
+							</ul>
 						) : (
 							<p className="backlog-empty">
 								{filtered
@@ -60,9 +82,14 @@ export function BacklogView({ index, params, setParams, ItemAction }: ViewProps)
 										: "Your backlog is clear. Add an item when you have more work to plan."}
 							</p>
 						)}
+						<div className="backlog-foot">
+							<QuickAdd state={state} />
+						</div>
 					</section>
 				);
 			})}
+			<BoardDialogs />
+			{flow.toast && <Toast toast={flow.toast} onDismiss={flow.dismissToast} />}
 		</div>
 	);
 }

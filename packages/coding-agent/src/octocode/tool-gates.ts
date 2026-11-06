@@ -1,9 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionContext, ToolAnnotations, ToolCallEvent } from "../core/features/index.ts";
+import type { ExtensionAPI, ToolAnnotations, ToolCallEvent } from "../core/features/index.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
-import { type GateVerdict, permissionGate } from "./permission/gate.ts";
+import { permissionGate } from "./permission/gate.ts";
+import { type Gate, type GateStepBodies, type GateVerdict, judge } from "./permission/judge.ts";
 import { gitStateGate } from "./permission/git-state.ts";
 import type { createProvenance } from "./permission/provenance.ts";
 import type { registerSourcePolicy } from "./permission/source-policy-loader.ts";
@@ -13,6 +14,7 @@ import type { registerHooks } from "./hooks/register.ts";
 import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
+import { untilCommand } from "./shared/until-command.ts";
 import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
 import { protectedBranch } from "./worktrees/default-branch.ts";
 
@@ -37,15 +39,14 @@ export interface ToolGatesOptions {
 }
 
 /**
- * A `timer` call with an until-command is decided as the `bash` call that command is: the mode, a read-only role, the
- * provenance tripwire and the user's answer apply when it is set (`timer/condition.ts` rechecks plan mode and the role
+ * A `timer` call with an until-command (its own, or a `check`'s trigger) is decided as the `bash` call that command is: the mode, a read-only role, the
+ * provenance tripwire and the user's answer apply when it is set (`timer/conditions/command.ts` rechecks plan mode and the role
  * each time it runs). Any other timer call has no effect class.
  */
 function timerOperation<T extends { toolName: string; input: Record<string, unknown> }>(event: T): T {
 	if (event.toolName !== "timer") return event;
-	const until = event.input.until;
-	const command = typeof until === "object" && until !== null ? (until as { command?: unknown }).command : undefined;
-	return typeof command === "string" && command.trim() ? { ...event, toolName: "bash", input: { command } } : event;
+	const command = untilCommand(event.input);
+	return command ? { ...event, toolName: "bash", input: { command } } : event;
 }
 
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
@@ -64,14 +65,10 @@ export function registerToolGates(
 		annotations,
 	}: ToolGatesOptions,
 ): void {
-	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (a subagent in the shared
-	// tree leaves git state alone, then reservations) and user
-	// hooks come first: user hooks spawn processes, so they run only for calls the reservation gate lets through; the
-	// permission gate checks last (a hook's `ask` is handed to it), so the user is never asked about a call a hook would
-	// deny. A refusal by an earlier gate is audited here; the permission gate audits its own. Octocode runs no call of a batch
-	// before every call's checks ended, so their time is shown: live on the working line, then in the row (`timed` reads
-	// `recordCheck`).
-	type Gate = (event: ToolCallEvent, ctx: ExtensionContext, prior?: GateVerdict) => Promise<GateVerdict | undefined>;
+	// The tool-call pipeline: `GATE_STEPS` in `permission/judge.ts` is its order (the first block wins); this function
+	// supplies each step's body. A refusal by an earlier step is audited here; the permission gate audits its own. Octocode
+	// runs no call of a batch before every call's checks ended, so their time is shown: live on the working line, then in
+	// the row (`timed` reads `recordCheck`).
 	const audited =
 		(gate: Gate): Gate =>
 		async (event, ctx, prior) => {
@@ -102,30 +99,28 @@ export function registerToolGates(
 		(await collab.reservationGate(event, ctx)) ??
 		metadata(event, ctx);
 	const permissionStep: Gate = (event, ctx, prior) =>
-		Promise.resolve(planning?.gate(event)).then(
-			(refusal) =>
-				refusal ??
-				permissionGate({
-					permission,
-					provenance,
-					network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
-					annotations: annotations ?? ((name) => api.getAllTools().find((tool) => tool.name === name)?.annotations),
-					protectedBranch,
-					replacement: {
-						definition: (name) => api.getAllTools().find((tool) => tool.name === name),
-						refresh: (ctx) => sourcePolicy.refresh(ctx),
-						reserved: invariants,
-					},
-				})(timerOperation(agentOperation(event)), ctx, prior, event),
-		);
-	const gates: Gate[] = [
-		audited(async (event) => planning?.gate(event)),
-		...(gitState ? [audited(gitState)] : []),
-		audited(collab.reservationGate),
-		audited(metadata),
-		audited(hooks.preToolUse),
-		(event, ctx, prior) => permissionStep(event, ctx, prior),
-	];
+		permissionGate({
+			permission,
+			provenance,
+			network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
+			annotations: annotations ?? ((name) => api.getAllTools().find((tool) => tool.name === name)?.annotations),
+			protectedBranch,
+			replacement: {
+				definition: (name) => api.getAllTools().find((tool) => tool.name === name),
+				refresh: (ctx) => sourcePolicy.refresh(ctx),
+				reserved: invariants,
+			},
+		})(timerOperation(agentOperation(event)), ctx, prior, event);
+	const bodies: GateStepBodies = {
+		"plan-mode": async (event) => planning?.gate(event),
+		"git-state": gitState,
+		reservation: collab.reservationGate,
+		metadata,
+		"pre-tool-use": hooks.preToolUse,
+		"plan-recheck": async (event) => planning?.gate(event),
+		permission: permissionStep,
+	};
+	const judgeOptions = { audited, invariants };
 	// An `mcp_tool` hook's call is a tool call too (`hooks/mcp-gate.ts`): it passes the metadata invariant and the permission
 	// step, which audits its own refusals. The other gates are skipped: PreToolUse hooks would run for the hook's own call and recurse.
 	// A Notification hook fires for the ask this gate raises; its own MCP call would ask and notify again without end, so a
@@ -141,8 +136,18 @@ export function registerToolGates(
 			toolName: call.toolName,
 			input: call.input,
 		};
-		const verdict =
-			(await audited(metadata)(event, ctx)) ?? (await deciding.run(true, () => permissionStep(event, ctx)));
+		// Only the decision of the call itself is marked as made inside a hook's call.
+		const inside =
+			(gate: Gate): Gate =>
+			(event, ctx, prior) =>
+				deciding.run(true, () => gate(event, ctx, prior));
+		const verdict = await judge(
+			"hook",
+			{ ...bodies, "plan-recheck": inside(bodies["plan-recheck"]), permission: inside(bodies.permission) },
+			event,
+			ctx,
+			judgeOptions,
+		);
 		return verdict?.block ? (verdict.reason ?? "blocked") : undefined;
 	});
 	api.on("tool_call", async (event, ctx) => {
@@ -150,16 +155,8 @@ export function registerToolGates(
 		await sourcePolicy.refresh(ctx);
 		activity.checking(event.toolCallId, true);
 		try {
-			let prior: GateVerdict | undefined;
-			for (const gate of gates) {
-				const verdict = await gate(event, ctx, prior);
-				if (verdict?.block) return verdict;
-				if (verdict?.rewritten) {
-					const reserved = await audited(invariants)(event, ctx);
-					if (reserved?.block) return reserved;
-				}
-				if (verdict?.ask) prior = { ask: verdict.ask };
-			}
+			const refused = await judge("tool", bodies, event, ctx, judgeOptions);
+			if (refused) return refused;
 			const snapshots = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
 			if (snapshots.size) localReads.set(event.toolCallId, snapshots);
 			// A shell call's targets are only checked above; the `file` tool checks its own at write time. Between this

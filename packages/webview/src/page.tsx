@@ -6,7 +6,7 @@ import { App } from "./app/App.tsx";
 import { createBacklogStore } from "./app/extension.ts";
 import { live } from "./app/live/index.ts";
 import { DaemonShell } from "./app/daemon/DaemonShell.tsx";
-import { daemonLive } from "./app/daemon/live.ts";
+import { DaemonScopedApp } from "./app/daemon/ScopedApp.tsx";
 import { pageScope } from "./scope.ts";
 
 /** Browser entry: read the embedded snapshot, take the launch token (live only), then render. */
@@ -23,12 +23,10 @@ export function mountPage(): void {
 		<StrictMode>
 			{daemon && !scope ? (
 				<DaemonShell access={access} />
+			) : daemon && live && scope ? (
+				<DaemonScopedApp backlog={createBacklogStore(snapshot, false)} live={live} scope={scope} access={access} />
 			) : (
-				<App
-					backlog={createBacklogStore(snapshot, live === null)}
-					live={daemon && live && scope ? daemonLive(live, scope) : live}
-					access={access}
-				/>
+				<App backlog={createBacklogStore(snapshot, live === null)} live={live} access={access} />
 			)}
 		</StrictMode>,
 	);

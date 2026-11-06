@@ -12,7 +12,9 @@ import { ItemActions, ItemActivity } from "./ItemPanels.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { RfcView, ResearchView } from "./ReportsView.tsx";
 import { NeedsYouAnswer, useNeedsYou } from "./NeedsYou.tsx";
+import { Notifications } from "./Notifications.tsx";
 import { ConnectionStatus, LiveProvider } from "./session.tsx";
+import { themePrefs } from "./web-prefs.ts";
 
 export const live: LiveExtension | null = {
 	takeAccess,
@@ -26,6 +28,8 @@ export const live: LiveExtension | null = {
 	],
 	Provider: LiveProvider,
 	ConnectionStatus,
+	themePrefs,
+	Notifications,
 	useNeedsYou,
 	NeedsYouAnswer,
 	ItemActions,

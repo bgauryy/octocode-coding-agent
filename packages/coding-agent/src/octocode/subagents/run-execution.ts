@@ -275,6 +275,10 @@ export async function runForeground(
 			outcome: entry.stoppedBy ? undefined : "failed",
 		});
 		const text = `${errorMessage(reason)}${note}`;
+		runs.ended?.(identity.id, {
+			outcome: entry.stoppedBy ? "stopped" : "failed",
+			headline: firstLine(errorMessage(reason)),
+		});
 		// The result keeps the run's details, so the session records the child (its folder, a startup failure) for `resume`.
 		details.status = "failed";
 		if (!entry.stoppedBy) details.outcome = "failed";
@@ -293,6 +297,10 @@ export async function runForeground(
 		outcome: outcome.error ? "failed" : outcome.outcome,
 		outcomeSource: outcome.error ? undefined : outcome.outcomeSource,
 		reportPath: outcome.reportArtifact?.path,
+	});
+	runs.ended?.(identity.id, {
+		outcome: outcome.error ? "failed" : (outcome.outcome ?? "done"),
+		headline: firstLine(outcome.error ?? outcome.text),
 	});
 	if (outcome.error) {
 		// An error result rather than a throw, so the child's spent tokens still reach this session's totals.

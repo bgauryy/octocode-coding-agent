@@ -156,6 +156,12 @@ export const TerminalIcon = (props: IconProps) => (
 		<path d="m4.5 6.5 2 1.75-2 1.75M8.5 10.5h3" />
 	</Svg>
 );
+export const BellIcon = (props: IconProps) => (
+	<Svg {...props}>
+		<path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3Z" />
+		<path d="M6.5 14a1.5 1.5 0 0 0 3 0" />
+	</Svg>
+);
 export const FeedIcon = (props: IconProps) => (
 	<Svg {...props}>
 		<path d="M3 4h10M3 8h10M3 12h6" />

@@ -102,7 +102,6 @@ describe("write rules live in the store", () => {
 		);
 		// A proposal lands in backlog whatever state the child asked for.
 		expect(store.add({ ...READY, title: "x", state: "todo", createdBy: "agent:sub-1" }, sub).state).toBe("backlog");
-		expect(() => store.remove("B1", undefined, sub)).toThrow(/A subagent cannot remove backlog items/);
 		expect(store.get("B1")).toBeDefined();
 	});
 
@@ -154,7 +153,7 @@ describe("write rules live in the store", () => {
 		store.update("B2", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session", item: "B2" });
 		await expect(sub.call({ op: "update", id: "B1", note: "x" })).rejects.toThrow(/B1 is not your item/);
-		expect(await sub.text({ op: "update", id: "B2", note: "x" })).toBe("Updated B2 [ongoing p2] two (parent)");
+		expect(await sub.text({ op: "update", id: "B2", note: "x" })).toBe("Updated B2 [ongoing p2] two (coordinator)");
 	});
 });
 

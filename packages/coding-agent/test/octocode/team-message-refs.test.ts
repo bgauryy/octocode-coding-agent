@@ -223,7 +223,7 @@ describe("B200 relay through the parent process", () => {
 			expect(store.waiting("p-1")).toBe(0);
 			expect(store.refs.relays("p-1")).toMatchObject([{ target: "done-1", message: { id, from: "a-1" } }]);
 			expect(store.refs.unansweredPeerAsks("a-1", "p-1")).toBe(1);
-			// The relay row is addressed to the parent but asks the sibling: the report's "Asks to its parent" omits it.
+			// The relay row is addressed to the parent but asks the sibling: the report's "Asks to its coordinator" omits it.
 			expect(store.asks("a-1", "p-1", 0)).toEqual([]);
 			// A top-level session has no parent to relay through: the old refusal stays.
 			expect(await sendMessage(host(store, "x-1"), "done-1", "hi")).toEqual({

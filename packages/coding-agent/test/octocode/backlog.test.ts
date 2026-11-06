@@ -88,9 +88,8 @@ describe("backlog store", () => {
 		expect(a.add({ ...READY, title: "one", createdBy: "user" }).ref).toBe("B1");
 		expect(a.add({ ...READY, title: "two", createdBy: "user" }).ref).toBe("B2");
 		expect(b.add({ ...READY, title: "other", createdBy: "user" }).ref).toBe("B1");
-		a.remove("B2");
 		expect(a.add({ ...READY, title: "three", createdBy: "user" }).ref).toBe("B3");
-		expect(a.list().items.map((item) => item.title)).toEqual(["three", "one"]);
+		expect(a.list().items.map((item) => item.title)).toEqual(["three", "two", "one"]);
 		expect(parseRef("b7")).toBe(7);
 		expect(parseRef("7")).toBe(7);
 		expect(parseRef("x")).toBeUndefined();
@@ -172,7 +171,7 @@ describe("backlog store", () => {
 		expect(
 			store.update(item.ref, { state: "todo", note: "Reopen to investigate" }, { id: "me" }).doneAt,
 		).toBeUndefined();
-		expect(() => store.remove(item.ref)).toThrow(/completion history/);
+		expect(() => store.update(item.ref, { close: { kind: "obsolete", text: "x" } }, { id: "me" })).not.toThrow();
 		expect(store.get(item.ref)?.completions).toHaveLength(1);
 	});
 
@@ -259,21 +258,6 @@ describe("backlog store", () => {
 			"from B2 → B1",
 			"from B1 → none",
 		]);
-	});
-
-	it("clears the link on derived items when their origin is removed, and logs it on each", () => {
-		const store = storeFor("r");
-		const root = store.add({ ...READY, title: "root", createdBy: "user" });
-		const child = store.add({ ...READY, title: "child", from: root.ref, createdBy: "agent", goal: "g" });
-		store.remove(root.ref);
-		const after = store.get(child.ref)!;
-		expect(after.from).toBeUndefined();
-		expect(after.version).toBe(child.version + 1);
-		expect(store.notes(after).at(-1)).toMatchObject({
-			author: "user",
-			kind: "change",
-			text: 'from B1 → none (B1 "root" was removed)',
-		});
 	});
 
 	it("logs every field an update changes, keeps a replaced plan in full, and logs nothing for a note or a no-op", () => {
@@ -427,7 +411,7 @@ describe("backlog tool", () => {
 			}),
 		).toBe("Updated B1 [done p2] task");
 		expect(t.tool.executionMode).toBeUndefined();
-		expect(t.tool.parameters.properties.op.enum).toEqual(["list", "get", "add", "update", "remove"]);
+		expect(t.tool.parameters.properties.op.enum).toEqual(["list", "get", "add", "update"]);
 	});
 
 	it("refuses an add it cannot complete before creating anything, so a retry leaves no duplicate", async () => {
@@ -452,18 +436,21 @@ describe("backlog tool", () => {
 		).toMatch(/^Added B1 \[done/);
 	});
 
-	it("removes an item and its notes, but not one another live session holds", async () => {
+	it("closes an item without deleting it, but not one another live session holds", async () => {
 		const t = setup();
 		await t.text({ op: "add", why: "Required work", title: "dup", goal: "it works", state: "todo" });
 		await t.text({ op: "update", id: "B1", note: "a note" });
-		expect(await t.text({ op: "remove", id: "b1" })).toBe('Removed B1 "dup" and its notes.');
-		await expect(t.call({ op: "get", id: "B1" })).rejects.toThrow(/No backlog item B1/);
-		await expect(t.call({ op: "remove", id: "B1" })).rejects.toThrow(/No backlog item/);
-		await expect(t.call({ op: "remove" })).rejects.toThrow(/needs an id/);
+		expect(
+			await t.text({ op: "update", id: "b1", close: { kind: "obsolete", text: "superseded by the rewrite" } }),
+		).toMatch(/^Updated B1 \[closed/);
+		expect(await t.text({ op: "get", id: "B1" })).toContain("Closed (obsolete): superseded by the rewrite");
+		await expect(t.call({ op: "update", close: { kind: "obsolete", text: "x" } })).rejects.toThrow(/needs an id/);
 		await t.text({ op: "add", why: "Required work", title: "held", goal: "it works", state: "todo" });
 		session("other-session", process.ppid);
 		workspaceStore(t.cwd).update("B2", { state: "ongoing" }, { id: "other-session" });
-		await expect(t.call({ op: "remove", id: "B2" })).rejects.toThrow(/ongoing for other-session/);
+		await expect(t.call({ op: "update", id: "B2", close: { kind: "wont_do", text: "not worth it" } })).rejects.toThrow(
+			/ongoing for other-session/,
+		);
 	});
 
 	it("refuses to claim an item another live session holds, naming it", async () => {
@@ -474,7 +461,7 @@ describe("backlog tool", () => {
 		await expect(t.call({ op: "update", id: "B1", state: "ongoing" })).rejects.toThrow(/other-session/);
 	});
 
-	it("in a subagent: adds only to backlog and updates only its or its parent's items", async () => {
+	it("in a subagent: adds only to backlog and updates only its or its coordinator's items", async () => {
 		const parent = setup();
 		await parent.text({
 			op: "add",
@@ -500,7 +487,7 @@ describe("backlog tool", () => {
 		expect(sub.tool.parameters.properties.op.description).toContain("add: propose");
 		expect(sub.tool.parameters.properties.op.description).not.toContain("remove");
 		expect(sub.tool.promptGuidelines.join(" ")).not.toContain("set it ongoing");
-		expect(await sub.text({ op: "list" })).toBe("B1 [ongoing p2] delegated (parent)\nB2 [todo p2] unrelated");
+		expect(await sub.text({ op: "list" })).toBe("B1 [ongoing p2] delegated (coordinator)\nB2 [todo p2] unrelated");
 		expect(
 			await sub.text({
 				op: "add",
@@ -536,7 +523,9 @@ describe("backlog tool", () => {
 			},
 		]);
 		await expect(sub.call({ op: "update", id: "B1", links: [] })).rejects.toThrow(/only the state and notes/);
-		await expect(sub.call({ op: "update", id: "B2", state: "ongoing" })).rejects.toThrow(/not claimed by your parent/);
+		await expect(sub.call({ op: "update", id: "B2", state: "ongoing" })).rejects.toThrow(
+			/not claimed by your coordinator/,
+		);
 		await expect(sub.call({ op: "update", id: "B1", title: "renamed" })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B1", state: "todo" })).rejects.toThrow(/sets only ongoing or done/);
 		expect(workspaceStore(sub.cwd).get("B1")!.state).toBe("ongoing");
@@ -549,7 +538,9 @@ describe("backlog tool", () => {
 				note: "done; verified",
 			}),
 		).toBe("Updated B1 [done p2] delegated");
-		await expect(sub.call({ op: "remove", id: "B3" })).rejects.toThrow(/subagent cannot remove/);
+		await expect(sub.call({ op: "update", id: "B3", close: { kind: "obsolete", text: "not needed" } })).rejects.toThrow(
+			/not claimed by your coordinator/,
+		);
 	});
 
 	it("in a subagent: why and goal on a parent-owned claim are kept as the parent set them, with a note", async () => {
@@ -566,7 +557,9 @@ describe("backlog tool", () => {
 			goal: "child goal",
 			note: "started",
 		});
-		expect(result).toBe("Updated B1 [ongoing p2] delegated (parent)\n(goal/why kept: your parent owns them.)");
+		expect(result).toBe(
+			"Updated B1 [ongoing p2] delegated (coordinator)\n(goal/why kept: your coordinator owns them.)",
+		);
 		const item = workspaceStore(sub.cwd).get("B1")!;
 		expect([item.why, item.goal]).toEqual(["Parent reason", "parent goal"]);
 		// The permission rule stands: the other fields stay the parent's, and so does an item it has not claimed.
@@ -575,7 +568,7 @@ describe("backlog tool", () => {
 		);
 		await parent.text({ op: "add", why: "Other", title: "unclaimed", goal: "g", state: "todo" });
 		await expect(sub.call({ op: "update", id: "B2", state: "ongoing", why: "w", goal: "g" })).rejects.toThrow(
-			/not claimed by your parent/,
+			/not claimed by your coordinator/,
 		);
 	});
 
@@ -714,7 +707,7 @@ describe("backlog tool", () => {
 		await t.call({ op: "update", id: "B1", state: "done", completion: completed(), note: "ok" }, ctx);
 		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
-			"○ Backlog(update B1 → done)",
+			"○ Backlog(update B1 “one” → done)",
 		);
 		const row = async (params: Record<string, unknown>) =>
 			rendered(
@@ -725,13 +718,15 @@ describe("backlog tool", () => {
 				}),
 			);
 		expect(await row({ op: "add", why: "Required work", title: "two", goal: "it works" })).toBe(
-			"  ⎿  Added B2 · backlog",
+			"  ⎿  Added B2 “two” · backlog",
 		);
-		expect(await row({ op: "update", id: "B2", state: "todo" })).toBe("  ⎿  B2 → todo");
+		expect(await row({ op: "update", id: "B2", state: "todo" })).toBe("  ⎿  B2 “two” → todo");
 		expect(await row({ op: "list", states: ["todo", "done"], limit: 1 })).toMatch(/^ {2}⎿ {2}1 of 2 items\n {5}B\d \[/);
 		expect(await row({ op: "list", states: ["ongoing"] })).toMatch(/^ {2}⎿ {2}No items/);
-		expect(await row({ op: "get", id: "B2" })).toMatch(/^ {2}⎿ {2}B2 · todo · two\n/);
-		expect(await row({ op: "remove", id: "B2" })).toBe("  ⎿  Removed B2");
+		expect(await row({ op: "get", id: "B2" })).toMatch(/^ {2}⎿ {2}B2 “two” · todo · two\n/);
+		expect(await row({ op: "update", id: "B2", close: { kind: "wont_do", text: "not needed" } })).toBe(
+			"  ⎿  B2 “two” → closed",
+		);
 		expect(
 			rendered(
 				t.tool.renderResult({ content: [{ type: "text", text: "No backlog item B9" }] }, {}, theme, {
@@ -856,10 +851,8 @@ describe("/backlog", () => {
 		expect(t.commands.complete("backlog B")?.map((item) => item.value)).toContain("backlog B1");
 		expect(t.commands.complete("backlog do B")?.map((item) => item.value)).toContain("backlog do B1");
 		expect(t.commands.complete("backlog e")).toEqual([expect.objectContaining({ value: "backlog export" })]);
-		expect(t.commands.complete("backlog B1 d")!.map((item) => item.value)).toEqual([
-			"backlog B1 done",
-			"backlog B1 delete",
-		]);
+		expect(t.commands.complete("backlog B1 d")!.map((item) => item.value)).toEqual(["backlog B1 done"]);
+		expect(t.commands.complete("backlog B1 c")!.map((item) => item.value)).toEqual(["backlog B1 close"]);
 	});
 
 	it('"do" marks the item ongoing and sends it to the agent, as a follow-up while busy', async () => {
@@ -891,7 +884,7 @@ describe("/backlog", () => {
 		expect(t.sent.at(-1)!.options).toEqual({ deliverAs: "followUp" });
 	});
 
-	it("falls back to select lists without a custom component: actions, move, priority, delegate, delete", async () => {
+	it("falls back to select lists without a custom component: actions, move, priority, delegate, close", async () => {
 		const t = setup();
 		const store = workspaceStore(t.cwd);
 		store.add({
@@ -967,10 +960,14 @@ describe("/backlog", () => {
 		await edit("Title", "   ");
 		await edit(undefined, "ignored");
 		expect(store.get("B1")).toEqual(before);
-		await t.command.handler("B1", rpc(["Delete"], [false]));
-		expect(store.get("B1")).toBeDefined();
-		await t.command.handler("B1", rpc(["Delete"], [true]));
-		expect(store.get("B1")).toBeUndefined();
+		// Closing asks for a kind and a reason; cancelling either closes nothing, and the item is never deleted.
+		await t.command.handler("B1", rpc(["Close", undefined]));
+		expect(store.get("B1")!.closed).toBeUndefined();
+		await t.command.handler(
+			"B1",
+			fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { selects: ["Close", "obsolete"], inputs: ["no longer needed"] } }),
+		);
+		expect(store.get("B1")).toMatchObject({ state: "done", closed: { kind: "obsolete", text: "no longer needed" } });
 	});
 
 	it("rejects extra arguments before acting and completes the same item references that dispatch accepts", async () => {
@@ -979,14 +976,7 @@ describe("/backlog", () => {
 		const before = store.add({ ...READY, title: "keep me", state: "todo", createdBy: "user" });
 		const ctx = fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { inputs: ["Completed", ""] } });
 		const confirm = vi.spyOn(ctx.ui, "confirm");
-		for (const args of [
-			"do B1 extra",
-			"export extra",
-			"B1 done extra",
-			"B1 delete extra",
-			"constructor",
-			"__proto__",
-		]) {
+		for (const args of ["do B1 extra", "export extra", "B1 done extra", "B1 close extra", "constructor", "__proto__"]) {
 			await t.command.handler(args, ctx);
 			expect(ctx.ui.notes.at(-1)?.type).toBe("warning");
 			expect(store.get("B1")).toEqual(before);
@@ -994,13 +984,11 @@ describe("/backlog", () => {
 		expect(t.sent).toEqual([]);
 		expect(confirm).not.toHaveBeenCalled();
 		expect(fs.existsSync(path.join(t.cwd, ".octocode", "code", "backlog.md"))).toBe(false);
-		expect(t.commands.complete("backlog #1 d")!.map((item) => item.value)).toEqual([
-			"backlog #1 done",
-			"backlog #1 delete",
-		]);
+		expect(t.commands.complete("backlog #1 d")!.map((item) => item.value)).toEqual(["backlog #1 done"]);
+		expect(t.commands.complete("backlog #1 c")!.map((item) => item.value)).toEqual(["backlog #1 close"]);
 		await t.command.handler("#1 done", ctx);
 		expect(store.get("B1")?.state).toBe("done");
-		for (const syntax of ["add <title>", "do <id>", "export", "backlog|todo|ongoing|done|delete"])
+		for (const syntax of ["add <title>", "do <id>", "export", "backlog|todo|ongoing|done|close"])
 			expect(t.command.argumentHint).toContain(syntax);
 	});
 

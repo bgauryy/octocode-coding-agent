@@ -1,4 +1,10 @@
-import { DOC_KINDS, type DocKind, type DocSummary } from "@octocodeai/octocode-contracts/docs";
+import {
+	DOC_KINDS,
+	isRepoDocPath,
+	REPO_DOC_PREFIX,
+	type DocKind,
+	type DocSummary,
+} from "@octocodeai/octocode-contracts/docs";
 
 export const DOC_KIND_LABELS: Record<DocKind, string> = {
 	rfc: "RFCs",
@@ -33,6 +39,19 @@ export function groupDocs(docs: readonly DocSummary[]): DocGroup[] {
 		for (const doc of docs) if (doc.kind === kind) topics.set(doc.topic, [...(topics.get(doc.topic) ?? []), doc]);
 		return topics.size ? [{ kind, topics: [...topics].map(([topic, list]) => ({ topic, docs: list })) }] : [];
 	});
+}
+
+/** The workspace-relative path a reader knows: a repository document's carries a namespace prefix the host needs. */
+export function displayDocPath(path: string): string {
+	return isRepoDocPath(path) ? path.slice(REPO_DOC_PREFIX.length) : path;
+}
+
+/** Documents kept apart by where they live: `.octocode/` (authored) and the git-tracked repository files. */
+export function splitDocSources(docs: readonly DocSummary[]): { octocode: DocSummary[]; repo: DocSummary[] } {
+	return {
+		octocode: docs.filter((doc) => !isRepoDocPath(doc.path)),
+		repo: docs.filter((doc) => isRepoDocPath(doc.path)),
+	};
 }
 
 const BACKLOG_REF = /\bB[0-9]+\b/g;

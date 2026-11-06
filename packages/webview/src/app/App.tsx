@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import type { BacklogStore, LiveExtension, ViewDefinition } from "./extension.ts";
-import { AppHeader, Tabs } from "./features/AppHeader.tsx";
+import { AppHeader } from "./features/AppHeader.tsx";
+import { ItemSheet } from "./ItemSheet.tsx";
+import { ThemeToggle } from "./features/ThemeToggle.tsx";
+import { useTheme } from "./theme.ts";
 import { AttentionView } from "./features/AttentionView.tsx";
 import { BacklogView } from "./features/BacklogView.tsx";
 import { BoardView } from "./features/BoardView.tsx";
 import { buildCommands, CommandPalette, type PaletteCommand } from "./features/CommandPalette.tsx";
-import { ItemDetail, MissingItem } from "./features/ItemDetail.tsx";
 import { TableView } from "./features/TableView.tsx";
 import { TreeView } from "./features/TreeView.tsx";
 import { BoardSkeleton } from "./features/ViewSkeleton.tsx";
 import { hasOpenModal, navigate, replaceHash, useHashRoute, useHotkeys } from "./hooks.ts";
 import { attention, indexBacklog } from "./model/backlog.ts";
-import { reportLinkHref } from "./model/reports.ts";
 import { NEEDS_YOU_PANEL_ID, type NeedsYou, titleWithCount } from "./model/needs-you.ts";
 import { hashFor, type Params, resolveRoute } from "./model/route.ts";
 import { AlertIcon, BoardIcon, PlusIcon, TableIcon, TerminalIcon, TreeIcon } from "./ui/icons.tsx";
 import { RichTextContext } from "./ui/LongText.tsx";
-import { Button, Skeleton, SkeletonLine } from "./ui/primitives.tsx";
-import { Sheet } from "./ui/Sheet.tsx";
+import { Button } from "./ui/primitives.tsx";
 import { StateMark } from "./ui/StateMark.tsx";
 
 const BASE_VIEWS: readonly ViewDefinition[] = [
@@ -52,10 +52,10 @@ export function App({
 	// The shell sits inside the live provider so it can read the session (what waits on the user).
 	return live ? (
 		<live.Provider access={access} backlog={backlog}>
-			<Shell backlog={backlog} live={live} />
+			<Shell backlog={backlog} live={live} access={access} />
 		</live.Provider>
 	) : (
-		<Shell backlog={backlog} live={null} />
+		<Shell backlog={backlog} live={null} access={null} />
 	);
 }
 
@@ -70,7 +70,15 @@ function focusInlineAnswer(): boolean {
 	return true;
 }
 
-function Shell({ backlog, live }: { backlog: BacklogStore; live: LiveExtension | null }) {
+function Shell({
+	backlog,
+	live,
+	access,
+}: {
+	backlog: BacklogStore;
+	live: LiveExtension | null;
+	access: string | null;
+}) {
 	const snapshot = useStore(backlog, (state) => state.snapshot);
 	const loaded = useStore(backlog, (state) => state.loaded);
 	const index = useMemo(() => indexBacklog(snapshot), [snapshot]);
@@ -110,12 +118,14 @@ function Shell({ backlog, live }: { backlog: BacklogStore; live: LiveExtension |
 	const [needsOpen, setNeedsOpen] = useState(false);
 	if (!needs && needsOpen) setNeedsOpen(false);
 	const needsCount = needs?.count ?? 0;
+	const pageTitle = `${current.label} · Octocode`;
 	useEffect(() => {
-		document.title = titleWithCount(document.title, needsCount);
+		document.title = titleWithCount(pageTitle, needsCount);
 		return () => {
 			document.title = titleWithCount(document.title, 0);
 		};
-	}, [needsCount]);
+	}, [pageTitle, needsCount]);
+	const { theme, setTheme, problem: themeProblem } = useTheme(live?.themePrefs, access, editable);
 	const answerWaiting = useCallback(() => {
 		if (!focusInlineAnswer()) setNeedsOpen(true);
 	}, []);
@@ -183,11 +193,25 @@ function Shell({ backlog, live }: { backlog: BacklogStore; live: LiveExtension |
 	const app = (
 		<RichTextContext.Provider value={live?.RichText ?? null}>
 			<div className="shell" inert={sheetOpen || paletteOpen}>
+				<a
+					className="skip-link"
+					href="#main"
+					onClick={(event) => {
+						event.preventDefault();
+						document.getElementById("main")?.focus();
+					}}
+				>
+					Skip to content
+				</a>
 				<header className="top" id="top">
 					<AppHeader
 						index={index}
 						loaded={loaded}
 						live={live !== null}
+						views={views}
+						current={current.name}
+						saved={nav.params}
+						badges={badges}
 						status={live ? <live.ConnectionStatus /> : undefined}
 						needsYou={
 							needs
@@ -200,35 +224,35 @@ function Shell({ backlog, live }: { backlog: BacklogStore; live: LiveExtension |
 								: undefined
 						}
 						actions={
-							live ? (
-								<>
-									<Button
-										icon={<TerminalIcon />}
-										onClick={() => navigate(TERMINAL_HASH)}
-										aria-keyshortcuts="T"
-										title="Terminal view of this session's commands (T)"
-									>
-										Terminal
-									</Button>
-									{editable && (
-										<Button
-											variant="primary"
-											icon={<PlusIcon />}
-											onClick={() => navigate("#new")}
-											aria-keyshortcuts="C"
-										>
-											New item
-										</Button>
-									)}
-								</>
+							editable ? (
+								<Button variant="primary" icon={<PlusIcon />} onClick={() => navigate("#new")} aria-keyshortcuts="C">
+									New item
+								</Button>
 							) : undefined
+						}
+						menu={
+							<>
+								<ThemeToggle theme={theme} onChange={setTheme} problem={themeProblem} />
+								{live && (
+									<>
+										<live.Notifications />
+										<Button
+											icon={<TerminalIcon />}
+											onClick={() => navigate(TERMINAL_HASH)}
+											aria-keyshortcuts="T"
+											title="Terminal view of this session's commands (T)"
+										>
+											Terminal
+										</Button>
+									</>
+								)}
+							</>
 						}
 						onOpenPalette={() => setPaletteOpen(true)}
 					/>
-					<Tabs views={views} current={current.name} saved={nav.params} badges={badges} />
 					{live && needs && needsOpen && <live.NeedsYouAnswer needs={needs} onClose={closeNeeds} />}
 				</header>
-				<main id="main">
+				<main id="main" tabIndex={-1}>
 					{!loaded && BASE_VIEWS.includes(current) ? (
 						<BoardSkeleton />
 					) : (
@@ -257,90 +281,4 @@ function Shell({ backlog, live }: { backlog: BacklogStore; live: LiveExtension |
 		</RichTextContext.Provider>
 	);
 	return app;
-}
-
-function ItemSheet({
-	destination,
-	index,
-	live,
-	editable,
-	loaded,
-	onClose,
-}: {
-	destination: Exclude<ReturnType<typeof resolveRoute>, { kind: "view" }>;
-	index: ReturnType<typeof indexBacklog>;
-	live: LiveExtension | null;
-	editable: boolean;
-	loaded: boolean;
-	onClose: () => void;
-}) {
-	const item = destination.kind === "item" ? index.byRef.get(destination.ref) : undefined;
-	const editing =
-		live &&
-		editable &&
-		(destination.kind === "new" || (item && destination.kind === "item" && destination.mode !== "view"));
-	const titleFocus = () => document.getElementById("item-title");
-	const fieldFocus = () => document.querySelector<HTMLElement>("#drawer [data-autofocus]");
-
-	if (editing) {
-		const correction = destination.kind === "item" && destination.mode === "correct";
-		return (
-			<Sheet
-				labelledBy="editor-title"
-				onClose={onClose}
-				initialFocus={fieldFocus}
-				key={`edit:${item?.ref ?? "new"}:${correction}`}
-			>
-				<live.Editor
-					item={item}
-					correction={correction}
-					onClose={(ref) => (ref ? navigate(`#${ref}`) : item ? navigate(`#${item.ref}`) : onClose())}
-				/>
-			</Sheet>
-		);
-	}
-	return (
-		<Sheet
-			labelledBy="item-title"
-			onClose={onClose}
-			initialFocus={titleFocus}
-			focusKey={`${destination.kind === "item" ? destination.ref : "new"}:${loaded}:${Boolean(item)}`}
-		>
-			{!loaded ? (
-				<div className="sheet-body">
-					<Button onClick={onClose}>Close</Button>
-					<h2 id="item-title" tabIndex={-1}>
-						Loading item…
-					</h2>
-					<Skeleton label="Loading item details">
-						<SkeletonLine />
-						<SkeletonLine width="70%" />
-					</Skeleton>
-				</div>
-			) : item ? (
-				<ItemDetail
-					key={item.ref}
-					item={item}
-					index={index}
-					onClose={onClose}
-					actions={
-						live ? (
-							editable ? (
-								<live.ItemActions item={item} />
-							) : (
-								<p className="muted">
-									This board is read-only here. Open the repository's session to edit items or start implementation.
-								</p>
-							)
-						) : undefined
-					}
-					activity={live && editable ? <live.ItemActivity item={item} /> : undefined}
-					tasks={live && editable && item.type !== "epic" ? <live.controls.ItemTasks item={item} /> : undefined}
-					reportHref={live ? reportLinkHref : undefined}
-				/>
-			) : (
-				<MissingItem refName={destination.kind === "item" ? destination.ref : "Item"} onClose={onClose} />
-			)}
-		</Sheet>
-	);
 }

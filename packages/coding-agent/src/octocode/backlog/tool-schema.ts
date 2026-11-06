@@ -1,6 +1,6 @@
-import { Type } from "typebox";
+import { type TSchema, Type } from "typebox";
 import { StringEnum } from "@octocodeai/octocode-ai";
-import { type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { CloseInputSchema, type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { BacklogError, parseRef } from "./item.ts";
 import type { CompletionArgument } from "./completion-key.ts";
 
@@ -88,6 +88,43 @@ const completion = Type.Optional(
 		description: "update with state done: the result.",
 	}),
 );
+
+/** The fields one `updates` entry may carry: a single update's id, version, state, note, goal, why and completion. */
+export const UPDATE_ENTRY_KEYS: readonly string[] = [
+	"id",
+	"version",
+	"state",
+	"note",
+	"goal",
+	"why",
+	"completion",
+	"close",
+];
+
+/** `updates`: several single updates in one call, each with its own id and version (shapes as the top-level fields). */
+export function updatesField(state: TSchema) {
+	const { completion: done } = entityFields(false);
+	return Type.Optional(
+		Type.Array(
+			Type.Object(
+				{
+					id: Type.String(),
+					version: Type.Optional(Type.Integer()),
+					state: Type.Optional(state),
+					note: Type.Optional(Type.String()),
+					goal: Type.Optional(Type.String()),
+					why: Type.Optional(Type.String()),
+					completion: done,
+					close: Type.Optional(CloseInputSchema),
+				},
+				{ additionalProperties: false },
+			),
+			{
+				description: "update: instead of id, several entries applied in order; a refused entry does not stop the rest",
+			},
+		),
+	);
+}
 
 /**
  * The declared parameters with each link `target` also accepting a reference object, as older transcripts and SDK

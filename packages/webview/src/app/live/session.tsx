@@ -153,6 +153,7 @@ function isReportSummary(value: unknown): value is ReportSummary {
 type LiveApi = ReturnType<typeof createApi>;
 
 interface LiveSession {
+	access: string;
 	backlog: BacklogStore;
 	workspace: ReturnType<typeof createWorkspaceStore>;
 	session: StoreApi<SessionState>;
@@ -218,6 +219,7 @@ export function LiveProvider({
 			connection: undefined,
 		}));
 		return {
+			access,
 			backlog,
 			api,
 			workspace: createWorkspaceStore(),

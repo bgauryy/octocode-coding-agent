@@ -19,8 +19,8 @@ import { assign, long, longTask, runChild } from "./agent-context/child-run.ts";
  */
 
 const FOREGROUND =
-	"You run in the foreground: your parent reads your messages only with your report, so put a decision or approval you need in a `blocked` report; do not wait for an answer.";
-const BACKGROUND = "You run in the background: your parent can answer a message while you work.";
+	"You run in the foreground: your coordinator reads your messages only with your report, so put a decision or approval you need in a `blocked` report; do not wait for an answer.";
+const BACKGROUND = "You run in the background: your coordinator can answer a message while you work.";
 
 const contract = admitResultSchema({
 	type: "object",
@@ -85,7 +85,7 @@ describe("child identity after its own compaction (real sessions)", () => {
 		for (const part of [
 			`\`${run.identity.isolation!.cwd}\``,
 			"Why you were started: The old parser blocks the release.\n\n## You\n",
-			"Your name is `child-example` (implementer). Your goal: migrate the parser. You work for",
+			"Your name is `child-example` (implementer). Your goal: migrate the parser. You work on a team led by your coordinator",
 			"Your backlog item is `B7`",
 			`Your scratch folder is \`${shortPath(fx.scratch)}\``,
 			BACKGROUND,

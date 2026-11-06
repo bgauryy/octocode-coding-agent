@@ -10,7 +10,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 @keyframes shimmer-bg { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .view-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .segmented button .icon { opacity: .8; }
-.run-indicator { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); font-size: 13px; font-weight: 500; }
+.run-indicator { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); font-size: var(--fs-sm); font-weight: 500; }
 .run-orb { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--orb, var(--accent)); }
 .run-orb::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--orb, var(--accent)); opacity: 0; animation: ping 1.6s var(--ease) infinite; }
 .phase-retrying { --orb: var(--warning); }
@@ -24,12 +24,12 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 @keyframes shimmer-text { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .run-elapsed, .elapsed { color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 400; }
 .run-elapsed { margin-left: auto; }
-.thought-for { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 12px; font-weight: 500; }
+.thought-for { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: var(--fs-xs); font-weight: 500; }
 
 /* File edit diffs */
 .diff-view { display: grid; gap: 8px; }
 .diff-file { margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); }
-.diff-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border-soft); background: var(--surface-2); font-size: 12px; }
+.diff-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border-soft); background: var(--surface-2); font-size: var(--fs-xs); }
 .diff-stat { margin-left: auto; font: 12px var(--mono); }
 .diff-add-count { color: var(--success); } .diff-del-count { color: var(--danger); }
 .diff-body { display: grid; margin: 0; max-height: 360px; overflow: auto; font: 12px/1.55 var(--mono); }
@@ -41,7 +41,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 
 /* Terminal transcript: dark in both themes, like the terminal it mirrors */
 .terminal { position: relative; display: grid; overflow: hidden; border: 1px solid #30363d; border-radius: var(--radius-lg); background: #0d1117; color: #e6edf3; box-shadow: var(--shadow-md); --term-dim: #8b949e; --term-accent: #c084fc; --term-ok: #56d364; --term-bad: #ff6b6b; --term-warn: #f2c14e; }
-.terminal-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid #21262d; background: #161b22; color: var(--term-dim); font-size: 12px; }
+.terminal-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid #21262d; background: #161b22; color: var(--term-dim); font-size: var(--fs-xs); }
 .terminal-bar .btn-ghost { color: var(--term-dim); }
 .terminal-bar .btn-ghost:hover:not(:disabled) { background: #21262d; color: #e6edf3; }
 .terminal-bar .btn[aria-pressed=true] { background: #1a1426; border-color: #3b2a5c; color: var(--term-accent); }
@@ -55,7 +55,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 .terminal-prompt { display: flex; align-items: baseline; gap: 8px; }
 .prompt-symbol { color: var(--term-accent); font-weight: 700; }
 .terminal-command { color: #e6edf3; font-weight: 600; }
-.terminal-status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--term-dim); font-size: 11px; }
+.terminal-status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--term-dim); font-size: var(--fs-xs); }
 .status-done .terminal-status { color: var(--term-ok); }
 .status-failed .terminal-status { color: var(--term-bad); }
 .status-failed .prompt-symbol { color: var(--term-bad); }
@@ -63,7 +63,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 .terminal-output { margin: 0; padding-left: 18px; color: #c9d1d9; white-space: pre; }
 .terminal-body.is-wrapped .terminal-output { white-space: pre-wrap; overflow-wrap: anywhere; }
 .terminal-empty { place-items: center; padding: 48px 16px; text-align: center; font-family: var(--font); }
-.terminal-muted { color: var(--term-dim); font-size: 13px; }
+.terminal-muted { color: var(--term-dim); font-size: var(--fs-sm); }
 .terminal-jump { position: absolute; right: 16px; bottom: 14px; box-shadow: var(--shadow-md); }
 
 @keyframes fade-in { from { opacity: 0; } }

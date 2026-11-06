@@ -114,7 +114,7 @@ describe("a subagent child over its request budget", () => {
 			lines()
 				.filter((line) => line.startsWith("prompt "))
 				.at(-1),
-		).not.toContain("Your parent continued you");
+		).not.toContain("Your coordinator continued you");
 		// At the hard limit: a whole allowance from there, where it used to return without running.
 		const spawned = vi.fn();
 		const continued: number[] = [];
@@ -138,7 +138,7 @@ describe("a subagent child over its request budget", () => {
 				.filter((line) => line.startsWith("prompt "))
 				.at(-1),
 		).toContain(
-			"Your parent continued you after 5 model requests; the run is stopped at 10. Do this task and report before that:",
+			"Your coordinator continued you after 5 model requests; the run is stopped at 10. Do this task and report before that:",
 		);
 		// A peer's relayed message is no grant: past the hard limit it runs nothing, and the report says how to continue.
 		const transcript = fs.readFileSync(childSessionFile(session)!, "utf8");
@@ -253,7 +253,7 @@ describe("a subagent child over its request budget", () => {
 			"steer You have used 3 of 3 model requests; the run stops at 5. Finish the check in progress.",
 		);
 		expect(log).toContain(
-			"Your parent waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
+			"Your coordinator waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
 		);
 		expect(log).toContain("abort");
 		expect(log.indexOf(steers[0])).toBeLessThan(log.indexOf("abort"));

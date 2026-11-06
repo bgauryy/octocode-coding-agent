@@ -1,7 +1,7 @@
 /** The API passed to extension factory functions. */
 
 import type { ThinkingLevel, EventBus } from "@octocodeai/octocode-agent-core";
-import type { AssistantMessage, ImageContent, Model, Provider, TextContent } from "@octocodeai/octocode-ai";
+import type { AssistantMessage, ImageContent, Model, Provider, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../../cache-warmer.ts";
@@ -191,6 +191,9 @@ export interface ExtensionAPI {
 
 	/** Capture the current session before auxiliary requests; record each completed response once, including reported failed usage. */
 	createUsageRecorder(kind: string): (message: AssistantMessage) => void;
+
+	/** Add one side call's spend (a call that is not an assistant turn, such as a timer `check`) to the session's cost total, once. */
+	recordUsage(kind: string, provider: string, model: string, usage: Usage): void;
 
 	// =========================================================================
 	// Session Metadata

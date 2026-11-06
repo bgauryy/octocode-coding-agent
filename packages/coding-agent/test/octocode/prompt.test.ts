@@ -20,7 +20,7 @@ describe("prompt", () => {
 		});
 		// The research section routes code search to the server and keeps a fallback for a missing tool.
 		expect(root).toContain(
-			"- Use the research tools (`mcp__research__*`) to check code before you rely on it: search with `search_code` and read source you will edit with `read_file`, instead of `rg`, `grep`, `find`, `ls`, `cat` or `sed -n` in bash; they cost less and give exact evidence when you investigate, check or need many reads. A quick look at one known file or a command's output can stay in bash. Their descriptions route each question to a tool, including sources outside this checkout you would otherwise read through `web`.",
+			"- Use the research tools (`mcp__research__*`) to check code before you rely on it: search with `search_code` and read source you will edit with `read_file`, instead of `rg`, `grep`, `find`, `ls`, `cat` or `sed -n` in bash; they cost less and give exact evidence when you investigate, check or need many reads, unless you verified they cannot do it. A quick look at one known file or a command's output can stay in bash. Their descriptions route each question to a tool, including sources outside this checkout you would otherwise read through `web`.",
 		);
 		expect(root).toContain(
 			"- If one of these tools fails or is missing, say so and restart its server; if it still fails, fall back to bash search (`rg`, `fd`, `sed -n`).",
@@ -121,7 +121,7 @@ describe("prompt", () => {
 		expect(root).toContain("name a Markdown path under `.octocode/<topic>/`");
 		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		// The report contract rides in the child's task (`instructions/report.ts`), not in the policy.
-		expect(writer).not.toContain("reaches your parent by itself");
+		expect(writer).not.toContain("reaches your coordinator by itself");
 		expect(writer).toContain("You are a subagent: finish your task yourself.");
 		// The prompt owns whom to tell about a blocker, once; the agent message tool owns the fields and when else to message.
 		for (const prompt of [
@@ -172,6 +172,12 @@ describe("prompt", () => {
 		);
 		expect(reader).toContain("- Call only MCP tools that cannot change files or external state;");
 		expect(reader).toContain("a Markdown doc in your scratch folder");
+		// The folders the permission layer lets the role write (`permission/read-only-role.ts`) are all named.
+		expect(reader).toContain(
+			"`.octocode/tmp/`, a topic's `.octocode/<topic>/tmp/`, or Markdown files under `.octocode/`",
+		);
+		expect(reader).toContain("`.octocode/tmp/` or a topic's `.octocode/<topic>/tmp/` (to unpack");
+		expect(reader).toContain("unless you verified they cannot do it");
 		// It limits only the writers this agent has: here `file` and MCP but no shell.
 		expect(
 			octocodePrompt({
@@ -226,13 +232,13 @@ describe("prompt", () => {
 	it("states the report contract once, in the child's task, and nowhere in the policy, lean prompt or roles", () => {
 		const contract = reportContract();
 		expect(contract).toMatch(
-			/^Your final answer is your report and reaches your parent by itself\. Start it with the outcome word itself and a period, colon or dash, not a heading or a sentence: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\); then the answer or changes, verification, a `Noticed:` line \(anything surprising, risky or wrong you saw, even outside your task, or `none`\), and the decisions or questions left for your parent\./,
+			/^Your final answer is your report and reaches your coordinator by itself\. Start it with the outcome word itself and a period, colon or dash, not a heading or a sentence: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\); then the answer or changes, verification, a `Noticed:` line \(anything surprising, risky or wrong you saw, even outside your task, or `none`\), and the decisions or questions left for your coordinator\./,
 		);
 		// The machine-consumed outcome words and the preview size the parent keeps.
 		expect(contract).toContain("`blocked` report");
 		// Resume and continuation rules are the parent's: the agent tool owns them, so the child's contract omits them.
 		expect(contract).not.toContain("task resume");
-		expect(contract).toContain("Your parent keeps the first 8 KB and gets the path of the whole report");
+		expect(contract).toContain("Your coordinator keeps the first 8 KB and gets the path of the whole report");
 		expect(reportContractSentences().length).toBeGreaterThan(3);
 		for (const sentence of reportContractSentences()) expect(contract).toContain(sentence);
 		// Every child's task carries it after its identity, once.
@@ -271,8 +277,8 @@ describe("prompt", () => {
 			// A read-only child cannot delete: its core only leaves commit and push to the parent.
 			expect(child).toContain(
 				canWrite
-					? "Ask your parent for approval, as your run mode says, before deleting existing user or repository content, taking another destructive or irreversible action"
-					: "Leave commit and push to your parent.",
+					? "Ask your coordinator for approval, as your run mode says, before deleting existing user or repository content, taking another destructive or irreversible action"
+					: "Leave commit and push to your coordinator.",
 			);
 		}
 		// Each role keeps what its report adds beyond the contract.
@@ -338,7 +344,7 @@ describe("prompt", () => {
 			"W -->|anything else| R{Run mode}",
 			"R -->|background| B[message parent, needs a reply]",
 			"R -->|foreground| F[say so in your report, do not wait]",
-			"Keep working on what does not depend on it; if it blocks completion, finish with a `blocked` report: its answer resumes you.",
+			"Keep working on what does not depend on it; if it blocks you, finish with a `blocked` report: its answer resumes you.",
 		])
 			expect(child).toContain(edge);
 		expect(child).toContain("checkpoint long tasks there");
@@ -348,7 +354,7 @@ describe("prompt", () => {
 				prompt === root ? 1 : 0,
 			);
 			// Conditions, not templates: a reason when the step is not obvious, a label when a claim is not verified.
-			expect(prompt.match(/When a step's reason would not be obvious to (the user|your parent)/g)).toHaveLength(1);
+			expect(prompt.match(/When a step's reason would not be obvious( to the user)? \(a deletion/g)).toHaveLength(1);
 			expect(prompt.match(/mark what you did not verify as an assumption or unknown/g)).toHaveLength(1);
 			expect(prompt.match(/Base claims and decisions on evidence you read or ran/g)).toHaveLength(1);
 			expect(prompt).toContain("Never invent a name, path, API, version, tool parameter or result;");
@@ -363,9 +369,9 @@ describe("prompt", () => {
 			"- Work until the request is done and checked, or you are blocked; while work you can do remains, keep going instead of ending the turn with a progress report or asking whether to continue. A user message that arrives mid-task adjusts the current task when it is about it; answer an unrelated one and continue.",
 		);
 		expect(child).not.toContain("keep going instead of ending the turn");
-		// The summary goes to the user; a child's report contract already asks for verification.
+		// The team's status and the summary go to the user; a child's report contract already asks for verification.
 		expect(root).toContain(
-			"- Close multi-step work, or a status request, with a TL;DR of 2 to 4 short lines: what changed, checks and results, what is left (items, jobs, agents). Later updates, a child's checked result included, say only what changed, in your words; never repeat what the user saw.",
+			"- While agents, jobs or items you started are open, end each reply with their status: a table of agent or job, task or item, state and blocker. Close it, multi-step work and a status request with a TL;DR of 2 to 4 short lines: what changed, checks and results, what is left. Otherwise say only what changed, in your words.",
 		);
 		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
@@ -376,7 +382,7 @@ describe("prompt", () => {
 			"Ask with askUser before acting when tools cannot settle an unknown that changes scope, correctness, authorization or an unapproved cost",
 		);
 		expect(child).toContain(
-			"Raise it with your parent, as `<delegation>` says, before acting when tools cannot settle an unknown that changes scope, correctness, authorization or an unapproved cost",
+			"Raise it, as `<delegation>` says, before acting when tools cannot settle an unknown that changes scope, correctness, authorization or an unapproved cost",
 		);
 	});
 
@@ -509,7 +515,7 @@ describe("prompt", () => {
 		);
 		expect(role("browser")).not.toContain("resume the task");
 		// The Subagent section owns how a child asks its parent; roles do not restate it.
-		expect(role("implementer")).not.toContain("ask your parent");
+		expect(role("implementer")).not.toContain("ask your coordinator");
 		expect(role("implementer")).not.toContain("leave browser work to a browser profile");
 	});
 
@@ -540,7 +546,7 @@ describe("prompt", () => {
 			{
 				canDelegate: false,
 				canUseAgent: true,
-				ask: "Ask your parent for approval, as your run mode says, before deleting existing user or repository content",
+				ask: "Ask your coordinator for approval, as your run mode says, before deleting existing user or repository content",
 			},
 			{ canDelegate: false, canUseAgent: false, ask: "If deleting existing user or repository content" },
 		];

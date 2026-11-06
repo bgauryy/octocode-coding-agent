@@ -1,10 +1,10 @@
 import fs from "node:fs";
+import { openScratchFile, writeScratchFile } from "../../shared/report-artifact.ts";
 import path from "node:path";
 import { tailNote } from "../../shared/format.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import type { ChildState } from "../events.ts";
 import { type ChildNotices, noticeText } from "../notices.ts";
-import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 import { cutText } from "../../../../../common/src/text.ts";
 
 /** Characters of a child's stderr a failure shows (its end); a longer stderr is saved whole. */
@@ -38,7 +38,7 @@ export class StderrTail {
 			if (this.fd === undefined) {
 				if (!this.dir) throw new Error("no folder");
 				const file = path.join(this.dir, STDERR_FILE);
-				this.fd = fs.openSync(file, "w", PRIVATE_FILE_MODE);
+				this.fd = openScratchFile(file);
 				this.file = file;
 				// Nothing was cut before the first overflow, so the tail is everything that came earlier.
 				fs.writeSync(this.fd, before);
@@ -80,7 +80,7 @@ export class StderrTail {
 		if (this.failed || this.total === 0 || this.total > STDERR_TAIL_CHARS || !this.dir) return undefined;
 		try {
 			const file = path.join(this.dir, STDERR_FILE);
-			fs.writeFileSync(file, this.tail, { mode: PRIVATE_FILE_MODE });
+			writeScratchFile(file, this.tail);
 			this.file = file;
 			return file;
 		} catch {
@@ -109,7 +109,7 @@ export function savedNotices(state: ChildState, dir: string | undefined): ChildN
 	try {
 		if (!dir) throw new Error("no folder");
 		const file = path.join(dir, NOTICES_FILE);
-		fs.writeFileSync(file, `${all.map(noticeText).join("\n")}\n`, { mode: PRIVATE_FILE_MODE });
+		writeScratchFile(file, `${all.map(noticeText).join("\n")}\n`);
 		return { ...state.notices, file };
 	} catch {
 		return { ...state.notices, kept: all, more: 0 };

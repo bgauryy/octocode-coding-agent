@@ -4,11 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
-import type { McpServerEntry } from "../../../mcp/src/config.ts";
+import { expandLaunchTemplates } from "../../../mcp/src/launch-templates.ts";
 import { presetEntries } from "../../../mcp/src/preset.ts";
-import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
-import { prepareOctocodeSkillLaunch } from "../../../mcp/src/presets/octocode/skill-paths.ts";
-import { takeOctocodeWarnings } from "../../../mcp/src/presets/octocode/warnings.ts";
+import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
+import { takeLaunchWarnings } from "../../../mcp/src/warnings.ts";
 import { ENV_AGENT_DIR } from "../../src/config.ts";
 import { userResearchRoots } from "../../src/octocode/mcp-host/research-roots.ts";
 import { tmp } from "./helpers.ts";
@@ -161,7 +160,7 @@ describe("launch environment with user roots", () => {
 		vi.stubEnv(ENV_AGENT_DIR, u.octo);
 		vi.stubEnv("HOME", u.home);
 		vi.stubEnv("ALLOWED_PATHS", undefined);
-		takeOctocodeWarnings();
+		takeLaunchWarnings();
 	});
 	afterEach(() => vi.unstubAllEnvs());
 
@@ -169,35 +168,27 @@ describe("launch environment with user roots", () => {
 		path.join(cwd, ".octocode", "code", "session-data"),
 		path.join(cwd, ".octocode", "code", "temp", "sessions"),
 	];
-	const defaultServer = (skills: string[] = []): string[] => {
-		const preset = octocodePreset(() => skills, process.env);
-		const prepared = preset.prepareLaunch!(presetEntries([preset])[0], cwd, true);
+	/** The default server's `ALLOWED_PATHS`, as the host expands its launch templates for a session. */
+	const launchRoots = (skills: string[] = [], projectTrusted = true): string[] => {
+		const [preset] = recommendedPresets(process.env);
+		const prepared = expandLaunchTemplates(presetEntries([preset])[0], {
+			cwd,
+			projectTrusted,
+			skillDirectories: skills,
+			env: process.env,
+		});
 		const env = (prepared.config as { env: Record<string, string> }).env;
 		return resolveConfigValueOrThrow(env.ALLOWED_PATHS, "ALLOWED_PATHS").split(",");
 	};
-	const entry = (env?: Record<string, string>): McpServerEntry => ({
-		name: "octocode",
-		source: path.join(u.octo, "mcp.json"),
-		config: { command: "octocode-mcp", ...(env ? { env } : {}) },
-	});
-	const configuredServer = (env?: Record<string, string>, skills: string[] = []): string[] | undefined => {
-		const prepared = prepareOctocodeSkillLaunch(entry(env), cwd, skills, process.env);
-		const value = (prepared.config as { env?: Record<string, string> }).env?.ALLOWED_PATHS;
-		return value === undefined ? undefined : resolveConfigValueOrThrow(value, "ALLOWED_PATHS").split(",");
-	};
+	const defaultServer = (skills: string[] = []): string[] => launchRoots(skills);
 	const automatic = (skills: string[] = []) => [cwd, ...sessions(), ...skills];
 
-	it.each([
-		["default server", (skills?: string[]) => defaultServer(skills)],
-		["configured entry", (skills?: string[]) => configuredServer(undefined, skills)],
-	])("%s: automatic roots alone when the user adds none", (_name, launch) => {
-		expect(launch(["/skills/one"])).toEqual(automatic(["/skills/one"]));
+	it("default server: automatic roots alone when the user adds none", () => {
+		expect(defaultServer(["/skills/one"])).toEqual(automatic(["/skills/one"]));
 	});
 
-	it.each([
-		["default server", (skills?: string[]) => defaultServer(skills)],
-		["configured entry", (skills?: string[]) => configuredServer(undefined, skills)],
-	])("%s: adds roots from settings, .env, .octocoderc and the process environment", (_name, launch) => {
+	it("default server: adds roots from settings, .env, .octocoderc and the process environment", () => {
+		const launch = defaultServer;
 		const [s, e, r, p] = [u.add("s"), u.add("e"), u.add("r"), u.add("p")];
 		u.settings([s]);
 		expect(launch()).toEqual([...automatic(), s]);
@@ -209,31 +200,17 @@ describe("launch environment with user roots", () => {
 		expect(launch()).toEqual([...automatic(), ...[s, e, r, p].sort()]);
 	});
 
-	it.each([
-		["default server", () => defaultServer()],
-		["configured entry", () => configuredServer()],
-	])("%s: the process ALLOWED_PATHS is additive, not a replacement", (_name, launch) => {
+	it("default server: the process ALLOWED_PATHS is additive, not a replacement", () => {
 		const p = u.add("p");
 		vi.stubEnv("ALLOWED_PATHS", p);
-		expect(launch()).toEqual([...automatic(), p]);
-	});
-
-	it("an ALLOWED_PATHS in the configured entry's own env replaces every other root, with one warning", () => {
-		u.settings([u.add("s")]);
-		vi.stubEnv("ALLOWED_PATHS", u.add("p"));
-		const replaced = prepareOctocodeSkillLaunch(entry({ ALLOWED_PATHS: "/only/this" }), cwd, [], process.env);
-		expect((replaced.config as { env: Record<string, string> }).env.ALLOWED_PATHS).toBe("/only/this");
-		prepareOctocodeSkillLaunch(entry({ ALLOWED_PATHS: "/only/this" }), cwd, [], process.env);
-		expect(takeOctocodeWarnings().filter((w) => w.includes(path.join(u.octo, "mcp.json")))).toEqual([
-			expect.stringContaining('ALLOWED_PATHS in the "octocode" entry of'),
-		]);
+		expect(defaultServer()).toEqual([...automatic(), p]);
 	});
 
 	it("warns about a rejected folder in the launch's warnings, once", () => {
 		u.settings(["relative/folder"]);
 		expect(defaultServer()).toEqual(automatic());
 		defaultServer();
-		expect(takeOctocodeWarnings()).toEqual([expect.stringContaining('"relative/folder" from research.allowedPaths')]);
+		expect(takeLaunchWarnings()).toEqual([expect.stringContaining('"relative/folder" from research.allowedPaths')]);
 	});
 
 	it.each([false, true])("ignores a project settings.json research.allowedPaths (trusted: %s)", (trusted) => {
@@ -243,11 +220,7 @@ describe("launch environment with user roots", () => {
 			path.join(cwd, ".octocode", "settings.json"),
 			JSON.stringify({ research: { allowedPaths: [projectRoot] } }),
 		);
-		const preset = octocodePreset(() => [], process.env);
-		const prepared = preset.prepareLaunch!(presetEntries([preset])[0], cwd, trusted);
-		const env = (prepared.config as { env: Record<string, string> }).env;
-		expect(resolveConfigValueOrThrow(env.ALLOWED_PATHS, "ALLOWED_PATHS").split(",")).toEqual(automatic());
-		expect(configuredServer()).toEqual(automatic());
+		expect(launchRoots([], trusted)).toEqual(automatic());
 	});
 
 	it("applies a changed setting at the next prepared launch", () => {

@@ -103,8 +103,13 @@ describe("built-in features", () => {
 		});
 	});
 
+	it("keeps MCP on when settings name -builtin:mcp: MCP is core, switched only by MCP configuration or --no-mcp", async () => {
+		const { result } = await load({ settings: { extensions: ["-builtin:mcp"] } });
+		expect(result.errors).toEqual([]);
+		expect(ids(result)).toEqual(["llama.cpp", "mcp", "octocode"]);
+	});
+
 	it.each([
-		{ how: "a -builtin:mcp settings entry", options: { settings: { extensions: ["-builtin:mcp"] } }, off: "mcp" },
 		{
 			how: "a -builtin:llama.cpp settings entry",
 			options: { settings: { extensions: ["-builtin:llama.cpp"] } },

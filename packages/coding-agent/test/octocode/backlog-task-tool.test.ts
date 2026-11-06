@@ -10,6 +10,7 @@ import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { registeredWorkspace } from "../../src/config/workspace-database.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
+import { setItemTitles } from "../../src/octocode/shared/render/item-titles.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
 const SESSION = "session-test";
@@ -280,7 +281,7 @@ describe("task tool", () => {
 			);
 			expect(await withItem.task({ op: "list" })).toBe("T1 [todo] Check the schema (B1)");
 			await expect(withItem.task({ op: "add", goal: "Not mine", item: "B2" })).rejects.toThrow(
-				/B2 is not your item: your parent started you for B1/,
+				/B2 is not your item: your coordinator started you for B1/,
 			);
 			const bare = setup({ subagent: child() });
 			expect(await bare.task({ op: "add", goal: "Own step" })).toBe("Added T2 [todo] Own step (session)");
@@ -292,10 +293,10 @@ describe("task tool", () => {
 			store.add({ ...READY, title: "Unclaimed", state: "todo", createdBy: "user" });
 			const t = setup({ subagent: child() });
 			await expect(t.task({ op: "add", goal: "Sneak", item: "B1" })).rejects.toThrow(
-				/B1 is not claimed by your parent.*Ask your parent to claim it \(agent message to parent\), or add session steps without an item\./,
+				/B1 is not claimed by your coordinator.*Ask your coordinator to claim it \(agent message, to: "parent"\), or add session steps without an item\./,
 			);
 			await expect(t.backlog({ op: "update", id: "B1", state: "ongoing" })).rejects.toThrow(
-				/B1 is not claimed by your parent.*Ask your parent to claim it \(agent message to parent\), or put the finding in your report\./,
+				/B1 is not claimed by your coordinator.*Ask your coordinator to claim it \(agent message, to: "parent"\), or put the finding in your report\./,
 			);
 			const own = await t.task({ op: "add", goal: "Own" });
 			expect(own).toContain("T1");
@@ -331,6 +332,29 @@ describe("task tool", () => {
 		expect(await row({ op: "list", state: "done" })).toMatch(/^ {2}⎿ {2}1 step\n {5}T1 \[done\]/);
 	});
 
+	it("draws the title of a known item next to its ID in the call and the result, without changing the stored goal", async () => {
+		const t = setup();
+		const tool = t.tools.get("steps");
+		const params = { op: "add", goal: "Support B3 work" };
+		// A write refreshes the cache from the board, so the titles are set after it.
+		const result = await tool.execute("id", params, undefined, undefined, t.ctx);
+		setItemTitles(new Map([["B3", "Loader work"]]));
+		try {
+			expect(rendered(tool.renderCall({ op: "add", goal: "Read the loader", item: "B3" }, theme, {}))).toBe(
+				'○ Steps(add in B3 “Loader work” "Read the loader")',
+			);
+			expect(rendered(tool.renderCall({ op: "add", goal: "x", item: "B4" }, theme, {}))).toBe('○ Steps(add in B4 "x")');
+			expect(
+				rendered(
+					tool.renderResult(result, { expanded: false }, theme, { args: params, isPartial: false, expanded: false }),
+				),
+			).toBe("  ⎿  Added T1 · todo · Support B3 “Loader work” work");
+			expect(JSON.stringify(result)).toContain("Support B3 work");
+		} finally {
+			setItemTitles(new Map());
+		}
+	});
+
 	it("states the quick-work threshold and what happens to open steps, once, for every role that has the tool", () => {
 		const main = setup().tools.get("steps");
 		const child = setup({ subagent: { id: "c", env: { [PARENT_SESSION_ENV]: SESSION } } }).tools.get("steps");
@@ -347,8 +371,8 @@ describe("task tool", () => {
 			expect(tool.promptGuidelines[0]).toContain("Leave unfinished steps todo");
 			expect(tool.promptGuidelines[0]).not.toContain("before you report");
 		}
-		expect(child.promptGuidelines[0]).toContain("pass to your parent");
-		expect(main.promptGuidelines[0]).not.toContain("pass to your parent");
+		expect(child.promptGuidelines[0]).toContain("pass to your coordinator");
+		expect(main.promptGuidelines[0]).not.toContain("pass to your coordinator");
 		// `backlog` says what an item is, not when a step is a task.
 		expect(setup().tools.get("backlog").promptGuidelines.join(" ")).not.toContain("One-step");
 	});
