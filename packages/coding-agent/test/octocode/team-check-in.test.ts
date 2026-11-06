@@ -148,6 +148,8 @@ describe("checkInConfig", () => {
 });
 
 describe("a foreground child's report", () => {
+	// The run audit a parent keeps (B38): a run is begun and finished around each foreground child.
+	const audit = { begin: vi.fn(), finish: vi.fn(), hint: vi.fn() };
 	const run = () => ({
 		identity: { id: "c-1" },
 		route: { model: undefined },
@@ -158,7 +160,7 @@ describe("a foreground child's report", () => {
 
 	it("closes the questions its parent put to it, as a background child's does", async () => {
 		const closeQuestionsTo = vi.fn();
-		const runs = { foreground: new Map(), team: { closeQuestionsTo } };
+		const runs = { foreground: new Map(), team: { closeQuestionsTo, audit } };
 		await runForeground(
 			runs as never,
 			run() as never,
@@ -176,7 +178,7 @@ describe("a foreground child's report", () => {
 		const closeQuestionsTo = vi.fn(() => {
 			throw new Error("database is locked");
 		});
-		const runs = { foreground: new Map(), team: { closeQuestionsTo } };
+		const runs = { foreground: new Map(), team: { closeQuestionsTo, audit } };
 		const result = await runForeground(
 			runs as never,
 			run() as never,
@@ -193,7 +195,7 @@ describe("a foreground child's report", () => {
 
 	it("leaves them open when the run failed, so the parent hears they went unanswered", async () => {
 		const closeQuestionsTo = vi.fn();
-		const runs = { foreground: new Map(), team: { closeQuestionsTo } };
+		const runs = { foreground: new Map(), team: { closeQuestionsTo, audit } };
 		await runForeground(
 			runs as never,
 			run() as never,

@@ -235,11 +235,9 @@ class LlamaView implements LlamaUi, Focusable {
 	/** After `dispose` nobody can ask to stop, so the progress wait stays open until the operation ends. */
 	progress(state: ProgressState): Promise<void> {
 		if (this.disposed) return new Promise(() => {});
-		if (!this.progressPromise) {
-			this.progressPromise = new Promise((resolve) => {
-				this.progressResolver = resolve;
-			});
-		}
+		this.progressPromise ??= new Promise((resolve) => {
+			this.progressResolver = resolve;
+		});
 		this.showingProgress = true;
 		this.updateProgress(state);
 		return this.progressPromise;

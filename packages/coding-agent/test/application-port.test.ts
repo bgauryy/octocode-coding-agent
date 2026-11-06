@@ -95,14 +95,8 @@ describe("application port", () => {
 		const replay = service.connect({ cursor: first.cursor })[Symbol.asyncIterator]();
 		expect((await replay.next()).value.type).toBe("resumed");
 		expect((await replay.next()).value.event.type).toBe("run.started");
-		expect(
-			(
-				await service
-					.connect({ cursor: { ...first.cursor, epoch: "old" } })
-					[Symbol.asyncIterator]()
-					.next()
-			).value.type,
-		).toBe("snapshot");
+		const stale = service.connect({ cursor: { ...first.cursor, epoch: "old" } });
+		expect((await stale[Symbol.asyncIterator]().next()).value.type).toBe("snapshot");
 		service.dispose();
 	});
 	it("deduplicates requests and rejects changed payloads and stale sessions", async () => {

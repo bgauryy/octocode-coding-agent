@@ -117,12 +117,16 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 			result: Array<{ type: string; text?: string; data?: string; mimeType?: string }>,
 			details: unknown,
 			isError: boolean,
+			structuredContent?: unknown,
 		): { collapsed?: string; expanded?: string } | undefined {
 			try {
 				const toolDef = getToolRenderers(toolName);
 				if (!toolDef?.renderResult) {
 					return undefined;
 				}
+				// An MCP call's purpose comes from its result, so it opens the result, right under the call. Without the
+				// arguments a native tool's reason row (drawn with its call) is not repeated here.
+				const purpose = reasonRow(toolName, undefined, structuredContent)?.render(width) ?? [];
 
 				// Build AgentToolResult from content array
 				// Cast content since session storage uses generic object types
@@ -140,7 +144,7 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 					createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError),
 				);
 				renderedResultComponents.set(toolCallId, collapsedComponent);
-				const collapsed = ansiLinesToHtml(trimRenderedResultLines(collapsedComponent.render(width)));
+				const collapsed = ansiLinesToHtml([...purpose, ...trimRenderedResultLines(collapsedComponent.render(width))]);
 
 				// Render expanded
 				const expandedComponent = toolDef.renderResult(
@@ -150,7 +154,7 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 					createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), true, false, isError),
 				);
 				renderedResultComponents.set(toolCallId, expandedComponent);
-				const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
+				const expanded = ansiLinesToHtml([...purpose, ...trimRenderedResultLines(expandedComponent.render(width))]);
 
 				return {
 					...(collapsed && collapsed !== expanded ? { collapsed } : {}),

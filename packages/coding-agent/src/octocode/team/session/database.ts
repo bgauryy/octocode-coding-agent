@@ -69,7 +69,8 @@ export class TeamDatabase {
 	release(): void {
 		this.stopWrites?.();
 		this.stopForward?.();
-		this.stopWrites = this.stopForward = undefined;
+		this.stopWrites = undefined;
+		this.stopForward = undefined;
 		this.db = undefined;
 	}
 

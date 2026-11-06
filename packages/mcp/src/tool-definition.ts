@@ -6,7 +6,6 @@ import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import { hostRender, hostUi } from "./host.ts";
 import type { McpExposure } from "./config.ts";
-import { mcpArgumentNormalizer } from "./arguments.ts";
 import { declaredExposure } from "./exposure.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
@@ -29,7 +28,10 @@ interface PreparedMcpCall {
 interface McpToolPresentation extends McpToolRenderers {
 	label?: string;
 	outputSchema?: TSchema;
-	/** Rewrites the arguments just before the server call (the model-facing schema is unchanged) and may review the raw result. */
+	/**
+	 * Prepares the server call and may review the raw result. The arguments are the server's input: only a safety boundary
+	 * may change them (the browser's network filter), never their shape.
+	 */
 	prepareCall?: (args: Record<string, unknown>, ctx: McpContext) => PreparedMcpCall | Promise<PreparedMcpCall>;
 	convertResult: (result: CallToolResult, ctx: McpContext) => Promise<AgentToolResult<McpToolDetails>>;
 }
@@ -60,9 +62,6 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	const description = tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`;
 	const inputSchema = toParameters(tool.inputSchema);
 	const { compact } = options;
-	// Common argument-shape mistakes (an undeclared `reason`, `responseChars` in a query, a JSON-string `queries`) are
-	// rewritten to the accepted shape before validation (`arguments.ts`).
-	const normalize = mcpArgumentNormalizer(tool.inputSchema);
 	return {
 		name: options.name,
 		label,
@@ -74,27 +73,27 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 				? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
 				: description,
 		parameters: compact ? thinParameters(inputSchema) : inputSchema,
+		...(tool.annotations?.destructiveHint === true ? { annotations: { destructiveHint: true as const } } : {}),
 		...(compact ? { validationParameters: inputSchema } : {}),
-		// Shown after a failed validation: a failure at the top level names the one accepted call shape; any other
-		// names the working next step for an over-long `queries` batch, and a compact tool adds its typed signature.
-		...(compact || queriesCap(tool.inputSchema) !== undefined
-			? {
-					validationHint: ({ envelope }) => {
-						const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
-						if (shape) return shape;
-						const block = compact?.signature();
-						const cap = queriesCap(tool.inputSchema);
-						const hints = [
-							cap === undefined
-								? ""
-								: `queries holds at most ${cap}; split into calls of ${cap} or fewer, run them in the same turn.`,
-							block ? `Expected signature (TypeScript):\n${block}` : "",
-						].filter(Boolean);
-						return hints.length ? hints.join("\n\n") : undefined;
-					},
-				}
-			: {}),
-		...(normalize ? { prepareArguments: normalize } : {}),
+		// Shown after a failed validation, for every tool: a failure at the top level (a native `reason`, `type` or
+		// `timeout` sent to a server that does not declare it) names the accepted call shape; any other names the working
+		// next step for an over-long `queries` batch, and a compact tool adds its typed signature.
+		validationHint: ({ envelope }) => {
+			const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
+			if (shape) return shape;
+			const block = compact?.signature();
+			const cap = queriesCap(tool.inputSchema);
+			const hints = [
+				cap === undefined
+					? ""
+					: `queries holds at most ${cap}; split into calls of ${cap} or fewer, run them in the same turn.`,
+				block ? `Expected signature (TypeScript):\n${block}` : "",
+			].filter(Boolean);
+			return hints.length ? hints.join("\n\n") : undefined;
+		},
+		// The server owns its input: arguments are checked against its schema as the model sent them and reach the server
+		// unchanged, with no field added, dropped, moved, converted or parsed. A call the schema rejects fails with its hint.
+		coerceArguments: false,
 		...(options.presentation
 			? options.presentation.outputSchema
 				? { outputSchema: options.presentation.outputSchema }

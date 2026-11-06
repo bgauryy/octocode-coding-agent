@@ -133,10 +133,10 @@ describe("AgentSession model and extension characterization", () => {
 		await harness.session.setModel(model2);
 		expect(harness.session.thinkingLevel).toBe("low");
 
-		// Switch back to faux-1 → no per-model override, uses global default
+		// Switch back to faux-1 → no per-model override, so the session's requested level returns (not the global default)
 		const model1 = harness.getModel("faux-1")!;
 		await harness.session.setModel(model1);
-		expect(harness.session.thinkingLevel).toBe("medium");
+		expect(harness.session.thinkingLevel).toBe("high");
 	});
 
 	it("falls back to current session thinking level when no per-model or global default is configured", async () => {

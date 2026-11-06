@@ -173,8 +173,8 @@ export class SessionTreeNavigation {
 				summaryText = result.summary;
 				summaryUsage = result.usage;
 				summaryDetails = {
-					readFiles: result.readFiles || [],
-					modifiedFiles: result.modifiedFiles || [],
+					readFiles: result.readFiles ?? [],
+					modifiedFiles: result.modifiedFiles ?? [],
 				};
 			} else if (extensionSummary) {
 				summaryText = extensionSummary.summary;

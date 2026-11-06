@@ -3,6 +3,8 @@ import { cloneDisplay } from "../normalize.ts";
 import type { ApplicationStateStore } from "../state.ts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import type { ApplicationSession } from "../session-port.ts";
+import { inspect } from "node:util";
+import { reportToStderr } from "../../../../../common/src/stderr.ts";
 
 /** Where a subscriber's failure goes: its own handler (a terminal draws it in the transcript), else stderr. */
 export type ListenerErrorHandler = (error: unknown) => void;
@@ -35,9 +37,9 @@ function listenerFailureReporter(label: string, onError?: ListenerErrorHandler):
 		reporting = true;
 		try {
 			if (onError) onError(error);
-			else console.error(label, error);
+			else reportToStderr(label, error);
 		} catch (handlerError) {
-			console.error(label, error, handlerError);
+			reportToStderr(`${label} (its handler also failed: ${inspect(handlerError)})`, error);
 		} finally {
 			reporting = false;
 		}
@@ -107,12 +109,12 @@ export class ApplicationDelivery {
 		const handlers = new Set<ListenerErrorHandler>();
 		for (const { onError } of [...this.events.values(), ...this.native.values()]) if (onError) handlers.add(onError);
 		for (const onError of this.subscriptions.values()) if (onError) handlers.add(onError);
-		if (handlers.size === 0) console.error(error.message, error.cause);
+		if (handlers.size === 0) reportToStderr(error.message, error.cause);
 		for (const handler of handlers) {
 			try {
 				handler(error);
 			} catch (handlerError) {
-				console.error(error.message, error.cause, handlerError);
+				reportToStderr(`${error.message} (its handler also failed: ${inspect(handlerError)})`, error.cause);
 			}
 		}
 	}

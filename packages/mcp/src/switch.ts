@@ -50,6 +50,35 @@ export function registerMcpSwitch(events: EventBus, handle: McpSwitch): () => vo
 	});
 }
 
+/** What a reload changed: servers that connect (or wait, when disabled or unselected) and servers that closed. */
+export interface McpReloadResult {
+	/** Server names now configured that were not, or whose definition changed (they restart, so both lists name them). */
+	added: string[];
+	removed: string[];
+}
+export type McpReload = () => Promise<McpReloadResult>;
+
+const REQUEST_RELOAD = "mcp:reload:request";
+
+/** Answer reload requests for the running session with `handle`; returns the unregister function. */
+export function registerMcpReload(events: EventBus, handle: McpReload): () => void {
+	return events.on(REQUEST_RELOAD, (reply) => {
+		if (typeof reply === "function") reply(handle);
+	});
+}
+
+/**
+ * Re-read the MCP config files with the current settings (a vendor switched by `/harness`, say) and connect or close
+ * the difference now. Resolves undefined when no MCP owner runs (MCP disabled), like `getMcpSwitch`.
+ */
+export async function requestMcpReload(events: EventBus): Promise<McpReloadResult | undefined> {
+	let handle: McpReload | undefined;
+	events.emit(REQUEST_RELOAD, (value: McpReload) => {
+		handle = value;
+	});
+	return handle?.();
+}
+
 /** The session's MCP switch, or undefined when no MCP owner runs (MCP disabled). */
 export function getMcpSwitch(events: EventBus): McpSwitch | undefined {
 	let handle: McpSwitch | undefined;

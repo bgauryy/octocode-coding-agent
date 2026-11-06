@@ -9,6 +9,7 @@ import { createSessionFromServices } from "../src/core/agent-session/create-sess
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import type { InlineExtension } from "../src/core/features/index.ts";
 import { createTestSession } from "./helpers/session.ts";
+import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "./octocode/fake-research-roles.ts";
 import type { CreateTestSessionOptions } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -245,10 +246,11 @@ describe("defaultTools setting", () => {
 		}
 	});
 
-	it("credits an MCP fetch through the session event pipeline before a guarded edit", async () => {
+	it("credits a reader-role MCP fetch through the session event pipeline before a guarded edit", async () => {
 		const file = join(tempDir, "source.txt");
 		writeFileSync(file, "before\n");
-		const name = "mcp__octocode__localFetch";
+		// The tool reads workspace files because its server's entry declares it a reader, not because of its name.
+		const name = RESEARCH.reader;
 		const session = await createSession(
 			["file"],
 			{},
@@ -256,7 +258,7 @@ describe("defaultTools setting", () => {
 				(api) =>
 					api.registerTool({
 						name,
-						label: "localFetch",
+						label: "read_file",
 						description: "Read a source file",
 						parameters: Type.Object({ queries: Type.Array(Type.Object({ path: Type.String() })) }),
 						annotations: { readOnlyHint: true, openWorldHint: false },
@@ -267,6 +269,7 @@ describe("defaultTools setting", () => {
 		);
 		try {
 			await session.bindExtensions({});
+			publishRoles([RESEARCH_ENTRY]);
 			const input = { queries: [{ path: file }] };
 			const blocked = await session.extensionRunner.emitToolCall({
 				type: "tool_call",
@@ -300,6 +303,7 @@ describe("defaultTools setting", () => {
 			});
 			expect(readFileSync(file, "utf8")).toBe("after\n");
 		} finally {
+			publishRoles([]);
 			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 			session.dispose();
 		}

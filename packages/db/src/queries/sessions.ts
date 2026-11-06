@@ -206,6 +206,7 @@ export interface EraseCounts {
 	events: number;
 	tasks: number;
 	commands: number;
+	timers: number;
 }
 
 const ERASE_STATEMENTS: ReadonlyArray<[keyof EraseCounts, string]> = [
@@ -220,6 +221,7 @@ const ERASE_STATEMENTS: ReadonlyArray<[keyof EraseCounts, string]> = [
 	["events", "DELETE FROM agent_events WHERE session_id IN (SELECT value FROM json_each(?1))"],
 	["tasks", "DELETE FROM backlog_tasks WHERE session_id IN (SELECT value FROM json_each(?1))"],
 	["commands", "DELETE FROM workspace_commands WHERE session_id IN (SELECT value FROM json_each(?1))"],
+	["timers", "DELETE FROM timers WHERE session_id IN (SELECT value FROM json_each(?1))"],
 	["sessions", "DELETE FROM sessions WHERE id IN (SELECT value FROM json_each(?1))"],
 ];
 
@@ -227,7 +229,7 @@ const ERASE_STATEMENTS: ReadonlyArray<[keyof EraseCounts, string]> = [
  * Removes every per-session row of the given sessions in one transaction, for a user's explicit deletion: the `sessions`
  * extras and catalog row, the transcript mirror (`session_transcripts`, `session_entries`), fork edges where the session is
  * child or parent, compaction summaries, its `agent_events`, its session-scoped `backlog_tasks` and its
- * `workspace_commands` receipts. Kept on purpose: `backlog_audits` and `config_audits` (immutable history; deleting a task
+ * `workspace_commands` receipts and its `timers`. Kept on purpose: `backlog_audits` and `config_audits` (immutable history; deleting a task
  * adds its own audit row), `agents` rows (a team member has its own pid-based lifecycle), `backlog.source_session` and
  * `memories.source_session` (provenance text). The caller checks liveness first: a running session's row would come back
  * at its next write. Housekeeping uses `forget` instead: the mirror outlives the file (an ID-based fork recovers from it).
@@ -242,6 +244,7 @@ export function erase(db: DatabaseSync, ids: readonly string[]): EraseCounts {
 		events: 0,
 		tasks: 0,
 		commands: 0,
+		timers: 0,
 	};
 	if (ids.length === 0) return counts;
 	const json = JSON.stringify([...new Set(ids)]);

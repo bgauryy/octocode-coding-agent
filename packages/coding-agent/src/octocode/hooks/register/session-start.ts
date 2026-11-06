@@ -78,10 +78,12 @@ export function registerSessionStartHooks(
 		const settings = api.getSettings();
 		const loaded = loadHooks(ctx.cwd, ctx.isProjectTrusted(), home, {
 			plugins: effectivePlugins(settings, ctx.cwd),
-			toggles: settings.toggles,
+			// An empty map still applies the harness defaults (Claude Code and Codex hooks off until enabled).
+			toggles: settings.toggles ?? {},
 		});
 		session.config = loaded.config;
 		session.errors = loaded.errors;
+		session.switchedOff = loaded.switchedOff;
 		session.root = undefined;
 		pending = [];
 		if (loaded.errors.length > 0 && ctx.hasUI)

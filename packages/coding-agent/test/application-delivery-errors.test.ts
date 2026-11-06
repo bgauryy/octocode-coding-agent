@@ -14,7 +14,7 @@ describe("application listener failures", () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	test("go to the subscriber's handler, not stderr, once per distinct failure", async () => {
-		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const port = delivery();
 		const seen: string[] = [];
 		let calls = 0;
@@ -40,7 +40,7 @@ describe("application listener failures", () => {
 	});
 
 	test("a handler that re-enters the failing listener or throws does not recurse", () => {
-		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const port = delivery();
 		let reports = 0;
 		port.subscribe(
@@ -62,7 +62,7 @@ describe("application listener failures", () => {
 	});
 
 	test("fall back to stderr without a handler, once per distinct failure", () => {
-		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const port = delivery();
 		port.subscribeNative(() => {
 			throw new Error("no handler");
@@ -70,6 +70,6 @@ describe("application listener failures", () => {
 		for (let index = 0; index < 10; index++) port.notifyNative(event);
 
 		expect(stderr).toHaveBeenCalledTimes(1);
-		expect(stderr.mock.calls[0]?.[0]).toBe("Application listener failed");
+		expect(String(stderr.mock.calls[0]?.[0])).toContain("Application listener failed Error: no handler");
 	});
 });

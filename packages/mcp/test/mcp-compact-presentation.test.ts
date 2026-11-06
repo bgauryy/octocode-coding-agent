@@ -21,6 +21,7 @@ const hosts: ReturnType<typeof mcpHost>[] = [];
 const host = (options: Parameters<typeof mcpHost>[0] = {}) => {
 	const result = mcpHost({
 		prepareLaunch: (entry) => ({ ...entry, config: { ...entry.config, command: process.execPath, args: [echo] } }),
+		presentation: "compact",
 		...options,
 	});
 	hosts.push(result);
@@ -158,7 +159,7 @@ describe("compact MCP presentation", () => {
 
 	it("reads mcpPresentation from the settings", async () => {
 		isolatedAgentDir();
-		const h = host();
+		const h = host({ presentation: undefined });
 		h.api.getSettings = () => ({ mcpPresentation: "json" }) as never;
 		await h.start();
 		expect((await h.prompt()).mcps).toContain("Input schema (JSON Schema): {");

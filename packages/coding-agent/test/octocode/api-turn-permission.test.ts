@@ -76,13 +76,15 @@ function setup(options: { hasUI: boolean; idle?: boolean; mode?: string; selects
 		nextId: () => "x1",
 		audit: (data: Record<string, unknown>) => audits.push(data),
 	} as unknown as Parameters<typeof sendMessage>[0];
-	return { host, permission, ctx, state, send, capTurn, audits, operations };
+	return { fake, host, permission, ctx, state, send, capTurn, audits, operations };
 }
 
 const caller = { name: "claude-code-sim", pid: 4242 };
 
-describe("a turn the session API starts on an idle session", () => {
-	it("is refused when nobody can be asked, by default, in a session in full", async () => {
+describe("a turn the session API starts on an idle session with sessionApiTurnPermission set to workspace", () => {
+	beforeEach(() => setting("workspace"));
+
+	it("is refused when nobody can be asked, in a session in full", async () => {
 		const { host, permission, send, capTurn } = setup({ hasUI: false });
 		const refused: Error = await sendMessage(host, { text: "run it", from: "claude-code-sim", caller }).then(
 			() => {
@@ -178,10 +180,14 @@ describe("a turn the session API starts on an idle session", () => {
 	});
 });
 
-describe("with sessionApiTurnPermission set to session", () => {
-	it("takes the turn unasked and runs its tools in the session's own mode, as before", async () => {
-		setting("session");
-		const { host, permission, ctx, send, capTurn } = setup({ hasUI: false });
+describe("by default (sessionApiTurnPermission unset or session), a full session gives an API turn full permission", () => {
+	it.each([
+		["unset", undefined],
+		["session", "session"],
+		["an unknown value", "anything"],
+	])("takes the turn unasked with nobody to ask and runs its tools in full (%s)", async (_label, value) => {
+		if (value) setting(value);
+		const { host, permission, ctx, send, capTurn, audits } = setup({ hasUI: false });
 		await expect(sendMessage(host, { text: "run it", from: "claude-code-sim", caller })).resolves.toEqual({
 			id: "x1",
 			queued: "turn",
@@ -190,28 +196,57 @@ describe("with sessionApiTurnPermission set to session", () => {
 		expect(capTurn).not.toHaveBeenCalled();
 		expect(permission.mode).toBe("full");
 		expect(await permission.check(ctx, outsideWrite())).toMatchObject({ allowed: true, via: "mode" });
+		expect(audits.at(-1)).toMatchObject({ method: "message.send", from: "claude-code-sim", caller });
+		expect(audits.at(-1)).not.toHaveProperty("turnPermission");
 	});
 
-	it("still holds the turn for any other value", async () => {
-		setting("anything");
-		const { host, send } = setup({ hasUI: false });
+	it("audits the admission and the tool call as allowed by the full mode", async () => {
+		const { fake, host, ctx, permission } = setup({ hasUI: false });
+		await sendMessage(host, { text: "run it", from: "claude-code-sim", caller });
+		await permission.check(ctx, outsideWrite());
+		expect(fake.entries.map((entry) => entry.data)).toEqual([
+			expect.objectContaining({ action: "message.external", allowed: true, via: "mode", mode: "full" }),
+			expect.objectContaining({ action: "file.outside", allowed: true, via: "mode", mode: "full" }),
+		]);
+	});
+
+	it("takes a steer to a running turn unasked, with nothing capped", async () => {
+		const { host, send, capTurn, permission } = setup({ hasUI: false, idle: false });
+		await sendMessage(host, { text: "also this", from: "claude-code-sim", caller });
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(send.mock.calls[0]?.[1]).toMatchObject({ deliverAs: "steer" });
+		expect(capTurn).not.toHaveBeenCalled();
+		expect(permission.mode).toBe("full");
+	});
+
+	it("still asks in a workspace session, which the ceiling never loosened", async () => {
+		const { host, send } = setup({ hasUI: false, mode: "workspace" });
 		await expect(sendMessage(host, { text: "run it" })).rejects.toMatchObject({ data: { execution: "not-sent" } });
 		expect(send).not.toHaveBeenCalled();
 	});
 });
 
-describe("a message to a turn that is already running", () => {
-	it("steers it as before: no ask, no ceiling, the session's mode", async () => {
-		const { host, permission, ctx, send, capTurn } = setup({ hasUI: false, idle: false });
-		await expect(sendMessage(host, { text: "also this", from: "claude-code-sim", caller })).resolves.toEqual({
-			id: "x1",
-			queued: "steer",
+describe("a message to a turn that is already running with sessionApiTurnPermission set to workspace", () => {
+	beforeEach(() => setting("workspace"));
+
+	it("is held to the ceiling while a user turn runs in full: refused when nobody can be asked", async () => {
+		const { host, permission, send, capTurn } = setup({ hasUI: false, idle: false });
+		await expect(sendMessage(host, { text: "also this", from: "claude-code-sim", caller })).rejects.toMatchObject({
+			data: { execution: "not-sent" },
 		});
-		expect(send).toHaveBeenCalledTimes(1);
-		expect(send.mock.calls[0]?.[1]).toMatchObject({ deliverAs: "steer" });
+		expect(send).not.toHaveBeenCalled();
 		expect(capTurn).not.toHaveBeenCalled();
-		expect(permission.mode).toBe("full");
-		expect(await permission.check(ctx, outsideWrite())).toMatchObject({ allowed: true, via: "mode" });
+		expect(permission.turnCap.active).toBeUndefined();
+	});
+
+	it("caps the running turn once its user admits the steer, until the session settles", async () => {
+		const { host, permission, ctx, send, capTurn } = setup({ hasUI: true, idle: false, selects: [ALLOW_ONCE] });
+		await sendMessage(host, { text: "also this", from: "claude-code-sim", caller });
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+		expect(send.mock.calls[0]?.[1]).toMatchObject({ deliverAs: "steer" });
+		expect(capTurn).toHaveBeenCalledWith("workspace");
+		expect(permission.mode).toBe("workspace");
+		expect(await permission.check(ctx, outsideWrite())).toMatchObject({ allowed: false });
 	});
 
 	it("keeps the ceiling of an API-started turn it steers, and asks about the steer as workspace mode does", async () => {
@@ -223,7 +258,7 @@ describe("a message to a turn that is already running", () => {
 		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
 		expect(send.mock.calls[1]?.[1]).toMatchObject({ deliverAs: "steer" });
 		expect(ctx.ui.selects).toEqual([]);
-		expect(capTurn).toHaveBeenCalledTimes(1);
+		expect(capTurn.mock.calls).toEqual([["workspace"], ["workspace"]]);
 		expect(permission.mode).toBe("workspace");
 	});
 });

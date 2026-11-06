@@ -33,9 +33,7 @@ export class FileModelsStore implements ModelsStore {
 		this.path = normalizePath(path);
 		this.storage = new FileAuthStorageBackend(this.path);
 		this.readState = sharedModelsFileReadState?.path === this.path ? sharedModelsFileReadState.readState : { data: {} };
-		if (!sharedModelsFileReadState) {
-			sharedModelsFileReadState = { path: this.path, readState: this.readState };
-		}
+		sharedModelsFileReadState ??= { path: this.path, readState: this.readState };
 	}
 
 	private parse(content: string | undefined): StoredModels {

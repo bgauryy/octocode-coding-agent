@@ -131,8 +131,8 @@ export async function readRepositoryDiff(
 }
 
 /** Untracked files are read only after explicit selection, never through a symlink. */
-export async function readUntrackedDiff(root: string, file: string): Promise<string> {
-	root = await realpath(root);
+export async function readUntrackedDiff(rootPath: string, file: string): Promise<string> {
+	const root = await realpath(rootPath);
 	const relative = await selectedPath(root, root, file);
 	const target = path.join(root, relative);
 	const stat = await lstat(target);

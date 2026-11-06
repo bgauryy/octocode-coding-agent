@@ -21,10 +21,10 @@ function rgbToHex(r: number, g: number, b: number): string {
 	);
 }
 
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-	r /= 255;
-	g /= 255;
-	b /= 255;
+function rgbToHsl(red: number, green: number, blue: number): [number, number, number] {
+	const r = red / 255;
+	const g = green / 255;
+	const b = blue / 255;
 	const max = Math.max(r, g, b),
 		min = Math.min(r, g, b);
 	let h = 0,
@@ -51,11 +51,12 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 	let r: number, g: number, b: number;
 	if (s === 0) {
-		r = g = b = l;
+		r = l;
+		g = l;
+		b = l;
 	} else {
-		const hue2rgb = (p: number, q: number, t: number) => {
-			if (t < 0) t += 1;
-			if (t > 1) t -= 1;
+		const hue2rgb = (p: number, q: number, hue: number) => {
+			const t = hue < 0 ? hue + 1 : hue > 1 ? hue - 1 : hue;
 			if (t < 1 / 6) return p + (q - p) * 6 * t;
 			if (t < 1 / 2) return q;
 			if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
@@ -71,8 +72,8 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 }
 
 function getLuminance(r: number, g: number, b: number): number {
-	const lin = (c: number) => {
-		c = c / 255;
+	const lin = (channel: number) => {
+		const c = channel / 255;
 		return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 	};
 	return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);

@@ -62,6 +62,9 @@ function glow(theme: MarkTheme, token: ThemeColor, toward: Color | undefined, am
 	return theme.style(text, { fg: mixColors(base, toward, Math.min(1, amount)) });
 }
 
+/** How long a waiting mark pulses (from its `since`) before it holds still. */
+export const WAIT_PULSE_MS = 4_000;
+
 /**
  * The mark of `state`, painted: `running` is a spinner frame, `waiting` breathes between its colour and `dim`, and a
  * fresh `done` glows and settles. In reduced motion every mark is its static glyph in its colour.
@@ -77,6 +80,7 @@ export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions
 			return theme.fg(color, frames[Math.floor(now / MOTION.spinnerMs) % frames.length]);
 		}
 		case "waiting":
+			if (options.since !== undefined && now - options.since >= WAIT_PULSE_MS) return theme.fg(color, GLYPH.waiting);
 			return glow(theme, color, concrete(theme, "dim"), 0.7 * breathe(now), GLYPH.waiting);
 		case "done": {
 			const left = options.since === undefined ? 0 : settle(now, options.since);
@@ -94,7 +98,10 @@ export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions
  */
 export function markMoves(state: UiState, options: MarkOptions = {}): boolean {
 	if (animationClock.isReducedMotion()) return false;
-	if (state === "running" || state === "waiting") return true;
+	if (state === "running") return true;
+	// A modal can wait indefinitely: the pulse draws the eye for a few seconds, then the mark holds still.
+	if (state === "waiting")
+		return options.since === undefined || (options.now ?? Date.now()) - options.since < WAIT_PULSE_MS;
 	if (state !== "done" || options.since === undefined) return false;
 	return (options.now ?? Date.now()) - options.since < MOTION.flashMs;
 }

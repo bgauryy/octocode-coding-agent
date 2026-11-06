@@ -39,9 +39,7 @@ export function generateDiffString(
 
 		if (part.added || part.removed) {
 			// Capture the first changed line (in the new file)
-			if (firstChangedLine === undefined) {
-				firstChangedLine = newLineNum;
-			}
+			firstChangedLine ??= newLineNum;
 
 			// Show the change
 			for (const line of raw) {

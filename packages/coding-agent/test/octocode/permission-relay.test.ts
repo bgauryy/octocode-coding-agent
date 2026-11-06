@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
+import { EXPOSURE_NOTIFY_PREFIX, parseExposure } from "../../src/octocode/permission/provenance/exposure.ts";
 import { AUDIT_NOTIFY_PREFIX, childAuditEntry, childAuditMessage } from "../../src/octocode/permission/audit.ts";
 import { auditLines, foldLines } from "../../src/octocode/permission/effect.ts";
 import {
@@ -149,6 +150,18 @@ describe("a subagent session that relays its dialogs", () => {
 		expect(verdict).toMatchObject({ allowed: false, via: "headless" });
 		expect(verdict.allowed ? "" : verdict.message).toContain(NEEDS_APPROVAL);
 		expect(titles).toEqual([]);
+	});
+
+	it("tells its parent at its end whether it read anything untrusted, signed with its secret", () => {
+		const { permission, ctx } = child({});
+		const sent = () =>
+			ctx.ui.notes.map((note) => note.message).filter((message) => message.startsWith(EXPOSURE_NOTIFY_PREFIX));
+		permission.shutdown(ctx);
+		expect(sent()).toEqual([]);
+		permission.shutdown(ctx, false);
+		permission.shutdown(ctx, true);
+		expect(sent().map((message) => parseExposure(message, NONCE))).toEqual([false, true]);
+		expect(parseExposure(sent()[0], "other")).toBeUndefined();
 	});
 
 	it("sends every audit entry to its parent as a notify, whatever the relay setting", async () => {

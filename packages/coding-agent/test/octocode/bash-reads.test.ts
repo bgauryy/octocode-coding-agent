@@ -5,7 +5,10 @@ import { bashReads } from "../../src/octocode/files/bash-reads.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { fakeCtx, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "../../src/octocode/files/tool/guard.ts";
+import { BASH_READER, FileGuard, mcpReader } from "../../src/octocode/files/tool/guard.ts";
+
+/** A role-configured research server's reader; the guard names it without its argument syntax. */
+const MCP_READER = mcpReader("mcp__codesearch__readFile");
 
 const CWD = "/work";
 const abs = (name: string) => path.join(CWD, name);
@@ -236,19 +239,21 @@ describe("the file tool and plain bash prints", () => {
 	});
 
 	it("credits a bash print too while the Octocode readers are available", async () => {
-		const { file, bash, change } = setup(LOCAL_FETCH_READER);
+		const { file, bash, change } = setup(MCP_READER);
 		await bash("sed -n '2,3p' a.txt");
 		expect(await change({ type: "edit", edits: [{ oldText: "two", newText: "2" }] })).toMatchObject({ ok: true });
 		expect(fs.readFileSync(file, "utf8")).toBe("one\n2\nthree\nfour\n");
-		// Only lines 2-3 were printed, so a whole-file write still names the rest and the localFetch range.
+		// Only lines 2-3 were printed, so a whole-file write still names the rest and the MCP reader's line range.
 		const refused = await change({ type: "write", content: "replaced\n" });
-		expect(refused.message).toMatch(/seen lines 2–3 of its 4 lines\. Read the rest with `localFetch`/);
+		expect(refused.message).toMatch(
+			/seen lines 2–3 of its 4 lines\. Read the rest with `mcp__codesearch__readFile` \(lines 1-4\)/,
+		);
 		await bash("cat a.txt");
 		expect(await change({ type: "write", content: "replaced\n" })).toMatchObject({ ok: true });
 	});
 
 	it("does not credit a pipe or a cut print as a whole read when the Octocode readers are available", async () => {
-		const { bash, change } = setup(LOCAL_FETCH_READER);
+		const { bash, change } = setup(MCP_READER);
 		await bash("cat a.txt | head -2");
 		const unread = await change({ type: "edit", edits: [{ oldText: "absent", newText: "2" }] });
 		expect(unread.message).toMatch(/was not read in this session/);
@@ -257,7 +262,7 @@ describe("the file tool and plain bash prints", () => {
 	});
 
 	it("counts `cd DIR && cat rel` toward a write of that file only", async () => {
-		const { cwd, bash, change } = setup(LOCAL_FETCH_READER);
+		const { cwd, bash, change } = setup(MCP_READER);
 		fs.mkdirSync(path.join(cwd, "sub"));
 		fs.writeFileSync(path.join(cwd, "sub", "b.txt"), "x\ny\n");
 		await bash("cd ./sub && cat b.txt");
@@ -267,11 +272,11 @@ describe("the file tool and plain bash prints", () => {
 		expect(await change({ type: "write", path: "b.txt", content: "z\n" })).toMatchObject({ ok: false });
 	});
 
-	it("refusal says what counts as a read, naming localFetch or a plain bash print", async () => {
+	it("refusal says what counts as a read, naming the MCP reader or a plain bash print", async () => {
 		const edit = { type: "edit", edits: [{ oldText: "absent", newText: "2" }] };
-		const local = await setup(LOCAL_FETCH_READER).change(edit);
+		const local = await setup(MCP_READER).change(edit);
 		expect(local.message).toMatch(
-			/Read it first: localFetch \{queries:\[\{path:"a\.txt"\}\]\}\. A plain `cat` or `sed -n` print in bash also counts\. A read piped or redirected/,
+			/Read it first with `mcp__codesearch__readFile`\. A plain `cat` or `sed -n` print in bash also counts\. A read piped or redirected/,
 		);
 		const bash = await setup().change(edit);
 		expect(bash.message).toMatch(

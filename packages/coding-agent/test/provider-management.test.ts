@@ -54,10 +54,9 @@ describe("provider setup flow", () => {
 	it("names provider access /login and keeps each command under one name", () => {
 		expect(getBuiltinCommand("login")?.name).toBe("login");
 		expect(getBuiltinCommand("login")?.description).toContain("Connect AI providers");
-		expect(getBuiltinCommand("github")?.description).toContain("/login");
-		for (const removed of ["providers", "models"]) expect(getBuiltinCommand(removed)).toBeUndefined();
+		// v20.0.1 (25685858) removed /github: GitHub access goes through `/octocode login`.
+		for (const removed of ["providers", "models", "github"]) expect(getBuiltinCommand(removed)).toBeUndefined();
 		expect(getBuiltinCommand("modelsettings")?.description).toContain("routing");
-		expect(getBuiltinCommand("github")?.description).toContain("code-search");
 	});
 
 	it("shows each provider once with its source and model count, plus Pi", async () => {

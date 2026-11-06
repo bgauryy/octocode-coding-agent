@@ -6,20 +6,17 @@ import { ownWorktreeRoot } from "../shared/own-worktree.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
 
 /**
- * Repository paths that load code, hooks or agent instructions in later sessions (git config, Octocode, Claude Code, Codex
- * and Octocode project config, skills): a change there outlives the session, so it asks like an outside change.
+ * Repository folders that load code, hooks or agent instructions in later sessions (git config, Pi, Claude Code, Codex and
+ * Agents project config): a change there outlives the session, so it asks like an outside change. `.octocode/` is not
+ * here as a whole: only its entries in `LOADED_BY_LATER_SESSIONS` ask, and scratch (`.octocode/tmp/`) and report folders
+ * (`.octocode/<topic>/`) run unasked.
  */
-const RUNS_LATER_AT_ROOT = [
-	".git",
-	".pi",
-	".claude",
-	".codex",
-	".agents",
-	OCTOCODE_DIR, // also holds the workspace state folder (`WORKSPACE_STATE`)
-].map((entry) => entry.toLowerCase());
-/** Octocode's scratch folder: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
+const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents"].map((entry) => entry.toLowerCase());
+const OCTOCODE_FOLDER = OCTOCODE_DIR.toLowerCase();
+/** Octocode's scratch folder inside its workspace state: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
 const SCRATCH_AT_ROOT = `${WORKSPACE_STATE.split(path.sep).join("/")}/temp`;
 /** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
 const RUNS_LATER_ANYWHERE = [
@@ -34,6 +31,13 @@ const RUNS_LATER_ANYWHERE = [
 	".envrc",
 ];
 
+/** Whether `relative` (lower-cased, `/`-separated) is the `OCTOCODE_DIR` folder itself or an entry of it that a later session loads. */
+function loadedFromOctocodeDir(relative: string): boolean {
+	if (relative === OCTOCODE_FOLDER) return true;
+	if (!relative.startsWith(`${OCTOCODE_FOLDER}/`)) return false;
+	return LOADED_BY_LATER_SESSIONS.has(relative.slice(OCTOCODE_FOLDER.length + 1).split("/")[0] ?? "");
+}
+
 /**
  * Whether a change to `file` (canonical, inside `root`) outlives the session. Compared lower-cased: on macOS and Windows
  * `.CLAUDE/settings.json` is the folder Claude Code loads, and on a case-sensitive filesystem the extra match only asks.
@@ -41,7 +45,10 @@ const RUNS_LATER_ANYWHERE = [
 export function runsLater(file: string, root: string): boolean {
 	const relative = path.relative(root, file).split(path.sep).join("/").toLowerCase();
 	const scratch = relative === SCRATCH_AT_ROOT || relative.startsWith(`${SCRATCH_AT_ROOT}/`);
-	const rooted = !scratch && RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
+	const rooted =
+		!scratch &&
+		(loadedFromOctocodeDir(relative) ||
+			RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`)));
 	return (
 		rooted ||
 		RUNS_LATER_ANYWHERE.some((entry) => `/${relative}`.endsWith(`/${entry}`) || `/${relative}`.includes(`/${entry}/`))

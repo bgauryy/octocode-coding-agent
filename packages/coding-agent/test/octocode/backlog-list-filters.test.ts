@@ -101,10 +101,12 @@ const ALL = ["backlog", "todo", "ongoing", "done"];
 describe("backlog list filters", () => {
 	it("filters by ids, title words, parent, type, priority, tags and path prefixes", async () => {
 		const t = await board();
-		// ids list every state unless states narrows them; any id form parseRef reads is accepted.
+		// Listed ids show every state unless states narrows them; any id form parseRef reads is accepted.
+		expect(refs(await t.backlog({ op: "list", id: "B4, b2" }))).toEqual(["B2", "B4"]);
+		expect(refs(await t.backlog({ op: "list", id: "B4 B2", states: ["todo"] }))).toEqual(["B2"]);
+		await expect(t.backlog({ op: "list", id: "nope" })).rejects.toThrow(/nope is not an item id/);
+		// The older `ids` list still runs, so calls recorded in that shape replay.
 		expect(refs(await t.backlog({ op: "list", ids: ["B4", "b2"] }))).toEqual(["B2", "B4"]);
-		expect(refs(await t.backlog({ op: "list", ids: ["B4", "B2"], states: ["todo"] }))).toEqual(["B2"]);
-		await expect(t.backlog({ op: "list", ids: ["nope"] })).rejects.toThrow(/nope is not an item id/);
 		// Title words match in any order, case-insensitively.
 		expect(refs(await t.backlog({ op: "list", title: "search" }))).toEqual(["B3", "B2", "B1"]);
 		expect(refs(await t.backlog({ op: "list", title: "CRASH fix" }))).toEqual(["B3"]);
@@ -144,7 +146,7 @@ describe("backlog list filters", () => {
 		// A subagent filters by hierarchy and dependencies too, though it cannot write them (backlog.test.ts).
 		expect(refs(await child.backlog({ op: "list", parentId: "B1" }))).toEqual(["B3", "B2"]);
 		expect(refs(await child.backlog({ op: "list", dependsOn: ["B2"] }))).toEqual(["B3"]);
-		expect(refs(await child.backlog({ op: "list", ids: ["B3"], title: "crash" }))).toEqual(["B3"]);
+		expect(refs(await child.backlog({ op: "list", id: "B3", title: "crash" }))).toEqual(["B3"]);
 		await expect(
 			child.backlog({ op: "add", ...READY, title: "nested", parentId: "B1", dependsOn: ["B2"] }),
 		).rejects.toThrow("A subagent proposal cannot set parentId, dependsOn:");
@@ -165,24 +167,32 @@ describe("backlog list filters", () => {
 			'No ongoing/todo items matching "crash" (filters: title, parentId, type).\n1 proposed item(s) await triage (list with states: ["backlog"]).',
 		);
 		// Empty lists filter nothing, like omitted ones.
-		expect(refs(await t.backlog({ op: "list", tags: [], ids: [] }))).toEqual(["B5", "B3", "B2", "B1"]);
+		expect(refs(await t.backlog({ op: "list", tags: [], ids: [], id: "" }))).toEqual(["B5", "B3", "B2", "B1"]);
 	});
 
-	it("filters by creation time, as an age or an ISO time, and pins an age in Next", async () => {
+	it("filters by creation time with sort created, as an age or an ISO time, and pins an age in Next", async () => {
 		const t = await board();
-		expect(refs(await t.backlog({ op: "list", createdSince: "1h" }))).toEqual(["B5", "B3", "B2", "B1"]);
-		expect(refs(await t.backlog({ op: "list", createdSince: "2999-01-01T00:00:00Z" }))).toEqual([]);
-		// An update moves since but not createdSince.
+		const created = { op: "list", sort: "created" } as const;
+		expect(refs(await t.backlog({ ...created, since: "1h" }))).toEqual(["B5", "B3", "B2", "B1"]);
+		expect(refs(await t.backlog({ ...created, since: "2999-01-01T00:00:00Z" }))).toEqual([]);
+		// An update moves the update time, not the creation time.
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		const cut = new Date().toISOString();
 		await t.backlog({ op: "update", id: "B2", note: "touched" });
-		const cut = new Date(Date.now() + 1000).toISOString();
+		expect(refs(await t.backlog({ op: "list", since: cut }))).toEqual(["B2"]);
+		expect(refs(await t.backlog({ ...created, since: cut }))).toEqual([]);
+		await expect(t.backlog({ ...created, since: "soon" })).rejects.toThrow(/since needs an ISO time/);
+		const first = await t.backlog({ ...created, since: "1d", limit: 1 });
+		const args = JSON.parse(first.match(/^Next: backlog (.*)$/m)![1]) as Record<string, unknown>;
+		expect(args).toMatchObject({ sort: "created" });
+		expect(String(args.since)).toMatch(/^\d{4}-\d\d-\d\dT/);
+		expect(await t.backlog({ ...created, since: "2999-01-01T00:00:00Z", type: "bug" })).toContain(
+			"(filters: type, since)",
+		);
+		// The older `createdSince` still bounds creation time in any order, so recorded calls replay.
+		expect(refs(await t.backlog({ op: "list", createdSince: "1h" })).sort()).toEqual(["B1", "B2", "B3", "B5"]);
 		expect(refs(await t.backlog({ op: "list", createdSince: cut }))).toEqual([]);
 		await expect(t.backlog({ op: "list", createdSince: "soon" })).rejects.toThrow(/createdSince needs an ISO time/);
-		const first = await t.backlog({ op: "list", createdSince: "1d", limit: 1 });
-		const args = JSON.parse(first.match(/^Next: backlog (.*)$/m)![1]) as Record<string, unknown>;
-		expect(String(args.createdSince)).toMatch(/^\d{4}-\d\d-\d\dT/);
-		expect(await t.backlog({ op: "list", createdSince: "2999-01-01T00:00:00Z", type: "bug" })).toContain(
-			"(filters: type, createdSince)",
-		);
 	});
 
 	it("pages a filtered list with a Next call that repeats the filters", async () => {
@@ -200,13 +210,18 @@ describe("backlog list filters", () => {
 		expect(second).not.toContain("Next:");
 	});
 
-	it("declares the list filters on the parent's schema", () => {
+	it("declares the list filters on the parent's schema and still validates the older ones", () => {
 		const { fake } = setup();
-		const properties = fake.tools.get("backlog").parameters.properties as Record<string, { description?: string }>;
-		for (const field of ["ids", "assignee", "blocked", "since", "createdSince", "sort"])
-			expect(properties).toHaveProperty(field);
-		for (const field of ["title", "type", "parentId", "priority", "tags", "paths", "dependsOn", "from"])
+		const tool = fake.tools.get("backlog");
+		const properties = tool.parameters.properties as Record<string, { description?: string }>;
+		for (const field of ["since", "sort"]) expect(properties).toHaveProperty(field);
+		for (const field of ["ids", "assignee", "blocked", "createdSince"]) expect(properties).not.toHaveProperty(field);
+		for (const field of ["id", "title", "type", "parentId", "priority", "tags", "paths", "dependsOn", "from"])
 			expect(properties[field].description).toContain("list:");
+		const old = { reason: "replay", op: "list", ids: ["B1"], assignee: "me", blocked: false, createdSince: "1d" };
+		expect(
+			validateToolArguments(tool, { type: "toolCall", id: "c1", name: "backlog", arguments: old } as never),
+		).toMatchObject(old);
 	});
 });
 

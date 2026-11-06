@@ -37,7 +37,7 @@ function placeholder(property: Record<string, unknown> | undefined): string {
  * The call shapes a tool accepts at the top level, for a failure whose problems are all root properties (a foreign
  * envelope such as `type`, `timeout` or `background`): one `{"key":value}` form per root alternative, built from its
  * required keys, with its optional keys named. Undefined when the root declares no required key. `reason` is named only
- * when the server declares it: otherwise the host drops it before the call.
+ * when the server declares it: it is the native tools' argument, and a call to a server that does not declare it fails.
  */
 export function envelopeHint(toolName: string, schema: Record<string, unknown>): string | undefined {
 	const serverReason = declaresReason(schema);

@@ -4,20 +4,9 @@
 
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../../config.ts";
-import type { ExtensionFlag } from "../../core/features/types.ts";
 import { flagHelpRows } from "./flags.ts";
 
-export function printHelp(extensionFlags?: ExtensionFlag[]): void {
-	const extensionFlagsText =
-		extensionFlags && extensionFlags.length > 0
-			? `\n${chalk.bold("Feature CLI Flags:")}\n${extensionFlags
-					.map((flag) => {
-						const value = flag.type === "string" ? " <value>" : "";
-						const description = flag.description ?? `Registered by ${flag.extensionPath}`;
-						return `  --${flag.name}${value}`.padEnd(30) + description;
-					})
-					.join("\n")}\n`
-			: "";
+export function printHelp(): void {
 	console.log(`${chalk.bold(APP_NAME)} - AI coding assistant with native Octocode tools
 
 ${chalk.bold("Usage:")}
@@ -46,7 +35,6 @@ ${chalk.bold("Options:")}
 ${flagHelpRows().join("\n")}
 ${"  --".padEnd(33)}End option parsing; treat remaining arguments as messages/files
 
-Native features can register additional flags.${extensionFlagsText}
 
 ${chalk.bold("Examples:")}
   # Print a provider API key for an external client
@@ -79,10 +67,7 @@ ${chalk.bold("Examples:")}
   # Start a named session
   ${APP_NAME} --name "Refactor auth module"
 
-  # Use different model
-  ${APP_NAME} --provider openai --model gpt-4o-mini "Help me refactor this code"
-
-  # Use model with provider prefix (no --provider needed)
+  # Use a specific model (provider/id)
   ${APP_NAME} --model openai/gpt-4o "Help me refactor this code"
 
   # Use model with thinking level shorthand
@@ -99,6 +84,12 @@ ${chalk.bold("Examples:")}
 
   # Start with a specific thinking level
   ${APP_NAME} --thinking high "Solve this complex problem"
+
+  # Run headless with a model and a permission mode (subagents inherit the mode)
+  ${APP_NAME} --model anthropic/claude-sonnet-4-5:medium --permission-mode workspace -p "Fix the failing test"
+
+  # Run with no permission prompts at all, e.g. in a disposable container (still audited)
+  ${APP_NAME} --dangerously-skip-permissions -p "Upgrade the dependencies"
 
   # Allow one MCP tool by its full name
   ${APP_NAME} --tools 'mcp__docs__search' -p "Find the retry settings"

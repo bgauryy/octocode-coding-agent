@@ -39,8 +39,8 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 	if (!command) return false;
 
 	const parsed = parseArgs(command.args);
-	if (parsed.unknownFlags.size > 0) {
-		const option = parsed.unknownFlags.keys().next().value;
+	if (parsed.unknownFlags.length > 0) {
+		const option = parsed.unknownFlags[0];
 		console.error(chalk.red(`Unknown option --${option} for "${getAuthCommandName(command.kind)}".`));
 		console.error(chalk.dim(`Use "${APP_NAME} --help" or "${getAuthCommandUsage(command.kind)}".`));
 		process.exitCode = 1;

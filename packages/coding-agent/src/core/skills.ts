@@ -52,7 +52,8 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
  * (they can only be invoked explicitly via /skill:name commands).
  *
  * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
- * returns its directory, so its entries omit `<location>` paths; `indirect` names none, for a reader that is reachable only through another tool.
+ * returns its directory; `indirect` names none, for a reader that is reachable only through another tool. Every entry
+ * carries its SKILL.md `<location>`, whatever the reader, so the agent knows where each skill's folder is.
  *
  * Entries are grouped by {@link skillCategory} in `<core_skills>` and `<external_skills>`, in that order. Every visible skill is listed with its full description.
  */
@@ -71,8 +72,7 @@ export function formatSkillsForPrompt(
 
 	const categories = visibleSkills.map(skillCategory);
 	const groups = SKILL_CATEGORIES.filter((category) => categories.includes(category));
-	const withLocation = fileReadTool !== "skill";
-	const entries = visibleSkills.map((skill) => skillEntry(skill, withLocation));
+	const entries = visibleSkills.map(skillEntry);
 	// One intro line, the load instruction: each entry's description already says what its skill is for. The skill tool's
 	// description says how to resolve a loaded skill's relative paths, so only the other readers get that line.
 	const intro = renderInstruction("system/skills-intro.md", {
@@ -84,6 +84,7 @@ export function formatSkillsForPrompt(
 	});
 	const lines = [
 		`\n\n${intro}`,
+		SKILL_LAYOUT,
 		"",
 		"<available_skills>",
 		...groups.flatMap((category) => {
@@ -100,14 +101,18 @@ function groupTag(category: SkillCategory): string {
 	return `${category}_skills`;
 }
 
-function skillEntry(skill: Skill, withLocation: boolean): string {
+/** Our one line on what a skill is, before the list; the skills' own text is never shortened. */
+const SKILL_LAYOUT =
+	"A skill is a folder: SKILL.md (frontmatter name and description, then instructions) with optional scripts/, references/ and assets/, resolved against that folder.";
+
+function skillEntry(skill: Skill): string {
 	const description = skill.description?.trim();
-	// One line per skill: its name and its description as written (plus the file path when a file reader loads it).
+	// One line per skill: its name, its description as written and its SKILL.md path.
 	return [
 		"  <skill>",
 		`<name>${escapeXml(skill.name)}</name>`,
 		...(description ? [`<description>${escapeXml(description)}</description>`] : []),
-		...(withLocation ? [`<location>${escapeXml(skill.filePath)}</location>`] : []),
+		`<location>${escapeXml(skill.filePath)}</location>`,
 		"</skill>",
 	].join("");
 }

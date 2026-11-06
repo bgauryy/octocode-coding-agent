@@ -70,7 +70,7 @@ describe("flat agent schema", () => {
 		modes.register(withNativePermissionOwners(fake.api));
 		const tool = fake.tools.get("agent")!;
 		const schema = tool.parameters as { properties: Record<string, { description?: string }> };
-		expect(schema.properties.paths?.description).toBe("task: reserved for the child coordinate: lock these");
+		expect(schema.properties.paths?.description).toBe("task: reserved for the child; coordinate: lock these");
 		const call = (args: Record<string, unknown>) =>
 			tool.execute("c", args, undefined, undefined, fakeCtx({ cwd: "/" }));
 		await call({ type: "task", task: "t", paths: ["a.ts"], reason: "r" });

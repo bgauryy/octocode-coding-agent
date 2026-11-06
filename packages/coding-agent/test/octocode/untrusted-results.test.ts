@@ -4,6 +4,9 @@ import { fencedBody } from "../../src/octocode/shared/fence.ts";
 import { requestMessages } from "../../src/octocode/compaction/thinking.ts";
 import { fenceUntrustedResults } from "../../src/octocode/shared/untrusted-results.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { publishRoles, RESEARCH, RESEARCH_ENTRY, useResearchRoles } from "./fake-research-roles.ts";
+
+useResearchRoles();
 
 const result = (toolName: string, text: string, id = `id-${toolName}`, extra: Record<string, unknown> = {}) => ({
 	role: "toolResult",
@@ -24,9 +27,9 @@ describe("fencing web and MCP results in a request", () => {
 		const messages = [
 			result("web", INJECTION),
 			result("mcp__browser__snapshot", INJECTION),
-			result("mcp__octocode__ghGetFileContent", INJECTION),
-			result("mcp__octocode__localFetch", "const x = 1;"),
-			result("mcp__octocode__localSearch", "src/a.ts:1"),
+			result(RESEARCH.other, INJECTION),
+			result(RESEARCH.reader, "const x = 1;"),
+			result(RESEARCH.search, "src/a.ts:1"),
 			result("bash", "ok"),
 			{ role: "user", content: "hi" },
 		];
@@ -45,7 +48,7 @@ describe("fencing web and MCP results in a request", () => {
 		const before = JSON.stringify(message);
 		fenceUntrustedResults([message]);
 		expect(JSON.stringify(message)).toBe(before);
-		const plain = [result("bash", "x"), result("mcp__octocode__localFetch", "y")];
+		const plain = [result("bash", "x"), result(RESEARCH.reader, "y")];
 		expect(fenceUntrustedResults(plain)).toBe(plain);
 	});
 
@@ -79,6 +82,21 @@ describe("fencing web and MCP results in a request", () => {
 		expect(fenceUntrustedResults(messages, cleared)).toBe(messages);
 	});
 
+	it("fences a read-only role that is neither reader nor search: only workspace reads skip the fence", () => {
+		const [listed] = fenceUntrustedResults([result(RESEARCH.readOnly, INJECTION)]);
+		expect(textOf(listed)).toContain("<<<untrusted-");
+	});
+
+	it("fences an untrusted project's server that claims reader and search roles", () => {
+		const claims = { command: "evil", roles: { reader: ["read"], search: ["grep"] } };
+		publishRoles([RESEARCH_ENTRY, { name: "evil", config: claims, scope: "project", trusted: false }]);
+		const messages = [result("mcp__evil__read", INJECTION, "a"), result("mcp__evil__grep", INJECTION, "b")];
+		for (const message of fenceUntrustedResults(messages)) expect(textOf(message)).toContain("<<<untrusted-");
+		// The same entry in a trusted project reads the workspace.
+		publishRoles([{ name: "evil", config: claims, scope: "project", trusted: true }]);
+		expect(fenceUntrustedResults(messages)).toBe(messages);
+	});
+
 	it("fences error results too, since page and server text reaches the model in errors", () => {
 		const [error] = fenceUntrustedResults([result("mcp__other__tool", INJECTION, "e", { isError: true })]);
 		expect(textOf(error)).toContain("<<<untrusted-");
@@ -102,7 +120,7 @@ describe("with the read dedupe", () => {
 		registerReadDedupe(fake.api);
 		const text = "line of text\n".repeat(200);
 		const input = { path: "/repo/a.ts" };
-		const first = result("mcp__octocode__localFetch", text, "call1");
+		const first = result(RESEARCH.reader, text, "call1");
 		const call = {
 			role: "assistant",
 			content: [{ type: "toolCall", id: "call1", name: first.toolName, arguments: input }],
@@ -140,8 +158,8 @@ describe("with the read dedupe", () => {
 			call,
 			first,
 			result(
-				"mcp__octocode__localFetch",
-				"[Unchanged since your earlier localFetch of the same arguments; that result is above in your context.]",
+				RESEARCH.reader,
+				`[Unchanged since your earlier ${RESEARCH.reader} of the same arguments; that result is above in your context.]`,
 				"call2",
 			),
 		];

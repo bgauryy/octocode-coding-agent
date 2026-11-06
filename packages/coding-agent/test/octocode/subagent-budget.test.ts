@@ -14,7 +14,7 @@ import {
 import { parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
 import { emptyUsage } from "../../src/octocode/shared/util.ts";
-import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { grantRequests } from "../../src/octocode/team/tools/grant.ts";
 
 describe("maxRequests resolution", () => {
@@ -89,11 +89,11 @@ describe("RequestBudget", () => {
 	it("words the steer for how the child runs: a child its parent can answer asks, any other says so in its report", () => {
 		const ask = steerMessage(6, 6, 9, { ask: true });
 		expect(ask).toBe(
-			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nIf what is left (3) is enough, finish within it. If you need more, ask your parent now: send `agent` type `message` to `parent` with `wake: true`, saying how many more requests you need and why, and keep working meanwhile. If no answer comes, the run still stops at 9 and your work so far is kept.",
+			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nIf what is left (3) is enough, finish within it. If you need more, ask your parent now: send `agent` type `message` to `parent` with `replyRequired: true`, saying how many more requests you need and why, and keep working meanwhile. If no answer comes, the run still stops at 9 and your work so far is kept.",
 		);
 		const report = steerMessage(6, 6, 9);
 		expect(report).toBe(
-			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nYour parent reads messages only with your report, so it cannot answer during this run. Finish with what is done, and say in your report what is left and how many more requests that needs.",
+			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nYour parent waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
 		);
 		const steer = vi.fn();
 		const quiet = new RequestBudget(2, steer, vi.fn(), 0, { canAsk: false });
@@ -234,7 +234,12 @@ describe("coordinate grant", () => {
 		const budgets = new RunningBudgets();
 		const budget = new RequestBudget(4, vi.fn(), vi.fn());
 		budgets.add("a-1", budget);
-		return { budgets, budget, send, team: { send } as unknown as Parameters<typeof grantRequests>[0] };
+		return {
+			budgets,
+			budget,
+			send,
+			team: { send, id: "main", asks: () => [] } as unknown as Parameters<typeof grantRequests>[0],
+		};
 	};
 
 	it("raises the limits, tells the child through its mail, and says so", async () => {

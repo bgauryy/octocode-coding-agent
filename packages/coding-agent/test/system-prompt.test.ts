@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 import { buildSystemPrompt, buildSystemPromptSections, currentEnvironment } from "../src/core/system-prompt.ts";
+import { RESEARCH, useResearchRoles } from "./octocode/fake-research-roles.ts";
 
 const testSkill: Skill = {
 	name: "test-skill",
@@ -21,85 +22,100 @@ describe("buildSystemPrompt", () => {
 		expect(trimmed).toContain("<rules>");
 	});
 
-	test.each([
-		"localSearch",
-		"localSearchCode",
-		"structureSearch",
-		"astSearch",
-		"lspSearch",
-		"localFindFiles",
-		"localViewStructure",
-	])("does not redirect %s searches to the shell", (name) => {
-		const prompt = buildSystemPrompt({
-			cwd: "/tmp",
-			selectedTools: ["bash", `mcp__octocode__${name}`],
-			contextFiles: [],
-			skills: [],
-		});
-		expect(prompt).not.toContain("Search and read files with bash");
-	});
+	describe("with an MCP server declaring reader and search roles", () => {
+		useResearchRoles();
 
-	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
-		"loads skills through %s without read or bash",
-		(reader) => {
-			const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [reader], contextFiles: [], skills: [testSkill] });
+		test("does not redirect searches to the shell while a search-role tool is declared", () => {
+			const prompt = buildSystemPrompt({
+				cwd: "/tmp",
+				selectedTools: ["bash", RESEARCH.search],
+				contextFiles: [],
+				skills: [],
+			});
+			expect(prompt).not.toContain("Search and read files with bash");
+			// The role decides, not the server: a tool of the same server without a role leaves search to bash.
+			const unroled = buildSystemPrompt({
+				cwd: "/tmp",
+				selectedTools: ["bash", RESEARCH.other],
+				contextFiles: [],
+				skills: [],
+			});
+			expect(unroled).toContain("Search and read files with bash");
+		});
+
+		test("loads skills through a reader-role tool without read or bash", () => {
+			const prompt = buildSystemPrompt({
+				cwd: "/tmp",
+				selectedTools: [RESEARCH.reader],
+				contextFiles: [],
+				skills: [testSkill],
+			});
 			// The reader is a declared tool with its own description: the skill hint names none.
 			expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
-			expect(prompt).not.toContain("localFetch");
+			expect(prompt).not.toContain("read_file");
 			expect(prompt).toContain("/skills/test-skill/SKILL.md");
 			expect(prompt).not.toContain("Use the read tool");
-		},
-	);
-
-	test("names the skill tool as the skill reader, ahead of any file reader", () => {
-		const prompt = buildSystemPrompt({
-			cwd: "/tmp",
-			selectedTools: ["skill", "bash", "mcp__octocode__localFetch"],
-			contextFiles: [],
-			skills: [testSkill],
 		});
-		expect(prompt).toContain(
-			"Use the skill tool, one call per name, to load every skill whose description matches the task; several can apply.",
-		);
-		// The skill tool's description owns how a loaded skill's relative paths resolve.
-		expect(prompt).not.toContain("resolve it against the skill directory");
-		expect(prompt).not.toMatch(/Load the file of every skill|Use bash to load|localFetch|localGetFileContent/);
-		// The tool needs no file reader.
-		expect(
-			buildSystemPrompt({ cwd: "/tmp", selectedTools: ["skill"], contextFiles: [], skills: [testSkill] }),
-		).toContain("Use the skill tool");
-	});
 
-	test("a hidden skill tool is not advertised: the file reader variant stays", () => {
-		const prompt = buildSystemPrompt({
-			cwd: "/tmp",
-			selectedTools: ["skill", "mcp__octocode__localFetch"],
-			hiddenTools: ["skill"],
-			contextFiles: [],
-			skills: [testSkill],
+		test("a tool without a reader role does not load skills", () => {
+			const prompt = buildSystemPrompt({
+				cwd: "/tmp",
+				selectedTools: [RESEARCH.other],
+				contextFiles: [],
+				skills: [testSkill],
+			});
+			expect(prompt).not.toContain("<available_skills>");
 		});
-		expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
-		expect(prompt).not.toContain("skill tool");
-	});
 
-	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
-		"keeps skills without advertising the hidden %s reader",
-		(reader) => {
+		test("names the skill tool as the skill reader, ahead of any file reader", () => {
+			const prompt = buildSystemPrompt({
+				cwd: "/tmp",
+				selectedTools: ["skill", "bash", RESEARCH.reader],
+				contextFiles: [],
+				skills: [testSkill],
+			});
+			expect(prompt).toContain(
+				"Use the skill tool, one call per name, to load every skill whose description matches the task; several can apply.",
+			);
+			// The skill tool's description owns how a loaded skill's relative paths resolve.
+			expect(prompt).not.toContain("resolve it against the skill directory");
+			expect(prompt).not.toMatch(/Load the file of every skill|Use bash to load|read_file/);
+			// The tool needs no file reader.
+			expect(
+				buildSystemPrompt({ cwd: "/tmp", selectedTools: ["skill"], contextFiles: [], skills: [testSkill] }),
+			).toContain("Use the skill tool");
+		});
+
+		test("a hidden skill tool is not advertised: the file reader variant stays", () => {
+			const prompt = buildSystemPrompt({
+				cwd: "/tmp",
+				selectedTools: ["skill", RESEARCH.reader],
+				hiddenTools: ["skill"],
+				contextFiles: [],
+				skills: [testSkill],
+			});
+			expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
+			expect(prompt).not.toContain("skill tool");
+		});
+
+		test("keeps skills without advertising a hidden reader-role tool", () => {
+			const reader = RESEARCH.reader;
 			const input = { cwd: "/tmp", selectedTools: [reader], hiddenTools: [reader], skills: [testSkill] };
 			const indirect = buildSystemPrompt(input);
 			expect(indirect).toContain("/skills/test-skill/SKILL.md");
-			expect(indirect).not.toContain("localFetch");
+			expect(indirect).not.toContain("read_file");
 			const shell = buildSystemPrompt({ ...input, selectedTools: [reader, "bash"] });
 			expect(shell).toContain("Use bash");
-			expect(shell).not.toContain("localFetch");
-		},
-	);
+			expect(shell).not.toContain("read_file");
+		});
+	});
 
 	test("keeps the tool list and docs section free of restated rules", () => {
 		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash"], toolSnippets: { bash: "Run." } });
 		expect(prompt).not.toContain("other custom tools");
 		expect(prompt.match(/Read the documentation that defines/g)).toBeNull();
-		expect(prompt.match(/follow the \.md links/g)).toHaveLength(1);
+		// The docs section points at the documentation once and restates no reading rule.
+		expect(prompt.match(/Octocode documentation, under/g)).toHaveLength(1);
 		// SDK sessions without an `octocode` section keep the core communication floor.
 		expect(prompt).toContain("- Be concise in your responses");
 	});

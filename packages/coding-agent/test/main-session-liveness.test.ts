@@ -23,7 +23,7 @@ let projectDir: string;
 let sessionDir: string;
 
 function args(overrides: Partial<Args>): Args {
-	return { messages: [], fileArgs: [], unknownFlags: new Map(), diagnostics: [], ...overrides };
+	return { messages: [], fileArgs: [], unknownFlags: [], diagnostics: [], ...overrides };
 }
 
 /** A saved session whose row says this (live) process has it open. */

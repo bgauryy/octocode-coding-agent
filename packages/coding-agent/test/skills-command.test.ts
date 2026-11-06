@@ -132,8 +132,9 @@ it("uses the existing package-resource filter for package skills", async () => {
 
 it("requires an exact path when names collide, and refuses mutation during a response", async () => {
 	const { cwd, host, skillPath } = fixture();
-	const otherPath = join(cwd, ".octocode", "skills", "review", "SKILL.md");
-	mkdirSync(join(cwd, ".octocode", "skills", "review"), { recursive: true });
+	// Discovery settles a name shared across harnesses (`.octocode` shadows `.agents`), so the collision is within one.
+	const otherPath = join(cwd, ".agents", "skills", "other-review", "SKILL.md");
+	mkdirSync(join(cwd, ".agents", "skills", "other-review"), { recursive: true });
 	writeFileSync(otherPath, "---\nname: review\ndescription: Other review\n---\nReview it.");
 	await handleSkillsCommand(host as never, "disable review");
 	expect(host.showWarning).toHaveBeenCalledWith(expect.stringContaining("Several skills are named review"));

@@ -9,7 +9,10 @@ import { openAgentDb } from "../../src/config/database.ts";
 import { type AgentDb } from "../../../db/src/api.ts";
 import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";
-import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
+import { teamView, WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
+import { Team } from "../../src/octocode/team/session.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 let dir: string;
@@ -31,6 +34,8 @@ function setup(
 		send?: () => Promise<void>;
 		tell?: (to: string, text: string, signal?: AbortSignal) => Promise<unknown>;
 		expiry?: () => string;
+		team?: Team;
+		stop?: () => string | undefined;
 	} = {},
 ) {
 	const fake = fakeHost();
@@ -44,12 +49,16 @@ function setup(
 	const application = new ApplicationService(session as unknown as AgentSession);
 	applications.push(application);
 	const tell = vi.fn(options.tell ?? (async () => ({ sent: ["worker"], id: 1 })));
-	const stop = vi.fn(() => "Not owned by this session");
+	const stop = vi.fn(options.stop ?? (() => "Not owned by this session"));
 	const runtime = new WorkspaceRuntime(fake.api, {
 		application: () => application,
 		database: () => db,
-		members: () => [{ id: "worker", role: "general", status: "working" } as never],
-		traffic: () => [],
+		...(options.team
+			? teamView(options.team)
+			: {
+					members: () => [{ id: "worker", role: "general", status: "working" } as never],
+					traffic: () => [],
+				}),
 		tell,
 		stop,
 		expiry: options.expiry,
@@ -206,6 +215,88 @@ describe("workspace runtime boundary", () => {
 		expect(signal.aborted).toBe(false);
 		resolve({ sent: ["worker"], id: 1 });
 		expect(await pending).toMatchObject({ status: "accepted" });
+	});
+
+	describe("agents of other sessions in the same workspace", () => {
+		const member = (id: string, extra: Partial<Member> = {}): Member => ({
+			id,
+			role: "researcher",
+			pid: process.pid,
+			status: "working",
+			joinedAt: Date.now(),
+			updatedAt: Date.now(),
+			toolCalls: 0,
+			input: 0,
+			cacheRead: 0,
+			output: 0,
+			cost: 0,
+			unpriced: false,
+			...extra,
+		});
+
+		it("lists only this session's descendants and refuses a stop for the other session's child", async () => {
+			const file = path.join(dir, "team.db");
+			const sessions = [0, 1].map(() => {
+				const host = fakeHost();
+				const team = new Team(host.api, { OCTOCODE_AGENT_DB: file });
+				const ctx = fakeCtx({ cwd: dir, hasUI: false });
+				team.start(ctx);
+				team.join();
+				return { team, app: setup({ team, stop: () => undefined }) };
+			});
+			const store = TeamStore.open(dir, file, {});
+			try {
+				const [first, second] = sessions;
+				const [firstId, secondId] = [first.team.id!, second.team.id!];
+				expect(firstId).not.toBe(secondId);
+				store.join(member("first-child", { parentId: firstId }));
+				store.join(member("first-grandchild", { parentId: "first-child" }));
+				store.join(member("second-child", { parentId: secondId }));
+				store.send("first-child", [firstId], "from the first child", { replyRequired: false });
+				store.send("second-child", [secondId], "from the second child", { replyRequired: false });
+
+				const ids = (session: (typeof sessions)[number]) =>
+					session.app.connection
+						.snapshot()
+						.agents.map((agent) => agent.id)
+						.sort();
+				expect(ids(first)).toEqual(["first-child", "first-grandchild"]);
+				expect(ids(second)).toEqual(["second-child"]);
+				expect(first.app.connection.snapshot().traffic.map((message) => message.text)).toEqual([
+					"from the first child",
+				]);
+				expect(second.app.connection.snapshot().traffic.map((message) => message.text)).toEqual([
+					"from the second child",
+				]);
+
+				expect(
+					await first.app.connection.execute({ id: "stop-foreign", action: "stop", to: "second-child" }),
+				).toMatchObject({ status: "failed", message: expect.stringContaining("not one of this session's agents") });
+				expect(first.app.stop).not.toHaveBeenCalled();
+				expect(
+					await first.app.connection.execute({
+						id: "message-foreign",
+						action: "message",
+						to: "second-child",
+						text: "hi",
+					}),
+				).toMatchObject({ status: "failed" });
+				expect(first.app.tell).not.toHaveBeenCalled();
+
+				expect(
+					await first.app.connection.execute({ id: "stop-own", action: "stop", to: "first-grandchild" }),
+				).toMatchObject({
+					status: "accepted",
+				});
+				expect(first.app.stop).toHaveBeenCalledWith("first-grandchild");
+			} finally {
+				store.close();
+				for (const { team, app } of sessions) {
+					app.connection.close();
+					team.stop();
+				}
+			}
+		});
 	});
 
 	describe("revision stamp", () => {

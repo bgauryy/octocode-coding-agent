@@ -3,8 +3,18 @@ import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import { queuePreview } from "./projection.ts";
 
+/** Publish the lifecycle event an engine event maps to, if any. */
+export function publishLifecycle(
+	event: AgentSessionEvent,
+	runId: string | undefined,
+	publish: (event: ApplicationEvent) => void,
+): void {
+	const lifecycle = lifecycleEvent(event, runId);
+	if (lifecycle) publish(lifecycle);
+}
+
 /** Translate engine lifecycle events; the application store owns their state. */
-export function lifecycleEvent(event: AgentSessionEvent, runId?: string): ApplicationEvent | undefined {
+function lifecycleEvent(event: AgentSessionEvent, runId?: string): ApplicationEvent | undefined {
 	switch (event.type) {
 		case "agent_start":
 			return { type: "run.started", runId: randomUUID() };

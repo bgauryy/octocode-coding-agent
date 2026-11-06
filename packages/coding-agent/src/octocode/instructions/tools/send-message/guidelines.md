@@ -1,1 +1,1 @@
-Send self-contained blockers, decisions or evidence that change the next step. Skip acknowledgements and completion pings; reports arrive automatically.
+Send self-contained blockers, decisions or evidence that change the next step: replyRequired when you need an answer, wake when the recipient must act now without answering, otherwise an FYI. Skip acknowledgements and completion pings; reports arrive automatically.

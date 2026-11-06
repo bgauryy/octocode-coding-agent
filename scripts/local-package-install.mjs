@@ -113,7 +113,7 @@ function preparePnpmWorkspace(consumerDirectory, specifiers) {
 	) {
 		throw new Error(`Invalid pnpm workspace file ${workspacePath}: overrides must be a mapping`);
 	}
-	if (document.contents === null) document.contents = document.createNode({});
+	document.contents ??= document.createNode({});
 	for (const [name, specifier] of Object.entries(specifiers)) document.setIn(["overrides", name], specifier);
 	return { contents: String(document), path: workspacePath };
 }

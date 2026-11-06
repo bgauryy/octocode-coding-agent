@@ -1,11 +1,12 @@
 import type { RpcEvent, RpcEventListener } from "./types.ts";
+import { reportToStderr } from "../../../../../common/src/stderr.ts";
 
 /** Runs a listener or callback so that its exception is reported as its own failure, not taken for a bad line. */
 export function guarded(what: string, run: () => void): void {
 	try {
 		run();
 	} catch (error) {
-		console.error(`${what} failed`, error);
+		reportToStderr(`${what} failed`, error);
 	}
 }
 

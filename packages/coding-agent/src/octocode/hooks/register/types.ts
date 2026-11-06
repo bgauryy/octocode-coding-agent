@@ -78,6 +78,8 @@ export type HookFailureSink = (what: readonly string[], note: string, allowed: b
 export interface HookSession {
 	config: HookConfig;
 	errors: string[];
+	/** Handlers a `/harness` switch (or a harness off by default) left out at the last session start. */
+	switchedOff?: number;
 	/** The repository root for CLAUDE_PROJECT_DIR, found once per session and only when a hook actually runs. */
 	root: string | undefined;
 }
@@ -91,7 +93,7 @@ export type Dispatch = (
 	protocol?: HookProtocol | readonly HookProtocol[],
 ) => Promise<HookVerdict>;
 export interface HookHostMetadata {
-	permissionMode?: "manual" | "workspace" | "full";
+	permissionMode?: "manual" | "workspace" | "full" | "bypass";
 	agentName?: string;
 	agentType?: string;
 }

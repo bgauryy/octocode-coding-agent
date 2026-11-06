@@ -5,6 +5,7 @@ import { fetchCatalog } from "./fetchers.ts";
 import { generatorOptions } from "./options.ts";
 import { withOpenAiLongContextPricing } from "./pricing.ts";
 import type { ModelsDevMetadata } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** Classifier models: the models.dev decision catalog and the hand-listed OpenCode, Workers AI and OpenAI models. */
 
@@ -30,7 +31,7 @@ export async function loadModelsDevClassifierModels(): Promise<ClassifierModel<"
 				// The canonical models.dev entry has no direct-provider pricing. System One reports token usage,
 				// so classify() results carry token counts but price them at zero.
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: metadata.limit?.context || 64000,
+				contextWindow: nonZeroOr(64000, metadata.limit?.context),
 			},
 		];
 	} catch (error) {

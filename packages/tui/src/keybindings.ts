@@ -314,8 +314,6 @@ export function setKeybindings(keybindings: KeybindingsManager): void {
 }
 
 export function getKeybindings(): KeybindingsManager {
-	if (!globalKeybindings) {
-		globalKeybindings = new KeybindingsManager(TUI_KEYBINDINGS);
-	}
+	globalKeybindings ??= new KeybindingsManager(TUI_KEYBINDINGS);
 	return globalKeybindings;
 }

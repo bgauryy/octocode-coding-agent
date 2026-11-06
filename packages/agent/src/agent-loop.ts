@@ -213,7 +213,7 @@ async function runLoop(
 	let lastCompletedTurn: PrepareNextTurnContext | undefined;
 	let explicitContinuation = false;
 	// Check for steering messages at start (user may have typed while waiting)
-	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
+	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) ?? [];
 	let pendingKind: "steer" | "followUp" = "steer";
 
 	// Outer loop: continues when queued follow-up messages arrive after agent would stop
@@ -236,7 +236,7 @@ async function runLoop(
 				// queued while it ran. Only poll again if the earlier poll returned nothing;
 				// otherwise one-at-a-time mode would deliver two messages in this turn.
 				if (pendingMessages.length === 0) {
-					pendingMessages = (await config.getSteeringMessages?.()) || [];
+					pendingMessages = (await config.getSteeringMessages?.()) ?? [];
 				}
 				await emit({ type: "turn_start" });
 			}
@@ -331,14 +331,14 @@ async function runLoop(
 			}
 
 			explicitContinuation = decision?.action === "continue";
-			pendingMessages = (await config.getSteeringMessages?.()) || [];
+			pendingMessages = (await config.getSteeringMessages?.()) ?? [];
 			if (hasMoreToolCalls || pendingMessages.length > 0) {
 				explicitContinuation = false;
 			}
 		}
 
 		// Agent would stop here. Check for follow-up messages.
-		const followUpMessages = (await config.getFollowUpMessages?.()) || [];
+		const followUpMessages = (await config.getFollowUpMessages?.()) ?? [];
 		if (followUpMessages.length > 0) {
 			// Set as pending so inner loop processes them
 			explicitContinuation = false;

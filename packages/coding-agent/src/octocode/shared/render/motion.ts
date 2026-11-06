@@ -17,22 +17,10 @@ const subscribed = new Set<ToolRow>();
 let flashing: ToolRow | undefined;
 
 /**
- * The one row whose mark moves on and on (a spinner, or the pulse of a row that waits). Every frame of a mark that
- * scrolled above the viewport makes octocode-tui clear and redraw the whole scrollback, header banner included, so
- * parallel calls flickered the screen ten times a second. Only the newest row to start moving animates; the row it
- * replaces is redrawn once, still, and does not move again in that state.
- */
-let moving: { state: ToolRow; invalidate: () => void } | undefined;
-
-/**
  * The row that started running last. Of parallel calls only it may flash on finishing: an older row finishing after it
  * has the newer rows' output below it, usually scrolled above the viewport, where every flash frame clears the scrollback.
  */
 let newestStarted: ToolRow | undefined;
-
-function releaseMoving(state: ToolRow): void {
-	if (moving?.state === state) moving = undefined;
-}
 
 function unsubscribe(state: ToolRow): void {
 	state.unmark?.();
@@ -52,7 +40,6 @@ function unsubscribe(state: ToolRow): void {
 export function rowMark(theme: MarkTheme, context: RenderContext, state: ToolRow, ui: UiState): string {
 	if (ui === "waiting" && context.isPartial === false) {
 		unsubscribe(state);
-		releaseMoving(state);
 		return theme.fg(STATE_COLOR.waiting, GLYPH.waiting);
 	}
 	const final = ui === "done" || ui === "failed" || ui === "stopped";
@@ -69,24 +56,11 @@ export function rowMark(theme: MarkTheme, context: RenderContext, state: ToolRow
 			flashing = state;
 		}
 	}
-	const options = { since: ui === "done" ? state.settledAt : undefined };
+	// A waiting mark pulses from the row's first waiting frame for a few seconds, then holds still.
+	if (ui === "waiting") state.waitedAt ??= now;
+	else state.waitedAt = undefined;
+	const options = { since: ui === "done" ? state.settledAt : ui === "waiting" ? state.waitedAt : undefined };
 	const invalidate = context.invalidate;
-	const continuous = ui === "running" || ui === "waiting";
-	if (!continuous) releaseMoving(state);
-	else if (invalidate && markMoves(ui, options) && state.movedAs !== ui) {
-		state.movedAs = ui;
-		const previous = moving;
-		moving = { state, invalidate };
-		if (previous && previous.state !== state) {
-			unsubscribe(previous.state);
-			// Redrawn after this pass: invalidating another row from inside this row's render would re-enter the display.
-			queueMicrotask(previous.invalidate);
-		}
-	}
-	if (continuous && moving?.state !== state) {
-		unsubscribe(state);
-		return theme.fg(STATE_COLOR[ui], GLYPH[ui]);
-	}
 	if (!invalidate || !markMoves(ui, options)) unsubscribe(state);
 	else if (state.marking !== ui) {
 		unsubscribe(state);
@@ -103,6 +77,5 @@ export function rowMark(theme: MarkTheme, context: RenderContext, state: ToolRow
  */
 export function stopRowMotion(): void {
 	for (const state of subscribed) if (state.marking === "running") unsubscribe(state);
-	moving = undefined;
 	newestStarted = undefined;
 }

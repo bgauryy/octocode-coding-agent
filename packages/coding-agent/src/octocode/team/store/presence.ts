@@ -1,4 +1,5 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { type MemberDetails, memberDetails } from "./details.ts";
 import { STALLED_LISTED_MS } from "./limits.ts";
 import {
 	type AgentDb,
@@ -61,6 +62,10 @@ export class Presence {
 
 	/** The runs started for backlog item `seq` of `workspaceId`, newest first. */
 	runsForItem = (workspaceId: string, seq: number): AgentRun[] => agentRuns.forItem(this.db, workspaceId, seq);
+
+	/** Each member's backlog item, transcript and shell-log folders (`details.ts`), read from `workspaceId`. */
+	details = (members: readonly Member[], workspaceId: string): Map<string, MemberDetails> =>
+		memberDetails(this.db, workspaceId, members);
 
 	/** The agent `ref` names, live or past (`resolveAgent`), read from `workspaceId`. */
 	resolve = (ref: string, workspaceId: string): ResolvedAgent | undefined => resolveAgent(this.db, ref, workspaceId);

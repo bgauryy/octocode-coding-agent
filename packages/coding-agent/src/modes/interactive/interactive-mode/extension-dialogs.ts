@@ -133,6 +133,7 @@ export function showExtensionSelector(
 		host.extensionSelector = new ExtensionSelectorComponent(title, options, finish, () => finish(undefined), {
 			tui: host.ui,
 			timeout: opts?.timeout,
+			...(opts?.ask ? { ask: opts.ask } : {}),
 			onToggleToolsExpanded: () => host.toggleToolOutputExpansion(),
 			// A dialog that opens mid-run (an approval) keeps what the user types: it is submitted as if typed in the editor
 			// (dialog unit tests build hosts without a session).

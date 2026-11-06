@@ -10,6 +10,8 @@ import { dirname } from "node:path";
 import { getReadmePath } from "../config.ts";
 import { renderInstruction } from "./prompt-template.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
+import { formatHarnessesForPrompt } from "./discovery/vendors/prompt.ts";
+import type { HarnessStatus } from "./discovery/vendors/types.ts";
 import {
 	assertSystemPromptSectionName,
 	composeSystemPromptSections,
@@ -65,6 +67,8 @@ export interface BuildSystemPromptOptions {
 	baseSections?: Record<string, string>;
 	/** Working directory. */
 	cwd: string;
+	/** Every harness Octocode reads, on or off: one `harnesses` line, so the agent knows what exists and who switches it. */
+	harnesses?: readonly HarnessStatus[];
 	/** Platform, shell and date for the `environment` section (`currentEnvironment`); left out when absent. */
 	environment?: string;
 	/** Pre-loaded context files. */
@@ -126,6 +130,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		sections: { ...input.sections },
 		baseSections: { ...input.baseSections },
 		cwd: input.cwd,
+		...(input.harnesses ? { harnesses: input.harnesses.map((status) => ({ ...status })) } : {}),
 		environment: input.environment,
 		contextFiles: (input.contextFiles ?? []).map((file) => ({ ...file })),
 		skills: (input.skills ?? []).map((skill) => ({ ...skill })),
@@ -255,6 +260,8 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	const reader = skillReader(selectedTools, declaredTools);
 	if (reader && skills.length > 0) contents.skills = formatSkillsForPrompt(skills, reader).trim();
+	const harnesses = formatHarnessesForPrompt(input.harnesses ?? []);
+	if (harnesses) contents.harnesses = harnesses;
 	contents.cwd = cwd.replace(/\\/g, "/");
 	if (environment) contents.environment = environment;
 	// A producer's section replaces the default of that name; an empty one removes it.

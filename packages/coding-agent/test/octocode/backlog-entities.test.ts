@@ -146,7 +146,9 @@ describe("backlog composition", () => {
 				},
 				actor,
 			),
-		).toThrow(/verify/);
+		).toThrow(
+			`An agent closes an item only with verification passed or not_applicable, not not_run: keep ${item.ref} ongoing, add a note saying what failed, and close it after a passing check.`,
+		);
 		const input = { state: "done" as const, version: item.version, completion: result() };
 		const done = store.update(item.ref, input, actor);
 		expect(store.update(item.ref, input, actor)).toEqual(done);

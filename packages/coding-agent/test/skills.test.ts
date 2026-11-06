@@ -313,7 +313,7 @@ describe("skills", () => {
 			);
 		});
 
-		it("omits file paths when the skill tool loads skills by name", () => {
+		it("keeps each skill's file path when the skill tool loads skills by name", () => {
 			const skills: Skill[] = [
 				createTestSkill({
 					name: "test-skill",
@@ -327,8 +327,10 @@ describe("skills", () => {
 
 			expect(result).toContain("<name>test-skill</name>");
 			expect(result).toContain("<description>A test skill.</description>");
-			expect(result).not.toContain("<location>");
-			expect(result).not.toContain("/path/to/skill");
+			// Every entry names its SKILL.md, whatever the reader, so the agent knows where the skill's folder is.
+			expect(result).toContain("<location>/path/to/skill/SKILL.md</location>");
+			// The skill tool's description says how relative paths resolve, so the file-reader line is left out.
+			expect(result).not.toContain("resolve it against the skill directory");
 		});
 
 		it("should include intro text before XML", () => {
@@ -418,7 +420,7 @@ describe("skills", () => {
 
 			expect(result).toContain("<name>skill-one</name>");
 			expect(result).toContain("<name>skill-two</name>");
-			expect((result.match(/<skill>/g) || []).length).toBe(2);
+			expect((result.match(/<skill>/g) ?? []).length).toBe(2);
 		});
 
 		it("should exclude skills with disableModelInvocation from prompt", () => {
@@ -442,7 +444,7 @@ describe("skills", () => {
 
 			expect(result).toContain("<name>visible-skill</name>");
 			expect(result).not.toContain("<name>hidden-skill</name>");
-			expect((result.match(/<skill>/g) || []).length).toBe(1);
+			expect((result.match(/<skill>/g) ?? []).length).toBe(1);
 		});
 
 		it("should return empty string when all skills have disableModelInvocation", () => {

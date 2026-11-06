@@ -2,7 +2,6 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { isPluginMcpServerName, mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isStringRecord, LOOPBACK_HOSTS, validateInstall, validateOAuth, validateRoles } from "./server-validation.ts";
 
-export { MCP_TOOL_ROLES } from "./server-validation.ts";
 /**
  * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
  *
@@ -90,6 +89,11 @@ export interface McpInstallConfig {
 	version: string;
 	/** The bin to run, from the package's `bin`; default: the package's only bin, or the one named like the package. */
 	bin?: string;
+	/**
+	 * Run the host application's own copy of `npm` when its `package.json` lists the package in `dependencies` and it
+	 * resolves from the host's install folder (`host-dependency.ts`), whatever its version; install only otherwise.
+	 */
+	hostDependency?: boolean;
 }
 
 interface McpStdioServerConfig extends McpServerConfigBase {

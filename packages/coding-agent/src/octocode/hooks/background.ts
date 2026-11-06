@@ -88,6 +88,19 @@ export function registerBackgroundHooks(api: ExtensionAPI) {
 				}
 			: undefined;
 	});
+	// Sending may await an entire new turn; cleanup must not await that turn through the job that asked.
+	const sendRewake = (reason: string) => {
+		void Promise.resolve(
+			api.sendMessage(
+				{
+					customType: "octocode-hook-context",
+					content: capContext(`Background hook feedback:\n${reason}`),
+					display: false,
+				},
+				{ triggerTurn: true, deliverAs: "followUp" },
+			),
+		).catch(() => undefined);
+	};
 	return {
 		reset,
 		start(
@@ -126,17 +139,7 @@ export function registerBackgroundHooks(api: ExtensionAPI) {
 						}
 						if (hook.asyncRewake && result.code === 2) {
 							const reason = visibleControls(result.stderr.trim() || result.stdout.trim());
-							// Sending may await an entire new turn; cleanup must not await that turn through this job.
-							void Promise.resolve(
-								api.sendMessage(
-									{
-										customType: "octocode-hook-context",
-										content: capContext(`Background hook feedback:\n${reason}`),
-										display: false,
-									},
-									{ triggerTurn: true, deliverAs: "followUp" },
-								),
-							).catch(() => undefined);
+							sendRewake(reason);
 							return;
 						}
 						if (result.code !== 0) return;

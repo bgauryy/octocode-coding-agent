@@ -40,7 +40,8 @@ export class FullContentReader {
 		}
 	}
 
-	data(asset: ApplicationAsset | undefined, reader?: AssetReader): Record<string, unknown> | undefined {
+	data(first: ApplicationAsset | undefined, reader?: AssetReader): Record<string, unknown> | undefined {
+		let asset = first;
 		const seen = new Set<string>();
 		let merged: Record<string, unknown> | undefined;
 		for (let depth = 0; asset && depth < 8 && !seen.has(asset.id); depth++) {

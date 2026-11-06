@@ -41,7 +41,8 @@ class StrictStrikethroughTokenizer extends Tokenizer {
 	/** Where the next inline latex opener starts in `suffix`, as the latex extension's `start` reports it. */
 	latexStart(suffix: string): number | undefined {
 		const { run, offset } = this.locate(suffix);
-		const searches = (run.latexSearches ??= LATEX_INLINE_OPENERS.map(() => ({ from: -1, found: -1 })));
+		run.latexSearches ??= LATEX_INLINE_OPENERS.map(() => ({ from: -1, found: -1 }));
+		const searches = run.latexSearches;
 		let next = -1;
 		for (let i = 0; i < LATEX_INLINE_OPENERS.length; i++) {
 			const search = searches[i];

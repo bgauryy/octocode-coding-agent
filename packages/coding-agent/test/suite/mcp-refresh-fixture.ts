@@ -127,7 +127,8 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 					startupWaitMs: 10,
 					// `/mcp enable|disable` change the session's servers; nothing is written to a real mcp.json.
 					updateConfig: () => {},
-					...(options.presentation ? { presentation: options.presentation } : {}),
+					// These cases pin the thin-declaration presentations; `declared`, the setting's default, has its own tests.
+					presentation: options.presentation ?? "compact",
 					createTransport: (target) => {
 						const late = target.name === "late" && options.late;
 						const pair = late ? createFakeServer(() => late, calls, 300) : createFakeServer(() => server, calls);

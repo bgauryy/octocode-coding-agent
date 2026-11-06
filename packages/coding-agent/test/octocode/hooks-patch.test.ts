@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 import { projectCodexPatch, rewriteCodexPatch } from "../../src/octocode/hooks/patch.ts";
 
@@ -96,7 +96,7 @@ async function fixture(matcher = "apply_patch", rewrite?: string) {
 			hooks: { PreToolUse: hooks, ...(rewrite ? {} : { PostToolUse: hooks }) },
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	fake.tools.set("file", {
 		name: "file",
 		description: "Files",

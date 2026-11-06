@@ -19,7 +19,7 @@ export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "pref
  */
 interface PromptInputs {
 	/** The research MCP server, from its entry's roles, when this agent can reach it: the research section then routes code search to it and names its tools. */
-	research?: ResearchContext;
+	research?: ResearchContext | undefined;
 	/** Subagent profile names and one-line descriptions. */
 	profiles: Array<{ name: string; description: string }>;
 	/** Browser specialists to use when the main session has no browser tool. */
@@ -59,7 +59,8 @@ function policyFlags(input: PromptInputs) {
 	const web = input.canWeb !== false;
 	const days = input.scratchDays ?? resolveRetention().days;
 	const research = input.research;
-	const bare = (tool: string) => `\`${research && tool.startsWith(research.prefix) ? tool.slice(research.prefix.length) : tool}\``;
+	const bare = (tool: string) =>
+		`\`${research && tool.startsWith(research.prefix) ? tool.slice(research.prefix.length) : tool}\``;
 	const search = (research?.search ?? []).map(bare);
 	return {
 		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).

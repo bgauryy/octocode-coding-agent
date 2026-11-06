@@ -46,7 +46,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{
 		name: "context",
-		description: "Show or change how much conversation the model can see",
+		description: "Show or set how much conversation the model sees",
 		argumentHint: "[all|size|reset|full|tokens]",
 		argumentValues: ["all", "size", "reset", "full"],
 	},
@@ -138,7 +138,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "[search|list|info|enable|disable]",
 		argumentValues: ["list", "info", "enable", "disable"],
 	},
-	{ name: "debug", description: "Save a diagnostics file (screen and messages, secrets redacted)" },
+	{ name: "debug", description: "Save a diagnostics file (secrets redacted)" },
 	{ name: "reload", description: "Reload config, skills and themes" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },
 ];

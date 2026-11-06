@@ -20,6 +20,7 @@
 			"typebox": ["./node_modules/typebox"],
 			"@octocodeai/octocode-tui": ["./packages/tui/src/index.ts"],
 			"@octocodeai/octocode-tui/ansi": ["./packages/tui/src/utils/ansi-codes.ts"],
+			"@octocodeai/octocode-tui/text": ["./packages/tui/src/utils/text.ts"],
 			"@octocodeai/octocode-tui/multiplexer": ["./packages/tui/src/multiplexer.ts"],
 			"@octocodeai/octocode-tui/*": ["./packages/tui/src/*"],
 			"@octocodeai/octocode-contracts": ["./packages/contracts/src/index.ts"],

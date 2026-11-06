@@ -128,7 +128,7 @@ describe.skipIf(!ENABLED)("live prompt-cache canary", () => {
 		const skip = !apiKey || (SELECTED !== undefined && !SELECTED.includes(provider));
 		const models = skip ? [] : pickModels(provider);
 		if (models.length === 0) {
-			it.skip(`${provider}: each request reads the previous prefix`, () => {});
+			it.skip(`${provider}: each request reads the previous prefix (needs its API key and selection)`, () => {});
 			continue;
 		}
 		for (const model of models) {

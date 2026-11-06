@@ -114,13 +114,14 @@ describe("ConfigDiscovery agrees with the resource loader", () => {
 describe("host-registered sources", () => {
 	it("adds a source for a kind core does not own and removes it again", () => {
 		const unregister = configDiscovery.register({
-			kind: "hook",
+			kind: "agent",
 			discover: (discoverInput) => [
 				{
-					kind: "hook",
+					kind: "agent",
 					name: "audit",
 					provenance: {
 						product: "octocode",
+						vendor: "octocode",
 						scope: "global",
 						origin: "octocode",
 						path: join(discoverInput.agentDir, "hooks.json"),
@@ -130,9 +131,9 @@ describe("host-registered sources", () => {
 				},
 			],
 		});
-		expect(configDiscovery.discover("hook", input(false)).map((item) => item.name)).toEqual(["audit"]);
-		expect(configDiscovery.discoverAll(input(false)).get("hook")).toHaveLength(1);
+		expect(configDiscovery.discover("agent", input(false)).map((item) => item.name)).toEqual(["audit"]);
+		expect(configDiscovery.discoverAll(input(false)).get("agent")).toHaveLength(1);
 		unregister();
-		expect(configDiscovery.discover("hook", input(false))).toEqual([]);
+		expect(configDiscovery.discover("agent", input(false))).toEqual([]);
 	});
 });

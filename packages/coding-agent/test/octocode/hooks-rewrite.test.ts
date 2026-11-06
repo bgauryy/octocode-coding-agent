@@ -4,14 +4,14 @@ import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 it.each(["claude", "codex"] as const)("validates %s rewritten arguments before changing the call", async (protocol) => {
 	const home = tmp();
 	vi.stubEnv("OCTOCODE_HOME", tmp());
 	const file = path.join(home, `.${protocol}`, protocol === "claude" ? "settings.json" : "hooks.json");
 	fs.mkdirSync(path.dirname(file), { recursive: true });
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	fake.tools.set("bash", { name: "bash", description: "Run", parameters: Type.Object({ command: Type.String() }) });
 	const hooks = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
@@ -58,7 +58,7 @@ it("applies Claude file rewrites through the registered native schema", async ()
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	fake.tools.set("file", {
 		name: "file",
 		description: "Files",
@@ -103,7 +103,7 @@ it("projects Codex Bash command input and preserves native execution options on 
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	fake.tools.set("bash", {
 		name: "bash",
 		description: "Run",

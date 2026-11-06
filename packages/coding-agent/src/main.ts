@@ -1,5 +1,5 @@
 import { readSkillResourceSnapshot } from "./core/skill-resource-snapshot.ts";
-import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
+import { envFlag, PERMISSION_ENV, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
 import { runCompletionCommand } from "./cli/completion.ts";
 /**
  * Main entry point for the coding agent CLI.
@@ -10,7 +10,7 @@ import { runCompletionCommand } from "./cli/completion.ts";
 
 import { setCapabilityOverrides } from "@octocodeai/octocode-tui";
 import chalk from "chalk";
-import { normalizeSessionName, parseArgs, printHelp, restoreBooleanFlagWords } from "./cli/args.ts";
+import { normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
 import { listModels } from "./cli/list-models.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "./cli/startup-ui.ts";
 import { ENV_SESSION_DIR, getAgentDir, getPackageDir, VERSION } from "./config.ts";
@@ -125,14 +125,8 @@ export async function main(args: string[]) {
 	const skillSnapshotFile = process.env[SKILL_SNAPSHOT_FILE_ENV];
 	const skillResourceSnapshot =
 		envFlag(process.env, SUBAGENT_ENV) && skillSnapshotFile ? readSkillResourceSnapshot(skillSnapshotFile) : undefined;
-	if (parsed.removedFlags?.length) {
-		console.error(
-			chalk.red(
-				`Error: ${[...new Set(parsed.removedFlags)].join(", ")} ${parsed.removedFlags.length > 1 ? "were" : "was"} removed: Octocode no longer loads user code extensions. Add behavior with plugins and hooks instead (see PLUGINS.md).`,
-			),
-		);
-		process.exit(2);
-	}
+	// The start mode is the process's: every session it starts and every subagent it spawns reads it from here.
+	if (parsed.permissionMode) process.env[PERMISSION_ENV] = parsed.permissionMode;
 	if (parsed.diagnostics.length > 0) {
 		for (const d of parsed.diagnostics) {
 			const color = d.type === "error" ? chalk.red : chalk.yellow;
@@ -257,21 +251,14 @@ export async function main(args: string[]) {
 	}
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
-	const { settingsManager, modelRuntime, resourceLoader } = services;
+	const { settingsManager, modelRuntime } = services;
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs());
 
-	const extensionFlags = resourceLoader
-		.getExtensions()
-		.extensions.flatMap((extension) => Array.from(extension.flags.values()));
-	// A word an unknown `--flag` consumed belongs to the prompt when that flag turns out to be boolean.
-	restoreBooleanFlagWords(parsed, (name) =>
-		extensionFlags.some((flag) => flag.name === name && flag.type === "boolean"),
-	);
 	if (parsed.help) {
 		reportDiagnostics(startupSettingsDiagnostics);
-		printHelp(extensionFlags);
+		printHelp();
 		process.exit(0);
 	}
 

@@ -24,10 +24,10 @@ import {
 	deadLetterText,
 	describeChanges,
 	describeConflicts,
-	describeMembers,
 	mutatedPaths,
 	resolveTarget,
 } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import * as importedModule2 from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakePermission, theme } from "./fake-host.ts";
@@ -395,10 +395,10 @@ describe("agents view", () => {
 
 describe("collaboration prompt", () => {
 	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
 			"own user communication, approvals and integration.",
 		);
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
 			"Treat a report as a claim: check the result your next step depends on.",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
@@ -417,7 +417,7 @@ describe("collaboration prompt", () => {
 			/Adds teammate context.*does not enable messaging or grant authority/,
 		);
 		// A child names its parent generically: its own id and parent arrive in its task.
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
 			/your parent[\s\S]*agent[\s\S]*message/,
 		);
 	});

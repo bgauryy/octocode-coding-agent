@@ -17,7 +17,7 @@ export interface ChildBudgets {
  * hears of them in its mail. A message that fails costs only that word: the limits are raised either way.
  */
 export async function grantRequests(
-	team: Pick<Team, "send">,
+	team: Pick<Team, "send" | "asks" | "id">,
 	budgets: ChildBudgets | undefined,
 	subagent: string | undefined,
 	requests: number | undefined,
@@ -30,11 +30,21 @@ export async function grantRequests(
 		throw new Error("grant needs requests: a positive whole number of model requests to add.");
 	const standing = budgets.grant(id, requests);
 	if (typeof standing === "string") throw new Error(standing);
-	const told = await tell(team, id, requests, standing, signal);
+	const told = await tell(team, id, requests, standing, openAsk(team, id), signal);
 	return textResult(
 		`Granted ${requests} more requests to ${id} for this run: it has used ${standing.used} of ${standing.soft} and stops at ${standing.hard}. ${told}`,
 		{ summary: `Granted ${plural(requests, "request")} to ${id}` },
 	);
+}
+
+/**
+ * The child's one open question to this agent, which a grant answers. With none, or several (which one is about the
+ * budget is a guess), the grant stays a plain notice and the questions stay open.
+ */
+function openAsk(team: Pick<Team, "asks" | "id">, child: string): number | undefined {
+	if (!team.id) return undefined;
+	const open = team.asks(child, team.id, 0).filter((ask) => !ask.answer);
+	return open.length === 1 ? open[0]?.id : undefined;
 }
 
 async function tell(
@@ -42,12 +52,18 @@ async function tell(
 	id: string,
 	requests: number,
 	{ used, soft, hard }: BudgetStanding,
+	replyTo: number | undefined,
 	signal?: AbortSignal,
 ): Promise<string> {
 	const text = renderInstruction("notices/subagents/budget-granted.md", { requests, used, soft, hard });
 	try {
-		const result = await team.send(id, text, { replyRequired: false, ...(signal ? { signal } : {}) });
-		if (!("error" in result)) return `It reads this at its next step (message #${result.id}).`;
+		const result = await team.send(id, text, {
+			replyRequired: false,
+			...(replyTo !== undefined ? { replyTo } : {}),
+			...(signal ? { signal } : {}),
+		});
+		if (!("error" in result))
+			return `It reads this at its next step (message #${result.id})${replyTo !== undefined ? `; it answers its question #${replyTo}` : ""}.`;
 		return `It could not be told (${result.error}), but its limits are raised.`;
 	} catch (error) {
 		return `It could not be told (${errorMessage(error)}), but its limits are raised.`;

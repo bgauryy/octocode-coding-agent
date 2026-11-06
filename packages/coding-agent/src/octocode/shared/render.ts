@@ -1,5 +1,7 @@
 import {
+	Box,
 	type Component,
+	Text,
 	stripTerminalSequences,
 	truncateToWidth,
 	visibleWidth,
@@ -290,6 +292,13 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 /** The file `capOutputToFile` (shared/spill.ts) saved the full output to, read back from its note. */
 export function spillPath(text: string): string | undefined {
 	return /Full output: (.+?); search it or read it by line range\.\]\s*$/.exec(text)?.[1];
+}
+
+/** Already-styled lines as one component, padded like a tool row (custom messages are drawn flush left). */
+export function textBlock(text: string, padX = 1): Component {
+	const box = new Box(padX, 0);
+	box.addChild(new Text(text, 0, 0));
+	return box;
 }
 
 export function resultText(result: { content: Array<{ type: string; text?: string }> }): string {

@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import type { ReferenceHost } from "../../src/octocode/team/session/references.ts";
 import { sendMessage } from "../../src/octocode/team/session/send.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";

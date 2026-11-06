@@ -5,22 +5,27 @@ import { leanPromptSections } from "../../src/octocode/instructions/lean.ts";
 import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
 import { reportContract, reportContractSentences } from "../../src/octocode/instructions/report.ts";
 import { withIdentity } from "../../src/octocode/instructions/task.ts";
+import { FAKE_RESEARCH } from "./fake-research.ts";
 
 const rolesDir = new URL("../../src/octocode/instructions/roles/", import.meta.url);
 const role = (name: string) => readFileSync(new URL(`${name}.md`, rolesDir), "utf8");
 const everyRole = () => readdirSync(rolesDir).map((file) => role(file.replace(/\.md$/, "")));
 
 describe("prompt", () => {
-	it("routes code research to Octocode MCP without naming its tools beyond the namespace and localFetch", () => {
+	it("routes code research to the research server, naming only the tools its roles give", () => {
 		const root = octocodePrompt({
-			octocode: true,
+			research: FAKE_RESEARCH,
 			profiles: [{ name: "researcher", description: "Reads code" }],
 			canDelegate: true,
 		});
 		// The research section routes code search to the server and keeps a fallback for a missing tool.
-		expect(root).toContain("Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it");
-		expect(root).toContain("Its `<mcps>` block routes each question to a tool.");
-		expect(root).toContain("If an Octocode tool fails or is missing, say so");
+		expect(root).toContain(
+			"- Use the research tools (`mcp__research__*`) to check code before you rely on it: search with `search_code` and read source you will edit with `read_file`, instead of `rg`, `grep`, `find`, `ls`, `cat` or `sed -n` in bash; they cost less and give exact evidence when you investigate, check or need many reads. A quick look at one known file or a command's output can stay in bash. Their descriptions route each question to a tool, including sources outside this checkout you would otherwise read through `web`.",
+		);
+		expect(root).toContain(
+			"- If one of these tools fails or is missing, say so and restart its server; if it still fails, fall back to bash search (`rg`, `fd`, `sed -n`).",
+		);
+		expect(root).not.toMatch(/mcp__octocode|Octocode MCP|Octocode tool|localFetch|localSearch/);
 		expect(root).not.toMatch(/mcp__browser|Use bash for builds/);
 		expect(root).not.toContain("Search with bash");
 		expect(root).not.toContain("no lookup tool is available");
@@ -58,13 +63,13 @@ describe("prompt", () => {
 			),
 		).toHaveLength(1);
 		const browsing = octocodePrompt({
-			octocode: true,
+			research: FAKE_RESEARCH,
 			profiles: [{ name: "browser", description: "Drives Chrome" }],
 			canDelegate: true,
 		});
 		expect(browsing).not.toMatch(/webHeadless|webLive/);
 		expect(browsing).toContain("- browser: Drives Chrome");
-		const child = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
+		const child = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		expect(child).toContain("You are a subagent");
 		// Without Octocode MCP, research falls back to bash; no removed core tool is named.
 		expect(child).toContain("Search with bash (`rg`, `fd`) when the location is unknown");
@@ -75,7 +80,9 @@ describe("prompt", () => {
 		expect(child).toContain("You cannot ask the user");
 		expect(child).not.toContain("askUser");
 		// Subagents load this extension too: with the server reachable they get no fallback either.
-		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: false })).not.toContain("Search with bash");
+		expect(octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false })).not.toContain(
+			"Search with bash",
+		);
 	});
 
 	it("keeps each instruction sentence in one file", () => {
@@ -100,26 +107,26 @@ describe("prompt", () => {
 	});
 
 	it("names a tool only while the session declares it", () => {
-		const base = { octocode: true, profiles: [], canDelegate: true };
-		expect(octocodePrompt(base)).toContain("with `localFetch`");
+		const base = { research: FAKE_RESEARCH, profiles: [], canDelegate: true };
+		expect(octocodePrompt(base)).toContain("with `read_file`");
 		expect(octocodePrompt(base)).toContain("Ask with askUser");
 		const without = octocodePrompt({ ...base, canReadLocal: false, canAsk: false });
-		expect(without).not.toContain("localFetch");
+		expect(without).not.toContain("read_file");
 		expect(without).not.toContain("askUser");
 		expect(without).toContain("Ask the user before acting");
 	});
 
 	it("hands results back without polling, choosing report, message or doc", () => {
-		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		expect(root).toContain("name a Markdown path under `.octocode/<topic>/`");
-		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
+		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		// The report contract rides in the child's task (`instructions/report.ts`), not in the policy.
 		expect(writer).not.toContain("reaches your parent by itself");
 		expect(writer).toContain("You are a subagent: finish your task yourself.");
 		// The prompt owns whom to tell about a blocker, once; the agent message tool owns the fields and when else to message.
 		for (const prompt of [
 			writer,
-			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canSave: false, readOnly: true }),
+			octocodePrompt({ research: undefined, profiles: [], canDelegate: false, canSave: false, readOnly: true }),
 		]) {
 			expect(prompt.match(/R -->\|background\| B\[message parent, needs a reply\]/g)).toHaveLength(1);
 			expect(prompt).not.toContain("replyTo");
@@ -131,13 +138,13 @@ describe("prompt", () => {
 		expect(writer).toContain("Scratch is cleared after 30 days without writes.");
 		expect(writer).not.toContain("reusable");
 		expect(root).toContain("Scratch is cleared after 30 days without writes.");
-		const kept = { octocode: false, profiles: [], canDelegate: false };
+		const kept = { research: undefined, profiles: [], canDelegate: false };
 		expect(octocodePrompt({ ...kept, scratchDays: 0 })).toContain("Scratch is not cleared automatically.");
 		expect(octocodePrompt({ ...kept, scratchDays: 1 })).toContain("Scratch is cleared after 1 day without writes.");
 		// Stored content travels by reference; the agent task and message fields own the mechanics, so no policy line.
 		for (const prompt of [root, writer]) expect(prompt).not.toMatch(/msg#|report:<agent-id>|`forward`/);
 		const reader = octocodePrompt({
-			octocode: false,
+			research: undefined,
 			profiles: [],
 			canDelegate: false,
 			canSave: false,
@@ -151,7 +158,7 @@ describe("prompt", () => {
 
 	it("gives a read-only agent one investigate-and-report rule instead of the rules about changing files", () => {
 		const reader = octocodePrompt({
-			octocode: true,
+			research: FAKE_RESEARCH,
 			profiles: [],
 			canDelegate: false,
 			readOnly: true,
@@ -168,7 +175,7 @@ describe("prompt", () => {
 		// It limits only the writers this agent has: here `file` and MCP but no shell.
 		expect(
 			octocodePrompt({
-				octocode: true,
+				research: FAKE_RESEARCH,
 				profiles: [],
 				canDelegate: false,
 				readOnly: true,
@@ -178,7 +185,7 @@ describe("prompt", () => {
 		).toContain("- Write reports and evidence only in your scratch folder,");
 		// Without a way to save files, output goes into the report.
 		const bare = octocodePrompt({
-			octocode: false,
+			research: undefined,
 			profiles: [],
 			canDelegate: false,
 			readOnly: true,
@@ -190,7 +197,7 @@ describe("prompt", () => {
 		expect(bare).toContain("- Put what you produce in your report.");
 		expect(bare).not.toMatch(/read-only commands|MCP tools|a Markdown doc in your scratch folder/);
 		expect(reader).not.toContain("a file you will edit");
-		expect(reader).toContain("Read a file with `localFetch`.");
+		expect(reader).toContain("read source with `read_file`");
 		for (const rule of [
 			"Make the smallest complete change",
 			"Never weaken or delete tests",
@@ -199,9 +206,9 @@ describe("prompt", () => {
 		])
 			expect(reader).not.toContain(rule);
 		expect(reader).toContain("trace the symptom to its root cause");
-		const writer = octocodePrompt({ octocode: true, profiles: [], canDelegate: false });
+		const writer = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false });
 		expect(writer).not.toContain("do not modify repository source");
-		expect(writer).toContain("Read a file you will edit with `localFetch`.");
+		expect(writer).toContain("read source you will edit with `read_file`");
 		for (const rule of [
 			"Make the smallest complete change",
 			"Never weaken or delete tests",
@@ -235,9 +242,15 @@ describe("prompt", () => {
 		// The policy, the lean prompt and the bundled roles do not restate any of its sentences.
 		const prompts = [
 			...[true, false].map((canWrite) =>
-				octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canSave: canWrite, readOnly: !canWrite }),
+				octocodePrompt({
+					research: undefined,
+					profiles: [],
+					canDelegate: false,
+					canSave: canWrite,
+					readOnly: !canWrite,
+				}),
 			),
-			octocodePrompt({ octocode: false, profiles: [], canDelegate: true }),
+			octocodePrompt({ research: undefined, profiles: [], canDelegate: true }),
 			leanPromptSections({ canShell: true, canSave: true, readOnly: false }).lean,
 			...everyRole(),
 		];
@@ -247,7 +260,7 @@ describe("prompt", () => {
 		}
 		for (const canWrite of [true, false]) {
 			const child = octocodePrompt({
-				octocode: false,
+				research: undefined,
 				profiles: [],
 				canDelegate: false,
 				canSave: canWrite,
@@ -277,9 +290,9 @@ describe("prompt", () => {
 
 	it("keeps work guidance once and names each protocol once, by trigger, without a mandatory template", () => {
 		for (const input of [
-			{ octocode: true, profiles: [], canDelegate: true },
-			{ octocode: false, profiles: [], canDelegate: false },
-			{ octocode: false, profiles: [], canDelegate: false, canSave: false, readOnly: true },
+			{ research: FAKE_RESEARCH, profiles: [], canDelegate: true },
+			{ research: undefined, profiles: [], canDelegate: false },
+			{ research: undefined, profiles: [], canDelegate: false, canSave: false, readOnly: true },
 		]) {
 			const prompt = octocodePrompt(input);
 			expect(
@@ -314,11 +327,11 @@ describe("prompt", () => {
 			expect(prompt.includes("mark unknowns rather than filling an unsupported template")).toBe(protocols === 1);
 			expect(prompt.includes("Distinguish checks run from checks not run")).toBe(protocols === 1);
 		}
-		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnly: true });
+		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
 		expect(reader).toContain("For code questions, read the code you rely on and its callers before concluding");
 		expect(reader).not.toContain("after editing");
-		const child = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
-		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		const child = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
+		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		// A stuck child asks whoever can settle it; the run mode decides how it reaches its parent.
 		for (const edge of [
 			"W -->|file or fact a teammate holds| M[message the teammate]",
@@ -369,15 +382,15 @@ describe("prompt", () => {
 
 	it("states one research scope that agrees with the Research section, and the delegate clause only to a delegator", () => {
 		const scope = (requester: string) => `as given; verify what ${requester} asks you to verify.`;
-		for (const octocode of [true, false]) {
-			const root = octocodePrompt({ octocode, profiles: [], canDelegate: true });
+		for (const research of [FAKE_RESEARCH, undefined]) {
+			const root = octocodePrompt({ research, profiles: [], canDelegate: true });
 			// The delegate clause is the delegator's instruction to itself about writing a brief, not a task it receives.
 			expect(root).toContain("Treat facts the user supplied and relevant skill instructions " + scope("the user"));
 			expect(root).toContain(
 				"how (settled facts, what to verify, constraints), when to stop (Definition of Done as evidence, a pass/fail command when one exists)",
 			);
 			expect(root).not.toContain("In a delegated task");
-			const child = octocodePrompt({ octocode, profiles: [], canDelegate: false });
+			const child = octocodePrompt({ research, profiles: [], canDelegate: false });
 			// A child's requester is its task (written by its parent), not the user.
 			expect(child).toContain("Treat facts your task supplied and relevant skill instructions " + scope("your task"));
 			expect(child).not.toContain("Treat facts the user supplied");
@@ -388,16 +401,18 @@ describe("prompt", () => {
 	});
 
 	it("leaves the agent types to the agent tool's own text", () => {
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).not.toContain("agents-communication");
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).not.toContain(
+			"agents-communication",
+		);
 		// Without the agent tool, the rule names no `agent` modes.
-		const withoutAgent = octocodePrompt({ octocode: false, profiles: [], canDelegate: true, canUseAgent: false });
+		const withoutAgent = octocodePrompt({ research: undefined, profiles: [], canDelegate: true, canUseAgent: false });
 		expect(withoutAgent).not.toContain("agents-communication tools");
 		expect(withoutAgent).not.toContain("`agent`");
 	});
 
 	it("leaves tool-by-tool Octocode and graph routing to the tool descriptions", () => {
 		const prompt = octocodePrompt({
-			octocode: true,
+			research: FAKE_RESEARCH,
 			profiles: [],
 			canDelegate: true,
 		});
@@ -407,15 +422,15 @@ describe("prompt", () => {
 		);
 		// The browser specialist has no GitHub tools, and the shared bullet still names none of them.
 		expect(
-			octocodePrompt({ octocode: true, profiles: [], canDelegate: false, readOnly: true, canShell: false }),
+			octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false, readOnly: true, canShell: false }),
 		).not.toMatch(/structureSearch|ghSearch|artifactSearch/);
 	});
 
 	it("gives writers the editing craft rules and read-only roles only the research ones", () => {
-		const root = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
-		const writer = octocodePrompt({ octocode: true, profiles: [], canDelegate: false });
+		const root = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: true });
+		const writer = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false });
 		const reader = octocodePrompt({
-			octocode: true,
+			research: FAKE_RESEARCH,
 			profiles: [],
 			canDelegate: false,
 			readOnly: true,
@@ -431,7 +446,9 @@ describe("prompt", () => {
 		for (const prompt of [root, writer, reader]) {
 			// The loader preloads only the working directory's and its ancestors' AGENTS.md, and none when context files are off.
 			expect(prompt).not.toContain("already loaded");
-			expect(prompt).toContain("read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md");
+			// CLAUDE.md is no longer read as context (Claude Code is a harness, off by default).
+			expect(prompt).toContain("read its first available AGENTS.override.md or AGENTS.md.");
+			expect(prompt).not.toContain("CLAUDE.md");
 		}
 		// The read-only core names the subdirectory rule alone: <project_context> carries its own header.
 		for (const prompt of [root, writer]) {
@@ -446,7 +463,7 @@ describe("prompt", () => {
 	});
 
 	it("makes the main session the coordinator and gives every child decision a channel that can be answered", () => {
-		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		expect(root).toContain("You coordinate your subagents");
 		// A foreground child's messages reach the parent only after its report (docs/native-features.md).
 		expect(root).toContain("Start a child in the background when it may need your decisions");
@@ -463,8 +480,8 @@ describe("prompt", () => {
 		expect(root).toContain("give coupled work one owner and independent work disjoint files");
 		expect(root).not.toMatch(/contract\.md|\block/);
 		for (const child of [
-			octocodePrompt({ octocode: false, profiles: [], canDelegate: false }),
-			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canSave: false, readOnly: true }),
+			octocodePrompt({ research: undefined, profiles: [], canDelegate: false }),
+			octocodePrompt({ research: undefined, profiles: [], canDelegate: false, canSave: false, readOnly: true }),
 		]) {
 			expect(child).toContain("Start your final report with an outcome word.");
 			// The report contract owns the question a blocked report ends with.
@@ -475,7 +492,12 @@ describe("prompt", () => {
 			expect(child).not.toContain("You coordinate");
 		}
 		// Browser routing names the specialist and what to give it; the agent tool owns headless, background and resume.
-		const browsing = octocodePrompt({ octocode: false, profiles: [], canDelegate: true, browserProfiles: ["browser"] });
+		const browsing = octocodePrompt({
+			research: undefined,
+			profiles: [],
+			canDelegate: true,
+			browserProfiles: ["browser"],
+		});
 		expect(browsing).toContain(
 			"- Delegate browser interaction to `browser`, which has the browser tools you lack: give it the task, URL and the evidence you need, and send follow-ups to that same agent while it is reachable.",
 		);
@@ -492,9 +514,9 @@ describe("prompt", () => {
 	});
 
 	it("answers questions without editing, scales delegation and ranks AGENTS.md files, each in one condition-bound line", () => {
-		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
-		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
-		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnly: true });
+		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
+		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
+		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
 		const inquiry = (requester: string) =>
 			`When ${requester} asks how, why or what, or for a plan or review, answer from evidence without editing`;
 		expect(root.match(new RegExp(inquiry("the user"), "g"))).toHaveLength(1);
@@ -523,7 +545,7 @@ describe("prompt", () => {
 			{ canDelegate: false, canUseAgent: false, ask: "If deleting existing user or repository content" },
 		];
 		for (const { ask, ...input } of variants) {
-			const sections = octocodePromptSections({ octocode: false, profiles: [], ...input });
+			const sections = octocodePromptSections({ research: undefined, profiles: [], ...input });
 			// The boundary sits in Safety only; the Work cleanup line stays a bare instruction that it governs.
 			expect(sections.safety).toContain(cleanup);
 			expect(sections.safety).toContain(ask);
@@ -532,13 +554,13 @@ describe("prompt", () => {
 				"Leave the code clean; remove your debug output, unused code and temporary files.",
 			);
 			expect(sections.work).not.toContain(cleanup);
-			expect(octocodePrompt({ octocode: false, profiles: [], ...input }).split(cleanup)).toHaveLength(2);
+			expect(octocodePrompt({ research: undefined, profiles: [], ...input }).split(cleanup)).toHaveLength(2);
 		}
 	});
 
 	it("bounds a child's cleanup by its assigned area and sends the main session's wider cleanup to proposals", () => {
-		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false });
-		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
+		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		expect(writer).toContain(
 			"inside the blast radius within your assigned area; report anything outside it instead of changing it",
 		);
@@ -550,12 +572,12 @@ describe("prompt", () => {
 
 	it("never routes rendered-page lookups to the browser server's tools", () => {
 		const routing = "cannot answer the question, use the browser";
-		const base = { octocode: false, profiles: [], canDelegate: true, canWeb: true };
+		const base = { research: undefined, profiles: [], canDelegate: true, canWeb: true };
 		for (const input of [
 			base,
 			{ ...base, browserProfiles: ["browser"] },
 			{ ...base, canWeb: false },
-			{ ...base, octocode: true },
+			{ ...base, research: FAKE_RESEARCH },
 		]) {
 			const research = octocodePromptSections(input).research;
 			expect(research).not.toContain(routing);
@@ -569,18 +591,20 @@ describe("prompt", () => {
 
 	it("shows the testing rule to writers and the reviewer, not to read-only roles that never write tests", () => {
 		const rule = "prefer behavioral and end-to-end tests";
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(rule);
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toContain(rule);
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnly: true })).not.toContain(rule);
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(rule);
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toContain(rule);
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true })).not.toContain(
+			rule,
+		);
 		// Read-only roles that review tests carry the review form in their role.
 		expect(role("reviewer")).toContain("When reviewing tests, check that they drive the public entry point");
 		for (const name of ["researcher", "browser"]) expect(role(name)).not.toContain("reviewing tests");
 	});
 
 	it("keeps one owner for the finding shape and one report order", () => {
-		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnly: true });
+		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
 		// The main session's policy owns the shape; a child's role (the reviewer) owns its severity and confirmation rules.
-		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		expect(root).toContain("verified cause and repair, plus any severity or confirmation status the request asks for");
 		expect(reader).not.toContain("verified cause and repair");
 		expect(role("reviewer")).toContain("Give each finding a severity");

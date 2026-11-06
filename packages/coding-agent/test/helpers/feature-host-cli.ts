@@ -210,9 +210,10 @@ export interface SessionObserver {
 /**
  * Registers `SessionStart` and `SessionEnd` command hooks in the sandbox's `~/.claude/settings.json` that append the pid of the
  * process running the session to a file: what a test reads to see which process started or shut down a session. The
- * hook shell's parent is that process. POSIX only (`$PPID`).
+ * hook shell's parent is that process. POSIX only (`$PPID`). The Claude harness is off until switched on (`/harness`),
+ * so this also sets `harness:claude` in the user's global settings, keeping what the file already holds.
  */
-export function observeSessions(sandbox: Pick<Sandbox, "directory" | "env">): SessionObserver {
+export function observeSessions(sandbox: Pick<Sandbox, "directory" | "env" | "agentDir">): SessionObserver {
 	const startedFile = join(sandbox.directory, "session-started.txt");
 	const endedFile = join(sandbox.directory, "session-ended.txt");
 	const record = (file: string) => ({ hooks: [{ type: "command", command: `echo $PPID >> "${file}"` }] });
@@ -223,6 +224,12 @@ export function observeSessions(sandbox: Pick<Sandbox, "directory" | "env">): Se
 		join(claude, "settings.json"),
 		JSON.stringify({ hooks: { SessionStart: [record(startedFile)], SessionEnd: [record(endedFile)] } }),
 	);
+	const settingsPath = join(sandbox.agentDir, "settings.json");
+	const settings = existsSync(settingsPath)
+		? (JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>)
+		: {};
+	const toggles = { ...(settings.toggles as Record<string, boolean> | undefined), "harness:claude": true };
+	writeFileSync(settingsPath, JSON.stringify({ ...settings, toggles }));
 	const read = (file: string) =>
 		existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).map(Number) : [];
 	return { started: () => read(startedFile), ended: () => read(endedFile) };

@@ -127,14 +127,18 @@ export function head(db: DatabaseSync): number {
 }
 
 /**
- * Presence events (`create`, `update`, `delete`) of every workspace after sequence `after`, oldest first, at most `limit`:
- * the lifecycle bus's cursor read. `seq` is the primary key, so this is one range scan.
+ * Presence events (`create`, `update`, `delete`) after sequence `after`, oldest first, at most `limit`: the lifecycle
+ * bus's cursor read. Every workspace's, or only `workspace`'s when given. `seq` is the primary key, so this is one
+ * range scan.
  */
-export function since(db: DatabaseSync, after: number, limit = 200): EventRow[] {
+export function since(db: DatabaseSync, after: number, limit = 200, workspace?: string): EventRow[] {
+	const scope = workspace === undefined ? "" : " AND workspace_id = ?";
 	return (
 		db
-			.prepare("SELECT * FROM agent_events WHERE seq > ? AND type IN ('create','update','delete') ORDER BY seq LIMIT ?")
-			.all(after, limit) as Row[]
+			.prepare(
+				`SELECT * FROM agent_events WHERE seq > ? AND type IN ('create','update','delete')${scope} ORDER BY seq LIMIT ?`,
+			)
+			.all(after, ...(workspace === undefined ? [] : [workspace]), limit) as Row[]
 	).map(decode);
 }
 

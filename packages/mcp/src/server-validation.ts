@@ -4,7 +4,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
-export const MCP_TOOL_ROLES = ["reader", "search", "readOnly"] as const;
+const MCP_TOOL_ROLES = ["reader", "search", "readOnly"] as const;
 
 /** Whether a redirect URI can be served by Octocode's loopback callback server. */
 function isLoopbackRedirectUri(value: string): boolean {
@@ -81,7 +81,7 @@ const NPM_NAME = /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/;
 export function validateInstall(value: unknown): string | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) return "install must be an object";
-	const extra = Object.keys(value).filter((key) => !["npm", "version", "bin"].includes(key));
+	const extra = Object.keys(value).filter((key) => !["npm", "version", "bin", "hostDependency"].includes(key));
 	if (extra.length) return `install has unknown keys: ${extra.join(", ")}`;
 	if (typeof value.npm !== "string" || !NPM_NAME.test(value.npm)) return "install.npm must be an npm package name";
 	if (typeof value.version !== "string" || !/^[\w.+-]+$/.test(value.version)) {
@@ -89,6 +89,9 @@ export function validateInstall(value: unknown): string | undefined {
 	}
 	if (value.bin !== undefined && (typeof value.bin !== "string" || !value.bin.trim())) {
 		return "install.bin must be a non-empty string";
+	}
+	if (value.hostDependency !== undefined && typeof value.hostDependency !== "boolean") {
+		return "install.hostDependency must be a boolean";
 	}
 	return undefined;
 }

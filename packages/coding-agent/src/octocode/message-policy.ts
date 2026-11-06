@@ -5,6 +5,7 @@ import type { registerHooks } from "./hooks/register.ts";
 import type { Permission } from "./permission/ask.ts";
 import { admitExternalMessage } from "./permission/external-message.ts";
 import type { createProvenance } from "./permission/provenance.ts";
+import { grantedSource, sourceGrant } from "./permission/provenance/grant.ts";
 import type { MessageEnvelope } from "./shared/messages.ts";
 import type { Team } from "./team/session.ts";
 import { mergeWorktreeBranch } from "./worktrees/merge.ts";
@@ -48,6 +49,8 @@ export function messagePolicy({
 	const notWhilePlanning = (what: string) => {
 		if (planning.blocked()) throw new Error(`${what} blocked during planning.`);
 	};
+	// Text from a subagent the user allowed for this session is no provenance hit here either.
+	const allowedSource = grantedSource(permission);
 	/** A send that starts work elsewhere, by a connection or by a name: a provenance hit and the mode decide, as for a subagent. */
 	const authorizeSend = async (
 		hit: ReturnType<typeof provenance.sent>,
@@ -56,7 +59,13 @@ export function messagePolicy({
 		signal?: AbortSignal,
 	) => {
 		const checked = await permission.check(ctx, {
-			...(hit ? { reasons: ["provenance" as const], reason: hit.why } : {}),
+			...(hit
+				? {
+						reasons: ["provenance" as const],
+						reason: hit.why,
+						...(hit.agent ? { sourceGrant: sourceGrant(hit.agent) } : {}),
+					}
+				: {}),
 			action: "agent.spawn",
 			...request,
 			...(signal ? { signal } : {}),
@@ -82,7 +91,7 @@ export function messagePolicy({
 		authorizeExternal: async (input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal) => {
 			notWhilePlanning("External agent dispatch is");
 			await authorizeSend(
-				input.action === "prompt" ? provenance.sent(input, ctx) : undefined,
+				input.action === "prompt" ? provenance.sent(input, ctx, allowedSource) : undefined,
 				{
 					title: input.action === "connect" ? "Connect this external agent?" : "Send this external prompt?",
 					what: [JSON.stringify(input)],
@@ -107,7 +116,7 @@ export function messagePolicy({
 				signal,
 			);
 			await authorizeSend(
-				provenance.sent({ text }, ctx),
+				provenance.sent({ text }, ctx, allowedSource),
 				{
 					title: "Send this message to another Octocode process?",
 					what: [`to ${target.name}, working in ${target.cwd}`, text],

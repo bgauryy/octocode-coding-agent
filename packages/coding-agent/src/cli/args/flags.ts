@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { getToolListError, type TuiMode } from "../../core/settings-manager.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
+import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";
 import { WORKTREE_FLAG } from "./worktree-flag.ts";
 
@@ -14,6 +15,13 @@ const set = (apply: (args: Args) => void) => (args: Args) => {
 	apply(args);
 	return undefined;
 };
+/** `--permission-mode` and `--dangerously-skip-permissions` name one start mode; two different ones are an error. */
+const startIn = (args: Args, mode: PermissionMode) => {
+	if (args.permissionMode && args.permissionMode !== mode)
+		return `conflicts with the start mode ${args.permissionMode} given earlier`;
+	args.permissionMode = mode;
+	return undefined;
+};
 
 export const FLAG_SPECS: readonly FlagSpec[] = [
 	{
@@ -21,7 +29,7 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		kind: "value",
 		arg: "<name>",
 		completion: "text",
-		help: ["Provider to search for --model (requires --model)"],
+		help: ["Provider for --model and the auth commands (--model provider/id needs none)"],
 		apply: (a, v) => void (a.provider = v),
 	},
 	{
@@ -159,16 +167,14 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 	},
 	{
 		name: "--no-tools",
-		short: "-nt",
 		kind: "boolean",
-		help: ["Disable all tools by default (built-in and extension)"],
+		help: ["Disable all tools by default (native and MCP)"],
 		apply: set((a) => (a.noTools = true)),
 	},
 	{
 		name: "--no-builtin-tools",
-		short: "-nbt",
 		kind: "boolean",
-		help: ["Disable built-in tools by default but keep extension/custom tools enabled"],
+		help: ["Disable native tools by default; MCP tools stay enabled"],
 		apply: set((a) => (a.noBuiltinTools = true)),
 	},
 	{
@@ -191,7 +197,6 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 	},
 	{
 		name: "--exclude-tools",
-		short: "-xt",
 		kind: "csv",
 		arg: "<tools>",
 		help: [
@@ -210,33 +215,34 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: (a, v) => void (a.thinking = v as ThinkingLevel),
 	},
 	{
-		hidden: true,
-		name: "--extension",
-		short: "-e",
-		kind: "list",
-		arg: "<path>",
-		completion: "path",
-		help: ["Removed: user code extensions are not supported"],
-		// A parent from an earlier release launches its subagents with `--no-extensions -e builtin:mcp` (a running session
-		// spawns children from the updated binary). A `builtin:<id>` value names a built-in feature, which is on by default,
-		// so it is accepted; a code path is refused.
-		apply: (a, v) =>
-			void (/^builtin:[\w.-]+$/.test(v!) ? undefined : (a.removedFlags = push(a.removedFlags, "--extension"))),
+		name: "--permission-mode",
+		kind: "value",
+		arg: "<mode>",
+		values: CHOOSABLE_MODES,
+		label: "permission mode",
+		help: ["Start in this permission mode: manual, workspace or full (default); subagents inherit it"],
+		apply: (a, v) => startIn(a, v as PermissionMode),
 	},
 	{
-		hidden: true,
-		name: "--no-extensions",
-		short: "-ne",
+		name: "--dangerously-skip-permissions",
 		kind: "boolean",
-		// Accepted and ignored: no user code extension ever loads, so the flag asks for what always happens.
-		help: ["Ignored: user code extensions are not supported"],
-		apply: () => undefined,
+		help: [
+			"Start in bypass mode: nothing asks, not even what full asks about, and subagents inherit it",
+			"Every call is still recorded (/permissions log); invariants and hook denies still refuse",
+		],
+		apply: (a) => startIn(a, "bypass"),
 	},
 	{
 		name: "--no-mcp",
 		kind: "boolean",
 		help: ["Disable built-in MCP support: no servers connect and no MCP tools"],
 		apply: set((a) => (a.noMcp = true)),
+	},
+	{
+		name: "--plan",
+		kind: "boolean",
+		help: ["Start in plan mode: read-only research until you approve a plan"],
+		apply: set((a) => (a.plan = true)),
 	},
 	{
 		name: "--skill",
@@ -248,7 +254,6 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 	},
 	{
 		name: "--no-skills",
-		short: "-ns",
 		kind: "boolean",
 		help: ["Disable skills discovery and loading"],
 		apply: set((a) => (a.noSkills = true)),
@@ -263,7 +268,6 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 	},
 	{
 		name: "--no-prompt-templates",
-		short: "-np",
 		kind: "boolean",
 		help: ["Disable prompt template discovery and loading"],
 		apply: set((a) => (a.noPromptTemplates = true)),
@@ -293,9 +297,8 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 	},
 	{
 		name: "--no-context-files",
-		short: "-nc",
 		kind: "boolean",
-		help: ["Disable AGENTS.md and CLAUDE.md discovery and loading"],
+		help: ["Disable AGENTS.md discovery and loading"],
 		apply: set((a) => (a.noContextFiles = true)),
 	},
 	{

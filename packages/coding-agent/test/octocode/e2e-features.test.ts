@@ -17,7 +17,9 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { harnessToggles } from "./e2e-helpers/harness-toggles.ts";
 import { Team } from "../../src/octocode/team/session.ts";
+import { TEAM_ENTRY } from "../../src/octocode/team/session/rejoin.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { tmp } from "./helpers.ts";
@@ -165,7 +167,7 @@ beforeAll(async () => {
 			streamSimple: faux.streamSimple,
 		} as never);
 	};
-	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false }, toggles: harnessToggles("claude") });
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: path.join(root, "agent"),
@@ -216,25 +218,29 @@ describe("Native features through the SDK", () => {
 			"rewind",
 			"api",
 			"mcp",
-			// `/web` opens the live workspace (`remote/register.ts`); `/octocode` is retired and never registered.
+			// `/web` opens the live workspace (`remote/register.ts`); `/octocode` runs the research CLI (`cli/command.ts`).
 			"web",
+			"octocode",
 		])
 			expect(commands).toContain(name);
 		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
-		expect(commands).not.toContain("octocode");
 		// Folded into /harness: one name per command.
 		for (const retired of ["plugins", "hooks", "config"]) expect(commands).not.toContain(retired);
 		expect(session.systemPrompt).toContain("demo-skill");
 		expect(turn.context).toContain("<delegation>");
-		// The banner is the TUI header (none over RPC), never a session entry.
-		expect(session.sessionManager.getEntries().some((entry) => entry.type === "custom")).toBe(false);
+		// The banner is the TUI header (none over RPC), never a session entry. The only custom entry is the team name
+		// a top-level session records when it joins at start (`team/session/membership.ts` joinAtStart, design B36 O6).
+		const custom = session.sessionManager
+			.getEntries()
+			.flatMap((entry) => (entry.type === "custom" ? [entry.customType] : []));
+		expect(custom.filter((type) => type !== TEAM_ENTRY)).toEqual([]);
 		expect((ui as { header?: unknown }).header).toBeUndefined();
 		expect((ui as { title?: string }).title).toBeUndefined();
 		// SessionStart hook output reaches the model once, as data.
 		expect(turn.context).toContain("hook says: project uses tabs");
 	});
 
-	it("runs direct native commands and handles retired namespace input without a model call", async () => {
+	it("runs direct native commands and the research CLI without a model call", async () => {
 		await session.prompt("/status");
 		// `/status` lists each MCP server's connection state (`status-command.ts`), not an `Octocode MCP:` summary line.
 		expect(note(/^Octocode \d/)).toMatch(/^MCPs \(\d+\)\n(?:.*\n)*? {2}octocode: connected;/m);
@@ -244,22 +250,12 @@ describe("Native features through the SDK", () => {
 		await session.prompt("/harness hooks");
 		expect(note(/^Hooks: /)).toMatch(/Hook files[\s\S]*settings\.json/);
 		const beforeRequests = turns.length;
-		// `/octocode` is retired (the workspace command is `/web`): every form gets migration guidance and never reaches the model.
-		await session.prompt("/octocode");
-		expect(ui.notes.at(-1)).toMatchObject({
-			message: "/octocode moved to /web. Run the new command to continue.",
-			type: "warning",
-		});
-		await session.prompt("/octocode permissions manual");
-		expect(ui.notes.at(-1)).toMatchObject({
-			message: "/octocode permissions moved to /permissions manual. Run the new command to continue.",
-			type: "warning",
-		});
-		await session.prompt("/octocode help");
-		expect(ui.notes.at(-1)).toMatchObject({
-			message: expect.stringMatching(/^Commands now have direct names: .*\/permissions/),
-			type: "warning",
-		});
+		// `/octocode` passes its arguments to the research CLI verbatim and never reaches the model; without a terminal the
+		// CLI's own output is the result, a warning when it exits with an error. No case here may sign in for real.
+		await session.prompt("/octocode --version");
+		expect(ui.notes.at(-1)).toMatchObject({ message: expect.stringMatching(/^octocode \d+\.\d+\.\d+$/), type: "info" });
+		await session.prompt("/octocode no-such-subcommand");
+		expect(ui.notes.at(-1)).toMatchObject({ message: expect.stringContaining("no-such-subcommand"), type: "warning" });
 		expect(turns).toHaveLength(beforeRequests);
 		await session.prompt("/agents");
 		// A mode change reaches the model as one hidden message, never through the cached system prompt.

@@ -27,8 +27,8 @@ export function formatUnicodeScript(value: string, kind: "sub" | "sup"): string 
 	return replaceCharacters(normalizeScriptValue(value), kind === "sub" ? SUBSCRIPTS : SUPERSCRIPTS);
 }
 
-export function formatScript(value: string, kind: "sub" | "sup"): string {
-	value = normalizeScriptValue(value);
+export function formatScript(raw: string, kind: "sub" | "sup"): string {
+	const value = normalizeScriptValue(raw);
 	const unicode = formatUnicodeScript(value, kind);
 	if (unicode !== undefined) {
 		return unicode;
@@ -41,16 +41,16 @@ export function formatScript(value: string, kind: "sub" | "sup"): string {
 	return `${prefix}(${value})`;
 }
 
-export function formatFraction(numerator: string, denominator: string): string {
-	numerator = numerator.trim();
-	denominator = denominator.trim();
+export function formatFraction(rawNumerator: string, rawDenominator: string): string {
+	const numerator = rawNumerator.trim();
+	const denominator = rawDenominator.trim();
 	const simpleNumerator = /^[\p{L}\p{N}.]+$/u.test(numerator);
 	const simpleDenominator = /^[\p{N}.]+$/u.test(denominator) || Array.from(denominator).length === 1;
 	return `${simpleNumerator ? numerator : `(${numerator})`}/${simpleDenominator ? denominator : `(${denominator})`}`;
 }
 
-export function formatRoot(value: string, symbol = "√"): string {
-	value = value.trim();
+export function formatRoot(raw: string, symbol = "√"): string {
+	const value = raw.trim();
 	return /^[\p{L}\p{N}.]+$/u.test(value) ? `${symbol}${value}` : `${symbol}(${value})`;
 }
 

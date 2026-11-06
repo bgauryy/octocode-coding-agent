@@ -1,1 +1,1 @@
-Run builds, tests, git, formatters and platform CLIs; move, copy, archive and unpack files; filter a command's own output. When search and read tools are declared, search and read code with them, locally and remotely, not with `cat`, `sed`, `grep`, `rg`, `find` or `ls`, and change file contents with `file`
+Run builds, tests, git, formatters and platform CLIs; move, copy, archive and unpack files; filter a command's own output. Change file contents with `file`

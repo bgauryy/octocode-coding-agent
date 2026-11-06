@@ -72,7 +72,7 @@ describe("two sessions", () => {
 
 		// The section is there, and no name enters the prompt: a process name in the cached block would rewrite it per process.
 		const system = requestsOf(endpoint, aStarts)[0]?.system ?? "";
-		expect(system).toContain("One protocol reaches every agent");
+		expect(system).toContain("only you reach other Octocode processes");
 		expect(system).not.toContain(a.name);
 		// No shell call in either direction: `agent` `message` carried both.
 		for (const steps of [aStarts, bHears])
@@ -358,7 +358,7 @@ describe("the paths the protocol keeps", () => {
 		// Its `to` field names no process address: a child gets only what it can use.
 		const declared = JSON.stringify(requestsOf(endpoint, child)[0]?.declarations.agent ?? "");
 		expect(declared).not.toContain("coordinator");
-		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("One protocol reaches every agent");
+		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("only you reach other Octocode processes");
 		await until(
 			() => endpoint.requests.some((request) => JSON.stringify(request.messages).includes("hello from the child")),
 			"the parent reading it",

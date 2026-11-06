@@ -1,0 +1,189 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { enableHarnesses } from "./e2e-helpers/harness-toggles.ts";
+import {
+	type Endpoint,
+	killEverything,
+	outputOfRuns,
+	sandbox,
+	script,
+	startEndpoint,
+	type ModelRequest,
+	type Step,
+} from "./e2e-real-process-harness.ts";
+
+/**
+ * What the agent receives in its first model request when harnesses and instruction files are present: project
+ * instructions follow AGENTS.override.md > AGENTS.md and never CLAUDE.md; skills come from `.agents` and, only once the
+ * Claude Code harness is switched on, from `.claude`; the `Harnesses:` line names every harness with its state; a
+ * subagent receives the same. Real processes on the scripted model, a temporary home and project (trusted by `--trust`).
+ */
+let endpoint: Endpoint;
+
+vi.setConfig({ testTimeout: 180_000 });
+
+beforeAll(async () => {
+	endpoint = await startEndpoint();
+});
+afterAll(async () => {
+	await endpoint.close();
+});
+afterEach((context) => {
+	if (context.task.result?.state === "fail") console.error(outputOfRuns());
+	killEverything();
+	endpoint.requests.length = 0;
+});
+
+function write(file: string, text: string): void {
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	fs.writeFileSync(file, text);
+}
+
+const skillFile = (root: string, dir: string, name: string): string => {
+	const file = path.join(root, dir, "skills", name, "SKILL.md");
+	write(file, `---\nname: ${name}\ndescription: Use for ${name} work in this test.\n---\n# ${name}\n\nBODY-${name}\n`);
+	return file;
+};
+
+async function firstRequest(box: ReturnType<typeof sandbox>): Promise<ModelRequest> {
+	const run = box.start(["-p", script([{ text: "done" }])]);
+	const { code } = await run.exited;
+	expect(code, run.stderr()).toBe(0);
+	const first = endpoint.requests[0];
+	expect(first, "the scripted model received no request").toBeDefined();
+	endpoint.requests.length = 0;
+	return first;
+}
+
+const section = (prompt: string, name: string): string =>
+	new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(prompt)?.[1] ?? "";
+
+const harnessesLine = (prompt: string): string => /^Harnesses: .*$/m.exec(prompt)?.[0] ?? "";
+
+/** `Label on` / `Label off` as the line states it; a trailing count in parentheses is allowed after `off`. */
+const stateOf = (line: string, label: string): "on" | "off" | undefined => {
+	const found = new RegExp(`(?:^Harnesses: |\\u00b7 )${label.replace(/\./g, "\\.")} (on|off)\\b`).exec(line);
+	return found?.[1] as "on" | "off" | undefined;
+};
+
+const DEFAULTS: Record<string, "on" | "off"> = {
+	Octocode: "on",
+	".agents": "on",
+	"root .mcp.json": "on",
+	Pi: "on",
+	"Claude Code": "off",
+	Codex: "off",
+	Cursor: "off",
+};
+
+describe("harness context in the first model request", () => {
+	it("1: project instructions come from AGENTS.override.md, never CLAUDE.md", async () => {
+		const box = sandbox(endpoint);
+		write(path.join(box.project, "AGENTS.md"), "AGENTS-BASE-MARKER\n");
+		write(path.join(box.project, "AGENTS.override.md"), "AGENTS-OVERRIDE-MARKER\n");
+		write(path.join(box.project, "CLAUDE.md"), "CLAUDE-MD-MARKER\n");
+		const { system } = await firstRequest(box);
+		const blocks = [...system.matchAll(/<project_instructions path="([^"]*)">\n([\s\S]*?)\n<\/project_instructions>/g)];
+		const text = blocks.map((block) => block[2]).join("\n");
+		expect(text, "AGENTS.override.md content must be in <project_instructions>").toContain("AGENTS-OVERRIDE-MARKER");
+		expect(
+			blocks.some((block) => block[1].endsWith("AGENTS.override.md")),
+			"a block names AGENTS.override.md",
+		).toBe(true);
+		expect(text, "AGENTS.md loses to AGENTS.override.md in the same directory").not.toContain("AGENTS-BASE-MARKER");
+		expect(system, "CLAUDE.md is not read").not.toContain("CLAUDE-MD-MARKER");
+	});
+
+	it("1b: AGENTS.md is used when there is no override, and CLAUDE.md is still ignored", async () => {
+		const box = sandbox(endpoint);
+		write(path.join(box.project, "AGENTS.md"), "AGENTS-BASE-MARKER\n");
+		write(path.join(box.project, "CLAUDE.md"), "CLAUDE-MD-MARKER\n");
+		const { system } = await firstRequest(box);
+		expect(system).toContain("AGENTS-BASE-MARKER");
+		expect(system).not.toContain("CLAUDE-MD-MARKER");
+	});
+
+	it("2: a .agents skill is listed with its path; a .claude skill only once harness:claude is on (global toggle)", async () => {
+		const box = sandbox(endpoint);
+		const agentsSkill = skillFile(box.project, ".agents", "agents-demo");
+		skillFile(box.project, ".claude", "claude-demo");
+
+		const off = await firstRequest(box);
+		const offSkills = section(off.system, "skills");
+		expect(offSkills).toContain("agents-demo");
+		expect(offSkills, "the skills list gives the SKILL.md path").toContain(agentsSkill);
+		expect(off.system, "Claude skill is absent while its harness is off").not.toContain("claude-demo");
+		expect(off.system, "a skill body loads on demand").not.toContain("BODY-agents-demo");
+
+		enableHarnesses(box, "claude");
+		const on = await firstRequest(box);
+		const onSkills = section(on.system, "skills");
+		expect(onSkills).toContain("agents-demo");
+		expect(onSkills, "Claude skill listed once harness:claude is on").toContain("claude-demo");
+	});
+
+	it("2b: a project-level harness:claude toggle in .octocode/settings.json also lists the project's .claude skill", async () => {
+		const box = sandbox(endpoint);
+		skillFile(box.project, ".claude", "claude-demo");
+		write(
+			path.join(box.project, ".octocode", "settings.json"),
+			JSON.stringify({ toggles: { "harness:claude": true } }),
+		);
+		const { system } = await firstRequest(box);
+		expect(section(system, "skills"), "project toggle reaches the project's own Claude skills").toContain(
+			"claude-demo",
+		);
+		expect(harnessesLine(system), "a harness switched on only by a project key reads as on for this project").toMatch(
+			/Claude Code on/,
+		);
+	});
+
+	it("3: the Harnesses line names every harness with its default state and flips with a toggle", async () => {
+		const box = sandbox(endpoint);
+		const before = harnessesLine((await firstRequest(box)).system);
+		expect(before, "the prompt has a Harnesses: line").not.toBe("");
+		for (const [label, state] of Object.entries(DEFAULTS)) {
+			expect(stateOf(before, label), `${label} in: ${before}`).toBe(state);
+		}
+
+		enableHarnesses(box, "claude", "cursor");
+		const after = harnessesLine((await firstRequest(box)).system);
+		expect(stateOf(after, "Claude Code"), after).toBe("on");
+		expect(stateOf(after, "Cursor"), after).toBe("on");
+		expect(stateOf(after, "Codex"), after).toBe("off");
+		expect(stateOf(after, ".agents"), after).toBe("on");
+		expect(stateOf(after, "Pi"), after).toBe("on");
+	});
+
+	it("4: a subagent's first request carries the same skills list and harness states", async () => {
+		const box = sandbox(endpoint);
+		skillFile(box.project, ".agents", "agents-demo");
+		skillFile(box.project, ".claude", "claude-demo");
+		enableHarnesses(box, "codex");
+		const child: Step[] = [{ text: "child done" }];
+		const steps: Step[] = [
+			{ tool: "agent", args: { type: "task", background: false, goal: "report", task: script(child) } },
+			{ text: "read its report" },
+		];
+		const run = box.start(["-p", script(steps)]);
+		const { code } = await run.exited;
+		expect(code, run.stderr()).toBe(0);
+		const childSource = script(child).slice("B64SCRIPT:".length);
+		const parent = endpoint.requests.find((request) => !request.script.includes(childSource));
+		const kid = endpoint.requests.find((request) => request.script === childSource);
+		expect(parent, "parent request").toBeDefined();
+		expect(kid, "the subagent sent a model request").toBeDefined();
+		expect(kid!.system).toContain("You are a subagent");
+		expect(section(kid!.system, "skills")).toBe(section(parent!.system, "skills"));
+		expect(section(kid!.system, "skills")).toContain("agents-demo");
+		expect(kid!.system).not.toContain("claude-demo");
+		// A child adopts its parent's skill snapshot and discovers no external skills itself (core/discovery/sources.ts
+		// externalSkillsEnabled), so an off harness's found-item count, e.g. `Claude Code off (1 skill)`, appears only in the parent.
+		const stripCounts = (line: string) => line.replace(/ \([^)]*\)/g, "");
+		expect(stripCounts(harnessesLine(kid!.system)), "every harness has the same state in the child").toBe(
+			stripCounts(harnessesLine(parent!.system)),
+		);
+		expect(stateOf(harnessesLine(kid!.system), "Codex")).toBe("on");
+	});
+});

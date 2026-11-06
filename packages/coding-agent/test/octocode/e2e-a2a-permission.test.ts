@@ -293,7 +293,7 @@ describe("with nobody to ask, and in plan", () => {
 		const refused = await octocodeApi(box, ["send", "--to", name, "--", "Anyone there?"]);
 		expect(refused.code).toBe(1);
 		expect(refused.stderr).toContain(`${name} runs in manual mode with nobody to ask`);
-		expect(refused.stderr).toContain("OCTOCODE_PERMISSION=full");
+		expect(refused.stderr).toContain("start it with --permission-mode full");
 		expect(refused.stderr).toContain("not-sent");
 		run.process.kill("SIGKILL");
 		await run.exited;

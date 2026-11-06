@@ -258,40 +258,31 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		expect(header.setExpanded).toHaveBeenCalledWith(true);
 		expect(loadedResourcesChild.setExpanded).toHaveBeenCalledWith(true);
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
-		// The acknowledgement is transient footer text, never a permanent chat line.
-		expect(footerDataProvider.setExtensionStatus).toHaveBeenCalledWith("notice", "Tool output: expanded");
-		expect(fakeThis.showStatus).not.toHaveBeenCalled();
+		// The acknowledgement is a status line in the messages list; the footer shows state only.
+		expect(fakeThis.showStatus).toHaveBeenCalledWith("Tool output: expanded");
+		expect(footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
 	});
 
-	test("clears the acknowledgement from the footer after a moment, and a newer one restarts the clock", () => {
-		vi.useFakeTimers();
-		try {
-			const statuses = new Map<string, string>();
-			const fakeThis: any = {
-				uiStore: createUiStore(),
-				builtInHeader: undefined,
-				loadedResourcesContainer: { children: [] },
-				chatContainer: { children: [] },
-				footerDataProvider: {
-					setExtensionStatus: (key: string, text: string | undefined) =>
-						text === undefined ? statuses.delete(key) : statuses.set(key, text),
-				},
-				ui: { requestRender: vi.fn() },
-			};
-			const host = createFakeHost(fakeThis);
-			bindViewState(host);
+	test("says each toggle once in the messages list and keeps a burst on one line", () => {
+		initTheme("dark");
+		const fakeThis: any = {
+			uiStore: createUiStore(),
+			builtInHeader: undefined,
+			loadedResourcesContainer: { children: [] },
+			chatContainer: new Container(),
+			footerDataProvider: { setExtensionStatus: vi.fn() },
+			ui: { requestRender: vi.fn() },
+		};
+		const host = createFakeHost(fakeThis);
+		bindViewState(host);
 
-			viewState.setToolsExpanded(host, true);
-			vi.advanceTimersByTime(1500);
-			viewState.setToolsExpanded(host, false);
-			vi.advanceTimersByTime(1500);
-			expect(statuses.get("notice")).toBe("Tool output: collapsed");
-			vi.advanceTimersByTime(600);
-			expect(statuses.has("notice")).toBe(false);
-			expect(fakeThis.chatContainer.children).toEqual([]);
-		} finally {
-			vi.useRealTimers();
-		}
+		viewState.setToolsExpanded(host, true);
+		viewState.setToolsExpanded(host, true);
+		viewState.setToolsExpanded(host, false);
+		// A spacer and one line: the second toggle replaced the first in place; an unchanged state said nothing.
+		expect(fakeThis.chatContainer.children).toHaveLength(2);
+		expect(normalizeRenderedOutput(fakeThis.chatContainer)).toBe("Tool output: collapsed");
+		expect(fakeThis.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
 	});
 });
 
@@ -1055,7 +1046,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index
+			"Hooks       0
+			Plugins     0
+			Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1104,7 +1098,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  3  alpha/one, beta/one, gamma/one
+			"Hooks       0
+			Plugins     0
+			Extensions  3  alpha/one, beta/one, gamma/one
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1135,7 +1132,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  1  plan-mode
+			"Hooks       0
+			Plugins     0
+			Extensions  1  plan-mode
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1166,7 +1166,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  1  plan-mode
+			"Hooks       0
+			Plugins     0
+			Extensions  1  plan-mode
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1206,7 +1209,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  2  plan-mode, webfetch.ts
+			"Hooks       0
+			Plugins     0
+			Extensions  2  plan-mode, webfetch.ts
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1246,7 +1252,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  2  bar, foo
+			"Hooks       0
+			Plugins     0
+			Extensions  2  bar, foo
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1286,7 +1295,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  2  alpha/tools, beta/tools
+			"Hooks       0
+			Plugins     0
+			Extensions  2  alpha/tools, beta/tools
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1317,7 +1329,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  1  main.ts
+			"Hooks       0
+			Plugins     0
+			Extensions  1  main.ts
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1351,7 +1366,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  1  pi-markdown-preview
+			"Hooks       0
+			Plugins     0
+			Extensions  1  pi-markdown-preview
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1391,7 +1409,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  2  primary-package, primary-package:../sibling-package
+			"Hooks       0
+			Plugins     0
+			Extensions  2  primary-package, primary-package:../sibling-package
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1434,7 +1455,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Extensions  2  primary-package, primary-package:../sibling-package
+			"Hooks       0
+			Plugins     0
+			Extensions  2  primary-package, primary-package:../sibling-package
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
 			( to expand)"
 		`,
 		);
@@ -1453,7 +1477,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-			"Extensions  8
+			"Hooks       0
+			Plugins     0
+			Extensions  8
 			               project
 			                 /tmp/project/.octocode/extensions/answer.ts
 			                 /tmp/project/.octocode/extensions/local-index
@@ -1467,7 +1493,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 			               user
 			                 /tmp/agent/extensions/user-index
 			               path
-			                 /tmp/temp/cli-extension.ts"
+			                 /tmp/temp/cli-extension.ts
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`);
 	});
 
@@ -1604,7 +1631,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(display.shouldShowStartupDetails(createFakeHost(verbose))).toBe(true);
 	});
 
-	test("folds routine duplicate-skill collisions into one short line that wraps under its indent", () => {
+	test("folds duplicate-skill collisions into one warning line that wraps whole at narrow widths", () => {
 		const collision = (name: string) => ({
 			type: "collision" as const,
 			message: `name "${name}" collision`,
@@ -1624,12 +1651,18 @@ describe("InteractiveMode.showLoadedResources", () => {
 		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: false });
 
 		const wide = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 120);
-		// The Skills row already says how to list them; the conflict line does not repeat the key.
-		expect(wide).toMatch(/⚠ Skill conflicts\n {2}3 skills have duplicates; first found is used$/m);
+		// One line says what was skipped, where the winner loads from and how to list them.
+		expect(wide).toMatch(
+			/^⚠ 3 duplicate skills skipped: a skill with the same name loads from \/a \(ctrl\+o lists them\)$/m,
+		);
+		expect(wide).not.toContain("Skill conflicts");
 		const narrow = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 40).split("\n");
-		const body = narrow.slice(narrow.indexOf("⚠ Skill conflicts") + 1).filter((line) => line.length > 0);
-		expect(body.length).toBeGreaterThan(1);
-		expect(body.every((line) => line.startsWith("  "))).toBe(true);
+		const start = narrow.findIndex((line) => line.startsWith("⚠ 3 duplicate skills"));
+		expect(start).toBeGreaterThan(0);
+		const wrapped = narrow.slice(start).filter((line) => line.length > 0);
+		expect(wrapped.length).toBeGreaterThan(1);
+		expect(wrapped.every((line) => line.length <= 40)).toBe(true);
+		expect(wrapped.join(" ").replace(/\s+/g, " ")).toContain("(ctrl+o lists them)");
 	});
 
 	test("separates its blocks by one blank line and leaves the gap after it to what follows", () => {
@@ -1655,7 +1688,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const lines = renderAll(fakeThis.loadedResourcesContainer)
 			.split("\n")
 			.map((line) => line.trimEnd());
-		const heading = lines.indexOf("⚠ Skill conflicts");
+		const heading = lines.findIndex((line) => line.startsWith("⚠ 1 duplicate skill skipped"));
 		expect(heading).toBeGreaterThan(0);
 		expect(lines[heading - 1]).toBe("");
 		expect(lines.at(-1)).not.toBe("");
@@ -1675,7 +1708,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toContain("⚠ Skill conflicts");
+		expect(output).toContain("⚠ 1 skill file with problems");
 		expect(output).not.toMatch(/^Skills\s/m);
 	});
 
@@ -1711,7 +1744,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toContain("AGENTS.md");
-		expect(output).toContain('"dup" collision');
+		expect(output).toContain("dup: /tmp/b/SKILL.md");
 		expect(output).toContain("bad name");
 		expect(output).toContain("/fix");
 		expect(output).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);

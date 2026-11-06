@@ -161,6 +161,8 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	 * problem is at the top level of the arguments. Never sent to the provider.
 	 */
 	validationHint?: (failure: { envelope: boolean }) => string | undefined;
+	/** False: arguments are validated as the model sent them and reach `execute` unchanged, with no coercion (MCP tools). */
+	coerceArguments?: false;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
 	renderShell?: "default" | "self";
 

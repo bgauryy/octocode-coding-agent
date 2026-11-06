@@ -86,7 +86,7 @@ function facts(ref: ModelRef, catalog: Catalog | undefined): Facts {
 	return {
 		ref,
 		price: cost && cost.input + cost.output > 0 ? (3 * cost.input + cost.output) / 4 : undefined,
-		context: ref.contextWindow || known?.context,
+		context: ref.contextWindow !== undefined && ref.contextWindow !== 0 ? ref.contextWindow : known?.context,
 		input: ref.input ?? known?.input,
 		toolCall: known?.toolCall,
 		family: known?.family,
@@ -360,13 +360,13 @@ export function routeModel(input: RouteInput): ModelRoute {
 	return route.model ? { ...route, model: `${route.model}${thinking}` } : { ...route, thinking: thinking.slice(1) };
 }
 
-function routeWithoutThinking(input: RouteInput): ModelRoute {
-	const { explicit, preferred, parent, refused } = input;
-	const usable = usableModels(input.available, parent, refused);
-	const all = input.available;
+function routeWithoutThinking(request: RouteInput): ModelRoute {
+	const { explicit, preferred, parent, refused } = request;
+	const usable = usableModels(request.available, parent, refused);
+	const all = request.available;
 	// Only an explicit model id is strict: it may name a refused provider on purpose.
-	const available = explicit && !tierOf(explicit) ? input.available : usable;
-	input = { ...input, available };
+	const available = explicit && !tierOf(explicit) ? request.available : usable;
+	const input = { ...request, available };
 	const parentProvider = parent?.provider;
 	// Pinned explicitly: without --model the child would start on Octocode's default, not the model the parent runs on now.
 	const parentModel = parent ? { model: `${parent.provider}/${parent.id}` } : {};

@@ -5,6 +5,7 @@ export interface ExpireCounts {
 	transcripts: number;
 	entries: number;
 	events: number;
+	timers: number;
 }
 
 /**
@@ -15,10 +16,11 @@ export interface ExpireCounts {
  *
  * - a transcript (`session_transcripts` with its `session_entries`) goes when its last save, `mtime` (the file's
  *   modification time, ns, at that save), is before `before`; the `sessions` row and compaction summaries stay (`sessions.erase` removes those);
- * - an `agent_events` row of those sessions goes when its own `time` is before `before`.
+ * - an `agent_events` row of those sessions goes when its own `time` is before `before`;
+ * - a `timers` row of those sessions goes when it was last updated before `before`: no file is left to resume and fire it.
  */
 export function orphans(db: DatabaseSync, sessionIds: readonly string[], before: number): ExpireCounts {
-	const counts: ExpireCounts = { transcripts: 0, entries: 0, events: 0 };
+	const counts: ExpireCounts = { transcripts: 0, entries: 0, events: 0, timers: 0 };
 	if (sessionIds.length === 0) return counts;
 	const json = JSON.stringify([...new Set(sessionIds)]);
 	inTransaction(db, () => {
@@ -35,6 +37,11 @@ export function orphans(db: DatabaseSync, sessionIds: readonly string[], before:
 			db
 				.prepare("DELETE FROM agent_events WHERE session_id IN (SELECT value FROM json_each(?1)) AND time < ?2")
 				.run(json, new Date(before).toISOString()).changes,
+		);
+		counts.timers = Number(
+			db
+				.prepare("DELETE FROM timers WHERE session_id IN (SELECT value FROM json_each(?1)) AND updated_at < ?2")
+				.run(json, before).changes,
 		);
 	});
 	return counts;

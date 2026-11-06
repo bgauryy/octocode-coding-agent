@@ -42,31 +42,28 @@ export function runStart(context: RenderContext, state: ToolRow): number | undef
 	return state.startedAt;
 }
 
-/**
- * The one ticking row. A changed line above the viewport makes octocode-tui clear and redraw the whole scrollback, so a
- * clock ticking on a row that scrolled off would flicker and yank the user out of scrollback every second. Only the
- * newest running row ticks (it is the last row, nearest the viewport); the working line shows how long the run took.
- */
-let clock: { state: ToolRow; invalidate: () => void; stop: () => void } | undefined;
+/** Rows whose elapsed clock is subscribed, so `stopRowTimers` can end the ones a finished turn left behind. */
+const ticking = new Set<ToolRow>();
 
-function stopClock(): void {
-	if (!clock) return;
-	clock.stop();
-	clock.state.ticking = false;
-	clock = undefined;
+function stopTick(state: ToolRow): void {
+	state.unsubscribe?.();
+	state.unsubscribe = undefined;
+	state.ticking = false;
+	ticking.delete(state);
 }
 
-/** Stop the clock and forget run starts (on `agent_end` and `session_shutdown`: no row is still running). */
+/** Stop every elapsed clock and forget run starts (on `agent_end` and `session_shutdown`: no row is still running). */
 export function stopRowTimers(): void {
-	stopClock();
+	for (const state of ticking) stopTick(state);
 	stopRowMotion();
 	waitingRows.clear();
 	runStarts.clear();
 }
 
 /**
- * The newest running row takes the clock; the row that held it drops its time (redrawn once, while it still sits just
- * above the new row) and never ticks again. The clock stops on the final result.
+ * A running row ticks its own elapsed time, once a second, and asks for a frame only when the text would change: the
+ * renderer defers a changed row above the viewport, so a row that scrolled off costs no redraw. The clock stops on the
+ * final result.
  */
 export function track(context: RenderContext, phase: Phase): ToolRow {
 	const state = rowState(context);
@@ -74,24 +71,24 @@ export function track(context: RenderContext, phase: Phase): ToolRow {
 	if (phase === "running") {
 		if (id !== undefined && context.invalidate && runStart(context, state) === undefined)
 			waitingRows.set(id, context.invalidate);
-		if (!state.clocked && context.invalidate) {
-			state.clocked = true;
-			const previous = clock?.invalidate;
-			stopClock();
-			// Redrawn after this pass: invalidating another row from inside this row's render would re-enter Octocode's display.
-			if (previous) queueMicrotask(previous);
+		if (!state.ticking && context.invalidate) {
 			const invalidate = context.invalidate;
-			const stop = animationClock.subscribe(
+			state.ticking = true;
+			state.unsubscribe = animationClock.subscribe(
 				() => {
-					if (runStart(context, state) !== undefined) invalidate();
+					const start = runStart(context, state);
+					if (start === undefined) return;
+					const text = formatDuration(Date.now() - start, true);
+					if (text === state.tickedText) return;
+					state.tickedText = text;
+					invalidate();
 				},
 				{ kind: "info", everyMs: MOTION.tickMs },
 			);
-			clock = { state, invalidate, stop };
-			state.ticking = true;
+			ticking.add(state);
 		}
 	} else if (phase !== "pending") {
-		if (clock?.state === state) stopClock();
+		if (state.ticking) stopTick(state);
 		if (id !== undefined) {
 			runStarts.delete(id);
 			waitingRows.delete(id);

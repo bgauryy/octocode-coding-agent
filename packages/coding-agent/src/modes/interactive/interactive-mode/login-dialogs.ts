@@ -102,10 +102,7 @@ export async function showLoginDialog(
 }
 
 /** Puts `component` in the editor slot and focuses it. */
-export function showInEditorSlot(
-	host: Pick<InteractiveModeHost, "editorContainer" | "ui">,
-	component: Component,
-): void {
+function showInEditorSlot(host: Pick<InteractiveModeHost, "editorContainer" | "ui">, component: Component): void {
 	host.editorContainer.clear();
 	host.editorContainer.addChild(component);
 	host.ui.setFocus(component);

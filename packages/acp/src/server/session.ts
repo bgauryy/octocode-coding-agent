@@ -11,12 +11,8 @@ import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
 import { advertiseCommands } from "./commands.ts";
 import { AcpEventProjector, type CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
+import { closeInBackground, reportFailure } from "./failure.ts";
 import { AcpStartup } from "./startup.ts";
-
-/** A failure handler for work no caller awaits or can act on: it goes to stderr, never the protocol stream. */
-function reportFailure(message: string): (error: unknown) => void {
-	return (error) => console.error(message, error);
-}
 
 export type AcpWorker = AcpWorkerClient & { onSessionIdentity: (listener: (id: string) => void) => () => void };
 
@@ -91,13 +87,13 @@ export class AcpSession {
 				this.onTerminated();
 				if (this.closing) return;
 				this.fail("Agent process closed; execution may have occurred. The prompt was not replayed.");
-				void this.close().catch(reportFailure("ACP session cleanup failed"));
+				closeInBackground(this);
 			}),
 		);
 		this.unsubscribes.push(
 			worker.onExtensionUIRequest((request) => {
 				void this.ui(request).catch(() => {
-					void this.close().catch(reportFailure("ACP session cleanup failed"));
+					closeInBackground(this);
 					this.fail("Permission response could not reach the agent.");
 				});
 			}),
@@ -106,10 +102,11 @@ export class AcpSession {
 
 	async start(expectedId?: string, prepare: (id: string) => Promise<void> = async () => {}): Promise<string> {
 		this.starting = true;
-		const startup = (this.startup = new AcpStartup(expectedId, async (id) => {
+		const startup = new AcpStartup(expectedId, async (id) => {
 			this.id = id;
 			await prepare(id);
-		}));
+		});
+		this.startup = startup;
 		this.output = startup.output;
 		void this.output.catch(() => this.close());
 		this.unsubscribes.push(this.worker.onSessionIdentity((id) => startup.identify(id)));
@@ -174,7 +171,7 @@ export class AcpSession {
 								: RequestError.internalError(undefined, error.message),
 						);
 					// Anything else (lost response, timeout) leaves execution uncertain: stop the worker without a replay.
-					void this.close().catch(reportFailure("ACP session cleanup failed"));
+					closeInBackground(this);
 					this.fail("Agent rejected or failed the prompt; it was not replayed.");
 				}
 			},
@@ -221,7 +218,7 @@ export class AcpSession {
 		const size = JSON.stringify(update).length;
 		if (this.queuedChars + size > 2 * 1024 * 1024) {
 			this.fail("Client output backlog exceeded its limit; the agent was stopped.");
-			void this.close().catch(reportFailure("ACP session cleanup failed"));
+			closeInBackground(this);
 			return;
 		}
 		this.queuedChars += size;
@@ -232,7 +229,7 @@ export class AcpSession {
 			});
 		void this.output.catch(() => {
 			this.fail("Client output connection failed.");
-			void this.close().catch(reportFailure("ACP session cleanup failed"));
+			closeInBackground(this);
 		});
 	}
 

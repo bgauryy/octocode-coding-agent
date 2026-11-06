@@ -25,10 +25,10 @@ export function roundCost(value: number): number {
 
 export function getModelsDevCost(cost: ModelsDevModel["cost"]): ModelCost {
 	const base = {
-		input: cost?.input || 0,
-		output: cost?.output || 0,
-		cacheRead: cost?.cache_read || 0,
-		cacheWrite: cost?.cache_write || 0,
+		input: cost?.input ?? 0,
+		output: cost?.output ?? 0,
+		cacheRead: cost?.cache_read ?? 0,
+		cacheWrite: cost?.cache_write ?? 0,
 	};
 	// Rates a tier does not list keep the base price.
 	const tiers = cost?.tiers?.flatMap((tier) => {

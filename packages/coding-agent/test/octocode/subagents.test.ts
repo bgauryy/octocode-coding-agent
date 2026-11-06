@@ -226,9 +226,10 @@ describe("subagents", () => {
 			);
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
-		// Parent/child and teammate communication share one policy: a child messages its parent for a decision.
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user; ask whoever can settle it, never guess or loop:\n\n```mermaid/,
+		// Parent/child and teammate communication share one policy: a child messages its parent for a decision, and its
+		// parent relays anything outside its session tree.
+		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
+			/You cannot ask the user; ask whoever can settle it, never guess or loop \(your parent relays beyond your session tree\):\n\n```mermaid/,
 		);
 	});
 
@@ -241,7 +242,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,bash,file,agent,steps,archive,skill,mcp,mcp__*",
+			tools: "read,grep,bash,file,agent,steps,timer,archive,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -255,7 +256,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,bash,file,agent,steps,archive,skill,mcp,mcp__*",
+			"read,grep,bash,file,agent,steps,timer,archive,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
 			"mcp__browser__*",
@@ -287,7 +288,6 @@ describe("subagents", () => {
 		expect(parsed.messages).toEqual([]);
 		expect(parsed.fileArgs).toEqual([]);
 		expect(parsed.model).toBe("faux/model");
-		expect(parsed.removedFlags).toBeUndefined();
 		expect(parsed.appendSystemPrompt).toBeUndefined();
 		expect(parsed.diagnostics).toEqual([]);
 	});
@@ -310,7 +310,7 @@ describe("subagents", () => {
 			"--session-id",
 			SESSION.id,
 			"--tools",
-			["bash", "file", "agent", "steps", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS]
+			["bash", "file", "agent", "steps", "timer", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS]
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",

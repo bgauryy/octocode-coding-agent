@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "../core/features/index.ts";
+import type { ExtensionAPI, ExtensionContext, ToolAnnotations, ToolCallEvent } from "../core/features/index.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import { type GateVerdict, permissionGate } from "./permission/gate.ts";
@@ -32,12 +32,37 @@ export interface ToolGatesOptions {
 	localReads: Map<string, Awaited<ReturnType<typeof snapshotLocalReads>>>;
 	/** Says whether this process is a subagent in the shared tree (`permission/git-state.ts`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
+	/** A tool's annotations (an MCP server's `destructiveHint`); the registered tool's own by default. */
+	annotations?: (toolName: string) => ToolAnnotations | undefined;
+}
+
+/**
+ * A `timer` call with an until-command is decided as the `bash` call that command is: the mode, a read-only role, the
+ * provenance tripwire and the user's answer apply when it is set (`timer/condition.ts` rechecks plan mode and the role
+ * each time it runs). Any other timer call has no effect class.
+ */
+function timerOperation<T extends { toolName: string; input: Record<string, unknown> }>(event: T): T {
+	if (event.toolName !== "timer") return event;
+	const until = event.input.until;
+	const command = typeof until === "object" && until !== null ? (until as { command?: unknown }).command : undefined;
+	return typeof command === "string" && command.trim() ? { ...event, toolName: "bash", input: { command } } : event;
 }
 
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
 	api: ExtensionAPI,
-	{ permission, provenance, collab, hooks, sourcePolicy, activity, localReads, env, planning }: ToolGatesOptions,
+	{
+		permission,
+		provenance,
+		collab,
+		hooks,
+		sourcePolicy,
+		activity,
+		localReads,
+		env,
+		planning,
+		annotations,
+	}: ToolGatesOptions,
 ): void {
 	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (a subagent in the shared
 	// tree leaves git state alone, then reservations) and user
@@ -65,9 +90,17 @@ export function registerToolGates(
 		subagent: envFlag(scope, SUBAGENT_ENV),
 		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
 	});
+	// A browser MCP call that opens a cloud metadata address: an invariant in every mode, on every entry path.
+	const metadata: Gate = async (event) => {
+		const reason = await browserMetadataRefusal(event.toolName, event.input);
+		return reason ? { block: true, reason } : undefined;
+	};
 	// The invariants again for a command a hook rewrote.
 	const invariants: Gate = async (event, ctx) =>
-		planning?.gate(event) ?? (await gitState?.(event, ctx)) ?? collab.reservationGate(event, ctx);
+		planning?.gate(event) ??
+		(await gitState?.(event, ctx)) ??
+		(await collab.reservationGate(event, ctx)) ??
+		metadata(event, ctx);
 	const permissionStep: Gate = (event, ctx, prior) =>
 		Promise.resolve(planning?.gate(event)).then(
 			(refusal) =>
@@ -76,27 +109,25 @@ export function registerToolGates(
 					permission,
 					provenance,
 					network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
+					annotations: annotations ?? ((name) => api.getAllTools().find((tool) => tool.name === name)?.annotations),
 					protectedBranch,
 					replacement: {
 						definition: (name) => api.getAllTools().find((tool) => tool.name === name),
 						refresh: (ctx) => sourcePolicy.refresh(ctx),
 						reserved: invariants,
 					},
-				})(agentOperation(event), ctx, prior, event),
+				})(timerOperation(agentOperation(event)), ctx, prior, event),
 		);
 	const gates: Gate[] = [
 		audited(async (event) => planning?.gate(event)),
 		...(gitState ? [audited(gitState)] : []),
 		audited(collab.reservationGate),
-		audited(async (event) => {
-			const reason = await browserMetadataRefusal(event.toolName, event.input);
-			return reason ? { block: true, reason } : undefined;
-		}),
+		audited(metadata),
 		audited(hooks.preToolUse),
 		(event, ctx, prior) => permissionStep(event, ctx, prior),
 	];
-	// An `mcp_tool` hook's call is a tool call too (`hooks/mcp-gate.ts`): it passes the permission step, which audits its own
-	// refusals. The earlier gates are skipped: PreToolUse hooks would run for the hook's own call and recurse.
+	// An `mcp_tool` hook's call is a tool call too (`hooks/mcp-gate.ts`): it passes the metadata invariant and the permission
+	// step, which audits its own refusals. The other gates are skipped: PreToolUse hooks would run for the hook's own call and recurse.
 	// A Notification hook fires for the ask this gate raises; its own MCP call would ask and notify again without end, so a
 	// call made while a hook call is being decided is refused.
 	const deciding = new AsyncLocalStorage<true>();
@@ -110,7 +141,8 @@ export function registerToolGates(
 			toolName: call.toolName,
 			input: call.input,
 		};
-		const verdict = await deciding.run(true, () => permissionStep(event, ctx));
+		const verdict =
+			(await audited(metadata)(event, ctx)) ?? (await deciding.run(true, () => permissionStep(event, ctx)));
 		return verdict?.block ? (verdict.reason ?? "blocked") : undefined;
 	});
 	api.on("tool_call", async (event, ctx) => {

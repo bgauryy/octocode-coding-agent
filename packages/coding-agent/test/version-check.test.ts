@@ -80,6 +80,7 @@ describe("version checks", () => {
 
 	it("formats nested network error details", () => {
 		const error = new Error("fetch failed", {
+			// oxlint-disable-next-line unicorn/error-message -- mirrors undici's AggregateError, which has no message
 			cause: new AggregateError([
 				Object.assign(new Error("connect timeout"), { code: "ETIMEDOUT" }),
 				Object.assign(new Error("network unreachable"), { code: "ENETUNREACH" }),

@@ -46,6 +46,6 @@ describe("headless flags", () => {
 	it("parses --no-stdin and --no-dialogs", () => {
 		const parsed = parseArgs(["--no-stdin", "--no-dialogs", "hello"]);
 		expect(parsed).toMatchObject({ noStdin: true, noDialogs: true, messages: ["hello"] });
-		expect(parsed.unknownFlags.size).toBe(0);
+		expect(parsed.unknownFlags).toEqual([]);
 	});
 });

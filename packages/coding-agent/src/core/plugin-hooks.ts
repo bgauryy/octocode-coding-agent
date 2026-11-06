@@ -3,7 +3,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { stripBom } from "../../../common/src/text.ts";
 import { discoverPluginComponents } from "./plugin-components.ts";
 import { resolveConfiguredPlugin, type PluginManifest } from "./plugin-manifest.ts";
-import type { Settings } from "./settings-manager.ts";
+import type { Settings } from "./settings-schema.ts";
 
 interface PluginHookInspection {
 	manifest?: PluginManifest;

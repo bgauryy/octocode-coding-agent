@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import { ProcessTerminal, type Terminal } from "../src/terminal.ts";
 import { computeRenderDelayMs, TuiBase } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
@@ -49,6 +49,25 @@ class PressureVirtualTerminal extends VirtualTerminal {
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Waits until `done` holds, polling every 5ms; fails after `limitMs` so a held render cannot pass by timing. */
+async function until(done: () => boolean, what: string, limitMs = 2000): Promise<void> {
+	const deadline = Date.now() + limitMs;
+	while (!done()) {
+		if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
+		await pause(5);
+	}
+}
+
+// A failed assertion must not skip stop(): a running retry timer keeps the test process alive forever.
+const running: TuiBase[] = [];
+const track = <T extends TuiBase>(tui: T): T => {
+	running.push(tui);
+	return tui;
+};
+afterEach(() => {
+	for (const tui of running.splice(0)) tui.stop();
+});
+
 describe("opt-in render pacing", () => {
 	it("counts output bytes and refused writes only when telemetry is enabled", () => {
 		const terminal = new ProcessTerminal();
@@ -72,7 +91,7 @@ describe("opt-in render pacing", () => {
 	});
 	it("holds ordinary renders before composition, then paints the latest state once", async () => {
 		const terminal = new PressureTerminal();
-		const tui = new CountingTui(terminal);
+		const tui = track(new CountingTui(terminal));
 		tui.setRenderPacing({
 			outputGate: true,
 			highWaterBytes: 256 * 1024,
@@ -87,18 +106,19 @@ describe("opt-in render pacing", () => {
 			tui.content = `update-${i}`;
 			tui.requestRender();
 		}
-		await pause(45);
+		await until(() => tui.getRenderPacingStats().deferredFrames > 0, "a deferred frame");
+		await pause(30);
 		assert.deepEqual(tui.painted, ["initial"]);
-		assert.ok(tui.getRenderPacingStats().deferredFrames > 0);
 		terminal.pendingOutputBytes = 100 * 1024;
-		await pause(45);
+		await until(() => tui.painted.length > 1, "the held paint");
+		await pause(30);
 		assert.deepEqual(tui.painted, ["initial", "update-7"]);
 		tui.stop();
 	});
 
 	it("keeps the main-screen diff baseline aligned while obsolete states are deferred", async () => {
 		const terminal = new PressureVirtualTerminal(40, 8);
-		const tui = new TuiMainScreen(terminal);
+		const tui = track(new TuiMainScreen(terminal));
 		const component = {
 			line: "initial",
 			render() {
@@ -131,7 +151,7 @@ describe("opt-in render pacing", () => {
 		for (const pending of [undefined, Number.NaN, -1, Number.POSITIVE_INFINITY]) {
 			const terminal = new PressureTerminal();
 			terminal.pendingOutputBytes = pending;
-			const tui = new CountingTui(terminal);
+			const tui = track(new CountingTui(terminal));
 			tui.setRenderPacing({ outputGate: true, retryMs: 10 });
 			tui.start();
 			tui.renderNow();
@@ -145,7 +165,7 @@ describe("opt-in render pacing", () => {
 
 	it("lets explicit paints bypass pressure and discards old retry callbacks on stop/restart", async () => {
 		const terminal = new PressureTerminal();
-		const tui = new CountingTui(terminal);
+		const tui = track(new CountingTui(terminal));
 		tui.setRenderPacing({ outputGate: true, retryMs: 10 });
 		tui.start();
 		tui.renderNow();
@@ -175,7 +195,7 @@ describe("opt-in render pacing", () => {
 	it("starts a fresh paint after a pre-start ordinary or forced request", async () => {
 		for (const force of [false, true]) {
 			const terminal = new PressureTerminal();
-			const tui = new CountingTui(terminal);
+			const tui = track(new CountingTui(terminal));
 			tui.content = force ? "force-before-start" : "ordinary-before-start";
 			tui.requestRender(force);
 			tui.start();

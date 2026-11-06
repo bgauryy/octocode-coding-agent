@@ -87,7 +87,9 @@ export function isWebSocketReusable(socket: WebSocketLike): boolean {
 export function closeWebSocketSilently(socket: WebSocketLike, code = 1000, reason = "done"): void {
 	try {
 		socket.close(code, reason);
-	} catch {}
+	} catch {
+		// Closing a socket that already closed or failed throws; nothing is left to release.
+	}
 }
 
 export async function connectWebSocket(
@@ -282,9 +284,7 @@ export async function* parseWebSocket(
 			wake();
 			return;
 		}
-		if (!failed) {
-			failed = extractWebSocketCloseError(event);
-		}
+		failed ??= extractWebSocketCloseError(event);
 		done = true;
 		wake();
 	};

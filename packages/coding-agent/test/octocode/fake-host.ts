@@ -32,7 +32,7 @@ export function rendered(component: { render(width: number): string[] }, width =
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
 /** Records every registration a Octocode extension makes and lets a test fire its events. */
-export function fakeHost() {
+export function fakeHost(settings: Record<string, unknown> = {}) {
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();
 	const handlers = new Map<string, Handler[]>();
@@ -43,7 +43,7 @@ export function fakeHost() {
 	let activeTools: string[] | undefined;
 	const registerToolBatches: string[][] = [];
 	const api = {
-		getSettings: () => ({}),
+		getSettings: (): Record<string, unknown> => settings,
 		getThinkingLevel: () => "off",
 		registerTool: (tool: { name: string }) => tools.set(tool.name, tool),
 		registerToolBatches,
@@ -54,10 +54,8 @@ export function fakeHost() {
 		registerCommand: (name: string, command: unknown) => commands.set(name, command),
 		registerMessageRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
 		registerEntryRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
-		registerFlag: () => undefined,
 		registerShortcut: (key: string, options: { description?: string; handler: (ctx: unknown) => unknown }) =>
 			shortcuts.set(key, options),
-		getFlag: () => undefined,
 		on: (event: string, handler: Handler) => {
 			const list = handlers.get(event) ?? [];
 			list.push(handler);
@@ -148,6 +146,8 @@ export function fakeCtx(options: {
 		...options.ui,
 	};
 	const ui = {
+		// No terminal, as over RPC: nothing to listen to. First, so a test's own `ui.onTerminalInput` (in `state`) wins.
+		onTerminalInput: () => () => undefined,
 		...state,
 		notify: (message: string, type?: string) => state.notes.push({ message, type }),
 		setStatus: (key: string, text: string | undefined, tone?: string) => {

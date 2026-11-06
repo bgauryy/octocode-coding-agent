@@ -1,7 +1,8 @@
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { canonicalizePath, isUnderPath } from "../../../../common/src/paths.ts";
 import { skillCategory } from "../skills/category.ts";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
+import { mcpVendorLabel, skillFolder } from "./display-paths.ts";
 import type { ConfigItem, ConfigKind, Product, Provenance } from "./types.ts";
 
 /**
@@ -23,6 +24,8 @@ export interface ContextEntry {
 	state: EntryState;
 	/** Why it does not load, or a status such as an MCP server's connection state. */
 	note?: string;
+	/** For a shadowed copy: the file of the copy that loads instead. */
+	winner?: string;
 }
 
 export interface ContextGroup {
@@ -34,10 +37,9 @@ export interface ContextGroup {
 	entries: ContextEntry[];
 }
 
-interface ContextWarning {
+/** One line saying what is wrong and what to do; `details` (ctrl+o) lists the items. */
+export interface ContextWarning {
 	text: string;
-	/** The compact form for one screen line. */
-	short: string;
 	details: string[];
 }
 
@@ -96,10 +98,13 @@ const GROUPS: ReadonlyArray<{ id: string; title: string; noun: readonly [string,
 /** What a user does with Pi code Octocode does not run. */
 export const PI_CODE_HINT = "convert to hooks.json or a plugin";
 const UNTRUSTED_NOTE = "folder not trusted";
+const SWITCHED_OFF_NOTE = "harness off (/harness)";
+const HOST_PLUGIN_NOTES = { claude: "Claude Code plugin, added in settings", codex: "Codex plugin, added in settings" };
 
 /** `octocode global`, `pi project`, `claude global`, `plugin <name>` (origin `plugin:<name>`), `octocode` (a role bundled with this build). */
-function sourceLabel(provenance: Pick<Provenance, "scope" | "origin">): string {
+function sourceLabel(provenance: Pick<Provenance, "scope" | "origin" | "hostPlugin">): string {
 	if (provenance.scope === "builtin") return "octocode";
+	if (provenance.hostPlugin) return `${provenance.hostPlugin} plugin`;
 	if (provenance.origin.startsWith("plugin")) return provenance.origin.replace(":", " ");
 	return `${provenance.origin} ${provenance.scope}`;
 }
@@ -118,21 +123,40 @@ export function sourceInfoLabel(info: { source: string; scope: string; path?: st
 	// The native extension adds the other hosts' user skill folders as extra paths too.
 	if (info.path && isUnderPath(info.path, join(claudeConfigDir(), "skills"))) return "claude global";
 	if (info.path && isUnderPath(info.path, join(codexConfigDir(), "skills"))) return "codex global";
+	// Project skill folders of the other agents, reached through extra skill paths rather than settings.
+	for (const [dir, label] of PROJECT_SKILL_DIRS)
+		if (info.path?.includes(`${sep}${dir}${sep}skills${sep}`)) return `${label} project`;
 	if (info.source === "cli") return "command line";
 	if (info.scope === "user") return "octocode global";
 	if (info.scope === "project") return "octocode project";
 	return "settings path";
 }
 
+const PROJECT_SKILL_DIRS: ReadonlyArray<readonly [string, string]> = [
+	[".claude", "claude"],
+	[".codex", "codex"],
+	[".agents", "agents"],
+	[".cursor", "cursor"],
+];
+
 const CONTEXT_KINDS = new Set<ConfigKind>(["context", "systemPrompt", "appendSystemPrompt"]);
 
+/** A version folder name (`1.0.0`, `26.1027.61615`): a plugin cache keeps one folder per version under the plugin's own. */
+const VERSION_NAME = /^v?\d+(\.\d+)+$/;
+
 function entryName(item: ConfigItem): string {
-	return CONTEXT_KINDS.has(item.kind) ? basename(item.provenance.path) : item.name;
+	if (CONTEXT_KINDS.has(item.kind)) return basename(item.provenance.path);
+	if (item.kind === "plugin" && VERSION_NAME.test(item.name)) return basename(dirname(item.provenance.path));
+	return item.name;
 }
+
+/** An item of a harness switched off in `/harness`: listed expanded with the reason, never counted or warned about. */
+const switchedOff = (provenance: Pick<Provenance, "notLoaded">): boolean => provenance.notLoaded === "switched-off";
 
 function notLoadedNote(item: ConfigItem): string {
 	const { notLoaded, product } = item.provenance;
 	if (notLoaded === "untrusted") return UNTRUSTED_NOTE;
+	if (switchedOff(item.provenance)) return SWITCHED_OFF_NOTE;
 	if (notLoaded === "ignored-code")
 		return `${product === "pi" ? "Pi " : ""}${item.kind === "hook" ? "hook" : "extension"}, not loaded`;
 	return item.provenance.shadowedBy ? `shadowed by ${sourceLabel(item.provenance.shadowedBy)}` : "";
@@ -143,12 +167,15 @@ function fromItem(item: ConfigItem): ContextEntry {
 	const state: EntryState =
 		notLoaded === "untrusted"
 			? "untrusted"
-			: notLoaded
-				? "ignored"
-				: shadowedBy && !item.loaded
-					? "shadowed"
-					: "loaded";
-	const note = state === "loaded" ? (item.role === "override" ? "override" : undefined) : notLoadedNote(item);
+			: switchedOff(item.provenance)
+				? "off"
+				: notLoaded
+					? "ignored"
+					: shadowedBy && !item.loaded
+						? "shadowed"
+						: "loaded";
+	const host = item.provenance.hostPlugin && HOST_PLUGIN_NOTES[item.provenance.hostPlugin];
+	const note = state === "loaded" ? (host ?? (item.role === "override" ? "override" : undefined)) : notLoadedNote(item);
 	return {
 		name: entryName(item),
 		path: item.provenance.path,
@@ -156,6 +183,7 @@ function fromItem(item: ConfigItem): ContextEntry {
 		product: item.provenance.product,
 		state,
 		...(note ? { note } : {}),
+		...(state === "shadowed" && shadowedBy ? { winner: shadowedBy.path } : {}),
 	};
 }
 
@@ -172,10 +200,20 @@ function kindEntries(
 	refs: readonly LoadedRef[] | undefined,
 ): ContextEntry[] {
 	if (!refs) return items.map(fromItem);
-	const byPath = new Map(items.map((item) => [canonicalizePath(item.provenance.path), item]));
+	// Copies in folders symlinked to one place share a real path: the loaded file is the copy at that exact path, else
+	// the copy discovery loads, never a switched-off or shadowed one that happens to resolve to the same file.
+	const byRealPath = new Map<string, ConfigItem[]>();
+	for (const item of items) {
+		const key = canonicalizePath(item.provenance.path);
+		byRealPath.set(key, [...(byRealPath.get(key) ?? []), item]);
+	}
 	const matched = new Set<ConfigItem>();
+	const find = (path: string): ConfigItem | undefined => {
+		const copies = (byRealPath.get(canonicalizePath(path)) ?? []).filter((item) => !matched.has(item));
+		return copies.find((item) => item.provenance.path === path) ?? copies.find((item) => item.loaded) ?? copies[0];
+	};
 	const loaded = refs.map((ref): ContextEntry => {
-		const item = byPath.get(canonicalizePath(ref.path));
+		const item = find(ref.path);
 		if (item) {
 			matched.add(item);
 			return {
@@ -200,6 +238,9 @@ function mcpLabel(server: McpEntry, piRoots: readonly string[]): { source: strin
 	if (server.scope === "default" || server.source.startsWith("built-in")) return { source: "builtin" };
 	if (server.scope === "extension") return { source: "plugin" };
 	const scope = server.scope ?? "global";
+	const vendor = mcpVendorLabel(server.source);
+	if (vendor === ".agents" || vendor === "root .mcp.json") return { source: vendor };
+	if (vendor) return { source: `${vendor} ${scope}` };
 	const pi = server.source.includes("/.pi/") || piRoots.some((root) => server.source.startsWith(root));
 	return pi ? { source: `pi ${scope}`, product: "pi" } : { source: `octocode ${scope}`, product: "octocode" };
 }
@@ -259,28 +300,41 @@ export function activeEntries(group: ContextGroup): ContextEntry[] {
 	return group.entries.filter((entry) => entry.state === "loaded" || entry.state === "ignored");
 }
 
-/** What no row says on its own: copies that lost to another (the row tail is dropped on a narrow screen) and project items skipped for trust. */
+/** The value seen most often, first seen on a tie. */
+function mostCommon(values: readonly string[]): string | undefined {
+	const counts = new Map<string, number>();
+	for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+	return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+/**
+ * What no row says on its own, one line each: copies skipped because another of the same name loads (per kind, naming
+ * where the winner loads from) and project items skipped for trust. Switched-off items are not warnings: the user chose.
+ */
 function contextWarnings(groups: readonly ContextGroup[]): ContextWarning[] {
 	const all = groups.flatMap((group) => group.entries.map((entry) => ({ group, entry })));
 	const describe = ({ group, entry }: (typeof all)[number], withNote: boolean) =>
 		`${entry.source} ${group.title.toLowerCase()}: ${entry.name}${withNote ? ` \u2014 ${entry.note}` : ""}`;
 	const warnings: ContextWarning[] = [];
-	const add = (found: typeof all, text: string, withNote = true, short = text) => {
-		if (found.length > 0) warnings.push({ text, short, details: found.map((item) => describe(item, withNote)) });
+	const add = (found: typeof all, text: string, withNote = true) => {
+		if (found.length > 0) warnings.push({ text, details: found.map((item) => describe(item, withNote)) });
 	};
-	const shadowed = all.filter(({ entry }) => entry.state === "shadowed");
-	add(
-		shadowed,
-		`${shadowed.length} shadowed ${shadowed.length === 1 ? "copy" : "copies"}`,
-		true,
-		`${shadowed.length} shadowed`,
-	);
+	for (const group of groups) {
+		const shadowed = all.filter((item) => item.group === group && item.entry.state === "shadowed");
+		if (shadowed.length === 0) continue;
+		const noun = group.noun[shadowed.length === 1 ? 0 : 1];
+		const winner = mostCommon(shadowed.flatMap(({ entry }) => (entry.winner ? [entry.winner] : [])));
+		const where =
+			group.id === "skill" && winner
+				? `a skill with the same name loads from ${skillFolder(winner)}`
+				: "a copy with the same name loads instead";
+		add(shadowed, `${shadowed.length} duplicate ${noun} skipped: ${where} (ctrl+o lists them)`);
+	}
 	const untrusted = all.filter(({ entry }) => entry.state === "untrusted");
 	add(
 		untrusted,
-		`${untrusted.length} project ${untrusted.length === 1 ? "item" : "items"} not loaded: ${UNTRUSTED_NOTE}; run octocode trust add <folder>`,
+		`${untrusted.length} project ${untrusted.length === 1 ? "item" : "items"} not loaded: ${UNTRUSTED_NOTE}; run /trust`,
 		false,
-		`${untrusted.length} ${UNTRUSTED_NOTE}`,
 	);
 	return warnings;
 }
@@ -316,13 +370,13 @@ export function sourceSummary(group: ContextGroup, options: { counted?: boolean 
 	return (code ? [...parts, PI_CODE_HINT] : parts).join(" \u00b7 ");
 }
 
-/** `1 shadowed · 2 not trusted` (folders that are not trusted; the details say so in full): the copies of a group that do not apply. */
+/** `1 shadowed · 2 not trusted · 3 off` (the details say why in full): the copies of a group that do not apply. */
 export function problemSummary(group: ContextGroup): string {
 	const count = (state: EntryState) => group.entries.filter((entry) => entry.state === state).length;
 	return [
 		count("shadowed") > 0 ? `${count("shadowed")} shadowed` : "",
 		count("untrusted") > 0 ? `${count("untrusted")} not trusted` : "",
-		count("off") > 0 ? `${count("off")} disabled` : "",
+		count("off") > 0 ? `${count("off")} ${group.id === "mcp" ? "disabled" : "off"}` : "",
 	]
 		.filter(Boolean)
 		.join(" · ");

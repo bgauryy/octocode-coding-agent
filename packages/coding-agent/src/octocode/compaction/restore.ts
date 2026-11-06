@@ -280,9 +280,10 @@ export function deliverRestoredFiles(
 	api: Pick<ExtensionAPI, "sendMessage">,
 	pending: readonly WorkedFile[],
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model">>,
-	total: number,
+	budget: number,
 	thinking?: CompactionThinking,
 ): PendingRestore | undefined {
+	let total = budget;
 	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
 		try {
 			const tokens = estimateProjectedContextTokens(

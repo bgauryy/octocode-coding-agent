@@ -108,8 +108,9 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	);
 	preparingTimer.unref();
 	const external = externalFacts(from, caller, host.transport, wait, replyRequired);
-	// Only a message that starts a turn is held: one that steers or queues behind running work joins a turn whose mode is already settled.
-	const admitCeiling = busy ? undefined : sessionApiTurnCeiling();
+	// Every message is held to the ceiling, also one that steers or queues behind running work: the run it joins, the
+	// user's own included, runs under it until the session settles, so timing a message never yields the session's full mode.
+	const admitCeiling = sessionApiTurnCeiling();
 	let capped: TurnCeiling | undefined;
 	let announceAsking!: () => void;
 	const asking = new Promise<void>((resolve) => {
@@ -145,10 +146,10 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			outcome = "dispatched";
 			const settlementVersion = host.receipts.settlementVersion;
 			// The turn this call starts runs its tools under the ceiling until the session settles; read now, not at the first check, so a refused or failed hand-off can release it.
-			if (ctx.isIdle() && !ctx.hasPendingMessages()) {
-				capped = sessionApiTurnCeiling();
-				if (capped) host.operations.capTurn?.(capped);
-			}
+			// Only the turn this call starts is released on a failed hand-off; a run it joined keeps the ceiling until it settles.
+			const ceiling = sessionApiTurnCeiling();
+			if (ceiling) host.operations.capTurn?.(ceiling);
+			if (ctx.isIdle() && !ctx.hasPendingMessages()) capped = ceiling;
 			const sending = host.api.sendMessage(
 				{
 					customType: EXTERNAL_MESSAGE_TYPE,

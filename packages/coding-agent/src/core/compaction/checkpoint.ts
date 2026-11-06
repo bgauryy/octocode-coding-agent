@@ -115,9 +115,10 @@ function archivedView(summary: string, file: string, fits: (text: string) => boo
 }
 
 export function finalizeCompactionResult(
-	result: CompactionResult,
+	candidate: CompactionResult,
 	options: { branchEntries: SessionEntry[]; contextWindow: number; reserveTokens: number; sessionFile?: string },
 ): CompactionResult {
+	let result = candidate;
 	const { branchEntries, contextWindow, reserveTokens } = options;
 	if (!branchEntries.some((entry) => entry.id === result.firstKeptEntryId)) {
 		throw new CheckpointPersistenceError("Compaction retained context boundary is not on the active branch.");

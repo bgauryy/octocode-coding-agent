@@ -671,9 +671,7 @@ Analyze GitHub issue(s): $ARGUMENTS`,
 	});
 
 	afterAll(() => {
-		try {
-			rmSync(testDir, { recursive: true, force: true });
-		} catch {}
+		rmSync(testDir, { recursive: true, force: true });
 	});
 });
 

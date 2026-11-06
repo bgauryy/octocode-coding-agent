@@ -7,7 +7,7 @@ import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import * as runner from "../../src/octocode/hooks/runner.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -108,7 +108,7 @@ it.each([false, true])("applies the per-handler context limit in actual dispatch
 			},
 		}),
 	});
-	const f = fakeHost();
+	const f = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp() });
 	const hooks = registerHooks(f.api, {}, home);
 	await f.fire("session_start", { reason: "startup" }, ctx);

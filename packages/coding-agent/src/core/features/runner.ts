@@ -36,7 +36,6 @@ import {
 } from "./runner/emit-transforms.ts";
 import { reportMcpServersOnce } from "./runner/event-handlers.ts";
 import {
-	collectFlags,
 	collectRegisteredTools,
 	findEntryRenderer,
 	findMessageRenderer,
@@ -163,24 +162,12 @@ export class ExtensionRunner {
 		return this.getAllRegisteredTools().find((tool) => tool.definition.name === toolName)?.definition;
 	}
 
-	getFlags(): Map<string, Types.ExtensionFlag> {
-		return collectFlags(this.extensions);
-	}
-
-	setFlagValue(name: string, value: boolean | string): void {
-		this.runtime.flagValues.set(name, value);
-	}
-
-	getFlagValues(): Map<string, boolean | string> {
-		return new Map(this.runtime.flagValues);
-	}
-
 	getShortcuts(resolvedKeybindings: KeybindingsConfig): Map<KeyId, Types.ExtensionShortcut> {
 		this.shortcutDiagnostics = [];
 		return resolveShortcuts(this.extensions, resolvedKeybindings, (message, extensionPath) => {
 			this.shortcutDiagnostics.push({ type: "warning", message, path: extensionPath });
 			if (!this.hasUI()) {
-				console.warn(message);
+				process.stderr.write(`${message}\n`);
 			}
 		});
 	}

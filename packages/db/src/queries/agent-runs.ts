@@ -312,8 +312,14 @@ export function recent(
 ): AgentRun[] {
 	const clauses: string[] = [];
 	const values: string[] = [];
-	if (filter.workspaceId) (clauses.push("workspace_id = ?"), values.push(filter.workspaceId));
-	if (filter.agentId) (clauses.push("agent_id = ?"), values.push(filter.agentId));
+	if (filter.workspaceId) {
+		clauses.push("workspace_id = ?");
+		values.push(filter.workspaceId);
+	}
+	if (filter.agentId) {
+		clauses.push("agent_id = ?");
+		values.push(filter.agentId);
+	}
 	const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 	return (
 		db

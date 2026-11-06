@@ -249,4 +249,45 @@ describe("validateToolArguments", () => {
 			/valid JSON object\. If it is long, split it into several smaller calls/,
 		);
 	});
+
+	describe("with coerceArguments: false", () => {
+		const tool: Tool = {
+			name: "external",
+			description: "A server's tool",
+			parameters: {
+				type: "object",
+				properties: {
+					count: { type: "number" },
+					queries: { type: "array", items: { type: "string" } },
+					note: { type: "string" },
+				},
+				additionalProperties: false,
+			},
+			coerceArguments: false,
+			validationHint: () => "server hint",
+		};
+		const call = (args: Record<string, JsonValue>): ToolCall => ({
+			type: "toolCall",
+			id: "tool-1",
+			name: "external",
+			arguments: args,
+		});
+
+		it("passes valid arguments on exactly as sent", () => {
+			const args = { count: 2, queries: ["a"], note: "n" };
+			expect(validateToolArguments(tool, call(args))).toEqual(args);
+		});
+
+		it("rejects what coercion would have repaired, with the tool's hint", () => {
+			const rejected: Record<string, JsonValue>[] = [
+				{ count: "2" },
+				{ queries: '["a"]' },
+				{ note: null },
+				{ reason: "why" },
+			];
+			for (const args of rejected) {
+				expect(() => validateToolArguments(tool, call(args))).toThrow(/server hint/);
+			}
+		});
+	});
 });

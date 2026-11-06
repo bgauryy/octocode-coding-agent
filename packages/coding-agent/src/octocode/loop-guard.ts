@@ -124,7 +124,8 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 		if (!call) return undefined;
 		if (!call.key) {
 			// An exempt call is a different call: the streak starts again after it.
-			last = lastCall = undefined;
+			last = undefined;
+			lastCall = undefined;
 			count = 0;
 			return undefined;
 		}

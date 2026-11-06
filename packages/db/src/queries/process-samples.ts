@@ -127,7 +127,7 @@ export function since(db: DatabaseSync, at: number): ProcessSample[] {
 		id: row.id,
 		sessionId: row.session_id,
 		agentId: row.agent_id,
-		ownerPid: row.owner_pid === null ? null : row.owner_pid,
+		ownerPid: row.owner_pid,
 		ownerStarted: row.owner_started,
 		rss: row.rss,
 		heapUsed: row.heap_used,

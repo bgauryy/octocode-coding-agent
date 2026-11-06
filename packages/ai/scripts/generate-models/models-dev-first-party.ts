@@ -10,6 +10,7 @@ import { getModelsDevCost } from "./pricing.ts";
 import { processGoogleModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 function getBedrockBaseUrl(modelId: string): string {
 	return modelId.startsWith("eu.")
@@ -48,8 +49,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				// Includes models.dev pricing tiers, e.g. the long-context tier for OpenAI models (#10326).
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 				...(m.structured_output === true && { compat: { supportsStrictMode: true } }),
 			});
 			recordModelsDevReasoningOptions("amazon-bedrock" as const, id, m);
@@ -71,8 +72,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("anthropic", modelId, m);
 		}
@@ -97,8 +98,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("openai", modelId, m);
 		}
@@ -119,8 +120,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("groq", modelId, m);
 		}
@@ -141,8 +142,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("cerebras", modelId, m);
 		}
@@ -163,8 +164,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 				compat: { sendSessionAffinityHeaders: true },
 			});
 			recordModelsDevReasoningOptions("cloudflare-workers-ai", modelId, m);
@@ -220,8 +221,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 				...(compat ? { compat } : {}),
 			});
 			recordModelsDevReasoningOptions("cloudflare-ai-gateway", id, m);
@@ -250,8 +251,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 				compat: { sendSessionAffinityHeaders: true },
 			});
 			recordModelsDevReasoningOptions("cloudflare-ai-gateway", id, m);

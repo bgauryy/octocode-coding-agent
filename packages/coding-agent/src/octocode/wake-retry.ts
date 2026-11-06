@@ -3,7 +3,13 @@ import { isRetryableErrorText } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import { notify } from "./shared/commands.ts";
 import { interactive } from "./shared/interactive.ts";
-import { AGENT_RESULT_TYPE, EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, JOB_TYPE } from "./shared/messages.ts";
+import {
+	AGENT_RESULT_TYPE,
+	EXTERNAL_MESSAGE_TYPE,
+	INTERNAL_MESSAGE_TYPE,
+	JOB_TYPE,
+	TIMER_TYPE,
+} from "./shared/messages.ts";
 import { STATUS } from "./shared/status.ts";
 
 /** The custom message that starts another attempt; the model reads it beside the report it never acted on. */
@@ -18,6 +24,7 @@ const WAKES = new Set<string>([
 	INTERNAL_MESSAGE_TYPE,
 	EXTERNAL_MESSAGE_TYPE,
 	JOB_TYPE,
+	TIMER_TYPE,
 	WAKE_RETRY_TYPE,
 ]);
 

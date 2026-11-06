@@ -121,6 +121,21 @@ Start with hooks enabled, trust the native project configuration, and inspect `/
 
 ## Discovery
 
+Claude Code (`~/.claude/settings.json`, project `.claude/settings.json` and `.claude/settings.local.json`) and Codex (`$CODEX_HOME/hooks.json`, `config.toml` `[hooks]`, project `.codex/hooks.json` and `.codex/config.toml`) hooks load only while that harness is on in `/harness`; both are off by default. A harness switched off is not a warning: `/harness hooks` and the startup Harness line count its hooks as off. Cursor has no hook format Octocode reads.
+
+Events each profile implements (`/harness hooks events` prints the handler types too):
+
+| Event                                                                                       | Native | Claude | Codex |
+| ------------------------------------------------------------------------------------------- | ------ | ------ | ----- |
+| PreToolUse (gate), PostToolUse, SessionStart, SessionEnd, PreCompact, Stop                  | yes    | yes    | yes   |
+| PermissionRequest (gate), UserPromptSubmit (gate), SubagentStart, SubagentStop, PostCompact | no     | yes    | yes   |
+| PostToolUseFailure, PostToolBatch, StopFailure                                              | no     | yes    | no    |
+| Notification                                                                                | yes    | yes    | no    |
+| Interrupt                                                                                   | no     | no     | yes   |
+| AgentOn, AgentOff, PreMessageSend (gate), PostMessageReceive                                | yes    | no     | no    |
+
+Other upstream events (for example Claude's Setup, ConfigChange or FileChanged, Codex's PreModelRequest) are reported as not implemented.
+
 Octocode reads these files in order when the session starts:
 
 | Order | Scope           | Location                                        |
@@ -254,19 +269,19 @@ SessionEnd is observational. Native and Claude hooks default to 1.5 seconds per 
 
 Input (added to `session_id`, `cwd` and `hook_event_name`):
 
-| Field                                    | Event      | Meaning                                                                                                                                        |
-| ---------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `seq`                                    | both       | The transition's sequence in `agent_events`: orders events of one database.                                                                    |
-| `agent_id`, `agent_type`                 | both       | The agent's name and role.                                                                                                                     |
-| `kind`                                   | both       | `main` for an agent without a parent, else `child`.                                                                                            |
-| `parent_agent_id`                        | both       | The parent's name, or `null`.                                                                                                                  |
-| `model`, `goal`                          | both       | The model and one-line goal on the row, or `null`.                                                                                             |
-| `pid`                                    | both       | The agent's process.                                                                                                                           |
-| `parent_session_id`, `branch`            | both       | The parent's session id and the agent's git branch when it joined, or `null`.                                                                  |
-| `backlog_item`, `run_id`                 | both       | The backlog item the run was started for (`B36`, or `<workspace name>:B36` from another workspace) and the run's id in `agent_runs`, or `null`. |
-| `reason`, `detail`                       | `AgentOff` | The end reason; `detail` is free text when the writer gave one.                                                                                |
-| `started_at`, `ended_at`, `duration_ms`  | `AgentOff` | When the agent joined and the transition was written (ISO 8601), and the time between.                                                         |
-| `status`, `tool_calls`, `tokens`, `cost` | `AgentOff` | The row's last heartbeat: status, tool calls, `tokens` as `{ input, cache_read, output }` and cost. A number the row never recorded is `null`. |
+| Field                                    | Event      | Meaning                                                                                                                                                                                                                                    |
+| ---------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `seq`                                    | both       | The transition's sequence in `agent_events`: orders events of one database.                                                                                                                                                                |
+| `agent_id`, `agent_type`                 | both       | The agent's name and role.                                                                                                                                                                                                                 |
+| `kind`                                   | both       | `main` for an agent without a parent, else `child`.                                                                                                                                                                                        |
+| `parent_agent_id`                        | both       | The parent's name, or `null`.                                                                                                                                                                                                              |
+| `model`, `goal`                          | both       | The model and one-line goal on the row, or `null`.                                                                                                                                                                                         |
+| `pid`                                    | both       | The agent's process.                                                                                                                                                                                                                       |
+| `parent_session_id`, `branch`            | both       | The parent's session id and the agent's git branch when it joined, or `null`.                                                                                                                                                              |
+| `backlog_item`, `run_id`                 | both       | The backlog item the run was started for (`B36`, or `<workspace name>:B36` from another workspace) and the run's id in `agent_runs`, or `null`.                                                                                            |
+| `reason`, `detail`                       | `AgentOff` | The end reason; `detail` is free text when the writer gave one.                                                                                                                                                                            |
+| `started_at`, `ended_at`, `duration_ms`  | `AgentOff` | When the agent joined and the transition was written (ISO 8601), and the time between.                                                                                                                                                     |
+| `status`, `tool_calls`, `tokens`, `cost` | `AgentOff` | The row's last heartbeat: status, tool calls, `tokens` as `{ input, cache_read, output }` and cost. A number the row never recorded is `null`.                                                                                             |
 | `outcome`, `files_changed`               | `AgentOff` | The outcome word (`done`, `partial`, `blocked`, `failed`) when the parent had recorded it when the agent left (usually `null` for a child that leaves before its report), and the files it changed as `{ count, paths }` (first 20 paths). |
 
 The agent's folder is the common `cwd` field of the input.

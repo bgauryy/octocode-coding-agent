@@ -34,8 +34,9 @@ import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
  * run is bound by. `subagentProcessEnv` clears them from the environment a child starts from before setting its own, and
  * a process that finds them without being that child (`dropForeignChildEnv`) clears them to start as a top-level session.
  * The permission mode (`OCTOCODE_PERMISSION`) is left out on purpose: it is also a user setting, and what a child
- * inherited only makes a nested session stricter. A read-only role's reach is not inherited, so that role may not run
- * `octocode` (`shell/mutation.ts`), and how deep the chain is stays counted (`NESTING_ENV`).
+ * inherited only makes a nested session stricter. A read-only role's reach is not inherited, so that role may not start
+ * any `octocode` run (the product starts a session of its own; `shell/mutation.ts`), and how
+ * deep the chain is stays counted (`NESTING_ENV`).
  */
 export const CHILD_OWNED_ENV: readonly string[] = [
 	SUBAGENT_ENV,

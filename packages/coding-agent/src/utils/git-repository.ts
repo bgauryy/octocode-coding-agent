@@ -79,7 +79,8 @@ function discover(cwd: string): Discovery {
 		}
 	}
 	if (spansHome(root, home)) {
-		root = key = start;
+		root = start;
+		key = start;
 		git = null;
 	}
 	const result = {

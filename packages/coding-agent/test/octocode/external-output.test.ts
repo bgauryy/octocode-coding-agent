@@ -10,7 +10,11 @@ import { tmp } from "./helpers.ts";
 
 const token = `sk-ant-${"a".repeat(40)}`;
 const cleanup: Array<() => Promise<void>> = [];
-beforeEach(() => vi.stubEnv("OCTOCODE_HOME", tmp()));
+beforeEach(() => {
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	// The tool is declared only when something is discoverable; these tests exercise it, not the machine's PATH.
+	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
+});
 afterEach(async () => {
 	for (const close of cleanup.splice(0)) await close();
 	vi.restoreAllMocks();
@@ -28,11 +32,6 @@ async function apiClient(externalCall: () => Promise<unknown>) {
 	await api.start(fakeCtx({ cwd: tmp() }), { socket: true });
 	return new ApiClient(api.instance!);
 }
-
-// The tool is declared only when something is discoverable; these tests exercise it, not the machine's PATH.
-beforeEach(() => {
-	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
-});
 
 describe("external evidence boundaries", () => {
 	it("redacts structured tool details as well as the rendered evidence", async () => {

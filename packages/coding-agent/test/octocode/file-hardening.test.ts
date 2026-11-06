@@ -180,8 +180,9 @@ describe("a changed-on-disk refusal names who changed the file", () => {
 	it("adds nothing without a change log", async () => {
 		const { file, run } = setup("one\n");
 		fs.writeFileSync(file, "two!\n");
+		// No research server is connected here, so the guard names its default reader, `bash` (`BASH_READER`).
 		await expect(run({ type: "write", content: "x\n" })).rejects.toThrow(
-			/changed on disk since you last read it\. Read it again with `localFetch` before modifying it\.$/,
+			/changed on disk since you last read it\. Read it again with `bash` before modifying it\.$/,
 		);
 	});
 });

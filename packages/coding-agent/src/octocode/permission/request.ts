@@ -1,6 +1,12 @@
 import type { ToolInvocation } from "../../core/features/types.ts";
 import type { ActionClass, AskReason, PermissionMode } from "./mode.ts";
 
+/** What "Allow text from <agent> for this session" covers: every later hit whose source is that subagent's report. */
+export interface SourceGrant {
+	key: string;
+	label: string;
+}
+
 /** What an ask shows: the effect card, any reasons that tighten it, and exactly what it would do. */
 export interface PermissionRequest {
 	/** Explicit invocation for checks before execution (including user-authored shell commands). */
@@ -15,6 +21,11 @@ export interface PermissionRequest {
 	title: string;
 	/** What exactly: the command, path, host or arguments (model text; sanitized when shown). */
 	what: string[];
+	/**
+	 * How the terminal card splits `what`: dim `meta` lines (who sends it) and a collapsible `body` (a message's text). Only
+	 * for text that is not an approved target; `what` still feeds the plain title, the audit and the relay header.
+	 */
+	view?: { meta: string[]; body: string };
 	/** The system's reasons beyond the mode (a hook's reason, a provenance source), one per line. Never agent text. */
 	reason?: string;
 	/**
@@ -37,6 +48,8 @@ export interface PermissionRequest {
 	risk?: string;
 	/** Offered as "Allow <label> for this session"; `key` is what the grant matches next time. */
 	grant?: { key: string; label: string };
+	/** Set when the request's provenance hit came from one subagent's report: the user may allow that source for the session. */
+	sourceGrant?: SourceGrant;
 	/** Issued by another tool (`parentToolCallId` set). */
 	nested?: boolean;
 	/** The mode whose rules judge this call, when a stricter constraint than the session's mode holds it (plan). */

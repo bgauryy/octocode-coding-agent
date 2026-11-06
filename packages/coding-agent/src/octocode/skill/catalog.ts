@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { Skill } from "../../core/skills.ts";
 import type { SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
 
@@ -9,9 +8,6 @@ export interface CatalogSkill {
 	file: string;
 }
 
-/** A miss on a `SKILL.md` path re-reads the session's skills at most this often: rendering must stay cheap. */
-const REFRESH_MS = 2_000;
-
 /**
  * The skills this session loaded, read through the host's resource snapshot (`api.getSkillResourceSnapshot`): the same
  * inventory a subagent inherits, with extension, plugin and Claude/Codex skills included. Every `skill` call re-reads
@@ -19,7 +15,6 @@ const REFRESH_MS = 2_000;
  */
 export class SkillCatalog {
 	private loaded: CatalogSkill[] = [];
-	private refreshedAt = 0;
 
 	private readonly snapshot: () => SkillResourceSnapshot;
 
@@ -29,7 +24,6 @@ export class SkillCatalog {
 
 	/** Rendering may retain the last good list; execution requires a currently valid snapshot. */
 	refresh({ allowStale = true }: { allowStale?: boolean } = {}): CatalogSkill[] {
-		this.refreshedAt = Date.now();
 		try {
 			this.loaded = this.snapshot().resources.flatMap((resource) =>
 				resource.visible ? [{ skill: resource.skill, file: resource.canonicalPath }] : [],
@@ -45,33 +39,6 @@ export class SkillCatalog {
 	invocable(): CatalogSkill[] {
 		return this.refresh().filter((entry) => !entry.skill.disableModelInvocation);
 	}
-
-	/** The loaded skill whose instruction file is `file` (relative paths resolve against `cwd`), from the last refresh. */
-	byFile(file: string, cwd: string): CatalogSkill | undefined {
-		const target = path.resolve(cwd, file);
-		const find = () =>
-			this.loaded.find((entry) => target === path.resolve(entry.skill.filePath) || target === entry.file);
-		const found = find();
-		if (found || path.basename(target) !== "SKILL.md" || Date.now() - this.refreshedAt < REFRESH_MS) return found;
-		this.refresh();
-		return find();
-	}
-}
-
-let active: SkillCatalog | undefined;
-
-/** The session's catalog, for renderers that have no handle on the extension API. */
-export function setActiveSkillCatalog(catalog: SkillCatalog | undefined, onlyIf?: SkillCatalog): void {
-	if (onlyIf === undefined || active === onlyIf) active = catalog;
-}
-
-/** The skill name of a `localFetch` call that reads exactly one loaded skill's instruction file, else undefined. */
-export function skillNameOfRead(args: unknown, cwd: string): string | undefined {
-	if (!active || typeof args !== "object" || args === null) return undefined;
-	const queries = (args as { queries?: unknown }).queries;
-	if (!Array.isArray(queries) || queries.length !== 1) return undefined;
-	const file = (queries[0] as { path?: unknown } | null)?.path;
-	return typeof file === "string" && file ? active.byFile(file, cwd)?.skill.name : undefined;
 }
 
 /** Edits between two names: insertions, deletions, substitutions and swaps of adjacent letters (`wbe` is one from `web`). */

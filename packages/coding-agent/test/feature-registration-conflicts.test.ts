@@ -34,16 +34,6 @@ describe("feature registration: duplicate ids", () => {
 		]);
 	});
 
-	it("reports a duplicate flag the same way", async () => {
-		const flag = (api: ExtensionAPI) => api.registerFlag("mode-x", { type: "boolean", description: "x" });
-		const first = await register("builtin:llama.cpp", "builtin", flag);
-		const second = await register("builtin:mcp", "builtin", flag);
-
-		expect(detectFeatureConflicts([first, second]).map((conflict) => conflict.message)).toEqual([
-			'Flag "--mode-x" registered by builtin:mcp (builtin) conflicts with builtin:llama.cpp (builtin)',
-		]);
-	});
-
 	it("does not report distinct names", async () => {
 		const a = await register("<inline:octocode>", "native", (api) => api.registerTool(tool("a")));
 		const b = await register("builtin:mcp", "builtin", (api) => api.registerTool(tool("b")));

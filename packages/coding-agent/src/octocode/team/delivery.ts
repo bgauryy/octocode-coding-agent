@@ -153,7 +153,7 @@ export class Delivery {
 		};
 		const handed = this.mail.deliver(batch, this.host.parentId(), ctx, rejected);
 		if (handed && idle && waking.length > 0) {
-			if (this.wakeHandedAt === undefined) this.wakeHandedAt = Date.now();
+			this.wakeHandedAt ??= Date.now();
 			if (paced.length > 0) counted = this.pace.record();
 		}
 		return handed;

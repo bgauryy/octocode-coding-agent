@@ -13,10 +13,10 @@ export function parseChunkUsage(
 	},
 	model: Model<"openai-completions">,
 ): AssistantMessage["usage"] {
-	const promptTokens = rawUsage.prompt_tokens || 0;
+	const promptTokens = rawUsage.prompt_tokens ?? 0;
 	const cacheReadTokens =
 		rawUsage.prompt_tokens_details?.cached_tokens ?? rawUsage.prompt_cache_hit_tokens ?? rawUsage.cached_tokens ?? 0;
-	const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens || 0;
+	const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens ?? 0;
 
 	// Follow documented OpenAI/OpenRouter semantics: cached_tokens is cache-read
 	// tokens (hits). Providers disagree on placement: OpenAI/OpenRouter use
@@ -31,13 +31,13 @@ export function parseChunkUsage(
 	// https://github.com/antirez/ds4/pull/29
 	const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
 	// OpenAI completion_tokens already includes reasoning_tokens.
-	const outputTokens = rawUsage.completion_tokens || 0;
+	const outputTokens = rawUsage.completion_tokens ?? 0;
 	const usage = createUsage({
 		input,
 		output: outputTokens,
 		cacheRead: cacheReadTokens,
 		cacheWrite: cacheWriteTokens,
-		reasoning: rawUsage.completion_tokens_details?.reasoning_tokens || 0,
+		reasoning: rawUsage.completion_tokens_details?.reasoning_tokens ?? 0,
 	});
 	calculateCost(model, usage);
 	return usage;

@@ -189,7 +189,8 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
-		const assets = (this.compatibilityAssets ??= new ApplicationAssets({ memory: true }));
+		this.compatibilityAssets ??= new ApplicationAssets({ memory: true });
+		const assets = this.compatibilityAssets;
 		assets.clear();
 		this.contentOptions.readAsset = (id) => assets.get(id);
 		try {
@@ -234,8 +235,8 @@ export class AssistantMessageComponent extends Container {
 		this.stopFrames = undefined;
 	}
 
-	updateMessage(message: ApplicationMessage, isStreaming = this.isStreaming): void {
-		message = this.fullContent.message(message, this.contentOptions.readAsset);
+	updateMessage(received: ApplicationMessage, isStreaming = this.isStreaming): void {
+		const message = this.fullContent.message(received, this.contentOptions.readAsset);
 		this.lastMessage = message;
 		if (this.isStreaming !== isStreaming) this.markdown.clear();
 		this.isStreaming = isStreaming;

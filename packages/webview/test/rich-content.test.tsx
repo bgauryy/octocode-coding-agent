@@ -151,6 +151,31 @@ it("keeps text, tool output, and following text in block order with one visible 
 	expect(container.querySelector(".content-tool > .tool-reason")?.textContent).toBe("↳ Inspect the actual file");
 });
 
+it("shows an MCP call's purpose only when its returned data states one", () => {
+	const name = "mcp__octocode__localFetch";
+	const rendered = (structuredContent: unknown) => {
+		const tool: ApplicationTool = {
+			toolCallId: "m",
+			toolName: name,
+			text: "output",
+			status: "completed",
+			arguments: { queries: [{ path: "a.ts" }], reason: "Copied from a native tool" },
+			structuredContent,
+			content: [{ id: "out", type: "text", text: "Tool result" }],
+		};
+		const events = project(
+			[message([{ id: "call", type: "toolCall", toolCallId: "m", name, arguments: tool.arguments }])],
+			[tool],
+		);
+		const { container, unmount } = render(<ResultCard event={events[0]} />, { wrapper: Wrapper });
+		const text = container.querySelector(".content-tool > .tool-reason")?.textContent;
+		unmount();
+		return text;
+	};
+	expect(rendered({ results: [{ data: {} }] })).toBeUndefined();
+	expect(rendered({ results: [{ data: { mainGoal: "Trace the parser" } }] })).toBe("↳ Trace the parser");
+});
+
 it("renders reasoning, citations, resource references and unsupported content without external media requests", () => {
 	const [event] = project([
 		message([

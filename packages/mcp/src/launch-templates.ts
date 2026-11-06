@@ -13,7 +13,7 @@ export interface McpLaunchContext {
 	env?: NodeJS.ProcessEnv;
 }
 
-export const MCP_LAUNCH_TEMPLATES = ["workspace", "researchRoots", "agentDir", "projectTrusted"] as const;
+const MCP_LAUNCH_TEMPLATES = ["workspace", "researchRoots", "agentDir", "projectTrusted"] as const;
 type TemplateName = (typeof MCP_LAUNCH_TEMPLATES)[number];
 /** `${untrusted:<value>}`: `<value>` in an untrusted project; in a trusted one, empty, and alone it omits its entry. */
 const UNTRUSTED = "untrusted";
@@ -49,7 +49,7 @@ function researchRoots(context: McpLaunchContext): string {
 		...new Set([
 			context.cwd,
 			...paths.sessionRoots(context.cwd, context.env),
-			...[...new Set(context.skillDirectories ?? [])].sort(),
+			...[...new Set(context.skillDirectories)].sort(),
 			...(user?.roots ?? []),
 		]),
 	].join(",");

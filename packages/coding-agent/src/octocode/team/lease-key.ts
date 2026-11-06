@@ -17,19 +17,17 @@ export type LeaseKind = "file" | "tree";
 let folding: ReadonlyMap<number, string> | undefined;
 
 function foldingTable(): ReadonlyMap<number, string> {
-	if (!folding) {
-		folding = new Map(
-			CASE_FOLDING.trim()
-				.split("\n")
-				.map((line) => {
-					const [from = "", to = ""] = line.split(":");
-					return [
-						parseInt(from, 16),
-						String.fromCodePoint(...to.split(" ").map((point) => parseInt(point, 16))),
-					] as const;
-				}),
-		);
-	}
+	folding ??= new Map(
+		CASE_FOLDING.trim()
+			.split("\n")
+			.map((line) => {
+				const [from = "", to = ""] = line.split(":");
+				return [
+					parseInt(from, 16),
+					String.fromCodePoint(...to.split(" ").map((point) => parseInt(point, 16))),
+				] as const;
+			}),
+	);
 	return folding;
 }
 

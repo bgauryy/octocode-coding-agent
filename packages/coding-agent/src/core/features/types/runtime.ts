@@ -63,14 +63,6 @@ export interface RegisteredTool {
 	sourceInfo: SourceInfo;
 }
 
-export interface ExtensionFlag {
-	name: string;
-	description?: string;
-	type: "boolean" | "string";
-	default?: boolean | string;
-	extensionPath: string;
-}
-
 export interface ExtensionShortcut {
 	shortcut: KeyId;
 	description?: string;
@@ -118,10 +110,8 @@ type SetLabelHandler = (entryId: string, label: string | undefined) => void;
 
 /**
  * Shared state created by loader, used during registration and runtime.
- * Contains flag values (defaults set during registration, CLI values set after).
  */
 interface ExtensionRuntimeState {
-	flagValues: Map<string, boolean | string>;
 	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
 	/** Native octocode-ai provider registrations queued during extension loading, processed when runner binds. */
@@ -271,7 +261,6 @@ export interface Extension {
 	markdownTransformer?: MarkdownTransformer;
 	entryRenderers?: Map<string, EntryRenderer>;
 	commands: Map<string, RegisteredCommand>;
-	flags: Map<string, ExtensionFlag>;
 	shortcuts: Map<KeyId, ExtensionShortcut>;
 }
 

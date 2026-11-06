@@ -176,7 +176,7 @@ export interface TreeNode {
 }
 /** Build a complete forest even if an imported parent is missing or a disconnected component contains a cycle. */
 export function buildTree(index: BacklogIndex): { roots: TreeNode[]; alone: SnapshotItem[] } {
-	const children = new Map(index.items.map((item) => [item.ref, new Set(item.children ?? [])]));
+	const children = new Map(index.items.map((item) => [item.ref, new Set(item.children)]));
 	for (const item of index.items) {
 		if (item.parentId) children.get(item.parentId)?.add(item.ref);
 	}

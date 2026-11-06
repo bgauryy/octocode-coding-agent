@@ -3,6 +3,7 @@
  */
 
 import chalk from "chalk";
+import { foregroundChildActive } from "../../../utils/foreground-child.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -108,7 +109,8 @@ export async function checkShutdownRequested(host: LifecycleHost): Promise<void>
 
 /**
  * Ctrl+Z stopped the UI: a Ctrl+C typed in the shell meanwhile (a SIGINT) must not start a shutdown. SIGTERM and SIGHUP
- * (the terminal closed) still shut a suspended session down.
+ * (the terminal closed) still shut a suspended session down. The same holds while a foreground child (the external
+ * editor, an interactive `/octocode` subcommand) owns the terminal: its Ctrl+C is the child's.
  */
 let suspended = false;
 
@@ -123,7 +125,7 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 
 	for (const signal of signals) {
 		const handler = () => {
-			if (suspended && signal === "SIGINT") return;
+			if ((suspended || foregroundChildActive()) && signal === "SIGINT") return;
 			// SIGHUP no longer hard-exits: graceful shutdown emits session_shutdown
 			// first, then attempts terminal restore. A genuinely dead terminal
 			// surfaces as an EIO on the restore writes, which the stdout/stderr

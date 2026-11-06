@@ -28,10 +28,13 @@ const expectPlainOwnProperties = (properties: unknown) => {
 	}
 };
 
-afterEach(() => {
+/** Named so the assertions are not written inside the hook: a leaked name is reported by whichever test ran last. */
+function expectPrototypeUntouched(): void {
 	expect(Object.getOwnPropertyNames(Object.prototype).sort()).toEqual(prototypeKeys);
 	expect(({} as Record<string, unknown>).type).toBeUndefined();
-});
+}
+
+afterEach(expectPrototypeUntouched);
 
 describe("the declaration lift of fields named after Object.prototype members", () => {
 	it("lists __proto__, constructor and toString as own fields with their declared types", () => {

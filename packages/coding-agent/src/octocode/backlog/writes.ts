@@ -87,7 +87,8 @@ function logNote(db: Db, item: Item, at: number, author: string, kind: NoteKind,
  * Creates an item. A subagent (`actor.owners`) proposes: its item lands in `backlog` whatever state it asked for, without
  * a note (its parent has not claimed the item, so a later note would be refused too), a completion, hierarchy or dependencies.
  */
-export function addItem(agentDb: AgentDb, repo: string, now: () => number, input: AddInput, actor: Actor): Item {
+export function addItem(agentDb: AgentDb, repo: string, now: () => number, request: AddInput, actor: Actor): Item {
+	let input = request;
 	validateEntityInput(input);
 	if (input.completion && input.state !== "done") throw new BacklogError("A completion requires state done.");
 	if (actor.owners) {
@@ -180,9 +181,10 @@ export function updateItem(
 	repo: string,
 	now: () => number,
 	ref: string,
-	input: UpdateInput,
+	request: UpdateInput,
 	actor: Actor,
 ): Item {
+	let input = request;
 	validateEntityInput(input);
 	refuseSecrets({
 		title: input.title,

@@ -10,7 +10,9 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { Breath, tabMark } from "./dialog/marks.ts";
-import { type AskAnswer, type AskQuestion, type AskResult, answerOf, rows, SUBMIT_PICKS } from "./dialog/answers.ts";
+import { type AskAnswer, type AskQuestion, type AskResult, answerOf, questionView, rows } from "./dialog/answers.ts";
+import { DETAILS_KEY, hasMore, renderAskCard, startRow } from "./card.ts";
+import type { AskView } from "../shared/ask-view.ts";
 import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
 
 /**
@@ -55,6 +57,7 @@ class AskDialog {
 	private readonly drafts = new Map<number, string>();
 	private tab = 0;
 	private cursor = 0;
+	private expanded = false;
 	private typing = false;
 	private finished = false;
 	private warning = "";
@@ -69,6 +72,7 @@ class AskDialog {
 
 	readonly theme: DialogTheme;
 	private readonly questions: AskQuestion[];
+	private readonly views: AskView[];
 	private readonly editor: Editor;
 	private readonly requestRender: () => void;
 	private readonly done: (result: AskResult) => void;
@@ -83,6 +87,8 @@ class AskDialog {
 		signal?: AbortSignal,
 	) {
 		this.questions = questions;
+		this.views = questions.map(questionView);
+		this.cursor = this.views[0] ? startRow(this.views[0]) : 0;
 		this.keybindings = keybindings;
 		this.theme = theme;
 		this.editor = editor;
@@ -144,7 +150,7 @@ class AskDialog {
 			return;
 		}
 		this.tab = index < this.questions.length - 1 ? index + 1 : this.questions.length;
-		this.cursor = 0;
+		this.cursor = this.views[this.tab] ? startRow(this.views[this.tab]) : 0;
 		this.typing = this.questions[this.tab]?.options.length === 0;
 		this.editor.setText(this.drafts.get(this.tab) ?? "");
 		this.refresh();
@@ -166,7 +172,7 @@ class AskDialog {
 
 	private moveTab(step: number): void {
 		this.tab = (this.tab + step + this.questions.length + 1) % (this.questions.length + 1);
-		this.cursor = 0;
+		this.cursor = this.views[this.tab] ? startRow(this.views[this.tab]) : 0;
 		this.warning = "";
 		// A free-text question opens its editor (with the saved draft) however it is reached.
 		this.typing = this.questions[this.tab]?.options.length === 0;
@@ -212,6 +218,8 @@ class AskDialog {
 		else if (this.keybindings.matches(data, "tui.select.down")) this.cursor = (this.cursor + 1) % count;
 		// Number keys only move the cursor, so a stray digit never answers or toggles.
 		else if (/^[1-9]$/.test(data) && Number(data) <= count) this.cursor = Number(data) - 1;
+		// One question: tab shows a forwarded body whole (several questions move between tabs with it instead).
+		else if (!this.isMulti && data === DETAILS_KEY) this.expanded = !this.expanded;
 		else if (q.multiSelect && this.keybindings.matches(data, "app.ask.toggle") && this.cursor < q.options.length)
 			this.toggle();
 		else if (this.keybindings.matches(data, "tui.select.confirm")) {
@@ -274,7 +282,7 @@ class AskDialog {
 			lines.push("");
 		}
 		if (this.tab === questions.length) this.renderReview(add, lines);
-		else this.renderQuestion(questions[this.tab], add, lines, w);
+		else this.renderQuestion(add, lines, w);
 		lines.push("");
 		const q = questions[this.tab];
 		const confirm = shortcutText("tui.select.confirm", this.keybindings);
@@ -294,6 +302,7 @@ class AskDialog {
 						? `${shortcutText("tui.select.up", this.keybindings)}/${shortcutText("tui.select.down", this.keybindings)}/1-9 move`
 						: "",
 					enter,
+					q && !this.isMulti && hasMore(this.views[this.tab], w) ? `tab ${this.expanded ? "less" : "show all"}` : "",
 					`${cancel} cancel`,
 				]
 					.filter(Boolean)
@@ -341,46 +350,30 @@ class AskDialog {
 		);
 	}
 
-	private renderQuestion(
-		q: AskQuestion,
-		add: (prefix: string, text: string) => void,
-		lines: string[],
-		width: number,
-	): void {
-		const { theme } = this;
-		const set = this.toggled.get(this.tab) ?? new Set<number>();
+	private renderQuestion(add: (prefix: string, text: string) => void, lines: string[], width: number): void {
+		const q = this.questions[this.tab];
 		add(
 			" ",
-			theme.fg(
+			this.theme.fg(
 				"muted",
 				`Question ${this.tab + 1} of ${this.questions.length}${q.multiSelect ? " · Choose one or more, then Submit selection" : " · Choose one"}`,
 			),
 		);
-		add(" ", theme.bold(sanitizeTerminalText(q.question)));
-		const answer = this.answers.get(this.tab);
-		if (answer) add(" ", theme.fg("success", `Current answer: ${sanitizeTerminalText(answer.answer)}`));
-		lines.push("");
-		(q.options.length === 0 && this.typing ? [] : rows(q)).forEach((label, index) => {
-			const selected = index === this.cursor;
-			const box = q.multiSelect && index < q.options.length ? (set.has(index) ? "[x] " : "[ ] ") : "";
-			const text =
-				label === SUBMIT_PICKS && index > q.options.length
-					? `✓ ${SUBMIT_PICKS} (${set.size} selected)`
-					: sanitizeTerminalText(label);
-			add(
-				selected ? theme.fg("accent", "› ") : "  ",
-				theme.fg(selected ? "accent" : index > q.options.length ? "success" : "text", `${index + 1}. ${box}${text}`),
-			);
-			const description = q.options[index]?.description;
-			if (description) add("     ", theme.fg("muted", sanitizeTerminalText(description)));
-		});
-		if (this.warning) {
-			lines.push("");
-			add(" ", theme.fg("warning", this.warning));
-		}
-		if (this.typing) {
-			lines.push("");
-			for (const line of this.editor.render(Math.max(1, width - 2))) lines.push(truncateToWidth(` ${line}`, width, ""));
-		}
+		const card = renderAskCard(
+			this.views[this.tab],
+			{
+				cursor: this.cursor,
+				// Several questions use tab to move between them: their bodies show whole.
+				expanded: this.expanded || this.isMulti,
+				toggled: this.toggled.get(this.tab) ?? new Set<number>(),
+				...(this.answers.get(this.tab) ? { answer: this.answers.get(this.tab)?.answer } : {}),
+				...(this.warning ? { warning: this.warning } : {}),
+				...(this.typing ? { editor: this.editor.render(Math.max(1, width - 2)) } : {}),
+				hideRows: q.options.length === 0 && this.typing,
+			},
+			this.theme,
+			width,
+		);
+		lines.push(...card);
 	}
 }

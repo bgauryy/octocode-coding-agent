@@ -61,6 +61,9 @@ export function getSearchableText(node: SessionTreeNode): string {
 		case "label":
 			parts.push("label", entry.label ?? "");
 			break;
+		// Usage entries are filtered out of the tree (filter.ts).
+		case "usage":
+			break;
 	}
 
 	return parts.join(" ");
@@ -226,6 +229,15 @@ export function getEntryCopyText(node: SessionTreeNode): string | undefined {
 			break;
 		case "branch_summary":
 			text = entry.summary;
+			break;
+		// These entries carry no text worth copying.
+		case "context_edit":
+		case "custom":
+		case "label":
+		case "model_change":
+		case "session_info":
+		case "thinking_level_change":
+		case "usage":
 			break;
 	}
 

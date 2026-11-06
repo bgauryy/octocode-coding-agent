@@ -186,5 +186,8 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			host.ui.requestRender();
 			break;
 		}
+		default:
+			// The other engine events do not change the run state shown here.
+			break;
 	}
 }

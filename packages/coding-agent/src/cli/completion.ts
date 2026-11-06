@@ -103,7 +103,7 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 		);
 	}
 	if (values[previous]) return filter(values[previous]);
-	if (["--tools", "-t", "--exclude-tools", "-xt"].includes(previous)) {
+	if (["--tools", "-t", "--exclude-tools"].includes(previous)) {
 		const last = prefix.lastIndexOf(",") + 1;
 		return filter(tools.map((tool) => prefix.slice(0, last) + tool));
 	}

@@ -18,14 +18,12 @@ describe("extension MCP registration transactions", () => {
 		const { runtime, load } = setup();
 		await expect(
 			load("<collision>", (api) => {
-				api.registerFlag("collision", { type: "boolean", default: true });
 				api.registerProvider("collision", { baseUrl: "https://example.invalid" });
 				api.registerMcpServer("alpha-beta", { command: "first" });
 				api.registerMcpServer("alpha_beta", { command: "second" });
 			}),
 		).rejects.toThrow('MCP server "alpha_beta" conflicts with registered server "alpha-beta"');
 		expect(runtime.mcpServers.list()).toEqual([]);
-		expect(runtime.flagValues.has("collision")).toBe(false);
 		expect(runtime.pendingProviderRegistrations).toEqual([]);
 	});
 
@@ -52,7 +50,6 @@ describe("extension MCP registration transactions", () => {
 			resume = resolve;
 		});
 		const slow = load("<slow>", async (api) => {
-			api.registerFlag("slow", { type: "boolean", default: true });
 			api.registerProvider("slow", { baseUrl: "https://example.invalid" });
 			api.registerMcpServer("unrelated", { command: "slow" });
 			api.registerMcpServer("claimed", { command: "slow" });
@@ -64,7 +61,6 @@ describe("extension MCP registration transactions", () => {
 		expect(runtime.mcpServers.list()).toEqual([
 			{ name: "claimed", config: { command: "winner" }, extensionPath: "<winner>" },
 		]);
-		expect(runtime.flagValues.has("slow")).toBe(false);
 		expect(runtime.pendingProviderRegistrations).toEqual([]);
 	});
 

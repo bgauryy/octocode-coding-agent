@@ -12,7 +12,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { warningsBesideListing } from "../../src/core/resource-loader/feature-loading.ts";
-import { viewRows } from "../../src/modes/interactive/interactive-mode/discovery-rows.ts";
+import { startupWarnings, viewRows } from "../../src/modes/interactive/interactive-mode/discovery-rows.ts";
 import { LoadedRow, loadedColumns } from "../../src/modes/interactive/interactive-mode/loaded-row.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import { type Sandbox, createSandbox, skillFile, write } from "../discovery/fixtures.ts";
@@ -56,6 +56,10 @@ function render(projectTrusted: boolean, width: number, expanded: boolean): stri
 
 const plain = (lines: string[]) => lines.map((line) => line.replace(/\u001b\[[0-9;]*m/g, ""));
 
+/** The startup warning lines of `view`, one per problem (no skill or keybinding problems in these fixtures). */
+const warningTexts = (projectTrusted: boolean) =>
+	startupWarnings(view(projectTrusted), [], []).warnings.map((warning) => warning.text);
+
 describe("startup context rows", () => {
 	it("fits every line at 100 and 60 columns, collapsed and expanded", () => {
 		for (const width of [100, 60])
@@ -75,15 +79,16 @@ describe("startup context rows", () => {
 				/^Not loaded\s+1\s+legacy\.ts \(pi global\) \u00b7 convert to hooks\.json or a plugin/.test(line),
 			),
 		).toBeDefined();
-		expect(lines.find((line) => /^Warnings\s+3\s+2 shadowed/.test(line))).toBeDefined();
+		// The problems are startup warning lines of their own, not a Warnings row.
+		expect(lines.some((line) => line.startsWith("Warnings"))).toBe(false);
 	});
 
-	it("drops the tail first at 60 columns and keeps the problems in the Warnings row", () => {
+	it("drops the tail first at 60 columns; the problems stay in the startup warning lines", () => {
 		const lines = plain(render(false, 60, false));
 		const skills = lines.find((line) => line.startsWith("Skills")) ?? "";
 		expect(skills).toMatch(/^Skills\s+3\s+octocode global 2/);
 		expect(skills).not.toContain("shadowed");
-		expect(lines.find((line) => line.startsWith("Warnings"))).toMatch(/^Warnings\s+\d/);
+		expect(warningTexts(false).join("\n")).toMatch(/duplicate skill skipped/);
 	});
 
 	it("expanded, names every item with its source and why a copy does not apply", () => {
@@ -93,7 +98,7 @@ describe("startup context rows", () => {
 		expect(text).toContain("AGENTS.md");
 		expect(text).toMatch(/legacy\.ts\s+.*\(Pi extension, not loaded\)/);
 		expect(text).toMatch(/project-skill[\s\S]*?\(folder not\s+trusted\)/);
-		expect(text).toContain("run octocode trust add <folder>");
+		expect(warningTexts(false)).toContain("1 project item not loaded: folder not trusted; run /trust");
 	});
 
 	it("loads a trusted project's items and drops the untrusted note", () => {
@@ -161,14 +166,14 @@ describe("/harness config", () => {
 });
 
 describe("one message per problem", () => {
-	it("says a Pi extension is not loaded once: in the Not loaded row, not in Warnings or the notice", () => {
+	it("says a Pi extension is not loaded once: in the Not loaded row, not in a warning or the notice", () => {
 		const lines = plain(render(false, 100, false));
 		expect(lines.filter((line) => line.includes("legacy.ts"))).toHaveLength(1);
-		expect(lines.find((line) => line.startsWith("Warnings"))).not.toMatch(/Pi code|not loaded: convert|legacy/);
+		const warnings = startupWarnings(view(false), [], []).warnings;
+		expect(warnings.map((warning) => warning.text).join("\n")).not.toMatch(/Pi code|not loaded: convert|legacy/);
+		// Expanded, the file is listed under Not loaded, not again in a warning's details.
+		expect(warnings.flatMap((warning) => warning.details).join("\n")).not.toContain("legacy.ts");
 		expect(takePiNotice(view(false), box.agentDir)).not.toMatch(/extension/);
-		// Expanded, the file is listed under Not loaded, not again in a warning.
-		const expanded = plain(render(false, 100, true)).join("\n");
-		expect(expanded.slice(expanded.indexOf("Warnings"))).not.toContain("legacy.ts");
 	});
 
 	it("has no Pi notice when the only Pi item is code that is not loaded (its row says so)", () => {
@@ -198,14 +203,21 @@ describe("one message per problem", () => {
 	});
 });
 
-describe("fitted Warnings row", () => {
-	it("is one line at 60 and 100 columns, like the rows above it", () => {
-		for (const width of [60, 100]) {
-			const lines = plain(render(false, width, false));
-			expect(lines.at(-1)).toMatch(/^Warnings\s+\d/);
-			expect(lines.filter((line) => line.startsWith("Warnings"))).toHaveLength(1);
-			expect(lines.at(-1) ?? "").toMatch(/shadowed/);
-		}
+describe("startup warning lines", () => {
+	it("are one line per problem, saying what to do, and the rows hold no Warnings row", () => {
+		const texts = warningTexts(false);
+		expect(texts).toEqual([
+			expect.stringMatching(
+				/^1 duplicate context file skipped: a copy with the same name loads instead \(ctrl\+o lists them\)$/,
+			),
+			expect.stringMatching(
+				/^1 duplicate skill skipped: a skill with the same name loads from .+ \(ctrl\+o lists them\)$/,
+			),
+			"1 project item not loaded: folder not trusted; run /trust",
+		]);
+		for (const text of texts) expect(text).not.toContain("\n");
+		for (const width of [60, 100])
+			expect(plain(render(false, width, false)).some((line) => line.startsWith("Warnings"))).toBe(false);
 	});
 });
 

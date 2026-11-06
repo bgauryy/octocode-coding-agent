@@ -13,7 +13,9 @@ it("keeps the launch generation when the ordinary background report path fails",
 		changed: () => undefined,
 		session: 1,
 		read: { track: () => undefined, consume: () => false },
-		team: {},
+		// The run's audit row opens, takes an end hint and closes (`run-audit.ts`, `end-hint.ts`); nothing else of the team
+		// is reached here.
+		team: { audit: { begin: () => undefined, hint: () => undefined, finish: () => undefined } },
 		reports: {
 			add: (report: Report) => {
 				if (++attempts <= 2) throw new Error("report delivery unavailable");

@@ -2,7 +2,7 @@ import type { ResourceItem } from "../package-manager/resource-groups.ts";
 import type { ToggleHost } from "./toggles.ts";
 
 /** The heading a row lists under: the host whose format defines it, packages, or the MCP and skill sections. */
-export type InventoryHost = ToggleHost | "packages" | "mcp" | "skills";
+export type InventoryHost = "harness" | ToggleHost | "packages" | "mcp" | "skills";
 
 /** One row of `/harness`: something the user can switch, with what decides it and why it is in its state. */
 export interface InventoryItem {
@@ -10,7 +10,7 @@ export interface InventoryItem {
 	/** A short name `/harness enable|disable` also accepts: plugin, skill or MCP server name. */
 	name?: string;
 	host: InventoryHost;
-	kind: "plugin" | "extension" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";
+	kind: "harness" | "plugin" | "extension" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";
 	label: string;
 	/** 0 host-level, 1 a file or container, 2 one handler. */
 	depth: 0 | 1 | 2;

@@ -121,6 +121,7 @@ describe("forget and erase", () => {
 			events: 2,
 			tasks: 2,
 			commands: 2,
+			timers: 0,
 		});
 		for (const table of SESSION_TABLES)
 			expect(
@@ -381,12 +382,12 @@ describe("expire", () => {
 			.run(ws, new Date(cutoff + 5).toISOString());
 		const counts = expire.orphans(agent.db, ["old", "recent", "unknown"], cutoff);
 		// Events follow their own time, not the transcript's: ev-old and ev-recent are both older than the cutoff.
-		expect(counts).toEqual({ transcripts: 1, entries: 2, events: 2 });
+		expect(counts).toEqual({ transcripts: 1, entries: 2, events: 2, timers: 0 });
 		expect(count("session_transcripts")).toBe(2);
 		expect(count("session_entries", "session_id='old'")).toBe(0);
 		expect(count("agent_events", "id IN ('new-ev','ev-present')")).toBe(2);
 		expect(count("sessions")).toBe(3);
-		expect(expire.orphans(agent.db, [], cutoff)).toEqual({ transcripts: 0, entries: 0, events: 0 });
+		expect(expire.orphans(agent.db, [], cutoff)).toEqual({ transcripts: 0, entries: 0, events: 0, timers: 0 });
 	});
 });
 

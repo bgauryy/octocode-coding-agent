@@ -33,7 +33,7 @@ interface ResidentInput {
 	/** Bytes of the direct blocks of the servers that sort before this one. */
 	spent: number;
 	/** The full block text of the given tools (with the instructions when any is given). */
-	contractOf: (tools: readonly string[]) => { file: string | undefined; text: string };
+	contractOf: (tools: readonly string[]) => { file: string | undefined; text: string; bytes?: number };
 	/** A deferred tool's index line. */
 	indexLine: (tool: string) => string;
 	/** The server's instructions as the direct block shows them, with no tool: empty without instructions. */
@@ -50,7 +50,8 @@ export function residentBlock({ offered, deferral, spent, contractOf, indexLine,
 	const directOf = () => contractOf(offered.filter((tool) => !deferred.has(tool)));
 	let direct = directOf();
 	const open = offered.filter((tool) => deferral.auto?.tools.has(tool) && !deferred.has(tool));
-	if (deferral.auto && open.length > 0 && spent + Buffer.byteLength(direct.text) > deferral.auto.budget) {
+	const sizeOf = (block: { text: string; bytes?: number }) => block.bytes ?? Buffer.byteLength(block.text);
+	if (deferral.auto && open.length > 0 && spent + sizeOf(direct) > deferral.auto.budget) {
 		deferred = new Set([...deferred, ...open]);
 		direct = directOf();
 	}
@@ -61,6 +62,8 @@ export function residentBlock({ offered, deferral, spent, contractOf, indexLine,
 		file: direct.file,
 		text: [head, ...index].filter(Boolean).join("\n"),
 		direct: head,
+		/** Bytes the direct tools cost, which an `auto:<bytes>` budget counts: the block's text, or their declarations. */
+		directBytes: direct.text ? sizeOf(direct) : Buffer.byteLength(head),
 		deferred: deferred as ReadonlySet<string>,
 	};
 }

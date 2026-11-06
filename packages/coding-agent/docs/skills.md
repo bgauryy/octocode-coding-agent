@@ -56,7 +56,7 @@ Use the exact path when names collide. A session-only or synthetic skill cannot 
 
 At startup, Octocode scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-The catalog lists every skill a model may use, each with its full description: there is no character budget, no cut and no skill dropped from the list, however many skills are loaded. The catalog's first line tells the model that several skills can apply and to load each one that matches, with one `skill` tool call per name. The tool returns a skill's `SKILL.md` whole, with its directory. A description over the 1,024-character Agent Skills limit still draws a loader warning, and `octocode context check` still rejects a stored rewrite over 1,024 characters, but the prompt shows the description as written. The catalog still passes through the [context-optimization stage](#optimized-descriptions): a stored rewrite replaces the description, and the catalog shows it as it is stored.
+The catalog lists every skill a model may use, each with its full description: there is no cut and no skill dropped from the list, however many skills are loaded. A size budget only informs you: when the rendered catalog passes 1% of the model's context window in characters (window tokens × 4 × 0.01; 8,000 characters on 200,000 tokens, which also applies when the window is unknown), the loader diagnostic `Skill listing over budget: N skills, X chars > Y budget` names the count, size and budget, and suggests rewriting long descriptions with `octocode context check` and `octocode context apply` or disabling skills with `/skills`. The warning never changes the prompt. The catalog's first line tells the model that several skills can apply and to load each one that matches, with one `skill` tool call per name. The tool returns a skill's `SKILL.md` whole, with its directory. A description over the 1,024-character Agent Skills limit still draws a loader warning, and `octocode context check` still rejects a stored rewrite over 1,024 characters, but the prompt shows the description as written. The catalog still passes through the [context-optimization stage](#optimized-descriptions): a stored rewrite replaces the description, and the catalog shows it as it is stored.
 
 ### Optimized descriptions
 
@@ -158,9 +158,22 @@ Use the existing `skills` setting to disable bundled defaults, for example `"ski
 
 Place the skill in your user or project skills directory. Directories containing `SKILL.md` are discovered recursively. Discovery skips cyclic directory links with a warning; independent aliases remain eligible for the existing collision and deduplication rules.
 
-Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agents/skills/`. Project `.agents/skills/` directories are discovered from the working directory through its ancestors, stopping at the repository root when one exists. From a subdirectory of a repository, the root's `.octocode/skills/` is loaded as a project folder as well, so it keeps precedence over user skills.
+Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agents/skills/`. Project `.agents/skills/` directories are discovered from the working directory through its ancestors, stopping at the repository root when one exists and at the filesystem root otherwise. From a subdirectory of a repository, the root's `.octocode/skills/` is loaded as a project folder as well, so it keeps precedence over user skills.
 
-Native sessions add the folders other agents use, so one install works everywhere: `~/.claude/skills/` without its `synced/` subtree, `$CODEX_HOME/skills/` (default `~/.codex/skills/`), and, after the project is trusted with `/trust`, `.claude/skills/` from the working directory up to the repository root. These host folders load after every folder above, so a same-name skill there loses with a collision warning, except that the user-level `~/.claude/skills/` and `$CODEX_HOME/skills/` copies of a bundled skill yield to the bundle (see above). `OCTOCODE_EXTRA_SKILLS=0` turns them off.
+Which folders load follows the harness switches of `/harness` (see [commands](commands.md)):
+
+| Harness     | Folders                                                                                                           | Default   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
+| Octocode    | `.octocode/skills/`, the agent directory's `skills/`, bundled skills                                              | always on |
+| `.agents`   | `.agents/skills/` (working directory up to the repository root), `~/.agents/skills/`                              | on        |
+| Pi          | `.pi/skills/`, `~/.pi/agent/skills/`, `~/.pi/skills/`                                                             | on        |
+| Claude Code | `.claude/skills/` (trusted project, up to the repository root), `~/.claude/skills/` without its `synced/` subtree | off       |
+| Codex       | `$CODEX_HOME/skills/` (default `~/.codex/skills/`)                                                                | off       |
+| Cursor      | `.cursor/skills/`, `~/.cursor/skills/`                                                                            | off       |
+
+A skill is a folder: `SKILL.md` (frontmatter `name` and `description`, then the instructions) with optional `scripts/`, `references/` and `assets/` folders that its text names by paths relative to the folder. The agent's skill list gives every skill's name, description and `SKILL.md` path, with one line saying how the folder is laid out.
+
+When one name exists in several harnesses, the first of Octocode, `.agents`, Pi, Claude Code, Codex, Cursor loads and the others are skipped; startup prints one line with the count and where the winner loads from (`13 duplicate skills skipped: a skill with the same name loads from ~/.agents/skills`), and ctrl+o lists them. Native sessions add the switched-on folders of the other agents, so one install works everywhere. These host folders load after every folder above, so a same-name skill there loses with a collision warning, except that the user-level `~/.claude/skills/` and `$CODEX_HOME/skills/` copies of a bundled skill yield to the bundle (see above). `OCTOCODE_EXTRA_SKILLS=0` turns them off.
 
 The application also ships its core skills (in `octocode/native-skills/` of the package, next to the binary in a standalone build). A root native session discovers them whatever `OCTOCODE_EXTRA_SKILLS` says; a native subagent receives them through its parent's inventory like every other skill.
 

@@ -245,7 +245,9 @@ for await (const line of createInterface({ input: process.stdin })) {
 			if (pid !== undefined) {
 				try {
 					process.kill(pid, "SIGKILL");
-				} catch {}
+				} catch {
+					// The process already exited.
+				}
 			}
 		}
 	});

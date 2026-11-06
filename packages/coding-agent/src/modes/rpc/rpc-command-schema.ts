@@ -8,8 +8,10 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { type TObject, type TSchema, Type } from "typebox";
 import { Value } from "typebox/value";
 
-const command = <T extends string, P extends Record<string, TSchema> = {}>(type: T, properties: P = {} as P) =>
-	Type.Object({ id: Type.Optional(Type.String()), type: Type.Literal(type), ...properties });
+const command = <T extends string, P extends Record<string, TSchema> = Record<never, TSchema>>(
+	type: T,
+	properties: P = {} as P,
+) => Type.Object({ id: Type.Optional(Type.String()), type: Type.Literal(type), ...properties });
 
 const ImageContentSchema = Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() });
 const ImagesSchema = Type.Optional(Type.Array(ImageContentSchema));

@@ -98,7 +98,10 @@ export interface PeerRoute {
 	list(cwd: string): Promise<string>;
 }
 
-/** A message to a session another process runs: what only team mail has is refused, not ignored. */
+/**
+ * A message to a session another process runs: the text is plain, so a `replyTo` (no message number exists to answer)
+ * is dropped and said so; `forward` and `interrupt` would change what is sent, so they are refused, not ignored.
+ */
 async function sendToPeer(
 	peers: PeerRoute,
 	params: {
@@ -112,9 +115,9 @@ async function sendToPeer(
 	ctx: ExtensionContext,
 	signal?: AbortSignal,
 ) {
-	if (params.forward !== undefined || params.replyTo !== undefined || params.interrupt)
+	if (params.forward !== undefined || params.interrupt)
 		throw new Error(
-			`${params.to} is another process: forward, replyTo and interrupt reach teammates only. Nothing was sent; send your text with message.`,
+			`${params.to} is another process: forward and interrupt reach teammates only. Nothing was sent; call again without them, with your text in message.`,
 		);
 	if (params.message === undefined) throw new Error("Give message.");
 	const { text, details } = await peers.send(
@@ -124,7 +127,8 @@ async function sendToPeer(
 		ctx,
 		signal,
 	);
-	return textResult(text, details);
+	if (params.replyTo === undefined) return textResult(text, details);
+	return textResult(`${text} replyTo was ignored: it reaches teammates only.`, { ...details, replyToIgnored: true });
 }
 
 /** The `sendMessage` tool. */
@@ -144,14 +148,17 @@ export function registerSendMessageTool(
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
-						description: `Agent id, role or "parent"; use an exact id across parent trees. "all" reaches only your tree; omit with replyTo to answer its sender.${peers ? ' Also another Octocode process by its name, or "coordinator" from a linked worktree: the session in the main checkout; if there is none or several, nothing is sent.' : ""}`,
+						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
+						description: peers
+							? 'Agent id, role or "parent"; use an exact id across parent trees. "all" reaches only your tree; omit with replyTo to answer its sender. Also another Octocode process by its name, or "coordinator" from a linked worktree: the session in the main checkout; if there is none or several, nothing is sent.'
+							: 'Agent id, role or "parent" in your tree; your parent relays beyond it. "all": the whole tree; omit with replyTo to answer its sender.',
 					}),
 				),
 				message: Type.Optional(Type.String()),
 				forward: Type.Optional(
 					Type.Integer({
 						description:
-							"Stored message # to pass on unchanged (msg#N elsewhere); message becomes an optional note; replies go to its sender.",
+							"Stored message # to pass on unchanged (msg#N elsewhere); message becomes an optional note; replies go to its sender. Teammates only: refused for another process.",
 					}),
 				),
 				replyRequired: Type.Optional(
@@ -166,13 +173,13 @@ export function registerSendMessageTool(
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description: "Message number to answer; wakes the asker.",
+						description: "Message number to answer; wakes the asker. Teammates only: ignored for another process.",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop the recipient's current step for this message; only its starter may. Default: deliver at its next step.",
+							"true: stop the recipient's current step for this message; only its starter may. Teammates only: refused for another process. Default: deliver at its next step.",
 					}),
 				),
 			}),

@@ -10,21 +10,21 @@ This README covers the provider library API. The coding-agent application owns `
 
 This README covers installation, the provider list and a quick start. The rest of the library guide lives in `docs/`:
 
-| Page | Covers |
-| --- | --- |
-| [Providers and models](docs/providers-and-models.md) | Provider factories, built-in providers, model queries, static catalog reads, dynamic providers, migrating from the old global API |
-| [Auth](docs/auth.md) | How auth resolves, request header transforms, the credential store, provider environment variables |
-| [Tools](docs/tools.md) | Defining tools, constrained sampling, handling and streaming tool calls, argument validation, the event reference |
-| [Images](docs/images.md) | Image input and image generation |
-| [Classification](docs/classification.md) | Classifier models, OpenAI Decisions, chat models on llama.cpp |
-| [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Unified and provider-specific reasoning options, streaming thinking, stop reasons |
-| [Errors and observability](docs/errors-and-observability.md) | Telemetry, error handling, aborts, continuing after abort, payload and stream-event debugging |
-| [Custom providers](docs/custom-providers.md) | `createProvider()`, calling API implementations directly, OpenAI compatibility settings |
-| [Faux provider for tests](docs/faux-provider.md) | Scripted responses for tests |
-| [Conversations](docs/conversations.md) | Cross-provider handoffs, system messages, context serialization |
-| [Browser usage and bundling](docs/browser-and-bundling.md) | Browser use, tree shaking, provider-scoped environment overrides, vendor model discovery |
-| [OAuth providers](docs/oauth.md) | Vertex AI, CLI login, programmatic OAuth, provider notes |
-| [Development](docs/development.md) | Adding a new provider |
+| Page                                                           | Covers                                                                                                                            |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| [Providers and models](docs/providers-and-models.md)           | Provider factories, built-in providers, model queries, static catalog reads, dynamic providers, migrating from the old global API |
+| [Auth](docs/auth.md)                                           | How auth resolves, request header transforms, the credential store, provider environment variables                                |
+| [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, handling and streaming tool calls, argument validation, the event reference                 |
+| [Images](docs/images.md)                                       | Image input and image generation                                                                                                  |
+| [Classification](docs/classification.md)                       | Classifier models, OpenAI Decisions, chat models on llama.cpp                                                                     |
+| [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Unified and provider-specific reasoning options, streaming thinking, stop reasons                                                 |
+| [Errors and observability](docs/errors-and-observability.md)   | Telemetry, error handling, aborts, continuing after abort, payload and stream-event debugging                                     |
+| [Custom providers](docs/custom-providers.md)                   | `createProvider()`, calling API implementations directly, OpenAI compatibility settings                                           |
+| [Faux provider for tests](docs/faux-provider.md)               | Scripted responses for tests                                                                                                      |
+| [Conversations](docs/conversations.md)                         | Cross-provider handoffs, system messages, context serialization                                                                   |
+| [Browser usage and bundling](docs/browser-and-bundling.md)     | Browser use, tree shaking, provider-scoped environment overrides, vendor model discovery                                          |
+| [OAuth providers](docs/oauth.md)                               | Vertex AI, CLI login, programmatic OAuth, provider notes                                                                          |
+| [Development](docs/development.md)                             | Adding a new provider                                                                                                             |
 
 ## Supported Providers
 

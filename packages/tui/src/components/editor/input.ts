@@ -30,7 +30,8 @@ import {
 	pageScroll,
 } from "./movement.ts";
 
-export function handleEditorInput(editor: EditorModel, data: string): void {
+export function handleEditorInput(editor: EditorModel, received: string): void {
+	let data = received;
 	const kb = getKeybindings();
 
 	// Handle character jump mode (awaiting next character to jump to)

@@ -10,8 +10,11 @@ import { readOnlyCommand } from "./shell/read-only.ts";
 import { shellMutation } from "./shell/mutation.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 import { shellPath } from "./file-access.ts";
+import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
 import { browserEscalations } from "./browser-escalation.ts";
 import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
+import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { mcpCallChange } from "./mcp-reads.ts";
 
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to
@@ -22,7 +25,9 @@ import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
  * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
  * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
  * refuses what the parse shows as a change inside the workspace or the home folder (`shell/mutation.ts`), and any git call
- * but a listed read (`shell/git-forms.ts`); it is not a sandbox, so a program that writes by itself (`node script.js`) is not seen. A browser MCP call that leaves the isolated browser
+ * but a listed read (`shell/git-forms.ts`), and any `octocode` run (the product starts a session without these limits); it is
+ * not a sandbox, so a program that writes by itself (`node script.js`) is not seen. Any other MCP tool runs only when a
+ * trusted server entry declares it read-only (`mcp-reads.ts`). A browser MCP call that leaves the isolated browser
  * (the real profile, another program as the browser, download CDP, an upload from outside the workspace;
  * `browser-escalation.ts`) is refused too, though the profile may grant `browser.control` for the package's own tools.
  * Cookie access, by CDP or the `cookies` tool, is not refused: it is a `browser.cookies` ask that reaches the user.
@@ -31,29 +36,6 @@ import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
 /** Whether this process is a read-only subagent: the parent set the flag from the profile; a session that merely inherits it is not one. */
 export const readOnlyRole = (env: NodeJS.ProcessEnv = process.env): boolean =>
 	envFlag(env, SUBAGENT_ENV) && envFlag(env, READ_ONLY_ENV);
-
-/**
- * Entries directly under `.octocode/` that a later session loads as profiles, skills, prompts, themes, extensions,
- * hooks, settings or system prompts (project loaders in `core/` and `shared/home.ts`); compared lower-cased, because
- * the folder is read case-insensitively on macOS and Windows. A file planted there would run or steer a later session.
- */
-const LOADED_BY_LATER_SESSIONS = new Set(
-	[
-		"skills",
-		"agents",
-		"prompts",
-		"themes",
-		"extensions",
-		"npm",
-		"git",
-		"hooks.json",
-		"settings.json",
-		"system.md",
-		"append_system.md",
-		// The workspace state folder (`.octocode/code/`: transcripts, workspace id, exports); its `temp/` is allowed first.
-		"code",
-	].map((name) => name.toLowerCase()),
-);
 
 /**
  * Whether a read-only child may write `target` (canonical): its scratch folder, `.octocode/code/temp/`, the workspace's
@@ -107,6 +89,10 @@ export function readOnlyRoleRefusal(
 		const first =
 			control[0] ?? (outside[0] === undefined ? undefined : `Uploading ${outside[0]} from outside the workspace`);
 		return first === undefined ? undefined : refusal(first);
+	}
+	if (isMcpToolName(event.toolName)) {
+		const change = mcpCallChange(event.toolName);
+		return change === undefined ? undefined : refusal(`${event.toolName} (${change})`);
 	}
 	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {
 		const files = mutatedPaths(event.toolName, input);

@@ -65,6 +65,7 @@ function entry(raw: Record<string, unknown>): CatalogModel {
 		cost && finiteNumber(cost.input) !== undefined && finiteNumber(cost.output) !== undefined
 			? { input: finiteNumber(cost.input)!, output: finiteNumber(cost.output)! }
 			: undefined;
+	const context = finiteNumber(limit.context);
 	const canonical = str(raw.canonical_model_id);
 	return {
 		...field("description", str(raw.description)),
@@ -75,7 +76,7 @@ function entry(raw: Record<string, unknown>): CatalogModel {
 		...(typeof raw.tool_call === "boolean" ? { toolCall: raw.tool_call } : {}),
 		...(typeof raw.reasoning === "boolean" ? { reasoning: raw.reasoning } : {}),
 		...field("input", input),
-		...field("context", finiteNumber(limit.context) || undefined),
+		...field("context", context === 0 ? undefined : context),
 		...field("cost", price),
 	};
 }

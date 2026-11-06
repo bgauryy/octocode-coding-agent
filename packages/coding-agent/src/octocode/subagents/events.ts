@@ -2,6 +2,7 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import { NEEDS_APPROVAL } from "../permission/ask/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
+import { EXPOSURE_NOTIFY_PREFIX } from "../permission/provenance/exposure.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { Thought, thoughtGist } from "../shared/thought.ts";
 import { addUsage, contentText, emptyUsage, finiteNumber, toolHint } from "../shared/util.ts";
@@ -224,7 +225,7 @@ function endCompaction(state: ChildState, event: Record<string, unknown>): void 
 }
 
 /**
- * A child's `notify` of level warning or error (the audit channel and info notes are not for the parent's report): kept
+ * A child's `notify` of level warning or error (the audit and exposure channels and info notes are not for the parent's report): kept
  * whole, folded into its identical earlier one with a count, else logged as a new notice; it joins the inline page while
  * the page has room, and once one does not fit, none after it joins (the page is a prefix, so it never skips ahead).
  */
@@ -234,6 +235,7 @@ function noteNotice(state: ChildState, event: Record<string, unknown>): boolean 
 		event.method !== "notify" ||
 		typeof message !== "string" ||
 		message.startsWith(AUDIT_NOTIFY_PREFIX) ||
+		message.startsWith(EXPOSURE_NOTIFY_PREFIX) ||
 		(level !== "warning" && level !== "error")
 	)
 		return false;

@@ -168,7 +168,7 @@ function repairSchema(schema: Record<string, unknown>, definitions: Definitions)
 	}
 	// A `$ref` node takes its type from the referenced definition, which is repaired on its own (`propertyNames` aside).
 	if ("$ref" in repaired) return repaired;
-	if (repaired.type === undefined || repaired.type === null) repaired.type = inferType(repaired);
+	repaired.type ??= inferType(repaired);
 	return repaired;
 }
 

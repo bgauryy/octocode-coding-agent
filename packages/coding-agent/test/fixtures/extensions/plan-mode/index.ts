@@ -51,12 +51,6 @@ export default function planModeExtension(octocode: ExtensionAPI): void {
 	let todoItems: TodoItem[] = [];
 	let toolsBeforePlanMode: string[] | undefined;
 
-	octocode.registerFlag("plan", {
-		description: "Start in plan mode (read-only exploration)",
-		type: "boolean",
-		default: false,
-	});
-
 	function updateStatus(ctx: ExtensionContext): void {
 		// Footer status
 		if (executionMode && todoItems.length > 0) {
@@ -98,9 +92,7 @@ export default function planModeExtension(octocode: ExtensionAPI): void {
 	}
 
 	function enablePlanModeTools(): void {
-		if (toolsBeforePlanMode === undefined) {
-			toolsBeforePlanMode = octocode.getActiveTools();
-		}
+		toolsBeforePlanMode ??= octocode.getActiveTools();
 		octocode.setActiveTools(getPlanModeTools(toolsBeforePlanMode));
 	}
 
@@ -336,10 +328,6 @@ After completing a step, include a [DONE:n] tag in your response.`;
 
 	// Restore state on session start/resume
 	octocode.on("session_start", async (_event, ctx) => {
-		if (octocode.getFlag("plan") === true) {
-			planModeEnabled = true;
-		}
-
 		const entries = ctx.sessionManager.getEntries();
 
 		// Restore persisted state

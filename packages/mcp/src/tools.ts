@@ -1,7 +1,8 @@
 /**
  * Adapts MCP tools to Octocode tool definitions.
  *
- * Results map onto Octocode's model-facing content (text and images). Text over the shared 20 KB result default (`spillOutput`) keeps its start and
+ * Results map onto Octocode's model-facing content (text and images). Text over the shared 20 KB result default (`spillOutput`), or for a
+ * tool an entry gives a role (`roles.ts`: those tools page their own output) over the host's text cap, keeps its start and
  * end with the middle cut out, like Codex does, and the full text is saved to a temp file the model
  * can read. Programmatic callers receive the supported `CallToolResult` without `_meta`
  * (supported `content` blocks, `structuredContent`, `isError`), never truncated: it is
@@ -14,6 +15,8 @@ import type { ImageContent, JsonValue, TextContent } from "@octocodeai/octocode-
 import { type CallToolResult, type McpRequestOptions, toLlmContent } from "./client/index.ts";
 import type { TSchema } from "typebox";
 import { hostOutput } from "./host.ts";
+import { roleOf } from "./roles.ts";
+import { createMcpToolName } from "./tool-names.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { sanitizeJson, visibleContent } from "./sanitize.ts";
 
@@ -167,17 +170,24 @@ export function createMcpResultSchema(structuredContentSchema: Record<string, un
 }
 
 /**
- * Keep model-facing text within the shared result default (`spillOutput`'s `maxBytes`). Longer text is saved whole and becomes one text block with its
- * start and end and the file's path (`spillOutput`, shared with the Octocode server's results, which has its own budget);
- * images follow it.
+ * Keep model-facing text within its budget. A tool with a role (reader, search or read-only, from its entry's `roles`)
+ * pages its own output to the size the call asks for, so its text is kept whole up to the host's text cap
+ * (`textMaxChars`, characters, as `capResultText` judges it); any other tool's text gets the shared result default
+ * (`spillOutput`'s `maxBytes`). Longer text is saved whole and becomes one text block with its start and end and the
+ * file's path (`spillOutput`); images follow it.
  */
 function limitMcpContent(
 	content: (TextContent | ImageContent)[],
 	label: string,
+	paged: boolean,
 	saveOutput?: McpOutputSaver,
 ): { content: (TextContent | ImageContent)[]; fullOutputPath?: string } {
-	const spilled = hostOutput().spillOutput(textOf(content), {
+	const text = textOf(content);
+	const cap = hostOutput().textMaxChars;
+	if (paged && text.length <= cap) return { content };
+	const spilled = hostOutput().spillOutput(text, {
 		label: `mcp ${label}`,
+		...(paged ? { maxBytes: cap } : {}),
 		// The budget is bytes; MCP text has no line limit.
 		maxLines: Number.MAX_SAFE_INTEGER,
 		...(saveOutput ? { save: (text: string) => saveOutput(text, ".txt") } : {}),
@@ -220,7 +230,8 @@ export async function convertMcpResult(
 	if (result.isError && textOf(converted) === "") {
 		converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
 	}
-	const { content, fullOutputPath } = limitMcpContent(converted, `${server}/${tool}`, options.saveOutput);
+	const paged = roleOf(createMcpToolName(server, tool)) !== undefined;
+	const { content, fullOutputPath } = limitMcpContent(converted, `${server}/${tool}`, paged, options.saveOutput);
 	const { _meta: _ignored, ...structuredResult } = result;
 	// A server that sends its JSON result as one text block gets it as `structuredContent` too, for programmatic readers.
 	const parsed = result.structuredContent === undefined ? jsonText(result, hostOutput().textMaxChars) : undefined;

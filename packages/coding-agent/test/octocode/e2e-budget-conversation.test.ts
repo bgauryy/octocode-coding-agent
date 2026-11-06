@@ -167,7 +167,7 @@ describe("a child that asks its parent for more requests", () => {
 		expect(childRequests).toHaveLength(3);
 		const steer = childRequests[2].messages.findLast((message) => nextSteer.test(message.text))!.text;
 		expect(steer).toContain("You have used 2 of 2 model requests; the run stops at 3");
-		expect(steer).toContain("only with your report");
+		expect(steer).toContain("Your parent waits for your report and reads messages only with it");
 		expect(steer).toContain("how many");
 		expect(steer).not.toContain("`parent`");
 		expect(requestsOf(parent)).toHaveLength(2);

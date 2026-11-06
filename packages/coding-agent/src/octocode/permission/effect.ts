@@ -100,6 +100,11 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		undo: "none: a sent file cannot be taken back",
 		risk: "file contents leave this machine",
 	}),
+	"mcp.read": (request) => ({
+		effect: `calls ${first(request)}, which only reads`,
+		undo: "none needed",
+		risk: "none beyond what it reads",
+	}),
 	"mcp.write": (request) => ({ effect: `calls ${first(request)}`, undo: "none", risk: UNKNOWN }),
 	"mcp.destructive": (request) => ({
 		effect: `calls ${first(request)}`,

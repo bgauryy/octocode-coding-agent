@@ -93,7 +93,7 @@ export function describeModels(
 			provider: model.provider,
 			parent: mark !== "  ",
 			sort: cost ? 3 * cost.input + cost.output : Infinity,
-			line: `${mark}${name(model)} · ${price} per M in/out · ${contextSize(model.contextWindow || known?.context)} · ${caps}${description}`,
+			line: `${mark}${name(model)} · ${price} per M in/out · ${contextSize(model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context)} · ${caps}${description}`,
 		};
 	});
 	rows.sort((a, b) => a.provider.localeCompare(b.provider) || a.sort - b.sort);

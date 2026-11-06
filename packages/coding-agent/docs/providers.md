@@ -7,7 +7,7 @@ Most hosted providers support one or both of these authentication methods:
 
 Use `/login [provider]` to see status and the methods supported by a provider. Amazon Bedrock and Google Vertex AI can also use ambient cloud credentials.
 
-GitHub Copilot model access uses `/login github-copilot`. The separate `/github` command manages GitHub code-search credentials; signing in there does not configure Copilot inference.
+GitHub Copilot model access uses `/login github-copilot`. The separate `/octocode auth login` (and `/octocode auth status|logout`) manages GitHub code-search credentials; signing in there does not configure Copilot inference.
 
 For instruction and conversation retention, see [Prompt caching](prompt-caching.md).
 

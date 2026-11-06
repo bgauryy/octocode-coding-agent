@@ -50,10 +50,10 @@ describe("MCP queries batch cap", () => {
 		);
 	});
 
-	it("accepts a batch within the cap and adds no hint where the server declares no cap", () => {
+	it("accepts a batch within the cap and adds no cap hint where the server declares no cap", () => {
 		expect(validate(define(batchSchema(5)), 5)).toMatchObject({ queries: expect.any(Array) });
 		const uncapped = define(batchSchema());
-		expect(uncapped.validationHint).toBeUndefined();
+		expect(uncapped.validationHint?.({ envelope: false })).toBeUndefined();
 		expect(validate(uncapped, 9)).toMatchObject({ queries: expect.any(Array) });
 		// A compact tool without a cap keeps only its signature.
 		const compact = define(batchSchema(), { signature: () => "declare function t(): void;" });

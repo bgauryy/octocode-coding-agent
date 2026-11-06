@@ -10,12 +10,16 @@ import {
 	asksIn,
 	kindOf,
 	modeAllowing,
+	runsUnasked,
 	modeAllowingReasons,
 	type PermissionMode,
 	reasonAsks,
 } from "../mode.ts";
 import type { PermissionRequest } from "../request.ts";
+import { grantableSource } from "../provenance/grant.ts";
 import type { Answer, Asker } from "./types.ts";
+import { takeWriteIn } from "../../shared/ask-view.ts";
+import { permissionView } from "./view.ts";
 
 export const ALLOW_ONCE = "Allow once";
 export const DENY = "Deny";
@@ -42,6 +46,8 @@ const shownReasons = (why: string): string =>
 
 /** What a mode means, in one sentence: the model note and `/permissions` say it. */
 export function modeSummary(mode: PermissionMode): string {
+	if (mode === "bypass")
+		return "nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse.";
 	if (mode === "full")
 		return "nothing asks: destructive commands (rm -rf ~), private web fetches, browser control and a hook's ask all run without a prompt. Safeguards: the ⚠ counter, warning-colored activity lines and the audit log (/permissions log); a run with no UI has only the log. Invariants and hook denies still refuse.";
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits and profile permissions also ask.`;
@@ -49,7 +55,18 @@ export function modeSummary(mode: PermissionMode): string {
 
 /** What a session start says when the exported start mode bounds the wider mode the user chose before it. */
 export const revertedNotice = (mode: PermissionMode, chosen: PermissionMode): string =>
-	`Permission mode is ${mode} again: ${PERMISSION_ENV} bounds every session this process starts. /permissions ${chosen} widens this one.`;
+	`Permission mode is ${mode} again: the start mode (--permission-mode or ${PERMISSION_ENV}) bounds every session this process starts. /permissions ${chosen} widens this one.`;
+
+/** The command-line flag that starts Octocode in `mode`. */
+const startFlag = (mode: PermissionMode): string =>
+	mode === "bypass" ? "--dangerously-skip-permissions" : `--permission-mode ${mode}`;
+
+/** The stderr line a run whose mode raises no asks prints at start, given its session file; undefined in a mode that asks. */
+export const unaskedRunLine = (mode: PermissionMode): ((file: string | undefined) => string) | undefined =>
+	runsUnasked(mode)
+		? (file) =>
+				`octocode: permission mode ${mode}: every action runs without asking and is recorded in ${file ?? "this session (not saved to a file)"}; /permissions log lists them.\n`
+		: undefined;
 
 /** Reasons on this call that force an ask in the current mode. A reason only tightens. */
 export function forcingReasons(mode: PermissionMode, request: PermissionRequest): AskReason[] {
@@ -64,7 +81,7 @@ export function forcingReasons(mode: PermissionMode, request: PermissionRequest)
 }
 
 /** The request with its `purpose` settled: the caller's, else the assistant's last sentence for this call, else `no reason given`. */
-export function withPurpose(ctx: Asker, request: PermissionRequest): PermissionRequest {
+export function withPurpose<T extends PermissionRequest>(ctx: Asker, request: T): T {
 	return {
 		...request,
 		purpose: request.purpose ?? transcriptPurpose(ctx.sessionManager, request.toolCallId) ?? NO_REASON,
@@ -91,9 +108,11 @@ export async function selectAnswer(
 			rejectOnce: DENY,
 		},
 	};
-	const forced = forcingReasons(mode, request).length > 0;
+	const forcing = forcingReasons(mode, request);
+	const forced = forcing.length > 0;
 	const kind = !forced && request.action && !request.also?.length ? kindOption(request.action) : undefined;
-	const grant = forced ? undefined : request.grant;
+	// A forced ask has no session answer, but the one a subagent's text names: that source for this session.
+	const grant = forced ? grantableSource(request, forcing) : request.grant;
 	const choices = [
 		ALLOW_ONCE,
 		...(grant ? [sessionOption(grant.label)] : []),
@@ -104,9 +123,18 @@ export async function selectAnswer(
 	// A relayed child leads with the one-line header its parent reads to answer without a dialog (never shown).
 	const head =
 		relay && nonce !== "" && request.action
-			? `${permissionHeader({ action: request.action, also: [...(request.also ?? [])], reasons: [...new Set(request.reasons ?? [])], options: choices, what: auditLines(request.what), nonce })}\n`
+			? `${permissionHeader({ action: request.action, also: [...(request.also ?? [])], reasons: [...new Set(request.reasons)], options: choices, what: auditLines(request.what), nonce })}\n`
 			: "";
-	const choice = await ctx.ui.select(`${head}${describeRequest(request, mode)}`, choices, options);
+	// The terminal draws the same prompt as a card; the title stays the wire text every other host and the relay read.
+	const ask = permissionView(request, mode, choices, {
+		allowOnce: ALLOW_ONCE,
+		...(grant ? { session: sessionOption(grant.label) } : {}),
+		...(kind ? { kind } : {}),
+		deny: DENY,
+		note: DENY_NOTE,
+		noteTitle: NOTE_TITLE,
+	});
+	const choice = await ctx.ui.select(`${head}${describeRequest(request, mode)}`, choices, { ...options, ask });
 	if (choice === undefined) return undefined;
 	if (choice === ALLOW_ONCE) return "once";
 	if (grant && choice === sessionOption(grant.label)) return "session";
@@ -114,7 +142,8 @@ export async function selectAnswer(
 	if (choice === DENY) return "deny";
 	// A reply that matches no offered choice (an RPC client's own value) decides nothing.
 	if (choice !== DENY_NOTE) return undefined;
-	const note = await ctx.ui.input(NOTE_TITLE, "what to do instead", options);
+	// The card's inline write-in already holds the note (Esc there returned to the choices); elsewhere a second dialog asks.
+	const note = takeWriteIn(ask) ?? (await ctx.ui.input(NOTE_TITLE, "what to do instead", options));
 	return note === undefined ? undefined : note.trim() ? { deny: note.trim() } : "deny";
 }
 
@@ -136,7 +165,7 @@ export function headlessMessage(request: PermissionRequest, mode: PermissionMode
 	const forcing = forcingReasons(mode, request);
 	const allowing =
 		forcing.length > 0 ? modeAllowingReasons(forcing) : request.action ? modeAllowing(request.action) : undefined;
-	return `${head} ask the user to run it themselves${allowing ? `, or to start Octocode with ${PERMISSION_ENV}=${allowing}` : ""}.`;
+	return `${head} ask the user to run it themselves${allowing ? `, or to start Octocode with ${startFlag(allowing)}` : ""}.`;
 }
 
 export function deniedMessage(request: PermissionRequest, mode: PermissionMode, note: string | undefined): string {

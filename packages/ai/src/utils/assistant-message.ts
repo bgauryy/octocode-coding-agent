@@ -1,4 +1,5 @@
 import type { Api, AssistantMessage, Model, Usage } from "../types.ts";
+import { nonZeroOr } from "./non-zero.ts";
 
 /** Zeroed usage for an assistant message that has not received any token counts yet. */
 export function createEmptyUsage(): AssistantMessage["usage"] {
@@ -32,7 +33,7 @@ export function sumUsageTokens(
 	usage: Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite">,
 	providerTotal?: number,
 ): number {
-	return providerTotal || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+	return nonZeroOr(usage.input + usage.output + usage.cacheRead + usage.cacheWrite, providerTotal);
 }
 
 /** Usage with zero cost for reported counts; price it with `calculateCost`. */

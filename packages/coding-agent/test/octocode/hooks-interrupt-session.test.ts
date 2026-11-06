@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
 import { afterEach, expect, it, vi } from "vitest";
 import { getCliInvocation } from "../../src/config.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { HOOK_HARNESSES_ON, tmp, trustFolder } from "./helpers.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -89,6 +89,7 @@ async function fixture(
 		path.join(agentDir, "settings.json"),
 		JSON.stringify({
 			retry: { enabled: false },
+			toggles: HOOK_HARNESSES_ON,
 		}),
 	);
 	fs.mkdirSync(path.join(home, ".codex"));
@@ -192,8 +193,6 @@ async function fixture(
 			sessionDir,
 			"--session-id",
 			"interrupt-session",
-			"--no-extensions",
-			...(options.mcp ? ["--extension", "builtin:mcp"] : []),
 			"--no-skills",
 			"--tools",
 			"read",
@@ -463,6 +462,7 @@ it("captures the current permission and persisted turn through direct AgentSessi
 	for (const [key, value] of Object.entries(f.env)) if (value !== undefined) vi.stubEnv(key, value);
 	const settingsManager = SettingsManager.inMemory({
 		retry: { enabled: false },
+		toggles: { ...HOOK_HARNESSES_ON },
 	});
 	const resourceLoader = new DefaultResourceLoader({
 		cwd: f.cwd,

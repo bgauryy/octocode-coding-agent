@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { Value } from "typebox/value";
-import { ApplicationContentBlockSchema, applicationContentText } from "../src/content.ts";
+import { ApplicationContentBlockSchema, applicationContentText, returnedPurpose } from "../src/content.ts";
 import { ApplicationCommandSchema, applicationCommandFingerprint, parseApplicationFrame } from "../src/application.ts";
 
 it("round trips ordered rich content and explicit failures through application frames", () => {
@@ -57,4 +57,16 @@ it("gives text-only consumers a visible fallback for non-text content", () => {
 			{ id: "c", type: "unsupported", providerType: "future", text: "" },
 		]),
 	).toBe("[Image: image/png]\n[Reasoning redacted]\n[Unsupported content: future]");
+});
+
+it("reads an external call's purpose only from the data its result returns", () => {
+	expect(returnedPurpose({ content: [], structuredContent: { mainGoal: " find the parser ", reason: "x" } })).toBe(
+		"find the parser",
+	);
+	expect(returnedPurpose({ results: [{ index: 0, data: { reasoning: "why this row" } }] })).toBe("why this row");
+	expect(returnedPurpose({ results: [{ reason: "row reason" }] })).toBe("row reason");
+	expect(returnedPurpose({ content: [], structuredContent: { results: [{ data: { files: [] } }] } })).toBeUndefined();
+	expect(returnedPurpose({ mainGoal: "  " })).toBeUndefined();
+	expect(returnedPurpose("text")).toBeUndefined();
+	expect(returnedPurpose(undefined)).toBeUndefined();
 });

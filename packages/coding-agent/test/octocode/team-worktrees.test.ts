@@ -9,7 +9,7 @@ import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { newMember } from "../../src/octocode/team/identity.ts";
 import { PARENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
-import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { openAgentDb } from "../../src/config/database.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { teamScope } from "../../src/octocode/team/store/workspace.ts";

@@ -6,12 +6,20 @@ import { plural } from "../shared/render/text.ts";
  * Permission modes: which agent actions run, which ask the user first. One table decides every class in every mode;
  * the invariants (reservations, the Octocode home, redirects to private addresses, an
  * untrusted project's shared memory, hook denies) run before it and no mode skips them. `full` allows every class
- * and records each call. Modes are not a sandbox: they decide what Octocode asks about, while the OS user's rights
- * stay what they are.
+ * and records each call. `bypass` (`--dangerously-skip-permissions`) also allows what `full` still asks about (the
+ * always-ask classes and reasons) and no session-API turn ceiling holds it; only a start chooses it. Modes are not a
+ * sandbox: they decide what Octocode asks about, while the OS user's rights stay what they are.
  */
 
-export const PERMISSION_MODES = ["manual", "workspace", "full"] as const;
+/** From the strictest to the widest: an index comparison says which of two modes asks about more. */
+export const PERMISSION_MODES = ["manual", "workspace", "full", "bypass"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
+/** The modes `/permissions`, the editor shortcut and `--permission-mode` choose; `bypass` has its own start flag. */
+export const CHOOSABLE_MODES = ["manual", "workspace", "full"] as const satisfies readonly PermissionMode[];
+
+/** Whether `mode` runs every routine action unasked (`full` and `bypass`): the counter, the warning colour and the run summary follow it. */
+export const runsUnasked = (mode: PermissionMode): boolean => mode === "full" || mode === "bypass";
 
 export const ACTION_CLASSES = [
 	"read.outside",
@@ -25,6 +33,7 @@ export const ACTION_CLASSES = [
 	"browser.cookies",
 	"net.private",
 	"upload.outside",
+	"mcp.read",
 	"mcp.write",
 	"mcp.destructive",
 	"agent.spawn",
@@ -105,6 +114,12 @@ const MATRIX: Record<ActionClass, { rules: [Rule, Rule, Rule]; noun: string; why
 		why: "it sends files from outside the repository to a page",
 		all: "uploads from outside the workspace",
 	},
+	"mcp.read": {
+		rules: ["allow", "allow", "allow"],
+		noun: "the MCP read",
+		why: "a trusted server entry declares the tool read-only and no argument makes it write; it never asks, and is recorded",
+		all: "MCP reads",
+	},
 	"mcp.write": {
 		rules: ["ask", "allow", "allow"],
 		noun: "the MCP tool call",
@@ -114,7 +129,7 @@ const MATRIX: Record<ActionClass, { rules: [Rule, Rule, Rule]; noun: string; why
 	"mcp.destructive": {
 		rules: ["ask", "ask", "allow"],
 		noun: "the destructive MCP tool call",
-		why: "the MCP tool declares itself destructive",
+		why: "the MCP server marks the tool destructive (`destructiveHint`); the hint can only add this ask, never remove one",
 	},
 	"agent.spawn": {
 		rules: ["ask", "allow", "allow"],
@@ -166,7 +181,7 @@ const REASON_RULES: Record<AskReason, [Rule, Rule, Rule]> = {
 
 /** Whether `reason` forces an ask in `mode`. */
 export function reasonAsks(mode: PermissionMode, reason: AskReason): boolean {
-	return REASON_RULES[reason][PERMISSION_MODES.indexOf(mode)] === "ask";
+	return mode !== "bypass" && REASON_RULES[reason][PERMISSION_MODES.indexOf(mode)] === "ask";
 }
 
 /** The least permissive mode in which none of `reasons` ask: full. */
@@ -178,7 +193,7 @@ export function modeAllowingReasons(reasons: readonly AskReason[]): PermissionMo
 export const kindOf = (action: ActionClass): string | undefined => MATRIX[action].all;
 
 export function decide(mode: PermissionMode, action: ActionClass): Rule {
-	return MATRIX[action].rules[PERMISSION_MODES.indexOf(mode)];
+	return mode === "bypass" ? "allow" : MATRIX[action].rules[PERMISSION_MODES.indexOf(mode)];
 }
 
 /** How `action` reads in a message ("the shell command"). */
@@ -230,8 +245,9 @@ export function asksIn(mode: PermissionMode): ActionClass[] {
 }
 
 /**
- * The mode a session starts in: `full` (no routine asks), unless the user exported `OCTOCODE_PERMISSION`. An invalid
- * value starts in `manual` with a warning (stricter, never looser).
+ * The mode a session starts in: `full` (no routine asks), unless the user exported `OCTOCODE_PERMISSION` (what
+ * `--permission-mode` and `--dangerously-skip-permissions` set). An invalid value starts in `manual` with a warning
+ * (stricter, never looser).
  */
 export function startMode(env: NodeJS.ProcessEnv): { mode: PermissionMode; warning?: string } {
 	const chosen = envChoice(env, PERMISSION_ENV, PERMISSION_MODES);
@@ -239,7 +255,7 @@ export function startMode(env: NodeJS.ProcessEnv): { mode: PermissionMode; warni
 	if ("invalid" in chosen)
 		return {
 			mode: "manual",
-			warning: `${PERMISSION_ENV}=${chosen.invalid} is not manual, workspace or full; starting in manual.`,
+			warning: `${PERMISSION_ENV}=${chosen.invalid} is not manual, workspace, full or bypass; starting in manual.`,
 		};
 	return { mode: chosen.value };
 }
@@ -284,7 +300,7 @@ export function parseGrants(env: NodeJS.ProcessEnv): Set<ActionClass> {
 /** The footer chip's status key (`ui/footer` places it first after the model), the audit entries' type and the mode notes' message type. */
 export const PERMISSION_ID = "octocode-permission";
 
-/** The order the editor shortcut cycles modes in, from the default (no routine asks) to the strictest. */
+/** The order the editor shortcut cycles modes in, from the default (no routine asks) to the strictest; from `bypass` it goes to the first. */
 export const PERMISSION_CYCLE: readonly PermissionMode[] = ["full", "workspace", "manual"];
 
 /** The chip per mode: its text, its short form for a narrow footer, and its theme colour: manual is quiet, workspace is the identity colour, full is a risky mode (warning, never error: it is a choice, not a failure). */
@@ -310,6 +326,13 @@ export const CHIPS: Record<PermissionMode, { text: string; short: string; color:
 		short: "⏵⏵ full",
 		color: "warning",
 	},
+	bypass: {
+		get text() {
+			return `⏵⏵⏵ permission: bypass · ${shortcutText("app.permission.cycle")}`;
+		},
+		short: "⏵⏵⏵ bypass",
+		color: "warning",
+	},
 };
 
 /** What full mode did this session: calls it allowed, and how many of them were ⚠ (destructive, browser control, private network). */
@@ -318,20 +341,23 @@ export interface ActionCount {
 	warnings: number;
 }
 
-/** The chip text of `mode`; in full, once a call ran, it counts them: `⏵⏵ permission: full · 12 actions · 2 ⚠ · Shift+Tab`. */
+/** The chip text of `mode`; in full or bypass, once a call ran, it counts them: `⏵⏵ permission: full · 12 actions · 2 ⚠ · Shift+Tab`. */
 export function chipText(mode: PermissionMode, count?: ActionCount): string {
-	if (mode !== "full" || !count || count.actions === 0) return CHIPS[mode].text;
+	if (!runsUnasked(mode) || !count || count.actions === 0) return CHIPS[mode].text;
 	const warned = count.warnings > 0 ? ` · ${count.warnings} ⚠` : "";
-	return `⏵⏵ permission: full · ${plural(count.actions, "action")}${warned} · ${shortcutText("app.permission.cycle")}`;
+	const icon = mode === "bypass" ? "⏵⏵⏵" : "⏵⏵";
+	return `${icon} permission: ${mode} · ${plural(count.actions, "action")}${warned} · ${shortcutText("app.permission.cycle")}`;
 }
 
-const FULL_CHIP = /⏵⏵ permission: full( · \d+ actions?(?: · \d+ ⚠)?)? · /;
+const UNASKED_CHIP = /⏵⏵⏵? permission: (full|bypass)( · \d+ actions?(?: · \d+ ⚠)?)? · /;
 
-/** A chip status (coloured or not) with its text replaced by the short form; a full chip keeps its counters. */
+/** A chip status (coloured or not) with its text replaced by the short form; a full or bypass chip keeps its counters. */
 export function shortChip(status: string): string {
-	const full = FULL_CHIP.exec(status);
-	if (full)
-		return status.replace(`${full[0]}${shortcutText("app.permission.cycle")}`, `${CHIPS.full.short}${full[1] ?? ""}`);
+	const unasked = UNASKED_CHIP.exec(status);
+	if (unasked) {
+		const short = CHIPS[unasked[1] as "full" | "bypass"].short;
+		return status.replace(`${unasked[0]}${shortcutText("app.permission.cycle")}`, `${short}${unasked[2] ?? ""}`);
+	}
 	for (const chip of [CHIPS.manual, CHIPS.workspace])
 		if (status.includes(chip.text)) return status.replace(chip.text, chip.short);
 	return status;

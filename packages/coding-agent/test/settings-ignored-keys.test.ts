@@ -38,10 +38,7 @@ describe("settings keys Octocode ignores", () => {
 
 		expect(diagnostics).toHaveLength(1);
 		expect(diagnostics[0]?.type).toBe("warning");
-		expect(diagnostics[0]?.message).toContain(`Settings file ${globalPath}:`);
-		expect(diagnostics[0]?.message).toBe(
-			`Settings file ${globalPath}: Setting "compaction" was removed, so it does nothing. Compaction is built in and its thresholds are fixed by the model's context window and thinking setup; no setting changes them. Delete it from the file.`,
-		);
+		expect(diagnostics[0]?.message).toBe(`${globalPath}: 1 ignored key (compaction removed): delete it`);
 		// Loading stays permissive: the known keys still apply and the unknown one is kept in the file.
 		expect(manager.getTheme()).toBe("dark");
 		expect(manager.getCompactionReserveTokens()).toBeGreaterThan(0);
@@ -53,7 +50,7 @@ describe("settings keys Octocode ignores", () => {
 
 		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
 
-		expect(warning?.message).toContain('Setting "defaultModle" is not a known setting, so it does nothing.');
+		expect(warning?.message).toBe(`${globalPath}: 1 ignored key (defaultModle unknown): delete it`);
 	});
 
 	it("warns about an unknown key inside a known object setting, by dotted path", () => {
@@ -61,10 +58,11 @@ describe("settings keys Octocode ignores", () => {
 
 		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
 
-		expect(messages).toHaveLength(2);
-		expect(messages.join("\n")).toContain('Setting "thinkingBudgets.xhigh" is not a known setting');
-		expect(messages.join("\n")).toContain('Setting "bash.nope" is not a known setting');
-		expect(messages.join("\n")).not.toContain("thinkingBudgets.high");
+		// One line per file names every ignored key.
+		expect(messages).toEqual([
+			`${globalPath}: 2 ignored keys (thinkingBudgets.xhigh unknown, bash.nope unknown): delete them`,
+		]);
+		expect(messages.join("\n")).not.toContain("thinkingBudgets.high ");
 	});
 
 	it("does not treat an inherited property name as a removed key", () => {
@@ -72,7 +70,7 @@ describe("settings keys Octocode ignores", () => {
 
 		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
 
-		expect(warning?.message).toContain('Setting "constructor" is not a known setting');
+		expect(warning?.message).toContain("constructor unknown");
 	});
 
 	it("reports the removed codemode keys as unknown keys", () => {
@@ -80,10 +78,9 @@ describe("settings keys Octocode ignores", () => {
 
 		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
 
-		expect(messages).toHaveLength(2);
-		expect(messages.join("\n")).toContain('Setting "codemode" is not a known setting');
-		expect(messages.join("\n")).toContain('Setting "autoEnableCodemode" is not a known setting');
-		expect(messages.join("\n")).not.toContain("no longer used");
+		expect(messages).toEqual([
+			`${globalPath}: 2 ignored keys (codemode unknown, autoEnableCodemode unknown): delete them`,
+		]);
 	});
 
 	it("does not warn about the names in a defaultTools list, including removed or renamed tools", () => {
@@ -111,7 +108,7 @@ describe("settings keys Octocode ignores", () => {
 		writeFileSync(globalPath, JSON.stringify({ compaction: {}, typo: 1 }));
 		await manager.reload();
 		const reloaded = collectSettingsDiagnostics(manager).map((d) => d.message);
-		expect(reloaded).toHaveLength(2);
+		expect(reloaded).toEqual([`${globalPath}: 2 ignored keys (compaction removed, typo unknown): delete them`]);
 
 		writeFileSync(globalPath, JSON.stringify({ theme: "dark" }));
 		await manager.reload();
@@ -138,8 +135,7 @@ describe("settings keys Octocode ignores", () => {
 
 		untrusted.setProjectTrusted(true);
 		const [warning] = collectSettingsDiagnostics(untrusted);
-		expect(warning?.message).toContain(`Settings file ${projectPath}:`);
-		expect(warning?.message).toContain('Setting "compaction" was removed');
+		expect(warning?.message).toBe(`${projectPath}: 1 ignored key (compaction removed): delete it`);
 
 		expect(collectSettingsDiagnostics(SettingsManager.createForStartup(cwd, agentDir, true))).toHaveLength(1);
 	});

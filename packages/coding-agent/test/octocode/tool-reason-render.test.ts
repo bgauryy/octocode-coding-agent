@@ -61,13 +61,21 @@ describe("the reason line of a native tool row", () => {
 		);
 	});
 
-	it("is shown for an MCP tool call whose arguments carry a reason, with or without a renderer", () => {
-		const args = { queries: [{ path: "." }], reason: "find who calls the loader" };
+	it("is shown for an MCP tool call only from its returned data, with or without a renderer", () => {
+		const args = { queries: [{ path: ".", mainGoal: "from the input" }], reason: "copied from a native tool" };
+		const structuredContent = {
+			content: [],
+			structuredContent: { results: [{ data: { mainGoal: "find who calls the loader" } }] },
+		};
 		for (const withRenderer of [true, false]) {
-			const text = lines(row("mcp__octocode__localSearch", args, withRenderer)).join("\n");
-			expect(text, String(withRenderer)).toContain("↳ find who calls the loader");
+			const component = row("mcp__octocode__localSearch", args, withRenderer);
+			expect(lines(component).join("\n"), String(withRenderer)).not.toContain("↳");
+			component.updateResult({ content: [], structuredContent, isError: false });
+			expect(lines(component).join("\n"), String(withRenderer)).toContain("↳ find who calls the loader");
 		}
-		expect(lines(row("mcp__octocode__localSearch", { queries: [{ path: "." }] }, false)).join("\n")).not.toContain("↳");
+		const silent = row("mcp__octocode__localSearch", args, false);
+		silent.updateResult({ content: [], structuredContent: { results: [{ data: {} }] }, isError: false });
+		expect(lines(silent).join("\n")).not.toContain("↳");
 	});
 
 	it("appears as soon as the streamed arguments hold it, before the result", () => {

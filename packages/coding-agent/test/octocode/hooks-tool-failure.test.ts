@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 it.each([true, false])("dispatches Claude failure hooks only for failed results (error=%s)", async (isError) => {
 	const home = tmp();
@@ -25,7 +25,7 @@ it.each([true, false])("dispatches Claude failure hooks only for failed results 
 			},
 		}),
 	);
-	const f = fakeHost();
+	const f = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	registerHooks(f.api, {}, home);
 	await f.fire("session_start", { reason: "startup" }, ctx);

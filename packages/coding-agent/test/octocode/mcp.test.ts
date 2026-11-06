@@ -190,8 +190,8 @@ describe("Octocode tool results and rendering", () => {
 			exposure: "direct",
 			parameters: tool.inputSchema,
 		});
-		expect(definition.outputSchema).toEqual({});
-		expect(octocodeToolDefinition({ ...tool, name: "localSearch" }, binding)).not.toHaveProperty("outputSchema");
+		// Only the server's own output schema is declared: no tool name earns one.
+		expect(definition).not.toHaveProperty("outputSchema");
 		const withOutput = octocodeToolDefinition(
 			{ ...tool, title: "Fetch", description: undefined, outputSchema: { type: "object" } },
 			binding,

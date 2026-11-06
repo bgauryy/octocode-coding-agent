@@ -11,8 +11,7 @@ export function uuidv7(timestampMs?: number): string {
 		throw new RangeError(`UUIDv7 timestamp must be an integer between 0 and ${MAX_UUID_V7_TIMESTAMP}`);
 	}
 
-	const effectiveTimestamp =
-		timestampMs === undefined ? Math.max(requestedTimestamp, lastOrdinaryTimestamp) : timestampMs;
+	const effectiveTimestamp = timestampMs ?? Math.max(requestedTimestamp, lastOrdinaryTimestamp);
 	if (timestampMs === undefined) lastOrdinaryTimestamp = effectiveTimestamp;
 
 	const bytes = new Uint8Array(16);

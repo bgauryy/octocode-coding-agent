@@ -1,1 +1,1 @@
-Octocode documentation, under {{root}} (not the working directory): README.md and docs/ (docs/index.md maps each topic to its page). Read it only when the user asks about Octocode itself, and follow the .md links a task depends on.
+Octocode documentation, under {{root}} (not the working directory): README.md and docs/ (docs/index.md maps each topic to its page). Read it only when the user asks about Octocode itself.

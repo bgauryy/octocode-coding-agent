@@ -536,7 +536,6 @@ it.each([true, false])(
 				"fixture-local/fixture",
 				"--session-dir",
 				path.join(f.root, "direct-session"),
-				"--no-extensions",
 				"--no-skills",
 				"--tools",
 				"bash",

@@ -15,6 +15,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createTestSession } from "../helpers/session.ts";
+import { nativeCall } from "./e2e-calls.ts";
 import { trustFolder } from "./helpers.ts";
 
 /**
@@ -112,7 +113,7 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 	};
 	faux.setResponses([
 		step(
-			fauxAssistantMessage([fauxToolCall("mcp__secretecho__echo_secret", { reason: "scripted e2e step" })], {
+			fauxAssistantMessage([fauxToolCall("mcp__secretecho__echo_secret", {})], {
 				stopReason: "toolUse",
 			}),
 		),
@@ -121,13 +122,14 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 	await agent.prompt("What does the secret echo service return?");
 	expect(requests).toHaveLength(2);
 
-	// Exposure: a native function declaration, plus a block in the cached `mcps` section.
+	// Exposure: a native function declaration with the server's description, plus its instructions in the cached `mcps` section.
 	const first = requests[0];
 	const sections = (getCurrentSystemMessage(first.messages)?.sections ?? {}) as Record<string, string>;
-	expect(getCurrentTools(first.messages).map((tool) => tool.name)).toContain("mcp__secretecho__echo_secret");
+	const declaration = getCurrentTools(first.messages).find((tool) => tool.name === "mcp__secretecho__echo_secret");
+	expect(declaration?.description).toContain("Return the secret echo service token.");
 	expect(sections.mcps).toContain('<mcp name="secretecho" tools="mcp__secretecho__*">');
 	expect(sections.mcps).toContain("Secret echo service. Call echo_secret to read the service token.");
-	expect(sections.mcps).toContain("Return the secret echo service token.");
+	expect(sections.mcps).not.toContain("Return the secret echo service token.");
 
 	// The call ran and returned the token.
 	const result = agent.messages.find((message) => message.role === "toolResult");
@@ -249,9 +251,7 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>) {
 		return response;
 	};
 	const toolCall = (name: string, args: Record<string, unknown>) =>
-		step(
-			fauxAssistantMessage([fauxToolCall(name, { ...args, reason: "scripted e2e step" })], { stopReason: "toolUse" }),
-		);
+		step(fauxAssistantMessage([nativeCall(name, args)], { stopReason: "toolUse" }));
 	const mcpBlock = () => {
 		const sections = (getCurrentSystemMessage(requests[0].messages)?.sections ?? {}) as Record<string, string>;
 		const start = sections.mcps.indexOf('<mcp name="inventory"');
@@ -274,18 +274,21 @@ it("tells the agent a default-exposed server's instructions and every tool, desc
 	const block = mcpBlock();
 	expect(block).toContain('<mcp name="inventory" tools="mcp__inventory__*">');
 	expect(block).toContain(INSTRUCTIONS);
+	// Each tool's description, field docs and enum values are in its own declaration, not repeated in the block.
+	const declarations = getCurrentTools(requests[0].messages);
 	for (const [name, tool] of Object.entries(TOOLS)) {
-		expect(block, name).toContain(name);
-		expect(block, name).toContain(tool.description);
+		const declared = declarations.find((candidate) => candidate.name === `mcp__inventory__${name}`);
+		expect(declared, name).toBeDefined();
+		expect(declared?.description, name).toContain(tool.description);
+		const schema = JSON.stringify(declared?.parameters);
 		for (const [field, description] of Object.entries(tool.fields)) {
-			expect(block, `${name}.${field}`).toContain(field);
-			expect(block, `${name}.${field}`).toContain(description);
+			expect(schema, `${name}.${field}`).toContain(field);
+			expect(schema, `${name}.${field}`).toContain(description);
 		}
+		expect(block, name).not.toContain(tool.description);
 	}
-	for (const value of ENUM_VALUES) expect(block).toContain(value);
-
-	const declared = getCurrentTools(requests[0].messages).map((tool) => tool.name);
-	for (const name of Object.keys(TOOLS)) expect(declared).toContain(`mcp__inventory__${name}`);
+	const schemas = JSON.stringify(declarations.map((tool) => tool.parameters));
+	for (const value of ENUM_VALUES) expect(schemas).toContain(value);
 
 	// A valid call succeeds; a wrong-type argument is refused with an error naming the field.
 	const results = agent.messages.filter((message) => message.role === "toolResult");

@@ -32,10 +32,17 @@ JSON mode runs the same prompts and writes JSON Lines to stdout: first the sessi
 
 The groups below name the flags; `octocode --help` has the exact syntax.
 
-- **Model**: `--provider`, `--model` (accepts `provider/id` and a `:thinking` suffix), `--models` for the cycling list, `--thinking`, `--list-models`.
+- **Model**: `--model` (accepts `provider/id` and a `:thinking` suffix), `--provider` (for the auth commands, or a bare `--model` id), `--models` for the cycling list, `--thinking`, `--list-models`.
+- **Permissions**: `--permission-mode manual|workspace|full` picks the start mode; `--dangerously-skip-permissions` starts in `bypass`, where nothing asks and every call is still recorded. Subagents inherit either. See [permissions](permissions.md#modes).
 - **Sessions**: `--continue`, `--resume`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
+- **Planning**: `--plan` starts with the planning constraint on (read-only until you approve a plan; see [native planning constraint](native-features.md#native-planning-constraint)).
 - **Tools**: `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools`, `--no-mcp`. See [native features](native-features.md#tool-selection-and-migration).
-- **Resources**: `--extension builtin:<id>` (turns a built-in feature on; a code path exits 2 because user code extensions are not supported), `--no-extensions` (accepted and ignored), `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`.
+- **Resources**: `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`. User code extensions are not supported, and their flags (`--extension`, `-e`, `--no-extensions`) are unknown options. Built-in features switch through the `extensions` setting (`-builtin:mcp`) or `--no-mcp`.
+
+An unknown `--flag` fails at startup with `Unknown option: --flag` and a pointer to `octocode --help`; features cannot register flags of their own, so the table that `--help` and shell completion read lists every flag.
+
+Every flag has one long name. The only short forms are single letters: `-p`, `-c`, `-r`, `-n`, `-t`, `-h` and `-v`.
+
 - **Trust and network**: `--trust` records your trust of the current folder and then runs; a print, JSON or RPC run in a folder you have not trusted exits with an error without it (it does not apply to `--mode acp`). `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).
 - **Headless**: `--no-stdin` (do not read piped stdin), `--no-dialogs` (RPC mode: no one answers dialogs, so asks are refused as in a print run; see [RPC mode](rpc.md#protocol)).
 - **Interface**: `--tui-mode`, `--use-theme`, `--verbose`.

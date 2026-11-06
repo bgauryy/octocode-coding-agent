@@ -254,6 +254,15 @@ describe("permission gate", () => {
 		}
 		expect(await files.write("src/app.ts")).toBeUndefined();
 		expect(fs.existsSync(path.join(cwd, "src", "app.ts"))).toBe(true);
+		// Scratch and report folders under `.octocode/` run unasked; what a later session loads still asks.
+		for (const file of [".octocode/tmp/x.log", ".octocode/backlog-audit/2026-11-06/PLAN.md"]) {
+			expect(await files.write(file), file).toBeUndefined();
+			expect(fs.existsSync(path.join(cwd, file)), file).toBe(true);
+		}
+		for (const file of [".octocode/skills/x/SKILL.md", ".octocode/mcp.json", ".octocode/hooks.json"]) {
+			expect(await files.write(file), file).toMatch(/outside the workspace/);
+			expect(fs.existsSync(path.join(cwd, file)), file).toBe(false);
+		}
 		const root = "/repo";
 		for (const file of [
 			"sub/.git/hooks/pre-commit",
@@ -287,6 +296,13 @@ describe("permission gate", () => {
 			".github/workflows-notes.md",
 			".octocode/code/temp/agents/x/report.md",
 			".octocode/code/temp",
+			// Scratch and report folders: nothing loads them in a later session.
+			".octocode/tmp/x.log",
+			".octocode/tmp",
+			".octocode/backlog-audit/2026-11-06/PLAN.md",
+			".octocode/octocode-brainstorming/tmp/notes.md",
+			".octocode/octocode-rfc-generator/x/RFC.md",
+			".octocode/skills-notes.md",
 		]) {
 			expect(runsLater(path.join(root, file), root), file).toBe(false);
 		}
@@ -302,6 +318,33 @@ describe("permission gate", () => {
 			".octocode/code/temp-not-scratch/x",
 			".octocode/settings.json",
 			".octocode/code/temp/repo/.git/hooks/pre-commit",
+		])
+			expect(runsLater(path.join(root, file), root), file).toBe(true);
+		// Under `.octocode/` only what a later session loads asks: configuration, hooks, skills, profiles, prompts, state.
+		for (const file of [
+			".octocode",
+			".octocode/mcp.json",
+			".octocode/hooks.json",
+			".octocode/hooks/pre-tool.sh",
+			".octocode/skills/x/SKILL.md",
+			".octocode/agents/reviewer.md",
+			".octocode/prompts/p.md",
+			".octocode/themes/t.json",
+			".octocode/extensions/e.ts",
+			".octocode/plugins/p/plugin.json",
+			".octocode/npm/package.json",
+			".octocode/git/repo/x.ts",
+			".octocode/SYSTEM.md",
+			".octocode/APPEND_SYSTEM.md",
+			".octocode/AGENTS.md",
+			".octocode/lsp-servers.json",
+			".octocode/worktrees/w/src/a.ts",
+			".octocode/code/backlog.md",
+			".OCTOCODE/Skills/x/SKILL.md",
+			// A hook or config nested in scratch or a report folder still runs or loads.
+			".octocode/tmp/repo/.git/hooks/pre-commit",
+			".octocode/tmp/pkg/.husky/pre-commit",
+			".octocode/backlog-audit/.mcp.json",
 		])
 			expect(runsLater(path.join(root, file), root), file).toBe(true);
 	});
@@ -372,7 +415,7 @@ describe("permission gate", () => {
 			block: true,
 			reason: expect.stringMatching(/the shell command \(ls\)[\s\S]*no one can be asked here/),
 		});
-		expect(String(refused?.reason)).toContain(`${PERMISSION_ENV}=full`);
+		expect(String(refused?.reason)).toContain("--permission-mode full");
 	});
 
 	it("runs a provenance hit in full, including headless, and asks in workspace and manual", async () => {
@@ -513,8 +556,8 @@ describe("permission gate", () => {
 		const headless = setup("workspace", { hasUI: false, hit: "contains text from web x (now)" });
 		const refused = await headless.gate(call("memory", { op: "set", title: "t" }), headless.ctx);
 		expect(String(refused?.reason)).toMatch(/this call \(memory /);
-		expect(String(refused?.reason)).toContain(`${PERMISSION_ENV}=full`);
-		expect(String(refused?.reason)).not.toContain(`${PERMISSION_ENV}=workspace`);
+		expect(String(refused?.reason)).toContain("--permission-mode full");
+		expect(String(refused?.reason)).not.toContain("--permission-mode workspace");
 	});
 
 	it("never treats the home folder as the workspace: a session started in ~ asks for changes and reads there, and full still allows", async () => {

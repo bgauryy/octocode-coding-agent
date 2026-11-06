@@ -116,7 +116,7 @@ export const SettingsSchema = Type.Object(
 					allowedPaths: Type.Optional(
 						Type.Array(Type.String(), {
 							description:
-								'Extra folders the research MCP server may read (passed to a server entry through the ${researchRoots} template), added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn.',
+								'Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn.',
 						}),
 					),
 				},
@@ -176,7 +176,7 @@ export const SettingsSchema = Type.Object(
 		toggles: Type.Optional(
 			Type.Record(Type.String(), Type.Boolean(), {
 				description:
-					"Plugin and hook switches by ID, as `/harness` writes them: `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
+					"Harness, plugin and hook switches by ID, as `/harness` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
 			}),
 		),
 		packages: Type.Optional(

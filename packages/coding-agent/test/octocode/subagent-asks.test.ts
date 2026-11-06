@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { type Ask, asksLabel, asksNote, askWaitMs, childAsks, UserQuestions } from "../../src/octocode/team/asks.ts";
 import { WaitingApprovals } from "../../src/octocode/team/session/approvals.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
 

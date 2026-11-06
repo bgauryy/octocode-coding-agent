@@ -93,7 +93,9 @@ class MeasuredTui extends TuiMainScreen {
 		}
 		// Repeatable CPU pressure to exercise adaptive cadence separately from output pressure.
 		const until = performance.now() + 14;
-		while (performance.now() < until) {}
+		while (performance.now() < until) {
+			// Busy-wait on purpose: the CPU pressure is what this trial measures.
+		}
 	}
 }
 

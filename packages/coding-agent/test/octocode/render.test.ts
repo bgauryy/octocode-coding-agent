@@ -8,6 +8,8 @@ import { resultBlock, toolHeader } from "../../src/octocode/shared/render.ts";
 import { wholeSeconds } from "../../src/octocode/shared/util.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/render/text.ts";
+import { stopRowMotion } from "../../src/octocode/shared/render/motion.ts";
+import { WAIT_PULSE_MS } from "../../src/theme/status.ts";
 import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/shared/render/rows.ts";
 import type { ToolRow } from "../../src/octocode/shared/render/types.ts";
 
@@ -131,28 +133,36 @@ describe("toolHeader", () => {
 		expect(rendered(toolHeader(theme, doneContext, "Bash", "sleep 2"))).toBe("✓ Bash(sleep 2) · 1.9s");
 	});
 
-	it("ticks only the newest running row: an older row drops its time once and never ticks again", async () => {
+	it("ticks every running row on its own: an older row keeps its time while a newer one runs", () => {
 		vi.useFakeTimers();
 		try {
 			const older = row({ executionStarted: true });
 			toolHeader(theme, older, "Bash", "build");
 			vi.advanceTimersByTime(1_100);
 			expect(older.invalidate).toHaveBeenCalledTimes(1);
-			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("⠋ Bash(build) · 1.1s");
 			const newer = row({ executionStarted: true });
 			toolHeader(theme, newer, "Read", "a.ts");
-			await Promise.resolve();
-			// One redraw to drop the time while the row still sits above the new one; then it stays put.
-			expect(older.invalidate).toHaveBeenCalledTimes(2);
-			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("⠋ Bash(build)");
 			vi.advanceTimersByTime(3_000);
-			expect(older.invalidate).toHaveBeenCalledTimes(2);
-			expect(newer.invalidate).toHaveBeenCalledTimes(3);
-			// The newest finishing does not hand the clock back: the older row may have scrolled off by then.
-			toolHeader(theme, { ...newer, isPartial: false, durationMs: 3_000 }, "Read", "a.ts");
-			vi.advanceTimersByTime(3_000);
-			expect(older.invalidate).toHaveBeenCalledTimes(2);
-			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("⠋ Bash(build)");
+			expect(older.invalidate).toHaveBeenCalledTimes(4);
+			expect(newer.invalidate.mock.calls.length).toBeGreaterThanOrEqual(2);
+			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toMatch(/^⠋ Bash\(build\) · 4\.1s$/);
+		} finally {
+			stopRowTimers();
+			vi.useRealTimers();
+		}
+	});
+
+	it("asks for a frame only when the elapsed text changes", () => {
+		vi.useFakeTimers();
+		try {
+			const context = row({ executionStarted: true });
+			toolHeader(theme, context, "Bash", "build");
+			// Past ten seconds the text reads whole seconds: ticks that land in the same second draw the same text.
+			vi.advanceTimersByTime(12_000);
+			const calls = context.invalidate.mock.calls.length;
+			vi.advanceTimersByTime(1_000);
+			expect(context.invalidate.mock.calls.length).toBe(calls + 1);
+			expect(context.state.tickedText).toBe("13s");
 		} finally {
 			stopRowTimers();
 			vi.useRealTimers();
@@ -728,35 +738,37 @@ describe("tool row motion", () => {
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("spins only the newest running row: an older one, maybe above the viewport, is redrawn once and stays still", async () => {
+	it("spins every running row on its own subscription and lets go when they finish", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(10_000);
 		const older = row({ executionStarted: true });
 		const newer = row({ executionStarted: true });
 		toolHeader(theme, older, "Bash", "sleep 10");
 		toolHeader(theme, newer, "Bash", "seq 1 60");
-		// The handover redraws the older row, after the newer row's pass.
-		await Promise.resolve();
-		const handover = older.invalidate.mock.calls.length;
-		expect(handover).toBeGreaterThanOrEqual(1);
-		const still = rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0];
-		const spinning = rendered(toolHeader(theme, newer, "Bash", "seq 1 60"))[0];
+		const first = rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0];
 		vi.advanceTimersByTime(MOTION.spinnerMs * 13);
-		// Each older frame changed a line above the viewport and made the renderer redraw the whole scrollback.
-		expect(older.invalidate).toHaveBeenCalledTimes(handover);
-		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).toBe(still);
+		expect(older.invalidate.mock.calls.length).toBeGreaterThanOrEqual(10);
 		expect(newer.invalidate.mock.calls.length).toBeGreaterThanOrEqual(10);
-		expect(rendered(toolHeader(theme, newer, "Bash", "seq 1 60"))[0]).not.toBe(spinning);
-		// When the newer row finishes, the older one does not start spinning again.
-		const newerDone = { ...newer, isPartial: false, durationMs: 5 };
-		toolHeader(theme, newerDone, "Bash", "seq 1 60");
-		vi.advanceTimersByTime(MOTION.flashMs + MOTION.glowFrameMs);
-		await Promise.resolve();
-		toolHeader(theme, newerDone, "Bash", "seq 1 60");
-		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).toBe(still);
-		expect(older.invalidate).toHaveBeenCalledTimes(handover);
-		// Nothing moves on screen, so nothing asks for frames.
+		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).not.toBe(first);
+		stopRowMotion();
+		stopRowTimers();
 		expect(animationClock.isRunning()).toBe(false);
+	});
+
+	it("pulses a waiting row for a few seconds, then holds the mark still and stops asking for frames", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(10_000);
+		const context = row({ executionStarted: true, toolCallId: "call-wait-bound" });
+		toolHeader(theme, context, "Bash", "ls");
+		vi.advanceTimersByTime(WAIT_PULSE_MS - MOTION.glowFrameMs);
+		expect(animationClock.isRunning()).toBe(true);
+		vi.advanceTimersByTime(MOTION.glowFrameMs * 2);
+		// The frame after the bound draws the still mark and releases the clock.
+		toolHeader(theme, context, "Bash", "ls");
+		const calls = context.invalidate.mock.calls.length;
+		vi.advanceTimersByTime(10_000);
+		expect(context.invalidate.mock.calls.length).toBe(calls);
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
 	});
 
 	it("breathes a row that waits for its checks or approval, then spins when its run begins", () => {

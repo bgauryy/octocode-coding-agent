@@ -1,6 +1,6 @@
 import { Check } from "typebox/value";
 import { SettingsSchema } from "./settings-schema.ts";
-import type { Settings } from "./settings-manager.ts";
+import type { Settings } from "./settings-schema.ts";
 
 /** Settings files are untrusted JSON; validate each plugin before discovery. Keys the schema does not name are ignored. */
 export function configuredPlugins(value: unknown, report: (message: string) => void): NonNullable<Settings["plugins"]> {

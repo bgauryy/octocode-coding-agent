@@ -1,4 +1,4 @@
-import { sanitizeToolCallId } from "../tool-call-id.ts";
+import { fitToolCallId } from "../tool-call-id.ts";
 import {
 	type Tool as BedrockTool,
 	type CachePointBlock,
@@ -99,7 +99,7 @@ export function convertMessages(
 ): Message[] {
 	const result: Message[] = [];
 	const transformedMessages = transformMessages(withoutInitialSystemMessage(context.messages), model, (id) =>
-		sanitizeToolCallId(id),
+		fitToolCallId(id),
 	);
 
 	for (let i = 0; i < transformedMessages.length; i++) {

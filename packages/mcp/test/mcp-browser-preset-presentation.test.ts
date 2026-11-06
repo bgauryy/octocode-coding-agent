@@ -165,22 +165,15 @@ describe("browser screenshot results", () => {
 });
 
 describe("browser call options", () => {
-	it("sends booleans as 1/0 and numbers as text to screenshot, snapshot and check", async () => {
+	it("sends screenshot, snapshot and check options as the model wrote them, booleans and numbers included", async () => {
 		for (const tool of ["screenshot", "snapshot", "check"]) {
 			const { calls, run } = harness(tool, () => ({ content: [{ type: "text", text: "OK" }] }));
-			await run(tmp(), {
+			const args = {
 				options: { SHOT_ANNOTATE: true, SHOT_FULL: false, SHOT_SCALE: 1, SHOT_QUALITY: "80" },
 				recipe: "page-screenshot",
-			});
-			expect(calls).toEqual([
-				{
-					name: tool,
-					args: {
-						options: { SHOT_ANNOTATE: "1", SHOT_FULL: "0", SHOT_SCALE: "1", SHOT_QUALITY: "80" },
-						recipe: "page-screenshot",
-					},
-				},
-			]);
+			};
+			await run(tmp(), args);
+			expect(calls).toEqual([{ name: tool, args }]);
 		}
 	});
 

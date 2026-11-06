@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../../src/config.ts";
 import octocode from "../../src/octocode/index.ts";
+import { PERMISSION_ID } from "../../src/octocode/permission/mode.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -153,8 +154,11 @@ describe("leaving a session with running work", () => {
 describe("user ! commands", () => {
 	const bash = (command: string) => ({ type: "user_bash", command, excludeFromContext: false, cwd: "/" });
 	type Refusal = { result: { output: string; cancelled: boolean } };
+	// Only the permission audit; the session writes other entries too (its team name, say).
 	const audit = (fake: ReturnType<typeof fakeHost>) =>
-		fake.entries.map((entry) => entry.data as { action: string; allowed: boolean; via: string; mode: string });
+		fake.entries
+			.filter((entry) => entry.customType === PERMISSION_ID)
+			.map((entry) => entry.data as { action: string; allowed: boolean; via: string; mode: string });
 
 	async function started(mode: "manual" | "workspace" | "full", options: { hasUI?: boolean } = {}) {
 		process.env.OCTOCODE_PERMISSION = mode;
@@ -230,7 +234,9 @@ describe("user ! commands and a PreToolUse hook", () => {
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const audit = () =>
-			fake.entries.map((entry) => entry.data as { action: string; allowed: boolean; via: string; note?: string });
+			fake.entries
+				.filter((entry) => entry.customType === PERMISSION_ID)
+				.map((entry) => entry.data as { action: string; allowed: boolean; via: string; note?: string });
 		return { fake, ctx, audit };
 	}
 	const ask = `printf '%s' '{"hookSpecificOutput":{"permissionDecision":"ask","permissionDecisionReason":"check this one"}}'`;

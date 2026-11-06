@@ -1,6 +1,6 @@
 import octocode from "../src/octocode/index.ts";
 import { fakeHost } from "./octocode/fake-host.ts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { completeCli, shellCompletion } from "../src/cli/completion.ts";
 
 describe("CLI value completion", () => {
@@ -21,7 +21,8 @@ describe("CLI value completion", () => {
 		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual([]);
 	});
 	it("follows nested commands and does not suggest flags in free text or after --", () => {
-		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["direct", "hidden"]);
+		// docs/mcp-reference.md: `/mcp exposure <server> <direct|deferred|hidden>`.
+		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["direct", "deferred", "hidden"]);
 		expect(completeCli(["auth", ""])).toContain("check");
 		expect(completeCli(["models", ""])).toContain("discover");
 		expect(completeCli(["--api-key", ""])).toEqual([]);
@@ -48,11 +49,25 @@ it("parses, documents and completes every flag from one table", async () => {
 		// Every flag is recognized: none falls through to the unknown-flag path.
 		const value = spec.values?.[0] ?? "x";
 		const parsed = parseArgs(spec.kind === "boolean" || spec.kind === "optional" ? [spec.name] : [spec.name, value]);
-		expect(parsed.unknownFlags.size, spec.name).toBe(0);
+		expect(parsed.unknownFlags, spec.name).toEqual([]);
 		expect(
 			parsed.diagnostics.filter((d) => d.message.startsWith("Unknown option")),
 			spec.name,
 		).toEqual([]);
+	}
+});
+
+it("lists --plan in help and has no feature flag section", async () => {
+	const { printHelp } = await import("../src/cli/args.ts");
+	const log = vi.spyOn(console, "log").mockImplementation(() => {});
+	try {
+		printHelp();
+		const text = log.mock.calls.map((call) => String(call[0])).join("\n");
+		expect(text).toContain("--plan");
+		expect(text).not.toContain("Feature CLI Flags");
+		expect(text).not.toContain("register additional flags");
+	} finally {
+		log.mockRestore();
 	}
 });
 

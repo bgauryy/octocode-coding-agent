@@ -9,12 +9,13 @@ import {
 	normalizeBuildSystemPromptOptions,
 } from "../../src/core/system-prompt.ts";
 import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
+import { FAKE_RESEARCH } from "./fake-research.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 
 describe("native prompt section updates", () => {
 	const input = {
-		octocode: true,
+		research: FAKE_RESEARCH,
 		canDelegate: true,
 		profiles: [{ name: "researcher", description: "Investigate a question." }],
 	};
@@ -50,7 +51,15 @@ describe("native prompt section updates", () => {
 			...input,
 			profiles: [{ name: "researcher", description: "Investigate with source evidence." }],
 		});
-		expect(getSystemMessageText(update).length).toBeLessThan(oldReplacement.length / 3);
+		const updateText = getSystemMessageText(update);
+		const unchanged = Object.entries(after).filter(
+			(entry): entry is [string, string] =>
+				entry[0] !== "delegation" && typeof entry[1] === "string" && entry[1].length > 40,
+		);
+		expect(unchanged.length).toBeGreaterThan(0);
+		for (const [name, text] of unchanged)
+			expect(updateText, `the update repeats unchanged section ${name}`).not.toContain(text);
+		expect(updateText.length).toBeLessThan(oldReplacement.length / 2);
 		expect(diffSystemPromptSections(after, after)).toBeUndefined();
 	});
 

@@ -1,6 +1,7 @@
 import { type OpenRouterModel, openRouterCost } from "../src/providers/openrouter-api.ts";
 import type { ClassifierModel, ImageModel, Model } from "../src/types.ts";
 import { getOpenRouterThinkingLevelMap, type OpenRouterReasoningMetadata } from "./openrouter-reasoning-options.ts";
+import { nonZeroOr } from "../src/utils/non-zero.ts";
 
 export interface OpenRouterModelListItem extends OpenRouterModel {
 	name: string;
@@ -59,8 +60,8 @@ export function buildOpenRouterCatalog(
 			...(thinkingLevelMap && { thinkingLevelMap }),
 			input,
 			cost: openRouterCost(model.pricing),
-			contextWindow: model.top_provider?.context_length || model.context_length || 4096,
-			maxTokens: model.top_provider?.max_completion_tokens || 4096,
+			contextWindow: nonZeroOr(4096, model.top_provider?.context_length, model.context_length),
+			maxTokens: nonZeroOr(4096, model.top_provider?.max_completion_tokens),
 		});
 	}
 
@@ -99,7 +100,7 @@ export function buildOpenRouterCatalog(
 			baseUrl: "https://openrouter.ai/api/v1",
 			input: input.length > 0 ? input : ["text"],
 			cost: openRouterCost(model.pricing),
-			contextWindow: model.top_provider?.context_length || model.context_length || 4096,
+			contextWindow: nonZeroOr(4096, model.top_provider?.context_length, model.context_length),
 		});
 	}
 

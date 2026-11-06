@@ -56,7 +56,8 @@ const shutdown = vi.fn(async () => {});
 const CASES: Record<string, Case> = {
 	// Native features.
 	permissions: { check: says(/Permission mode: workspace/) },
-	agents: { check: says(/No agents have joined in this repository/) },
+	// A main session joins its team at start (lifecycle design O6b), so /agents lists it and its run.
+	agents: { check: says(/\(you\) · main[\s\S]*Recent runs/) },
 	plan: {
 		check: async (run, t) => {
 			expect(run.text).toMatch(/Planning active; revision 0/);
@@ -74,7 +75,12 @@ const CASES: Record<string, Case> = {
 	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
 	api: { check: says(/Octocode API oc-[0-9a-f]+\s+socket: \S+\.sock\s+Discovery:[\s\S]*\/home\/\.octocode\/api/) },
 	archive: { check: says(/segment|archive|compact/i) },
-	harness: { check: asks(/MCP servers[\s\S]*Skills/) },
+	// One row per harness comes first: Claude Code, Codex and Cursor are off by default, then Octocode's own group.
+	harness: {
+		check: asks(
+			/\[ \] Claude Code {2}default off[\s\S]*\[ \] Codex {2}default off[\s\S]*\[ \] Cursor {2}default off[\s\S]*Octocode/,
+		),
+	},
 	jobs: { check: says(/job/i) },
 	memory: { check: asks(/memor/i) },
 	// Bare `/optimize` shows the state and offers the toggle; the terminal dismisses the dialog, which changes nothing.
@@ -87,6 +93,8 @@ const CASES: Record<string, Case> = {
 	worktree: { check: says(/worktree/i) },
 	// `/remote` publishes the user-level daemon; without OCTOCODE_WEB_DAEMON=1 it refuses and starts nothing.
 	remote: { check: says(/Could not publish a remote link:[\s\S]*OCTOCODE_WEB_DAEMON=1/) },
+	// The research CLI (`cli/command.ts`): its output is the command result.
+	octocode: { args: "--version", check: says(/octocode \d+\.\d+\.\d+/) },
 	web: {
 		check: (run) => {
 			expect(run.opened).toEqual([
@@ -130,7 +138,6 @@ const CASES: Record<string, Case> = {
 	copy: { check: says(/No agent messages to copy yet/) },
 	compact: { check: says(/Nothing to compact yet/) },
 	queue: { check: says(/No queued messages/) },
-	github: { args: "status", check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/GitHub/) },
 	rename: {
 		args: "e2e named session",
 		check: (_run, t) => expect(t.host.sessionManager.getSessionName()).toBe("e2e named session"),
@@ -185,7 +192,7 @@ describe("every slash command through the terminal editor", () => {
 		const stale = Object.keys(CASES).filter((name) => !names.includes(name));
 		expect(stale, "cases for commands that no longer exist").toEqual([]);
 		expect(names).toContain("web");
-		expect(names).not.toContain("octocode");
+		expect(names).toContain("octocode");
 	});
 
 	it("runs each command with an observable outcome and no hang", async () => {
@@ -218,12 +225,18 @@ describe("every slash command through the terminal editor", () => {
 		expect(failures.join("\n\n")).toBe("");
 	}, 600_000);
 
-	it("reports the retired /octocode as unknown and runs nothing", async () => {
-		const result = await run("octocode");
-		expect(result.text).toMatch(/Unknown command \/octocode\./);
-		expect(result.opened).toEqual([]);
-		expect(result.requests).toBe(0);
-		expect(t.host.editor.getText()).toBe("/octocode");
-		t.host.editor.setText("");
+	it("passes /octocode arguments to the research CLI as typed: bare is its own no-argument output, no aliases", async () => {
+		const bare = await run("octocode");
+		expect(bare.text).toMatch(/octocode\.toolCatalog/);
+		expect(bare.opened).toEqual([]);
+		expect(bare.requests).toBe(0);
+		const help = await run("octocode", "--help");
+		expect(help.text).toMatch(/Native Octocode research tools/);
+		// `login` is not rewritten to `auth login`: the CLI answers for itself.
+		const login = await run("octocode", "login");
+		expect(login.settled).toBe(true);
+		expect(login.text).toMatch(/login/);
+		expect(login.text).not.toMatch(/needs an interactive terminal/);
+		expect(login.requests).toBe(0);
 	});
 });

@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DefaultPackageManager, type ProgressEvent, type ResolvedResource } from "../src/core/package-manager.ts";
@@ -49,6 +49,18 @@ interface PackageManagerInternals {
 		source: { type: "git"; repo: string; host: string; path: string; pinned: boolean; ref?: string },
 		scope: "user" | "project" | "temporary",
 	): string;
+}
+
+function updateMarkerPath(targetDir: string): string {
+	return join(dirname(targetDir), `.${basename(targetDir)}.octocode-update-incomplete`);
+}
+
+function expectManagedNpmProject(installRoot: string): void {
+	expect(JSON.parse(readFileSync(join(installRoot, "package.json"), "utf-8"))).toEqual({
+		name: "octocode-extensions",
+		private: true,
+	});
+	expect(readFileSync(join(installRoot, ".gitignore"), "utf-8")).toBe("*\n!.gitignore\n");
 }
 
 // Helper to check if a resource is enabled
@@ -741,6 +753,7 @@ Content`,
 
 			await packageManager.install("npm:@scope/pkg");
 
+			expectManagedNpmProject(join(agentDir, "npm"));
 			expect(runCommandSpy).toHaveBeenCalledWith(
 				"mise",
 				[
@@ -788,6 +801,7 @@ Content`,
 
 			await packageManager.install("npm:@scope/pkg");
 
+			expectManagedNpmProject(join(agentDir, "npm"));
 			expect(runCommandSpy).toHaveBeenCalledWith(
 				"mise",
 				["exec", "bun@1", "--", "bun", "install", "@scope/pkg", "--cwd", join(agentDir, "npm"), "--omit=peer"],
@@ -810,6 +824,8 @@ Content`,
 
 			await packageManager.install(source);
 
+			expect(readFileSync(join(agentDir, "git", ".gitignore"), "utf-8")).toBe("*\n!.gitignore\n");
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(false);
 			expect(runCommandSpy).toHaveBeenCalledWith("npm", ["install", "--omit=dev", "--legacy-peer-deps"], {
 				cwd: targetDir,
 			});
@@ -871,6 +887,9 @@ Content`,
 
 			await packageManager.install(source);
 
+			// A completed reconcile leaves the checkout in place and no incomplete-update marker behind.
+			expect(existsSync(join(targetDir, "package.json"))).toBe(true);
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(false);
 			expect(runCommandSpy).toHaveBeenCalledWith("git", ["fetch", "origin", "v2"], { cwd: targetDir });
 			expect(runCommandSpy).toHaveBeenCalledWith("git", ["reset", "--hard", "FETCH_HEAD^{commit}"], {
 				cwd: targetDir,
@@ -906,6 +925,8 @@ Content`,
 
 			await packageManager.install(source);
 
+			expect(existsSync(targetDir)).toBe(true);
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(false);
 			expect(runCommandSpy).toHaveBeenCalledWith("git", fetchArgs, { cwd: targetDir });
 			expect(runCommandSpy).toHaveBeenCalledWith("git", ["reset", "--hard", "origin/HEAD^{commit}"], {
 				cwd: targetDir,
@@ -966,6 +987,8 @@ Content`,
 
 			await packageManager.install(source);
 
+			expect(readFileSync(join(agentDir, "git", ".gitignore"), "utf-8")).toBe("*\n!.gitignore\n");
+			expect(existsSync(join(targetDir, "package.json"))).toBe(true);
 			expect(runCommandSpy).toHaveBeenCalledWith(
 				"corepack",
 				[
@@ -1007,6 +1030,8 @@ Content`,
 
 			await packageManager.install(source);
 
+			expect(readFileSync(join(agentDir, "git", ".gitignore"), "utf-8")).toBe("*\n!.gitignore\n");
+			expect(existsSync(join(targetDir, "package.json"))).toBe(true);
 			expect(runCommandSpy).toHaveBeenCalledWith("bun", ["install", "--omit=dev", "--omit=peer"], {
 				cwd: targetDir,
 			});
@@ -1036,6 +1061,7 @@ Content`,
 
 			await packageManager.update(source);
 
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(false);
 			expect(runCommandSpy).toHaveBeenCalledWith("npm", ["install", "--omit=dev", "--legacy-peer-deps"], {
 				cwd: targetDir,
 			});
@@ -1063,6 +1089,8 @@ Content`,
 
 			await packageManager.update(source);
 
+			// The checkout was already current, so no update was started and no marker was written.
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(false);
 			expect(runCommandSpy).toHaveBeenCalledWith("npm", ["install", "--omit=dev", "--legacy-peer-deps"], {
 				cwd: targetDir,
 			});
@@ -1095,6 +1123,8 @@ Content`,
 
 			await expect(packageManager.update(source)).rejects.toThrow("simulated clean failure");
 
+			// The failed update stays marked incomplete so the next run reconciles it.
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(true);
 			expect(runCommandSpy).toHaveBeenCalledWith("npm", ["install", "--omit=dev", "--legacy-peer-deps"], {
 				cwd: targetDir,
 			});
@@ -1136,6 +1166,7 @@ Content`,
 
 			await packageManager.update(source);
 
+			expect(existsSync(updateMarkerPath(targetDir))).toBe(false);
 			expect(runCommandSpy).toHaveBeenCalledWith(
 				"mise",
 				[
@@ -2439,8 +2470,16 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 				.spyOn(packageManager as any, "runCommandCapture")
 				.mockResolvedValue('["1.0.0","1.2.0"]');
 			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+			const events: ProgressEvent[] = [];
+			packageManager.setProgressCallback((event) => events.push(event));
 
 			await packageManager.update("npm:example");
+
+			expectManagedNpmProject(join(tempDir, ".octocode", "npm"));
+			expect(events).toEqual([
+				{ type: "start", action: "update", source: "npm:example@^1.0.0", message: "Updating npm:example@^1.0.0..." },
+				{ type: "complete", action: "update", source: "npm:example@^1.0.0" },
+			]);
 
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
@@ -2465,8 +2504,15 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 				.mockResolvedValue('["1.0.0","1.3.1","1.0.2"]');
 			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
 
+			const events: ProgressEvent[] = [];
+			packageManager.setProgressCallback((event) => events.push(event));
+
 			await packageManager.update("npm:example");
 
+			// Nothing was installed or scaffolded and no update progress was reported.
+			expect(events).toEqual([]);
+			expect(existsSync(join(tempDir, ".octocode", "npm", "package.json"))).toBe(false);
+			expect(JSON.parse(readFileSync(join(installedPath, "package.json"), "utf-8")).version).toBe("1.3.1");
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
 				["view", "example@^1.0.0", "version", "--json"],
@@ -2484,8 +2530,15 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			const runCommandCaptureSpy = vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.9.0"');
 			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
 
+			const events: ProgressEvent[] = [];
+			packageManager.setProgressCallback((event) => events.push(event));
+
 			await packageManager.update("npm:example");
 
+			// Nothing was installed or scaffolded and no update progress was reported.
+			expect(events).toEqual([]);
+			expect(existsSync(join(tempDir, ".octocode", "npm", "package.json"))).toBe(false);
+			expect(JSON.parse(readFileSync(join(installedPath, "package.json"), "utf-8")).version).toBe("2.0.0");
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
 				["view", "example", "version", "--json"],

@@ -27,6 +27,10 @@ A configured value replaces the default for that action. Use an empty list to di
 
 After editing the file, run `/reload` to apply the changes to the active session.
 
+Octocode also reads Pi's `~/.pi/agent/keybindings.json` (then `~/.pi/keybindings.json`) beneath its own file, action by action, when the agent directory is the default one: an action set in Octocode's file wins. There is no project keybindings file.
+
+An entry that cannot apply is skipped, and startup prints one warning line per file naming each skipped entry: an action identifier Octocode does not define (`unknown action foo`), a value that is not a key or a list of keys (`invalid keys for app.session.new`), or a file that is not a JSON object (`not loaded: invalid JSON`). The other entries of the file still apply.
+
 ## Key syntax
 
 Write a key as `modifier+key`. Modifiers are `ctrl`, `shift`, `alt`, and `super`. You can combine modifiers. Valid keys are:
@@ -161,21 +165,21 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 ### Sessions
 
-| Keybinding id                   | Default          | Description                             |
-| ------------------------------- | ---------------- | --------------------------------------- |
-| `app.session.new`               | None             | Start a new session (`/new`)            |
-| `app.session.tree`              | None             | Open session tree navigator (`/tree`)   |
-| `app.session.fork`              | None             | Fork current session (`/fork`)          |
-| `app.session.resume`            | None             | Open session resume picker (`/resume`)  |
+| Keybinding id                   | Default          | Description                                                              |
+| ------------------------------- | ---------------- | ------------------------------------------------------------------------ |
+| `app.session.new`               | None             | Start a new session (`/new`)                                             |
+| `app.session.tree`              | None             | Open session tree navigator (`/tree`)                                    |
+| `app.session.fork`              | None             | Fork current session (`/fork`)                                           |
+| `app.session.resume`            | None             | Open session resume picker (`/resume`)                                   |
 | `app.session.loadEarlier`       | `alt+pageUp`     | Load the previous 200 entries that a resume, `/tree` or `/fork` left out |
-| `app.session.togglePath`        | `ctrl+p`         | Toggle path display                     |
-| `app.session.toggleSort`        | `ctrl+s`         | Toggle sort mode                        |
-| `app.session.toggleNamedFilter` | `ctrl+n`         | Toggle named-only filter                |
-| `app.session.rename`            | `ctrl+r`         | Rename session                          |
-| `app.session.delete`            | `ctrl+d`         | Delete the marked sessions, or this one |
-| `app.session.mark`              | `ctrl+x`         | Mark the session for deletion           |
-| `app.session.actions`           | `ctrl+o`         | Open the picker's action menu           |
-| `app.session.deleteNoninvasive` | `ctrl+backspace` | Delete session when query is empty      |
+| `app.session.togglePath`        | `ctrl+p`         | Toggle path display                                                      |
+| `app.session.toggleSort`        | `ctrl+s`         | Toggle sort mode                                                         |
+| `app.session.toggleNamedFilter` | `ctrl+n`         | Toggle named-only filter                                                 |
+| `app.session.rename`            | `ctrl+r`         | Rename session                                                           |
+| `app.session.delete`            | `ctrl+d`         | Delete the marked sessions, or this one                                  |
+| `app.session.mark`              | `ctrl+x`         | Mark the session for deletion                                            |
+| `app.session.actions`           | `ctrl+o`         | Open the picker's action menu                                            |
+| `app.session.deleteNoninvasive` | `ctrl+backspace` | Delete session when query is empty                                       |
 
 ### Models and Thinking
 

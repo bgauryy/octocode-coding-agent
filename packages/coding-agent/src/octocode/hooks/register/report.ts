@@ -23,6 +23,7 @@ export function hooksReport(
 	cwd: string,
 	home?: string,
 	timings = new Map<string, HookTiming>(),
+	switchedOff = 0,
 ): string {
 	const loaded = HOOK_EVENTS.flatMap((event) =>
 		config[event].flatMap((group) =>
@@ -32,13 +33,30 @@ export function hooksReport(
 			}),
 		),
 	);
+	// Children skip the user's hooks unless their profile sets `hooks: true` (register.ts), so say it where the hooks are configured.
+	const subagentEvents = (["SubagentStart", "SubagentStop"] as const).filter((name) =>
+		config[name].some((group) => group.hooks.length > 0),
+	);
+	const diagnostics = [
+		...errors,
+		...(enabled && subagentEvents.length > 0
+			? [
+					`${subagentEvents.join(" and ")} hooks run only in subagents whose profile sets hooks: true; other subagents skip them`,
+				]
+			: []),
+	];
 	return [
 		enabled ? "Hooks: on" : "Hooks: off in this subagent (its profile does not set hooks: true).",
 		...(enabled ? [`Loaded (${loaded.length}):`, ...(loaded.length > 0 ? loaded : ["  none"])] : []),
+		...(enabled && switchedOff > 0
+			? [`${switchedOff} hook${switchedOff === 1 ? "" : "s"} off: harness switched off, /harness to enable`]
+			: []),
 		"",
 		'Hook files ({"hooks": {...}}; /harness hooks events lists what each profile accepts, /harness switches them):',
 		...configFileLines(hookFiles(cwd, true, home), hookFiles(cwd, false, home), home),
-		...(errors.length > 0 ? ["", "Hook configuration diagnostics:", ...errors.map((error) => `  ${error}`)] : []),
+		...(diagnostics.length > 0
+			? ["", "Hook configuration diagnostics:", ...diagnostics.map((error) => `  ${error}`)]
+			: []),
 	].join("\n");
 }
 

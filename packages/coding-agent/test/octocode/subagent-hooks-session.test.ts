@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { HOOK_HARNESSES_ON, tmp, trustFolder } from "./helpers.ts";
 import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 import type { Identity } from "../../src/octocode/subagents/process/env.ts";
 
@@ -106,6 +106,7 @@ async function fixture(
 		JSON.stringify({
 			retry: { enabled: false },
 			compaction: { enabled: false },
+			toggles: HOOK_HARNESSES_ON,
 		}),
 	);
 	for (const [key, value] of Object.entries({
@@ -438,7 +439,6 @@ it.each(["codex", "claude"] as const)(
 				path.join(f.root, "main-session"),
 				"--session-id",
 				"main-session-identity",
-				"--no-extensions",
 				"--no-skills",
 				"--tools",
 				"bash",

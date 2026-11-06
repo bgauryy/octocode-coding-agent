@@ -146,9 +146,7 @@ export async function createSessionFromServices(
 			thinkingLevel = perModel;
 		}
 	}
-	if (thinkingLevel === undefined) {
-		thinkingLevel = settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
-	}
+	thinkingLevel ??= settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
 
 	// Clamp to model capabilities
 	if (!model) {
@@ -268,9 +266,11 @@ export async function createSessionFromServices(
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
 	});
 
-	// Restore missing settings metadata for older sessions.
+	// Restore missing settings metadata for older sessions, and record a level the caller chose on resume so a later
+	// reopen keeps it. A restored level that was only clamped to another model stays unrecorded.
 	if (hasExistingSession) {
-		if (!hasThinkingEntry) {
+		const chosen = options.thinkingLevel !== undefined && thinkingLevel !== existingSession.thinkingLevel;
+		if (!hasThinkingEntry || chosen) {
 			sessionManager.appendThinkingLevelChange(thinkingLevel);
 		}
 	} else {
@@ -287,6 +287,7 @@ export async function createSessionFromServices(
 		settingsManager,
 		cwd,
 		scopedModels: options.scopedModels,
+		requestedThinkingLevel: options.thinkingLevel,
 		resourceLoader,
 		customTools: options.customTools,
 		modelRuntime,

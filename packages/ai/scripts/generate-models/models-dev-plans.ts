@@ -15,6 +15,7 @@ import { getModelsDevCost } from "./pricing.ts";
 import { createKimiCodingModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog, ModelsDevModel } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** models.dev subscription and token plans: MiniMax, Kimi For Coding, Moonshot AI, Xiaomi MiMo and Qwen Token Plan. */
 export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any>[]): void {
@@ -45,8 +46,8 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 					reasoning: m.reasoning === true,
 					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 					cost: getModelsDevCost(m.cost),
-					contextWindow: m.limit?.context || 4096,
-					maxTokens: m.limit?.output || 4096,
+					contextWindow: nonZeroOr(4096, m.limit?.context),
+					maxTokens: nonZeroOr(4096, m.limit?.output),
 					...(thinkingLevelMap ? { thinkingLevelMap, compat: { forceAdaptiveThinking: true } } : {}),
 				});
 			}
@@ -90,13 +91,13 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				cost: isKimiK3
 					? { ...KIMI_K3_COST }
 					: {
-							input: m.cost?.input || 0,
-							output: m.cost?.output || 0,
-							cacheRead: m.cost?.cache_read || 0,
-							cacheWrite: m.cost?.cache_write || 0,
+							input: m.cost?.input ?? 0,
+							output: m.cost?.output ?? 0,
+							cacheRead: m.cost?.cache_read ?? 0,
+							cacheWrite: m.cost?.cache_write ?? 0,
 						},
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 				compat,
 			});
 			recordModelsDevReasoningOptions(provider, modelId, m);
@@ -163,8 +164,8 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				...(m.reasoning === true ? { thinkingLevelMap: xiaomiThinkingLevelMap } : {}),
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 		}
 	}
@@ -227,8 +228,8 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			emittedModelIds?.add(modelId);
 		}

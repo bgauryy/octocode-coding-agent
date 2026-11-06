@@ -182,7 +182,11 @@ export async function sendMessage(
 		};
 	const members = db.list();
 	// A stalled member (process running, silent for `STALE_MS`) is hidden but still reads its mail: its name reaches it.
-	const targets = resolveTarget(members, from, to, host.parentId(), scope, db.list(Date.now(), true));
+	const stalled = db.list(Date.now(), true);
+	// Only a message this sender received opens a route back to its author: an id alone (any message in the repository) does not.
+	const answering =
+		answered && options.replyTo !== undefined && db.refs.received(options.replyTo, from) ? answered.from : undefined;
+	const targets = resolveTarget(members, from, to, host.parentId(), scope, stalled, answering);
 	// A message is FYI unless the sender says it needs an answer: a default that asked for answers made two agents wake each other forever.
 	const replyRequired = options.replyRequired ?? false;
 	// What a PreMessageSend hook sees: the question, the wake (a question wakes, and so does `wake`) and the interrupt.
@@ -208,7 +212,8 @@ export async function sendMessage(
 			!outside(from) &&
 			!["all", "parent", from].includes(to) &&
 			!options.interrupt &&
-			members.filter((member) => member.role === to).length < 2;
+			// A name some agent answers to was refused for a reason (several match, or it is outside the tree): no relay.
+			![...members, ...stalled].some((member) => member.id === to || member.role === to);
 		if (!(finished && host.resumer()) && !relay) {
 			if (finished) return { error: finishedText(host, to) };
 			// Between `agent` naming it and its joining the team, or between its leaving and its report: it is not gone.

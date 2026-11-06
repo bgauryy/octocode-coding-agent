@@ -29,7 +29,8 @@ afterEach(() => {
 const SECRET = `ghp_${"a1B2c3D4e5".repeat(4)}`;
 
 it("renders every built-in tool call with its argument label, status and output", async () => {
-	const cwd = (workDir = mkdtempSync(join(tmpdir(), "webview-tools-")));
+	workDir = mkdtempSync(join(tmpdir(), "webview-tools-"));
+	const cwd = workDir;
 	harness = await createHarness({
 		// The session's own tools are bash only; `read` and `write` are test fixtures that stand in for other hosts' tools.
 		baseToolsOverride: { bash: createBashTool(cwd), read: createReadTool(cwd), write: createWriteTool(cwd) },

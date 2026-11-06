@@ -10,15 +10,15 @@ export class McpCatalogCache {
 
 	update(
 		identity: unknown,
-		tools: Tool[],
-		instructions: string | undefined,
+		announced: Tool[],
+		announcedInstructions: string | undefined,
 	): {
 		tools: Tool[];
 		instructions: string | undefined;
 	} {
 		// What the server sent is not trusted: its descriptions and instructions are shown with controls visible.
-		tools = tools.map(visibleTool);
-		instructions = visibleInstructions(instructions);
+		const tools = announced.map(visibleTool);
+		const instructions = visibleInstructions(announcedInstructions);
 		const sameServer = isDeepStrictEqual(this.identity, identity);
 		const previous = new Map((sameServer ? this.tools : []).map((tool) => [tool.name, tool]));
 		let next = tools.map((tool) => {

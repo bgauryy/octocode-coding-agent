@@ -1,12 +1,18 @@
 import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
 import { BACKLOG_ITEM_ENV } from "../../../common/src/env.ts";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { reportContractSentences } from "../../src/octocode/instructions/report.ts";
 import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { SYSTEM_PROMPT_SECTIONS } from "../../src/core/system-prompt-spec.ts";
+
+// Measured as shipped: the research CLI resolves and agent shells run it, whatever this host has.
+vi.mock("../../src/octocode/cli/shim.ts", async (original) => ({
+	...(await original<object>()),
+	octocodeCliAvailable: () => true,
+}));
 
 const POLICY_SECTIONS = new Set(
 	SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map(({ name }) => name),
@@ -236,7 +242,10 @@ const BACKLOG_ENTITIES_CEILING = 2_250;
 // 37_086 (2026-11-04, measured 36_986 without entity fields, 37_249 before; B47 prompt audit): the delegate-or-not tree and
 // the stuck-child routing became Mermaid, the backlog bullets merged, and the agent tool's own message routing left
 // communication (-263 in the policy).
-const MAIN_CEILING = 37_086;
+// 39_600 (2026-11-05, measured 39_501 without entity fields; requested by the user): the B55 bash CLI guide (+2_305 in
+// the bash description) and B59's `octocode` CLI line in the research section (+110 in the policy).
+// 39_700 (2026-11-06, measured 39_660; B150): the same +96 `reason` rule as the specialist ceiling.
+const MAIN_CEILING = 39_700;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -288,7 +297,18 @@ const MAIN_CEILING = 37_086;
 // the parent at once about a severe problem, keeping a shared tree building and backing off a busy lock.
 // 23_163 (2026-11-04, measured 23_063 without entity fields, 23_155 before; B47 prompt audit): the stuck-child routing is a
 // Mermaid diagram and the main-only close-out rule left the child's work section (-92 in the policy).
-const SPECIALIST_CEILING = 23_163;
+// 25_680 (2026-11-05, measured 25_578 without entity fields; requested by the user): the same B55 bash CLI guide
+// (+2_305) and B59 `octocode` CLI line (+110).
+// 26_230 (2026-11-05, measured 26_127, 25_223 without it; B95, requested by the user): the `timer` tool every agent gets
+// (+904), after the B102 audit cut the policy.
+// 26_380 (2026-11-05, measured 26_277, +150 over B95's 26_127; requested by the user, B83/M23 and instruction lines from
+// B108/B120): the one `Harnesses:` line naming every harness on or off (core/discovery/vendors/prompt.ts), which
+// specialists also get, the skill-match rule, the task scratch-write limit and the timer's wait-until line. MCP declared
+// mode adds nothing here: this specialist declares no MCP server.
+// 26_480 (2026-11-06, measured 26_465; B150): the one-line rule that `reason` belongs to native tools and MCP tools take
+// only their declared fields (+96 in the policy; the test host reaches MCP, so it renders), after the declared default
+// made small models copy `reason` into 21 of 359 MCP calls.
+const SPECIALIST_CEILING = 26_480;
 
 describe("prompt size", () => {
 	it("main session", async () => {

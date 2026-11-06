@@ -210,7 +210,10 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 			});
 			const prepared = turn.then(() => prepare(tool, args, cwd));
 			// A cancelled call keeps its place until the call before it is done, so the later ones stay in order.
-			void prepared.then(handOn, () => void before.then(handOn));
+			const handOnAfterBefore = () => {
+				void before.then(handOn);
+			};
+			void prepared.then(handOn, handOnAfterBefore);
 			return prepared;
 		},
 		async dispose() {

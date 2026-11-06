@@ -78,9 +78,8 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
  * }
  * ```
  */
-export interface CustomAgentMessages {
-	// Empty by default - apps extend via declaration merging
-}
+// oxlint-disable-next-line typescript/no-empty-object-type -- empty by design: apps extend it through declaration merging
+export interface CustomAgentMessages {}
 
 /**
  * AgentMessage: Union of LLM messages + custom messages.

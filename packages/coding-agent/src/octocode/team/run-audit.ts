@@ -1,4 +1,6 @@
 import type { AgentRun, ResolvedAgent, RunOutcome, RunStart } from "../../../../db/src/api.ts";
+import type { Member } from "@octocodeai/octocode-contracts/team";
+import type { MemberDetails } from "./store/details.ts";
 import type { TeamStore } from "./store.ts";
 import type { EndReason } from "./session/end-reason.ts";
 
@@ -61,6 +63,12 @@ export class RunAudit {
 	/** The runs started for backlog item `seq` of `workspaceId`, newest first. */
 	forItem(workspaceId: string, seq: number): AgentRun[] {
 		return this.host.existing()?.presence.runsForItem(workspaceId, seq) ?? [];
+	}
+
+	/** What `coordinate list` adds per member: its backlog item, transcript and shell-log folders. */
+	details(members: readonly Member[]): Map<string, MemberDetails> {
+		const store = this.host.existing();
+		return store?.presence.details(members, store.workspaceId) ?? new Map();
 	}
 
 	/** The agent `ref` names (name, session, registration or run id, process title, pid or backlog item), live or past. */

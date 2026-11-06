@@ -1,4 +1,5 @@
 import { Type, type Static } from "typebox";
+import { isRecord } from "./guards.ts";
 
 /** Public source references; opaque provider continuation tokens are deliberately not display data. */
 export const ContentAnnotationSchema = Type.Object({
@@ -111,4 +112,27 @@ export function applicationContentText(content: readonly ApplicationContentBlock
 			}
 		})
 		.join("\n");
+}
+
+/** Where returned data states what a call was for, most specific first. */
+const PURPOSE_KEYS = ["mainGoal", "reasoning", "reason"] as const;
+
+/**
+ * The goal or reason an external (MCP) tool's result states for its call, for display: the first non-empty text
+ * `mainGoal`, `reasoning` or `reason` of the server's data (the `structuredContent` of the stored MCP result, else the
+ * value itself), then of each row of its top-level arrays and of a row's `data`. Undefined when the result states none;
+ * the call's own arguments are never consulted, since an external tool's input is not ours to annotate.
+ */
+export function returnedPurpose(structuredContent: unknown): string | undefined {
+	if (!isRecord(structuredContent)) return undefined;
+	const data = isRecord(structuredContent.structuredContent) ? structuredContent.structuredContent : structuredContent;
+	const rows = Object.values(data)
+		.flatMap((value) => (Array.isArray(value) ? value.filter(isRecord) : []))
+		.flatMap((row) => (isRecord(row.data) ? [row, row.data] : [row]));
+	for (const record of [data, ...rows])
+		for (const key of PURPOSE_KEYS) {
+			const value = record[key];
+			if (typeof value === "string" && value.trim()) return value.trim();
+		}
+	return undefined;
 }

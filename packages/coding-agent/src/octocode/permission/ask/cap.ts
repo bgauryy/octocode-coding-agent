@@ -1,8 +1,12 @@
 import { PERMISSION_MODES, type PermissionMode } from "../mode.ts";
 
 /** The stricter of two modes: the one that asks about more. */
-export const stricterMode = (a: PermissionMode, b: PermissionMode): PermissionMode =>
+const stricterMode = (a: PermissionMode, b: PermissionMode): PermissionMode =>
 	PERMISSION_MODES[Math.min(PERMISSION_MODES.indexOf(a), PERMISSION_MODES.indexOf(b))];
+
+/** The mode that judges a call held to `ceiling`: the stricter of the two, except that `bypass` is never held. */
+export const heldTo = (mode: PermissionMode, ceiling: PermissionMode): PermissionMode =>
+	mode === "bypass" ? mode : stricterMode(mode, ceiling);
 
 /**
  * A ceiling on the session's mode while one turn runs: work an unverified caller started (the local session API) is held
@@ -23,6 +27,6 @@ export class TurnCap {
 
 	/** The mode that judges a call while the cap holds. */
 	apply(mode: PermissionMode): PermissionMode {
-		return this.#ceiling ? stricterMode(mode, this.#ceiling) : mode;
+		return this.#ceiling ? heldTo(mode, this.#ceiling) : mode;
 	}
 }

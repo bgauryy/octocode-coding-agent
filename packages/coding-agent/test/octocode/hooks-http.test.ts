@@ -7,7 +7,7 @@ import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { failureOf, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 const servers: http.Server[] = [];
@@ -37,7 +37,7 @@ function configured(url: string, fields: Record<string, unknown> = {}, policy: R
 		path.join(home, ".claude/settings.json"),
 		JSON.stringify({ ...policy, hooks: { PreToolUse: [{ hooks: [{ type: "http", url, ...fields }] }] } }),
 	);
-	const result = loadHooks(tmp(), false, home);
+	const result = loadHooks(tmp(), false, home, HOOK_SETTINGS);
 	return { ...result, home, hook: commandsFor(result.config, "PreToolUse", ["Bash"])[0] };
 }
 describe("Claude HTTP hook transport", () => {
@@ -147,7 +147,7 @@ describe("Claude HTTP hook transport", () => {
 			res.end();
 		});
 		const { home } = configured(url, { onFailure: "block" });
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		const hooks = registerHooks(fake.api, {}, home);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -159,7 +159,7 @@ describe("Claude HTTP hook transport", () => {
 		"retains a required HTTP gate with invalid URL %s",
 		async (url) => {
 			const { home } = configured(url, { onFailure: "block" });
-			const fake = fakeHost();
+			const fake = fakeHost(HOOK_SETTINGS);
 			const hooks = registerHooks(fake.api, {}, home);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -182,14 +182,16 @@ describe("Claude HTTP hook transport", () => {
 			path.join(cwd, ".claude/settings.json"),
 			JSON.stringify({ allowedHttpHookUrls: ["http://example.com/Allowed"] }),
 		);
-		const trusted = commandsFor(loadHooks(cwd, true, home).config, "PreToolUse", ["Bash"])[0];
+		const trusted = commandsFor(loadHooks(cwd, true, home, HOOK_SETTINGS).config, "PreToolUse", ["Bash"])[0];
 		expect(trusted.configurationError).toBeUndefined();
-		const untrusted = commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"])[0];
+		const untrusted = commandsFor(loadHooks(cwd, false, home, HOOK_SETTINGS).config, "PreToolUse", ["Bash"])[0];
 		expect(untrusted.configurationError).toBeTruthy();
 		fs.writeFileSync(
 			path.join(cwd, ".claude/settings.json"),
 			JSON.stringify({ allowedHttpHookUrls: ["http://example.com/allowed"] }),
 		);
-		expect(commandsFor(loadHooks(cwd, true, home).config, "PreToolUse", ["Bash"])[0].configurationError).toBeTruthy();
+		expect(
+			commandsFor(loadHooks(cwd, true, home, HOOK_SETTINGS).config, "PreToolUse", ["Bash"])[0].configurationError,
+		).toBeTruthy();
 	});
 });

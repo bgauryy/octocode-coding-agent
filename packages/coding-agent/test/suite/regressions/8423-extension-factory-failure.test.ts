@@ -14,7 +14,6 @@ describe("issue #8423 extension factory failure", () => {
 		const eventBus = createEventBus();
 		let capturedApi: ExtensionAPI | undefined;
 		let eventCalls = 0;
-		let flagDuringLoad: boolean | string | undefined;
 
 		await loadExtensionFromFactory(
 			(api) => api.registerProvider("working-provider", providerConfig),
@@ -30,8 +29,6 @@ describe("issue #8423 extension factory failure", () => {
 					api.events.on("factory-failure", () => {
 						eventCalls++;
 					});
-					api.registerFlag("failed-flag", { type: "boolean", default: true });
-					flagDuringLoad = api.getFlag("failed-flag");
 					api.unregisterProvider("working-provider");
 					api.registerProvider("failed-provider", providerConfig);
 					throw new Error("factory failed");
@@ -44,12 +41,10 @@ describe("issue #8423 extension factory failure", () => {
 		).rejects.toThrow("factory failed");
 
 		eventBus.emit("factory-failure", undefined);
-		expect(flagDuringLoad).toBe(true);
-		expect(runtime.flagValues.has("failed-flag")).toBe(false);
 		expect(runtime.pendingProviderRegistrations.map(({ name }) => name)).toEqual(["working-provider"]);
 		expect(eventCalls).toBe(0);
 		expect(capturedApi).toBeDefined();
-		expect(() => capturedApi?.registerFlag("late-flag", { type: "boolean", default: true })).toThrow(
+		expect(() => capturedApi?.registerProvider("late-provider", providerConfig)).toThrow(
 			'Extension "<failing>" failed to load and its API is no longer active.',
 		);
 	});

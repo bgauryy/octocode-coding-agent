@@ -65,11 +65,12 @@ describe("the agent_runs table", () => {
 		const old = open({ version: 2, migrations: SCHEMA_PLAN.migrations.slice(0, 1) });
 		for (const column of ["cwd", "branch", "process_title"]) old.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
 		old.db.exec("DROP TABLE agent_runs");
+		old.db.exec("DROP TABLE timers");
 		old.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		old.close();
 		open().close();
 		const raw = new DatabaseSync(file, { readOnly: true });
-		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 4 });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "1" });
 		expect((raw.prepare("PRAGMA table_info(agent_runs)").all() as { name: string }[]).map((c) => c.name)).toContain(

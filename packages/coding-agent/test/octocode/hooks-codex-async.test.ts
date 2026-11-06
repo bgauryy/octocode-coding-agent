@@ -6,7 +6,7 @@ import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -32,7 +32,7 @@ async function fixture(count = 1, event = "PreToolUse") {
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const hooks = registerHooks(fake.api, {}, home);
 	const notify = vi.fn();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true });

@@ -8,7 +8,7 @@ import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 export const settingsIntro = [
 	"`settings.json` holds global defaults in the agent directory (see [Configuration](configuration.md#agent-directory)) and project overrides in `.octocode/settings.json`. A trusted project's values override global ones: objects merge recursively and arrays replace. Edit the file directly and run `/reload`, or use `/settings`. See [CONFIGURATIONS.md](../../../CONFIGURATIONS.md) for every configuration location.",
 	"For editor validation and completion, point `$schema` at `schemas/settings.schema.json` in the installed Octocode package.",
-	"Loading is permissive: a root key this page does not list is kept in the file but has no effect, and startup reports it once per load as a warning that names the key and the file. Unknown keys inside a listed object are not checked.",
+	"Loading is permissive: a key this page does not list is kept in the file but has no effect. That covers root keys and keys inside a listed object setting with named fields (reported as a dotted path such as `thinkingBudgets.xhigh`). Startup reports them once per load, one line per file: `~/.octocode/octocodecode/settings.json: 2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): delete them`.",
 	"Nested fields are listed as `parent.child`. Defaults shown are the values Octocode uses when a field is absent; an empty Default cell means no fixed value.",
 ].join("\n\n");
 
@@ -135,7 +135,7 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 	defaultProvider: "Provider of the model that starts a session when no model is selected; used with `defaultModel`.",
 	defaultModel: "Model ID that starts a session when no model is selected; used with `defaultProvider`.",
 	defaultThinkingLevel:
-		"Thinking level for the starting model when neither the model pattern nor `modelThinkingLevels` sets one; `high` when unset. Subagents never take it: each route names its own level.",
+		"Thinking level for the starting model, and for a model switch before the session chooses a level, when neither the model pattern nor `modelThinkingLevels` sets one; `high` when unset. Subagents never take it: each route names its own level.",
 	transport:
 		"Request transport for the OpenAI Codex Responses API, which can stream over SSE or WebSocket; `websocket-cached` and `auto` reuse cached context on WebSocket.",
 	steeringMode:

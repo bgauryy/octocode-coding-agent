@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { AGENT_RUNS_SCHEMA } from "./schema-sql.ts";
+import { AGENT_RUNS_SCHEMA, TIMERS_SCHEMA } from "./schema-sql.ts";
 
 /**
  * One step of the agent database's schema history. To change the schema: edit `schema-sql.ts` (a new file starts at the
@@ -55,7 +55,19 @@ const ADD_AGENT_RUNS: Migration = {
 	},
 };
 
-export const SCHEMA_PLAN: SchemaPlan = { version: 3, migrations: [ADD_END_HINT, ADD_AGENT_RUNS] };
+/**
+ * 4: `timers`, a session's own one-shot, repeating and wait-until wakes (`queries/timers.ts`). A new table, so an Octocode
+ * that knows only version 3 keeps using the file (it never reads it).
+ */
+const ADD_TIMERS: Migration = {
+	to: 4,
+	additive: true,
+	up: (db) => {
+		db.exec(TIMERS_SCHEMA);
+	},
+};
+
+export const SCHEMA_PLAN: SchemaPlan = { version: 4, migrations: [ADD_END_HINT, ADD_AGENT_RUNS, ADD_TIMERS] };
 
 /** The oldest version that can use a file at `version`: the last step up to it that was not additive, else the first version. */
 export function readableFromFor(plan: SchemaPlan, version: number): number {

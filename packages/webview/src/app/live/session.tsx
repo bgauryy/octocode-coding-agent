@@ -178,7 +178,8 @@ function frameScheduler(run: () => void, fallbackMs = 100) {
 	const cancel = () => {
 		if (frame !== undefined && typeof cancelAnimationFrame === "function") cancelAnimationFrame(frame);
 		clearTimeout(timer);
-		frame = timer = undefined;
+		frame = undefined;
+		timer = undefined;
 	};
 	const fire = () => {
 		cancel();

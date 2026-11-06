@@ -16,4 +16,6 @@ export const STATUS = {
 	hooks: "octocode-hooks",
 	/** Waiting to try again a turn that a report or message started and a provider error ended. */
 	wakeRetry: "octocode-wake-retry",
+	/** This session's active timers (`timer/register.ts`). */
+	timers: "octocode-timers",
 } as const;

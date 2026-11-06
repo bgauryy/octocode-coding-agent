@@ -4,7 +4,7 @@
  * Extensions are TypeScript modules that can:
  * - Subscribe to agent lifecycle events
  * - Register LLM-callable tools
- * - Register commands, keyboard shortcuts, and CLI flags
+ * - Register commands, and keyboard shortcuts
  * - Interact with the user via UI primitives
  */
 

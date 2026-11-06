@@ -139,7 +139,7 @@ describe("AgentSession MCP integration", () => {
 			resources?: boolean;
 			description?: string;
 			instructions?: string;
-			/** How tools and the `mcps` section are presented. Default: the setting (`compact`). */
+			/** How tools and the `mcps` section are presented. Default here: `compact`, which these cases pin (the setting defaults to `declared`). */
 			presentation?: McpPresentationMode;
 		} = {},
 	) {
@@ -185,7 +185,7 @@ describe("AgentSession MCP integration", () => {
 				(api: ExtensionAPI) =>
 					createMcpExtension({
 						loadConfig: () => ({ servers: [entry], errors: [], ...configOptions }),
-						...(presentation ? { presentation } : {}),
+						presentation: presentation ?? "compact",
 						updateConfig: (_entry, patch) => {
 							saved.push(patch);
 						},
@@ -472,9 +472,10 @@ describe("AgentSession MCP integration", () => {
 		expect(declaredToolNames(harness)).toEqual(["mcp__docs__fail", "mcp__docs__search", "mcp__docs__shot"]);
 		expect(harness.session.getActiveToolNames()).not.toContain("codemode");
 		expect(harness.session.getActiveToolNames()).not.toContain("tool_search");
-		// Server annotations never reach host permission policy.
+		// Only `destructiveHint: true` reaches host permission policy, where it can add an ask and never remove one; the
+		// other server hints (readOnlyHint, idempotentHint) do not.
 		const annotations = new Map(harness.session.getAllTools().map((tool) => [tool.name, tool.annotations]));
-		expect(annotations.get("mcp__docs__fail")).toBeUndefined();
+		expect(annotations.get("mcp__docs__fail")).toEqual({ destructiveHint: true });
 		expect(annotations.get("mcp__docs__search")).toBeUndefined();
 		const result = toolResult(harness, "mcp__docs__search");
 		expect(getMessageText(result)).toBe("direct guide\ndirect faq");
@@ -695,7 +696,7 @@ describe("AgentSession MCP integration", () => {
 						return pair.client;
 					},
 					...(startupWaitMs === undefined ? {} : { startupWaitMs }),
-					...(presentation ? { presentation } : {}),
+					presentation: presentation ?? "compact",
 				}),
 			],
 		});

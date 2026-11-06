@@ -120,9 +120,9 @@ export class ApplicationTranscript {
 		});
 	}
 
-	normalize(value: unknown, id?: string): ApplicationMessage {
+	normalize(value: unknown, knownId?: string): ApplicationMessage {
 		const source = asRecord(value);
-		id ??= this.identities.get(source);
+		let id = knownId ?? this.identities.get(source);
 		if (!id) {
 			const identity = [source.role, source.timestamp, source.toolCallId, this.nextMessage++];
 			id = createHash("sha256").update(JSON.stringify(identity)).digest("hex").slice(0, 24);

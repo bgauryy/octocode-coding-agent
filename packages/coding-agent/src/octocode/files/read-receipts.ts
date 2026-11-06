@@ -10,7 +10,9 @@ export function registerReadReceipts(api: ExtensionAPI) {
 		snapshotsByCall.delete(event.toolCallId);
 		const details = asRecord(event.details);
 		if (!snapshots || event.isError || details.outputTruncated || details.fullOutputPath) return;
-		const reads = await completedLocalReads(snapshots, event.structuredContent, ctx.cwd, event.input);
+		// The whole result: its structured content, else its one JSON text block (`resultData`).
+		const result = { content: event.content, structuredContent: event.structuredContent };
+		const reads = await completedLocalReads(snapshots, result, ctx.cwd, event.input);
 		if (reads.length)
 			return {
 				content: appendReadDigests(event.content, reads, { nested: Boolean(event.parentToolCallId) }),

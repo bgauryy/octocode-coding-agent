@@ -102,9 +102,7 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 	}
 
 	setModelThinkingLevel(provider: string, modelId: string, level: ThinkingLevel): void {
-		if (!this.globalSettings.modelThinkingLevels) {
-			this.globalSettings.modelThinkingLevels = {};
-		}
+		this.globalSettings.modelThinkingLevels ??= {};
 		this.globalSettings.modelThinkingLevels[`${provider}/${modelId}`] = level;
 		this.markModified("modelThinkingLevels");
 		this.save();

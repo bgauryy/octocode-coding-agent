@@ -68,14 +68,14 @@ function tailCut(text: string, keep: number, structured = false): number {
  * the whole body.
  */
 function bashOutcome(
-	text: string,
+	output: string,
 	isError: boolean,
 	running = false,
 	keep?: number,
 	facts?: BashToolDetails,
 ): { summary: string; body: string; lines?: number; spill?: string } {
 	const structured = typeof facts?.output === "string";
-	if (structured) text = facts.output!;
+	const text = structured ? facts.output! : output;
 	let status =
 		facts?.termination === "timeout"
 			? `timed out after ${formatDuration((facts.timeoutSeconds ?? 0) * 1000)}`

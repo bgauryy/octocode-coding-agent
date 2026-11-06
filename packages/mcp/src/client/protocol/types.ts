@@ -68,6 +68,17 @@ export interface Tool {
 	inputSchema: Record<string, unknown>;
 	outputSchema?: Record<string, unknown>;
 	execution?: ToolExecution;
+	/**
+	 * The server's hints, as the MCP specification names them. `toTool` keeps only `destructiveHint: true`: a self-declared
+	 * hint may add a permission ask, never remove one.
+	 */
+	annotations?: {
+		title?: string;
+		readOnlyHint?: boolean;
+		destructiveHint?: boolean;
+		idempotentHint?: boolean;
+		openWorldHint?: boolean;
+	};
 	_meta?: Record<string, unknown>;
 }
 

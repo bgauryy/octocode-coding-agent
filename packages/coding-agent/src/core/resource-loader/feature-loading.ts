@@ -4,7 +4,8 @@ import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { readJsonFile } from "../../../../common/src/json.ts";
 import { canonicalizePath, isUnderPath } from "../../../../common/src/paths.ts";
 import { CONFIG_DIR_NAME, getLegacyConfigDirs } from "../../config.ts";
-import { configDiscovery } from "../discovery/service.ts";
+import { configDiscovery, discoveryInput } from "../discovery/service.ts";
+import { vendorOn } from "../discovery/vendors/switch.ts";
 import { PI_PROJECT_DIR_NAME } from "../discovery/roots.ts";
 import type { DiscoverInput } from "../discovery/types.ts";
 import { detectFeatureConflicts } from "../features/conflicts.ts";
@@ -99,8 +100,36 @@ export class FeatureSetLoader {
 		this.config = config;
 	}
 
-	async resolveResources(): Promise<ResolvedPaths> {
+	/** One discovery pass for the whole resolve: the main package resolve and each Pi folder's ask for the same kinds. */
+	resolveResources(): Promise<ResolvedPaths> {
+		return configDiscovery.pass(() => this.resolveWithPi());
+	}
+
+	/**
+	 * The packages and folders in effect, then Pi's global folders resolved with Pi's own settings. With Pi switched off
+	 * (`harness:pi`) only its extensions are kept (listed, never run); a Pi skill another harness supplies is left out.
+	 */
+	private async resolveWithPi(): Promise<ResolvedPaths> {
 		const resolved = await this.config.packageManager.resolve();
+		const toggles = this.config.settingsManager.getToggles();
+		const piOn = vendorOn("pi", toggles, false);
+		const shadowedPiSkills = new Set(
+			configDiscovery
+				.discover(
+					"skill",
+					discoveryInput({
+						cwd: this.config.cwd,
+						agentDir: this.config.agentDir,
+						projectTrusted: this.config.settingsManager.isProjectTrusted(),
+						toggles,
+					}),
+				)
+				.filter(
+					({ provenance }) =>
+						provenance.vendor === "pi" && provenance.shadowedBy && provenance.shadowedBy.vendor !== "pi",
+				)
+				.map((item) => canonicalizePath(item.provenance.path)),
+		);
 		const legacyDirs = getLegacyConfigDirs(this.config.agentDir);
 		const roots = [join(this.config.cwd, CONFIG_DIR_NAME), this.config.agentDir, ...legacyDirs];
 		const packageNames = new Map<string, string | undefined>();
@@ -129,6 +158,7 @@ export class FeatureSetLoader {
 			});
 			const legacy = await manager.resolve(async () => "skip");
 			for (const kind of ["extensions", "skills", "prompts", "themes"] as const) {
+				if (kind !== "extensions" && !piOn) continue;
 				const localKey = (file: string): string | undefined => {
 					for (const root of roots) {
 						const prefix = `${resolve(root, kind)}${sep}`;
@@ -141,6 +171,7 @@ export class FeatureSetLoader {
 				const nativePackages = new Set(resolved[kind].map(packageName).filter((name) => name !== undefined));
 				for (const item of legacy[kind]) {
 					if (seen.has(canonicalizePath(item.path))) continue;
+					if (kind === "skills" && shadowedPiSkills.has(canonicalizePath(item.path))) continue;
 					const name = packageName(item);
 					if (name !== undefined && nativePackages.has(name)) continue;
 					const local = localKey(item.path);

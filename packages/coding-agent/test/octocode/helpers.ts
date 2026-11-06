@@ -3,7 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";
 import type { Fetched } from "../../src/octocode/web/fetch.ts";
+import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
 import { grantFolder } from "../../src/octocode/trust/grants.ts";
+import type { Toggles } from "../../src/core/extensibility/toggles.ts";
+
+/**
+ * The `/harness` switches of a user who turned Claude Code and Codex on. Their hook files (and Claude permission rules)
+ * stay off by default, so a suite that tests what those files do starts from these toggles.
+ */
+export const HOOK_HARNESSES_ON: Toggles = Object.freeze({ "harness:claude": true, "harness:codex": true });
+
+/** Settings with {@link HOOK_HARNESSES_ON}: for `fakeHost(...)`, `loadHooks(..., options)` or a settings file. */
+export const HOOK_SETTINGS = Object.freeze({ toggles: HOOK_HARNESSES_ON });
 
 /**
  * Records the decision a user would have made for a fixture's project folder, in the agent database `env` selects (the
@@ -67,4 +78,21 @@ export function allSections(event: {
 	systemPromptOptions: { sections: Record<string, string>; baseSections?: Record<string, string> };
 }): Record<string, string> {
 	return { ...event.systemPromptOptions.baseSections, ...event.systemPromptOptions.sections };
+}
+
+/**
+ * The skill files other agents' folders (Claude Code, Codex, Cursor) hold for a workspace, with their harness switched on,
+ * as core discovery lists them: the same discovery the runtime loads skills through.
+ */
+export function vendorSkillFiles(
+	cwd: string,
+	home: string,
+	projectTrusted = true,
+	env: NodeJS.ProcessEnv = {},
+): string[] {
+	const toggles = { "harness:claude": true, "harness:codex": true, "harness:cursor": true };
+	return configDiscovery
+		.discover("skill", discoveryInput({ cwd, agentDir: tmp(), home, projectTrusted, env, piRoots: [], toggles }))
+		.filter(({ provenance }) => ["claude", "codex", "cursor"].includes(provenance.vendor))
+		.map(({ provenance }) => provenance.path);
 }

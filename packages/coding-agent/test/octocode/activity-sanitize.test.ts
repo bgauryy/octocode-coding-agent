@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Thought, thoughtGist } from "../../src/octocode/shared/thought.ts";
-import { Activity, callTarget } from "../../src/octocode/ui/activity.ts";
+import { Activity, callTarget } from "../../src/octocode/ui/activity-model.ts";
 
 /** A window title, a hyperlink, a screen clear and a bidi override: none may reach a reader's terminal. */
 const HOSTILE = "\u001b]0;pwned\u0007\u001b]8;;https://x.test\u0007\u001b[2J\u202e";

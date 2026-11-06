@@ -16,7 +16,8 @@ import {
 	createCompactionSummaryMessage,
 	createCustomMessage,
 } from "../messages.ts";
-import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+import { projectContextEntry } from "../session-manager/context.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
@@ -152,7 +153,13 @@ export function collectEntriesForBranchSummary(
  * Extract AgentMessage from a session entry.
  * Similar to getMessageFromEntry in compaction.ts but also handles compaction entries.
  */
-function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
+function getMessageFromEntry(entry: SessionEntry, edit?: ContextEditEntry): AgentMessage | undefined {
+	const message = getRawMessageFromEntry(entry);
+	// Apply the same context edit projection the live context uses, so removed or replaced content is not summarized.
+	return message && edit ? projectContextEntry(entry, edit)[0] : message;
+}
+
+function getRawMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 	switch (entry.type) {
 		case "message":
 			// Skip tool results - context is in assistant's tool call
@@ -174,6 +181,8 @@ function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 		case "custom":
 		case "label":
 		case "session_info":
+		case "usage":
+		case "context_edit":
 			return undefined;
 	}
 }
@@ -214,10 +223,15 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 		}
 	}
 
+	const edits = new Map<string, ContextEditEntry>();
+	for (const entry of entries) {
+		if (entry.type === "context_edit") edits.set(entry.targetId, entry);
+	}
+
 	// Second pass: walk from newest to oldest, adding messages until token budget
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
-		const message = getMessageFromEntry(entry);
+		const message = getMessageFromEntry(entry, edits.get(entry.id));
 		if (!message) continue;
 
 		// Extract file ops from assistant messages (tool calls)

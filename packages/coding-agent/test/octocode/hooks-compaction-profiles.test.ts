@@ -6,7 +6,7 @@ import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 describe("compaction source semantics", () => {
 	it("ignores Claude PreCompact continue but honors an explicit block", () => {
@@ -38,7 +38,7 @@ describe("compaction source semantics", () => {
 					},
 				}),
 			);
-			const f = fakeHost();
+			const f = fakeHost(HOOK_SETTINGS);
 			registerHooks(f.api, {}, home);
 			const ctx = fakeCtx({ cwd: tmp() });
 			ctx.abort = vi.fn();

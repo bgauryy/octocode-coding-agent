@@ -1,17 +1,15 @@
 import { existsSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { collectAutoPromptEntries, collectAutoThemeEntries } from "../package-manager/auto-entries.ts";
-import {
-	collectAncestorAgentsSkillDirs,
-	collectAncestorProjectSkillDirs,
-	collectSkillEntries,
-} from "../package-manager/discovery.ts";
+import { basename, dirname, join, sep } from "node:path";
+import { envFlag, EXTRA_SKILLS_ENV, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { collectSkillEntries } from "../package-manager/discovery.ts";
 import { discoverExtensionsInDir } from "../package-manager/extension-discovery.ts";
-import { type ConfigRoot, configRoots, makeItem, skillName, themeName } from "./roots.ts";
-import type { ConfigItem, ConfigKind, DiscoverInput } from "./types.ts";
+import { type ConfigRoot, configRoots, makeItem, skillName } from "./roots.ts";
+import type { ConfigItem, ConfigKind, DiscoverInput, Product } from "./types.ts";
+
+/** Helpers the vendor files (`vendors/*.ts`) compose into their sources: each takes the roots or folders of one vendor. */
 
 /** Context files a directory may hold, in the order the first one found is used. */
-export const CONTEXT_FILE_CANDIDATES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+export const CONTEXT_FILE_CANDIDATES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD"];
 
 /** The context file a directory holds, if any. */
 function findContextFile(dir: string): string | undefined {
@@ -24,104 +22,101 @@ function findContextFile(dir: string): string | undefined {
 	});
 }
 
-/** Skills: each root's `skills/`, then the shared `.agents/skills` folders. */
-function skillItems(input: DiscoverInput): ConfigItem[] {
-	const items: ConfigItem[] = [];
-	const add = (root: Pick<ConfigRoot, "product" | "scope" | "origin">, dir: string, mode: "octocode" | "agents") => {
-		for (const file of collectSkillEntries(dir, mode)) {
-			items.push(makeItem("skill", skillName(file), root, file, input, { baseDir: dirname(dir) }));
-		}
-	};
-	const roots = configRoots(input);
-	const project = (product: "octocode" | "pi") =>
-		roots.find((root) => root.scope === "project" && root.product === product);
-	const octocodeProject = project("octocode");
-	if (octocodeProject) {
-		add(octocodeProject, join(octocodeProject.dir, "skills"), "octocode");
-		// From a subdirectory, the repository root's folder holds project skills too.
-		for (const dir of collectAncestorProjectSkillDirs(input.cwd)) add(octocodeProject, dir, "octocode");
-	}
-	if (input.projectTrusted || input.includeUntrusted) {
-		const userAgents = join(input.home, ".agents", "skills");
-		for (const dir of collectAncestorAgentsSkillDirs(input.cwd)) {
-			if (resolve(dir) !== resolve(userAgents))
-				add({ product: "octocode", scope: "project", origin: "agents" }, dir, "agents");
-		}
-	}
-	const piProject = project("pi");
-	if (piProject) add(piProject, join(piProject.dir, "skills"), "octocode");
-	for (const root of roots) if (root.scope === "global") add(root, join(root.dir, "skills"), "octocode");
-	add({ product: "octocode", scope: "global", origin: "agents" }, join(input.home, ".agents", "skills"), "agents");
-	return items;
+/** The roots of one product, in `configRoots` order. */
+export const productRoots = (input: DiscoverInput, product: Product): ConfigRoot[] =>
+	configRoots(input).filter((root) => root.product === product);
+
+/** Whether project items are listed at all: a trusted folder, or `includeUntrusted` for display. */
+export const listsProject = (input: DiscoverInput): boolean => input.projectTrusted || !!input.includeUntrusted;
+
+/**
+ * Skills in `dirs`, all from `root`. `skipSynced` drops a Claude folder's `synced/` subtree (claude.ai skills that need
+ * connectors Octocode does not have, whose broad triggers would win over local skills), unless the folder is a skill.
+ */
+export function skillItemsIn(
+	dirs: readonly string[],
+	root: Pick<ConfigRoot, "product" | "scope" | "origin" | "vendor">,
+	input: DiscoverInput,
+	options: { mode?: "octocode" | "agents"; skipSynced?: boolean } = {},
+): ConfigItem[] {
+	return dirs.flatMap((dir) => {
+		const synced = join(dir, "synced") + sep;
+		return collectSkillEntries(dir, options.mode ?? "octocode")
+			.filter((file) => !options.skipSynced || !file.startsWith(synced))
+			.map((file) => makeItem("skill", skillName(file), root, file, input, { baseDir: dirname(dir) }));
+	});
 }
 
-function directoryItems(
+/** Prompts or themes in each root's `subdir`. */
+export function directoryItems(
 	kind: "prompt" | "theme",
 	subdir: string,
 	collect: (dir: string) => string[],
 	name: (file: string) => string,
+	roots: readonly ConfigRoot[],
 	input: DiscoverInput,
 ): ConfigItem[] {
-	return configRoots(input).flatMap((root) =>
+	return roots.flatMap((root) =>
 		collect(join(root.dir, subdir)).map((file) => makeItem(kind, name(file), root, file, input, { baseDir: root.dir })),
 	);
 }
 
-/** User code Octocode does not run, found in `<root>/<subdir>` of every root that has one. */
-function ignoredCodeItems(
+/** User code Octocode does not run, found in `<root>/<subdir>`. */
+export function ignoredCodeItems(
 	kind: "extension" | "hook",
 	subdir: string,
-	piOnly: boolean,
+	roots: readonly ConfigRoot[],
 	input: DiscoverInput,
 ): ConfigItem[] {
-	return configRoots(input)
-		.filter((root) => !piOnly || root.product === "pi")
-		.flatMap((root) =>
-			discoverExtensionsInDir(join(root.dir, subdir)).map((file) =>
-				makeItem(kind, basename(file), root, file, input, { baseDir: root.dir, notLoaded: "ignored-code" }),
-			),
-		);
+	return roots.flatMap((root) =>
+		discoverExtensionsInDir(join(root.dir, subdir)).map((file) =>
+			makeItem(kind, basename(file), root, file, input, { baseDir: root.dir, notLoaded: "ignored-code" }),
+		),
+	);
 }
 
-/** The global context file of each product; project context files are loaded by `loadProjectContextFiles`. */
-function contextItems(input: DiscoverInput): ConfigItem[] {
-	return configRoots(input).flatMap((root) => {
+/** The global context file of each root; project context files are loaded by `loadProjectContextFiles`. */
+export function contextItems(roots: readonly ConfigRoot[], input: DiscoverInput): ConfigItem[] {
+	return roots.flatMap((root) => {
 		const file = root.scope === "global" ? findContextFile(root.dir) : undefined;
 		return file ? [makeItem("context", "global", root, file, input)] : [];
 	});
 }
 
-function namedFileItems(kind: ConfigKind, file: string, scopes: readonly string[], input: DiscoverInput): ConfigItem[] {
-	return configRoots(input).flatMap((root) => {
+/** `file` in each root of the given scopes, when it exists. */
+export function namedFileItems(
+	kind: ConfigKind,
+	file: string,
+	scopes: readonly string[],
+	roots: readonly ConfigRoot[],
+	input: DiscoverInput,
+): ConfigItem[] {
+	return roots.flatMap((root) => {
 		const path = join(root.dir, file);
 		return scopes.includes(root.scope) && existsSync(path) ? [makeItem(kind, file, root, path, input)] : [];
 	});
 }
 
-const promptName = (file: string): string => basename(file).replace(/\.md$/, "");
+/** Hook files of one dialect; every file Octocode may read is listed, whether or not it exists (`loadHooks` skips a missing one). */
+export function hookFileItems(
+	files: readonly string[],
+	dialect: "claude" | "codex" | "octocode",
+	scope: "global" | "project",
+	input: DiscoverInput,
+): ConfigItem[] {
+	return files.map((file) =>
+		makeItem("hook", basename(file), { product: "octocode", vendor: dialect, scope, origin: dialect }, file, input),
+	);
+}
 
-/** The file-based sources core owns. */
-export const CORE_SOURCES: ReadonlyArray<{ kind: ConfigKind; discover(input: DiscoverInput): ConfigItem[] }> = [
-	{ kind: "skill", discover: skillItems },
-	{
-		kind: "prompt",
-		discover: (input) => directoryItems("prompt", "prompts", collectAutoPromptEntries, promptName, input),
-	},
-	{ kind: "theme", discover: (input) => directoryItems("theme", "themes", collectAutoThemeEntries, themeName, input) },
-	{ kind: "extension", discover: (input) => ignoredCodeItems("extension", "extensions", false, input) },
-	// Pi's `hooks/` held TypeScript hooks until Pi 0.35 merged them into extensions; Octocode's hooks are JSON files.
-	{ kind: "hook", discover: (input) => ignoredCodeItems("hook", "hooks", true, input) },
-	{ kind: "context", discover: contextItems },
-	{
-		kind: "systemPrompt",
-		discover: (input) => namedFileItems("systemPrompt", "SYSTEM.md", ["project", "global"], input),
-	},
-	{
-		kind: "appendSystemPrompt",
-		discover: (input) => namedFileItems("appendSystemPrompt", "APPEND_SYSTEM.md", ["project", "global"], input),
-	},
-	{ kind: "keybinding", discover: (input) => namedFileItems("keybinding", "keybindings.json", ["global"], input) },
-	// Both are layered files: every one that exists is read, Octocode's over Pi's and project over global within a product.
-	{ kind: "model", discover: (input) => namedFileItems("model", "models.json", ["global"], input) },
-	{ kind: "setting", discover: (input) => namedFileItems("setting", "settings.json", ["project", "global"], input) },
-];
+export const promptName = (file: string): string => basename(file).replace(/\.md$/, "");
+
+/**
+ * Skill folders outside the products' own roots (Octocode's home, Claude Code, Codex, Cursor) are read in the root
+ * session only. A native subagent starts with `--no-skills` and adopts its parent's captured inventory, so it never
+ * discovers them itself; `OCTOCODE_SUBAGENT=1` also keeps any other child process from doing so.
+ * `OCTOCODE_EXTRA_SKILLS=0` turns them off everywhere.
+ */
+export function externalSkillsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+	return !envFlag(env, SUBAGENT_ENV) && envFlag(env, EXTRA_SKILLS_ENV, true);
+}

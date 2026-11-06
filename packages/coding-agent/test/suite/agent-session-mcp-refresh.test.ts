@@ -114,6 +114,9 @@ describe("AgentSession MCP contract refresh", () => {
 				createMcpExtension({
 					loadConfig: () => ({ servers, errors: [] }),
 					startupWaitMs: 10,
+					// These cases pin the thin-declaration presentation; `declared`, the default, is covered in
+					// test/octocode/mcp-instructions-delta.test.ts.
+					presentation: "compact",
 					createTransport: (target) => {
 						const late = target.name === "late" && options.late;
 						const pair = late ? createFakeServer(() => late, calls, 300) : createFakeServer(() => server, calls);

@@ -41,26 +41,35 @@ const oneLine = (value: string | undefined): string => value?.replace(/\s+/g, " 
  * (`mcp__<name>__*`) and its contract: the server's own instructions and, for each tool enabled for this agent, its
  * description and schema (`McpPresentation.describe`; the same for every server, preset or configured). The one-line
  * purpose (the configured description) is stated once: in the `tools` overview for a server with described tools
- * (`mcpServerPurposes`), in its block otherwise. A server the prompt described before it connected says so in one
+ * (`mcpServerPurposes`), in its block otherwise. With `declared` the contract is the instructions only (the tools carry
+ * their own descriptions and schemas) and a server without any is left out. A server the prompt described before it connected says so in one
  * line, as does a connected one with no tool enabled. A block never names connection state
  * (`renderMcpStatusSection` does), so it changes only when its server is added or removed, its description changes,
  * or its catalog is first described or renewed. Undefined without an enabled server.
  */
-export function renderMcpsSection(servers: readonly McpServerListing[]): string | undefined {
+export function renderMcpsSection(
+	servers: readonly McpServerListing[],
+	options: { declared?: boolean } = {},
+): string | undefined {
 	const { instruction } = hostRender();
-	const blocks = listedServers(servers).map((server) =>
-		instruction("sections/mcp-server.md", {
-			name: attribute(server.entry.name),
-			tools: `${mcpNamespace(server.entry.name)}__*`,
-			declared: server.declared,
-			contract: server.contract,
-			purpose: oneLine(server.entry.config.description),
-			pending: server.pending === true,
-			deferred: server.deferred === true,
-		}),
-	);
+	// In `declared` mode a server with no instructions and no deferred tool has nothing to say here: its tools say it all.
+	const blocks = listedServers(servers)
+		.filter((server) => !options.declared || !server.declared || server.contract || server.defers || server.deferred)
+		.map((server) =>
+			instruction("sections/mcp-server.md", {
+				name: attribute(server.entry.name),
+				tools: `${mcpNamespace(server.entry.name)}__*`,
+				declared: server.declared,
+				contract: server.contract,
+				purpose: oneLine(server.entry.config.description),
+				pending: server.pending === true,
+				deferred: server.deferred === true,
+			}),
+		);
 	const deferred = servers.some((server) => server.deferred || server.defers);
-	return blocks.length > 0 ? instruction("sections/mcps.md", { blocks: blocks.join("\n"), deferred }) : undefined;
+	return blocks.length > 0
+		? instruction("sections/mcps.md", { blocks: blocks.join("\n"), deferred, declared: options.declared === true })
+		: undefined;
 }
 
 /**

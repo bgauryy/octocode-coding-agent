@@ -223,6 +223,15 @@ export async function spawnShell(
 }
 
 let keepProviderKeys = false;
+let extraPathEntries: () => readonly string[] = () => [];
+
+/**
+ * Folders every shell command finds before Octocode's `bin`: `octocode/index.ts` installs the research CLI's shim folder
+ * (`octocode/cli/shim.ts`) here, so `octocode` in an agent shell is that CLI whatever the user's path holds.
+ */
+export function setShellPathEntries(entries: () => readonly string[]): void {
+	extraPathEntries = entries;
+}
 
 /** The `bash.inheritProviderKeys` setting: `octocode/files/bash-env.ts` applies it when a session starts. */
 export function setShellKeepsProviderKeys(keep: boolean): void {
@@ -230,19 +239,19 @@ export function setShellKeepsProviderKeys(keep: boolean): void {
 }
 
 /**
- * The environment every shell command starts from: this process's, with Octocode's `bin` on the path and without the
+ * The environment every shell command starts from: this process's, with the `setShellPathEntries` folders and then
+ * Octocode's `bin` first on the path, and without the
  * provider API keys it found (`bash.inheritProviderKeys` keeps them). A command's output reaches the model and a build
  * script reads its environment, while the session itself already holds what it needs. Same-user `auth.json` reads remain
  * possible, so this is defence in depth, as `web-daemon/spawn-env.ts` is for the daemon and the MCP transport's filter for
  * servers. A tool's own token (`GH_TOKEN`) is the user's tool working, and stays.
  */
 export function getShellEnv(): NodeJS.ProcessEnv {
-	const binDir = getBinDir();
 	const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
 	const currentPath = process.env[pathKey] ?? "";
 	const pathEntries = currentPath.split(delimiter).filter(Boolean);
-	const hasBinDir = pathEntries.includes(binDir);
-	const updatedPath = hasBinDir ? currentPath : [binDir, currentPath].filter(Boolean).join(delimiter);
+	const missing = [...new Set([...extraPathEntries(), getBinDir()])].filter((dir) => !pathEntries.includes(dir));
+	const updatedPath = [...missing, currentPath].filter(Boolean).join(delimiter);
 
 	const env: NodeJS.ProcessEnv = { ...process.env, [pathKey]: updatedPath };
 	if (!keepProviderKeys)

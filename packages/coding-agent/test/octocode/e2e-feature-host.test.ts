@@ -74,19 +74,6 @@ describe("duplicate registrations", () => {
 		);
 	});
 
-	it("names both features when two register the same flag", async () => {
-		const flag = (api: ExtensionAPI) => api.registerFlag("shared-flag", { type: "boolean" });
-		const { result } = await load({
-			extensionFactories: [
-				{ name: "one", factory: flag },
-				{ name: "two", factory: flag },
-			],
-		});
-		expect(result.errors.map((error) => error.error)).toEqual([
-			'Flag "--shared-flag" registered by <inline:two> (builtin) conflicts with <inline:one> (builtin)',
-		]);
-	});
-
 	it("reports a feature whose registration throws and registers the rest", async () => {
 		const { result } = await load({
 			extensionFactories: [

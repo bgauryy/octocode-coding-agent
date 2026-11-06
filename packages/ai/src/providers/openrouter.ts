@@ -10,6 +10,7 @@ import type { AnyModel } from "../types.ts";
 import { isModelType } from "../utils/model-operations.ts";
 import { OPENROUTER_CLASSIFIER_MODELS, OPENROUTER_IMAGE_MODELS, OPENROUTER_MODELS } from "./openrouter.models.ts";
 import { type OpenRouterModel, openRouterCost } from "./openrouter-api.ts";
+import { nonZeroOr } from "../utils/non-zero.ts";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_USER_MODELS_TIMEOUT_MS = 15_000;
@@ -52,8 +53,8 @@ export async function personalizeOpenRouterCatalog(
 			{
 				...model,
 				// `||`: OpenRouter reports a missing limit as absent, null or 0, like the generator's fallback.
-				contextWindow: entry.top_provider?.context_length || entry.context_length || model.contextWindow,
-				maxTokens: entry.top_provider?.max_completion_tokens || model.maxTokens,
+				contextWindow: nonZeroOr(model.contextWindow, entry.top_provider?.context_length, entry.context_length),
+				maxTokens: nonZeroOr(model.maxTokens, entry.top_provider?.max_completion_tokens),
 				cost: entry.pricing ? openRouterCost(entry.pricing) : model.cost,
 			},
 		];

@@ -6,6 +6,8 @@ import { expect, it, vi } from "vitest";
 import { Type } from "typebox";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
+import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import "../src/octocode/mcp-host/core-install.ts";
 
 function fixture(event: string, continueOnBlock = false) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "prompt-hook-session-"));
@@ -40,7 +42,7 @@ it.each([false, true])(
 			details: {},
 		}));
 		const harness = await createHarness({
-			settings: { retry: { enabled: false } },
+			settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 			tools: [
 				{
 					name: "work",
@@ -86,7 +88,7 @@ it.each([false, true])(
 it("continues a rejected Stop evaluation once and finishes after an allowing evaluation", async () => {
 	const home = fixture("Stop");
 	const harness = await createHarness({
-		settings: { retry: { enabled: false } },
+		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		tools: [],
 		extensionFactories: [
 			(api) => {

@@ -2,7 +2,7 @@ import path from "node:path";
 import type { AutocompleteItem } from "@octocodeai/octocode-tui";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
-import { getMcpSwitch } from "../../../../mcp/src/switch.ts";
+import { getMcpSwitch, requestMcpReload } from "../../../../mcp/src/switch.ts";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import {
 	buildInventory,
@@ -20,6 +20,7 @@ import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
 import { HarnessPicker } from "./picker.ts";
+import { switchHarness } from "./vendor-items.ts";
 
 /** `/harness list <section>` filters: each names the rows it keeps. */
 const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
@@ -32,8 +33,8 @@ const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
 const MARKETPLACE_ACTIONS = ["install", "update", "remove"];
 const SUBCOMMANDS: Array<[string, string]> = [
 	["list", "Print the inventory, or one section"],
-	["enable", "Switch items on by ID or name"],
-	["disable", "Switch items off by ID or name"],
+	["enable", "Switch items or a harness on (claude, codex, cursor, pi, agents, mcp-json)"],
+	["disable", "Switch items or a harness off"],
 	["install", "Install a marketplace plugin"],
 	["update", "Update a marketplace plugin"],
 	["remove", "Remove a marketplace plugin"],
@@ -43,7 +44,7 @@ const SUBCOMMANDS: Array<[string, string]> = [
 const USAGE = [
 	"Usage: /harness opens the switch list (text outside the terminal)",
 	`  /harness list [${Object.keys(SECTIONS).join("|")}|<text>]`,
-	"  /harness enable|disable <id|name>... [--local] [--force]",
+	"  /harness enable|disable <id|name|harness>... [--project] [--force]",
 	"  /harness install|update|remove <plugin@marketplace> [--yes]",
 	"  /harness hooks [events]",
 	"  /harness config",
@@ -56,6 +57,27 @@ const savedSettings = (manager: SettingsManager): string =>
 	JSON.stringify([manager.getGlobalSettings(), manager.getProjectSettings()]);
 
 const where = (scope: SwitchScope) => (scope === "project" ? "for this project" : "globally");
+
+/**
+ * After a harness switch is saved, the MCP owner re-reads its files and connects or drops the difference at once (a
+ * harness's servers need no reload); one line says what changed.
+ */
+async function reloadMcp(api: ExtensionAPI): Promise<string> {
+	let result: Awaited<ReturnType<typeof requestMcpReload>>;
+	try {
+		result = await requestMcpReload(api.events);
+	} catch (error) {
+		return `Warning: the switches are saved, but the MCP reload failed (${errorMessage(error)}); run /reload to apply them.`;
+	}
+	if (!result) return "MCP is off in this session, so no servers changed.";
+	if (!result.added.length && !result.removed.length) return "MCP servers unchanged.";
+	return [
+		result.added.length ? `MCP servers added: ${result.added.join(", ")}` : "",
+		result.removed.length ? `MCP servers removed: ${result.removed.join(", ")}` : "",
+	]
+		.filter(Boolean)
+		.join("; ");
+}
 
 type Resolved = { item: InventoryItem } | { stale: true } | { error: string };
 
@@ -140,10 +162,11 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 	async function switchCommand(on: boolean, words: string[], ctx: ExtensionCommandContext): Promise<void> {
 		const flags = words.filter((word) => word.startsWith("--"));
 		const queries = words.filter((word) => !word.startsWith("--"));
-		const unknown = flags.filter((flag) => flag !== "--local" && flag !== "--force");
+		const unknown = flags.filter((flag) => flag !== "--local" && flag !== "--project" && flag !== "--force");
 		if (!queries.length || unknown.length)
 			return say(ctx, `${unknown.length ? `Unknown option ${unknown.join(" ")}.\n` : ""}${USAGE}`, "warning");
-		const scope: SwitchScope = flags.includes("--local") ? "project" : "global";
+		const scope: SwitchScope = flags.includes("--local") || flags.includes("--project") ? "project" : "global";
+		let harnessSwitched = false;
 		const { agentDir, manager, inventory } = await load(ctx);
 		const before = savedSettings(manager);
 		const lines: string[] = [];
@@ -166,6 +189,10 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				// MCP switches wait for the end of the batch, so they can be saved for a reload rather than applied twice.
 				if (found.kind === "mcp")
 					mcpChanges.push({ name: found.name ?? found.label, enabled: on, inProject: scope === "project" });
+				else if (found.kind === "harness") {
+					lines.push(switchHarness(found, on, scope, manager, { cwd: ctx.cwd, agentDir }));
+					harnessSwitched = true;
+				}
 				// Rows show the loaded session, which a switch saved before the last reload may differ from, so the switch
 				// is always written; comparing the saved files afterwards decides whether a reload is needed.
 				else
@@ -179,6 +206,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 		}
 		await manager.flush();
 		const settingsChanged = savedSettings(manager) !== before;
+		if (harnessSwitched && settingsChanged) lines.push(await reloadMcp(api));
 		if (!settingsChanged && lines.length && !failed)
 			lines.push("The saved settings already matched; nothing to reload.");
 		await finish(ctx, { lines, failed, settingsChanged, mcpChanges });
@@ -205,7 +233,12 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 		const before = savedSettings(manager);
 		// MCP switches wait for the list to close: a row toggled back and forth costs nothing, and each server switches once.
 		const pending = new Map<string, { item: InventoryItem; on: boolean; scope: SwitchScope; was: boolean }>();
+		let harnessSwitched = false;
 		const apply = (item: InventoryItem, on: boolean, scope: SwitchScope, force: boolean): string => {
+			if (item.kind === "harness") {
+				harnessSwitched = true;
+				return switchHarness(item, on, scope, manager, { cwd: ctx.cwd, agentDir });
+			}
 			if (item.kind !== "mcp") return switchItem(item, on, scope, manager, { cwd: ctx.cwd, agentDir, force });
 			if (!getMcpSwitch(api.events)) throw new Error("MCP is not running in this session.");
 			pending.set(item.id, { item, on, scope, was: pending.get(item.id)?.was ?? item.on });
@@ -248,7 +281,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				inProject: change.scope === "project",
 			}));
 		await finish(ctx, {
-			lines: settingsChanged ? ["Switches saved."] : [],
+			lines: settingsChanged ? ["Switches saved.", ...(harnessSwitched ? [await reloadMcp(api)] : [])] : [],
 			failed: false,
 			settingsChanged,
 			mcpChanges,

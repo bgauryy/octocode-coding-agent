@@ -256,8 +256,9 @@ const HARMLESS_REDIRECT = /(?:&|\d*)>>?\s*(?:&\d+|\/dev\/null)(?=\s|$)/g;
  */
 function reads(tokens: ReadonlyArray<string | undefined>, input?: RunInput, raws?: ReadonlyArray<string>): boolean {
 	const [name, ...options] = tokens;
-	if (name === undefined || name.includes("/") || (!READERS.has(name) && name !== "git")) return false;
+	if (name === undefined || name.includes("/")) return false;
 	if (input && (input.programFromInput || inputMayWrite(name, options, input))) return false;
+	if (!READERS.has(name) && name !== "git") return false;
 	if (name === "git" && !GIT_READERS.has(options[0] ?? "")) return false;
 	if (computedOption(name, options, raws?.slice(1)) !== undefined) return false;
 	const test = writingTest(name, options);

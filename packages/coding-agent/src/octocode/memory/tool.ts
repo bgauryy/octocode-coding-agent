@@ -91,7 +91,11 @@ export function createMemoryActions(
 										"set: workspace (default), project or global; search/list: all (default; workspace, project and global)",
 								}),
 							),
-							title: Type.Optional(Type.String({ description: "set: specific one-line title" })),
+							title: Type.Optional(
+								Type.String({
+									description: "set: the rule itself in one line, not a pointer, since recall can cut the body",
+								}),
+							),
 							body: Type.Optional(
 								Type.String({
 									description: "set: the note; keep it short, it may be injected into every session",
@@ -200,9 +204,17 @@ export function createMemoryActions(
 							{ ids: [memory.id] },
 						);
 					}
+					// Archive answers the reads itself and routes only set and delete here.
+					case "search":
+					case "get":
+					case "list":
+						throw new Error(`Archive answers ${params.op}; memory actions only set and delete.`);
+					default: {
+						// Unreachable by type, but the op is model input at runtime.
+						const unknown: never = params.op;
+						throw new Error(`Unknown op ${JSON.stringify(unknown)}.`);
+					}
 				}
-				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- `params.op` is `never` here by exhaustiveness, but is model input at runtime
-				throw new Error(`Unknown op ${String(params.op)}.`);
 			},
 		},
 		{ exclusive: true },

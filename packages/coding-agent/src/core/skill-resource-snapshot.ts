@@ -128,10 +128,11 @@ function validate(snapshot: unknown): asserts snapshot is SkillResourceSnapshot 
 }
 
 export function captureSkillResourceSnapshot(
-	loaded: LoadSkillsResult,
+	available: LoadSkillsResult,
 	names?: readonly string[],
 	commands: readonly SlashCommandInfo[] = [],
 ): SkillResourceSnapshot {
+	let loaded = available;
 	if (names?.length === 0) return { version: 1, resources: [], explicitSkills: [] };
 	if (names) {
 		const selected = selectSkills(loaded.skills, names, commands);

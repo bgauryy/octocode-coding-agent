@@ -64,9 +64,9 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 		// This ensures we have input token counts even if the stream is aborted early
 		output.usage.input = event.message.usage.input_tokens || 0;
 		output.usage.output = event.message.usage.output_tokens || 0;
-		output.usage.cacheRead = event.message.usage.cache_read_input_tokens || 0;
-		output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens || 0;
-		output.usage.cacheWrite1h = event.message.usage.cache_creation?.ephemeral_1h_input_tokens || 0;
+		output.usage.cacheRead = event.message.usage.cache_read_input_tokens ?? 0;
+		output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens ?? 0;
+		output.usage.cacheWrite1h = event.message.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0;
 		// Anthropic doesn't provide total_tokens, compute from components
 		output.usage.totalTokens = sumUsageTokens(output.usage);
 		calculateCost(state.usageModel, output.usage);

@@ -55,7 +55,7 @@ export function hookPayload(
 	metadata: {
 		model?: string;
 		turnId?: string;
-		permissionMode?: "manual" | "workspace" | "full";
+		permissionMode?: "manual" | "workspace" | "full" | "bypass";
 		child?: { sessionId: string; agentName?: string; agentType: string };
 	} = {},
 ): Record<string, unknown> {
@@ -69,7 +69,8 @@ export function hookPayload(
 		projected.agent_type ??= metadata.child.agentType;
 	}
 	if (metadata.permissionMode && input.includes("permission_mode"))
-		projected.permission_mode = metadata.permissionMode === "full" ? "bypassPermissions" : "default";
+		projected.permission_mode =
+			metadata.permissionMode === "full" || metadata.permissionMode === "bypass" ? "bypassPermissions" : "default";
 	if (metadata.model && input.includes("model")) projected.model = metadata.model;
 	if (protocol === "claude" && pi_tool_name === "bash" && isRecord(payload.tool_input))
 		projected.tool_input = projectClaudeBash(payload.tool_input);

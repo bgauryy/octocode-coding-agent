@@ -96,7 +96,7 @@ export function createSessionCollaborators(
 	seams: SessionSeams,
 ): SessionCollaborators {
 	const { session } = base;
-	const models = new SessionModelControl(base, config.scopedModels ?? []);
+	const models = new SessionModelControl(base, config.scopedModels ?? [], config.requestedThinkingLevel);
 	const tools = new SessionToolLoadout(base, config);
 	const inputs = new SessionInputQueue(base);
 	const boundaries = new SessionBoundaries({

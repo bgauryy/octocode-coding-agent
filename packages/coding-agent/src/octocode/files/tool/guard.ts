@@ -152,9 +152,7 @@ export function judgeChange(
 
 function rereadRefusal(display: string, reader: Reader): string {
 	const again =
-		reader === BASH_READER
-			? `bash ${BASH_PRINT(display)}`
-			: `\`${reader.name}\` or bash ${BASH_PRINT(display)}`;
+		reader === BASH_READER ? `bash ${BASH_PRINT(display)}` : `\`${reader.name}\` or bash ${BASH_PRINT(display)}`;
 	return `${display}: your earlier read of it is no longer in your context (a compaction dropped it). Read it again first: ${again}.`;
 }
 

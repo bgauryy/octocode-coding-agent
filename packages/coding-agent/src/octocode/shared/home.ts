@@ -21,7 +21,7 @@ import { claudeConfigDir } from "../../utils/host-config.ts";
 import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
+import { isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
 import { ensureWorkspaceStateDir, workspaceStateDir } from "../../config/workspace.ts";
 
 export { privateDir };
@@ -150,26 +150,9 @@ export function octocodeTmpDir(root: string): string {
 	return path.join(root, OCTOCODE_DIR, "tmp");
 }
 
-/** Trust-gated project hook files: Claude Code, Codex, then Octocode's. */
-export function projectHookFiles(cwd: string): string[] {
-	const { root, hooks } = workspacePaths(cwd);
-	return [
-		path.join(root, ".claude", "settings.json"),
-		path.join(root, ".claude", "settings.local.json"),
-		path.join(root, ".codex", "hooks.json"),
-		path.join(root, ".codex", "config.toml"),
-		hooks,
-	];
-}
-
 /** Trust-gated project subagent profile directories, least specific first. */
 export function projectAgentDirs(cwd: string): string[] {
 	return [workspacePaths(cwd).agents];
-}
-
-/** Trust-gated project skill directories Octocode does not load itself: `.claude/skills` from `cwd` up to the root, then Octocode's. */
-export function projectSkillDirs(cwd: string): string[] {
-	return [...dirsToRepoRoot(cwd).map((dir) => path.join(dir, ".claude", "skills")), workspacePaths(cwd).skills];
 }
 
 /** `file` with the home directory shown as `~`. */
@@ -200,9 +183,10 @@ export function claudeSettingsSources(
 	return [
 		{ path: path.join(user, "settings.json"), anchor: user },
 		...(trusted
-			? projectHookFiles(cwd)
-					.filter((file) => path.basename(path.dirname(file)) === ".claude")
-					.map((file) => ({ path: file, anchor: cwd }))
+			? ["settings.json", "settings.local.json"].map((name) => ({
+					path: path.join(repoKey(cwd).root, ".claude", name),
+					anchor: cwd,
+				}))
 			: []),
 	];
 }

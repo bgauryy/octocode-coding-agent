@@ -34,11 +34,9 @@ export class SessionListeners {
 
 	/** The promise that resolves when the session next becomes idle. */
 	idleWait(): Promise<void> {
-		if (!this._idleWaitPromise) {
-			this._idleWaitPromise = new Promise((resolve) => {
-				this._resolveIdleWait = resolve;
-			});
-		}
+		this._idleWaitPromise ??= new Promise((resolve) => {
+			this._resolveIdleWait = resolve;
+		});
 		return this._idleWaitPromise;
 	}
 

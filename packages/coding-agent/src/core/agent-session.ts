@@ -94,7 +94,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 				if (this.isIdle) this._listeners.resolveIdleWait();
 			},
 		};
-		const c = (this._c = createSessionCollaborators(base, config, this._cacheWarmer, {
+		const c = createSessionCollaborators(base, config, this._cacheWarmer, {
 			recordBashResult: (...args) => this.recordBashResult(...args),
 			runDefaultCompaction: (...args) => this._runDefaultCompaction(...args),
 			getSummarizationRequestAuth: (...args) => this._getSummarizationRequestAuth(...args),
@@ -107,7 +107,8 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			setExtensionRunner: (runner) => {
 				this._extensionRunner = runner;
 			},
-		}));
+		});
+		this._c = c;
 
 		// Always subscribe to agent events for internal handling
 		// (session persistence, extensions, auto-compaction, retry logic)

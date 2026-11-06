@@ -93,6 +93,9 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 				}));
 			break;
 		}
+		default:
+			// Transcript, tool, activity and reset events carry no lifecycle state.
+			break;
 	}
 }
 

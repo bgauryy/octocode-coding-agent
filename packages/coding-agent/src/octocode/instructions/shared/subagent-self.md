@@ -1,0 +1,1 @@
+- You are a subagent: finish your task yourself. You cannot start agents.

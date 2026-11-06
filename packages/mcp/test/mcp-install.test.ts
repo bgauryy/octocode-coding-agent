@@ -10,6 +10,8 @@ import {
 	resetMcpInstallFailures,
 	resolveInstalledLaunch,
 } from "../src/install.ts";
+import { recommendedPresets } from "../src/recommended/index.ts";
+import { validateMcpServerConfig } from "../src/servers.ts";
 import { takeLaunchWarnings } from "../src/warnings.ts";
 
 let agentDir: string;
@@ -92,5 +94,115 @@ describe("resolveInstalledLaunch", () => {
 	it("leaves an entry without install unchanged", async () => {
 		const entry: McpServerEntry = { name: "plain", config: { command: "server" }, source: "test" };
 		expect(await resolveInstalledLaunch(entry, { agentDir })).toBe(entry);
+	});
+});
+
+describe("install.hostDependency", () => {
+	/** A host package folder that depends on `@scope/server` and has it installed (optionally without its build). */
+	function hostPackage(options: { listed?: boolean; built?: boolean; exports?: unknown } = {}): string {
+		const { listed = true, built = true } = options;
+		const host = path.join(agentDir, "host");
+		const dependency = path.join(host, "node_modules", "@scope", "server");
+		fs.mkdirSync(path.join(dependency, "dist"), { recursive: true });
+		const dependencies = listed ? { "@scope/server": "link:../server" } : {};
+		fs.writeFileSync(path.join(host, "package.json"), JSON.stringify({ name: "host", dependencies }));
+		const exports = options.exports === undefined ? {} : { exports: options.exports };
+		const manifest = { name: "@scope/server", version: "9.9.9", bin: { server: "dist/cli.js" }, ...exports };
+		fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify(manifest));
+		if (built) fs.writeFileSync(path.join(dependency, "dist", "cli.js"), "");
+		return fs.realpathSync(host);
+	}
+	const entry = (hostDependency = true): McpServerEntry => ({
+		name: "research",
+		config: { command: "server", args: ["--flag"], install: { ...spec, hostDependency } },
+		source: "test",
+	});
+	const launchArgs = (launched: McpServerEntry) => (launched.config as { args: string[] }).args;
+
+	it("runs the host's own build of the package, whatever its version, without npm", async () => {
+		const packageDir = hostPackage();
+		const npm = fakeNpm();
+		const launched = await resolveInstalledLaunch(entry(), { agentDir, packageDir, runNpm: npm });
+		expect((launched.config as { command: string }).command).toBe(process.execPath);
+		expect(launchArgs(launched)).toEqual([
+			path.join(packageDir, "node_modules", "@scope", "server", "dist", "cli.js"),
+			"--flag",
+		]);
+		expect(npm.calls).toEqual([]);
+		expect(takeLaunchWarnings()).toEqual([]);
+	});
+
+	// `{ import }` is octocode-mcp's published shape: a `require` lookup of it fails with ERR_PACKAGE_PATH_NOT_EXPORTED.
+	it.each([
+		["hide its package.json", { ".": "./dist/cli.js" }],
+		["expose only an import entry", { ".": { import: "./dist/cli.js" } }],
+		["are invalid", { ".": "./dist/cli.js", "./x": "./x.js", y: "./y.js" }],
+	])("finds a package whose exports %s, without npm", async (_, exports) => {
+		const packageDir = hostPackage({ exports });
+		const npm = fakeNpm();
+		const launched = await resolveInstalledLaunch(entry(), { agentDir, packageDir, runNpm: npm });
+		expect(launchArgs(launched)[0]).toBe(path.join(packageDir, "node_modules", "@scope", "server", "dist", "cli.js"));
+		expect(npm.calls).toEqual([]);
+	});
+
+	it("finds the package in a node_modules above the host, through a link", async () => {
+		const real = path.join(agentDir, "server");
+		fs.mkdirSync(path.join(real, "dist"), { recursive: true });
+		fs.writeFileSync(path.join(real, "dist", "cli.js"), "");
+		const manifest = { name: "@scope/server", bin: { server: "dist/cli.js" }, exports: { ".": { import: "./x.js" } } };
+		fs.writeFileSync(path.join(real, "package.json"), JSON.stringify(manifest));
+		fs.mkdirSync(path.join(agentDir, "node_modules", "@scope"), { recursive: true });
+		fs.symlinkSync(real, path.join(agentDir, "node_modules", "@scope", "server"), "junction");
+		const packageDir = path.join(agentDir, "packages", "host");
+		fs.mkdirSync(packageDir, { recursive: true });
+		const dependencies = { "@scope/server": "link:../../server" };
+		fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify({ name: "host", dependencies }));
+		const launched = await resolveInstalledLaunch(entry(), { agentDir, packageDir, runNpm: fakeNpm() });
+		expect(launchArgs(launched)[0]).toBe(path.join(fs.realpathSync(real), "dist", "cli.js"));
+	});
+
+	it.each([
+		["", undefined],
+		[" (import-only exports)", { ".": { import: "./dist/cli.js" } }],
+	])("warns with the build command when the bin file is missing%s, then installs from npm", async (_, exports) => {
+		const packageDir = hostPackage({ built: false, exports });
+		const npm = fakeNpm();
+		const launched = await resolveInstalledLaunch(entry(), { agentDir, packageDir, runNpm: npm });
+		const [warning, ...rest] = takeLaunchWarnings();
+		expect(rest).toEqual([]);
+		expect(warning).toMatch(/MCP server "research": @scope\/server at .* is not built .*cli\.js is missing/);
+		expect(warning).toContain("`yarn build`");
+		expect(warning).toContain("Installing @scope/server@1.2.3 from npm instead");
+		expect(npm.calls).toHaveLength(1);
+		expect(launchArgs(launched)[0]).toContain(mcpInstallDir(agentDir, "research"));
+	});
+
+	it("installs when the host does not list the package, or the entry does not ask for it", async () => {
+		const unlisted = hostPackage({ listed: false });
+		const npm = fakeNpm();
+		const launched = await resolveInstalledLaunch(entry(), { agentDir, packageDir: unlisted, runNpm: npm });
+		expect(launchArgs(launched)[0]).toContain(mcpInstallDir(agentDir, "research"));
+		const listed = hostPackage();
+		const plain = await resolveInstalledLaunch(entry(false), { agentDir, packageDir: listed, runNpm: npm });
+		expect(launchArgs(plain)[0]).toContain(mcpInstallDir(agentDir, "research"));
+		expect(takeLaunchWarnings()).toEqual([]);
+	});
+
+	it("rejects a non-boolean hostDependency", () => {
+		expect(validateMcpServerConfig("x", { command: "x", install: { ...spec, hostDependency: "yes" } })).toBe(
+			'server "x": install.hostDependency must be a boolean',
+		);
+	});
+
+	it("launches the default octocode entry from the octocode-mcp this checkout's coding-agent depends on", async () => {
+		const octocode = recommendedPresets({}).find((preset) => preset.name === "octocode")!;
+		const packageDir = path.resolve(import.meta.dirname, "../../coding-agent");
+		const launched = await resolveInstalledLaunch(
+			{ name: "octocode", config: octocode.config!, source: "built-in octocode" },
+			{ agentDir, packageDir, runNpm: async () => expect.unreachable("npm must not run") },
+		);
+		const [bin] = launchArgs(launched);
+		expect(bin).toMatch(/octocode-mcp[\\/]dist[\\/]index\.js$/);
+		expect(fs.existsSync(bin)).toBe(true);
 	});
 });

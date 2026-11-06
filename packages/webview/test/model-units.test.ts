@@ -12,7 +12,6 @@ import {
 } from "../src/app/model/backlog.ts";
 import { editorDefaults, locksIntent, needsCompletion, restoreDraft, toMutation } from "../src/app/model/editor.ts";
 import { choice, median, plural, span } from "../src/app/model/format.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { readLaunch } from "../src/access.ts";
 import { hashFor, parseHash, resolveRoute } from "../src/app/model/route.ts";
 import { snapshotItem } from "./helpers.ts";
@@ -36,12 +35,6 @@ describe("format helpers", () => {
 		expect(plural(0, "line")).toBe("0 lines");
 		expect(plural(1, "line")).toBe("1 line");
 		expect(plural(2, "child", "children")).toBe("2 children");
-	});
-
-	it("errorMessage reads an Error's message and stringifies anything else", () => {
-		expect(errorMessage(new Error("boom"))).toBe("boom");
-		expect(errorMessage("plain")).toBe("plain");
-		expect(errorMessage(42)).toBe("42");
 	});
 
 	it("choice returns the matching option and throws naming an unknown value", () => {

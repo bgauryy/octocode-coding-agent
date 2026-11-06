@@ -29,17 +29,7 @@ afterEach(async () => {
 
 describe("ACP CLI", () => {
 	it("accepts ACP and passes native runtime options to each RPC worker", () => {
-		const args = [
-			"--mode",
-			"acp",
-			"--provider",
-			"openai",
-			"--model",
-			"fixture",
-			"--no-mcp",
-			"--custom-option",
-			"value",
-		];
+		const args = ["--mode", "acp", "--provider", "openai", "--model", "fixture", "--no-mcp"];
 		const parsed = parseArgs(args);
 		expect(parsed.mode).toBe("acp");
 		expect(parsed.diagnostics).toEqual([]);

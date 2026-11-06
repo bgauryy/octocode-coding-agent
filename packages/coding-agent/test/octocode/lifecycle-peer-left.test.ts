@@ -13,7 +13,7 @@ const WORKER = path.join(import.meta.dirname, "lifecycle-child-worker.ts");
 let root: string;
 let team: Team;
 let host: ReturnType<typeof fakeHost>;
-let peers: TeamStore[] = [];
+const peers: TeamStore[] = [];
 const children: ChildProcess[] = [];
 
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
@@ -91,7 +91,10 @@ describe("the peer-left notice", () => {
 	it("does not wake it once the peer had answered", async () => {
 		const { store, row } = peer("kind-otter");
 		const asked = await team.send("kind-otter", "which branch?", { replyRequired: true });
-		store.send("kind-otter", [team.id!], "main", { replyRequired: false, replyTo: asked.id });
+		store.send("kind-otter", [team.id!], "main", {
+			replyRequired: false,
+			replyTo: "id" in asked ? asked.id : undefined,
+		});
 		store.remove("kind-otter", Date.now(), row, "completed");
 		await vi.waitFor(() => expect(told()).toEqual([["kind-otter ended: completed", false]]));
 	});
@@ -115,7 +118,7 @@ describe("the peer-left notice", () => {
 		);
 		children.push(worker);
 		const name = await new Promise<string>((resolve, reject) => {
-			worker.stdout!.on(
+			worker.stdout.on(
 				"data",
 				(chunk: Buffer) => /joined (\S+)/.exec(String(chunk)) && resolve(/joined (\S+)/.exec(String(chunk))![1]),
 			);

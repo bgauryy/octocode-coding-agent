@@ -289,7 +289,7 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
 	if (typeof value !== "object" || value === null || !schema.properties) return;
 
 	const object = value as Record<string, unknown>;
-	const required = new Set(schema.required ?? []);
+	const required = new Set(schema.required);
 	for (const [key, propertySchema] of Object.entries(schema.properties)) {
 		if (!(key in object)) continue;
 		if (
@@ -340,6 +340,10 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	const schema = tool.validationParameters ?? tool.parameters;
 	let args = structuredClone(toolCall.arguments);
 	const validator = getToolValidator(schema, tool.name);
+	if (tool.coerceArguments === false) {
+		if (validator.Check(args)) return args;
+		throw validationFailure(tool, toolCall, validator, args, schema);
+	}
 	normalizeOptionalNulls(args, schema);
 	Value.Convert(schema, args);
 
@@ -368,7 +372,17 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 		if (validator.Check(recovered)) return recovered;
 		args = recovered;
 	}
+	throw validationFailure(tool, toolCall, validator, args, schema);
+}
 
+/** The error for arguments `validator` rejects: each problem, then the tool's `validationHint`. */
+function validationFailure(
+	tool: Tool,
+	toolCall: ToolCall,
+	validator: ReturnType<typeof getToolValidator>,
+	args: unknown,
+	schema: unknown,
+): Error {
 	const errors = [...validator.Errors(args)];
 	const failure = formatValidationFailure(toolCall.name, errors, toolCall.arguments, schema);
 	// An envelope mistake: properties the root does not allow, with no problem inside a nested value. A `boolean` error
@@ -379,5 +393,5 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 			located.every((error) => error.instancePath === "") &&
 			located.some((error) => error.keyword === "additionalProperties"),
 	});
-	throw new Error(hint ? `${failure}\n\n${hint}` : failure);
+	return new Error(hint ? `${failure}\n\n${hint}` : failure);
 }

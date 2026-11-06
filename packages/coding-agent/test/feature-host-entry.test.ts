@@ -14,8 +14,8 @@ import {
 } from "./helpers/feature-host-cli.ts";
 
 /**
- * The command line against the feature host, as a real `octocode` process. User code extensions are gone: `-e <code>`
- * is refused, while older parents that spawn children with `--no-extensions -e builtin:mcp` keep working.
+ * The command line against the feature host, as a real `octocode` process. User code extensions are gone, and so are
+ * their flags: `-e`, `--extension` and `--no-extensions` are unknown options that stop the run before anything loads.
  */
 let sandbox: Sandbox;
 let server: ModelServer | undefined;
@@ -36,46 +36,27 @@ async function scripted(answer: string) {
 const PRINT = [...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS, "-p", "say hello"];
 
 describe("removed extension flags", () => {
-	it.each([["-e"], ["--extension"]])(
-		"%s with a code path exits 2 and names PLUGINS.md, before loading anything",
-		async (flag) => {
-			sandbox = createSandbox();
-			const code = join(sandbox.directory, "x.ts");
-			const ran = join(sandbox.directory, "ran.txt");
-			writeFileSync(
-				code,
-				`import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(ran)}, "loaded"); export default () => {};`,
-			);
-			const result = await runCli(sandbox, [flag, code, ...PRINT]);
-			expect(result.code).toBe(2);
-			expect(result.stderr).toMatch(
-				/--extension was removed: Octocode no longer loads user code extensions\..*PLUGINS\.md/,
-			);
-			expect(result.stdout).toBe("");
-			expect(existsSync(ran)).toBe(false);
-		},
-	);
-
-	it("refuses a code path even when it is listed beside builtin:mcp", async () => {
+	it.each([["-e"], ["--extension"]])("%s with a code path is an unknown option and loads nothing", async (flag) => {
 		sandbox = createSandbox();
-		const result = await runCli(sandbox, ["--no-extensions", "-e", "builtin:mcp", "-e", "x.ts", ...PRINT]);
-		expect(result.code).toBe(2);
-		expect(result.stderr).toContain("PLUGINS.md");
+		const code = join(sandbox.directory, "x.ts");
+		const ran = join(sandbox.directory, "ran.txt");
+		writeFileSync(
+			code,
+			`import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(ran)}, "loaded"); export default () => {};`,
+		);
+		const result = await runCli(sandbox, [flag, code, ...PRINT]);
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toMatch(new RegExp(`Unknown option:? ${flag}`));
+		expect(result.stdout).not.toContain("scripted");
+		expect(existsSync(ran)).toBe(false);
 	});
 
-	it("starts and answers with --no-extensions -e builtin:mcp, as an older parent spawns its children", async () => {
-		await scripted("scripted hello");
-		const result = await runCli(sandbox, ["--no-extensions", "-e", "builtin:mcp", ...PRINT]);
-		expect(result.stderr).not.toContain("removed");
-		expect(result.code).toBe(0);
-		expect(result.stdout).toContain("scripted hello");
-	}, 90_000);
-
-	it("accepts the short -ne flag and ignores it", async () => {
-		await scripted("short flag ok");
-		const result = await runCli(sandbox, ["-ne", ...PRINT]);
-		expect(result.code).toBe(0);
-		expect(result.stdout).toContain("short flag ok");
+	it("refuses --no-extensions as an unknown option", async () => {
+		await scripted("never printed");
+		const result = await runCli(sandbox, ["--no-extensions", ...PRINT]);
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("--no-extensions");
+		expect(result.stdout).not.toContain("never printed");
 	}, 90_000);
 });
 

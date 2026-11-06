@@ -220,8 +220,9 @@ export function loadSkillsFromDirInternal(
 export function loadSkillFromFile(
 	filePath: string,
 	source: string,
-	protocol?: LoadSkillsFromDirOptions["protocol"],
+	declaredProtocol?: LoadSkillsFromDirOptions["protocol"],
 ): { skill: Skill | null; diagnostics: ResourceDiagnostic[] } {
+	let protocol = declaredProtocol;
 	const diagnostics: ResourceDiagnostic[] = [];
 	const isDeclaredSkill = basename(filePath) === "SKILL.md";
 	// Preserve the source dialect when discovery passes individual files (including symlinks).

@@ -7,10 +7,13 @@ import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { snapshotLocalReads } from "../../src/octocode/shared/local-reads.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";
 
-const search = "mcp__octocode__localSearch";
-const fetch = "mcp__octocode__localFetch";
+useResearchRoles();
+
+const search = RESEARCH.search;
+const fetch = RESEARCH.reader;
 type Outcome = { ok: boolean; message?: string };
 const CONTENT = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].join("\n") + "\n";
 
@@ -47,7 +50,8 @@ function setup() {
 			input,
 			isError: false,
 			content: [{ type: "text", text: "result" }],
-			structuredContent,
+			// MCP tools carry the CallToolResult, with the server's data as its structured content.
+			structuredContent: { content: [], structuredContent },
 		};
 		const [receipt] = await receipts.emit("tool_result", event, { cwd });
 		const details = (receipt as { details?: unknown } | undefined)?.details;
@@ -102,7 +106,7 @@ describe("localSearch content rows count as partial reads", () => {
 		await run(
 			search,
 			{ queries: [{ path: ".", matchString: ["zeta"] }] },
-			searchOutput("src.txt", [{ line: 6, value: "zeta" }]),
+			searchOutput("src.txt", [{ line: 6, value: "6\tzeta" }]),
 		);
 		expect((await edit("zeta", "ZETA")).details.outcomes[0]).toMatchObject({ ok: true });
 		expect(fs.readFileSync(path.join(cwd, "src.txt"), "utf8")).toContain("ZETA");

@@ -17,7 +17,8 @@ export class BracketedPasteBuffer {
 	private isInPaste: boolean = false;
 
 	/** Feed one input chunk; returns undefined when the chunk is not part of a paste. */
-	take(data: string): BracketedPasteChunk | undefined {
+	take(chunk: string): BracketedPasteChunk | undefined {
+		let data = chunk;
 		// Handle bracketed paste mode
 		// Start of paste: \x1b[200~
 		// End of paste: \x1b[201~

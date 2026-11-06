@@ -28,7 +28,7 @@ export interface ExternalAdmission {
 	text: string;
 	/** This process's own name, for what the sender reads back. */
 	self: string;
-	/** Set when the message starts a turn on an idle session: it is judged in at most this mode, whatever the session's. */
+	/** Set when `sessionApiTurnPermission` is `"workspace"`: the message and its turn are judged in at most this mode, whatever the session's. */
 	ceiling?: TurnCeiling;
 }
 

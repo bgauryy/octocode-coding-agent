@@ -101,11 +101,16 @@ export async function forwardMessage(
 		...(trimmed ? { note: trimmed } : {}),
 	});
 	const targets = resolveTarget(db.list(), by, to, host.parentId(), scope, db.list(Date.now(), true));
+	// The hook sees what each recipient reads, the forwarder's own note included, with the flags the delivery carries.
+	const wake = stored.replyRequired || outside(by);
+	const hookText = trimmed ? `${trimmed}\n\n${stored.text}` : stored.text;
+	const hookFlags = { replyRequired: stored.replyRequired, wake, interrupt: false };
+	const gate = (recipient: string) => check(recipient, hookText, stored.replyTo, hookFlags);
 	if (typeof targets === "string") {
 		if (!host.finished.has(to) || !host.resumer()) return { error: `${targets} Nothing was forwarded.` };
 		if (stored.recipients.includes(to))
 			return { error: `${to} already received message #${id}; send it a message instead. Nothing was forwarded.` };
-		const denied = (await check(to, stored.text)) ?? ready();
+		const denied = (await gate(to)) ?? ready();
 		if (denied) return { error: denied };
 		// The finished agent is resumed with the message; its delivery is recorded as handed over, and removed if the resume fails.
 		const resumed = await resumeWith(
@@ -127,14 +132,14 @@ export async function forwardMessage(
 			error: `${stored.from} sent message #${id}; there is no one else to forward it to. Nothing was forwarded.`,
 		};
 	for (const recipient of recipients) {
-		const denied = await check(recipient, stored.text);
+		const denied = await gate(recipient);
 		if (denied) return { error: denied };
 	}
 	const notReady = ready();
 	if (notReady) return { error: notReady };
 	// It wakes the recipient when it asks for an answer (owed to the original sender) or comes from outside the team.
 	const { added, departed, already } = db.refs.forward(id, by, recipients, {
-		wake: stored.replyRequired || outside(by),
+		wake,
 		...(trimmed ? { note: trimmed } : {}),
 		// A parent's note is read as steering, so its forward carries the signature its own messages do.
 		...(by === host.me()?.id ? { sign: (recipient: string) => host.signedByParent(message(recipient)) } : {}),

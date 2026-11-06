@@ -28,8 +28,27 @@ const LONG_COMMANDS = [
 
 const LONG_COMMAND = new RegExp(`${START}(?:${LONG_COMMANDS.join("|")})(?=\\s|$|;|&|\\|)`);
 
-/** Whether `command` runs a test runner, the repository check, a build or a server (checked at the start of each part of the line). */
-export const isKnownLongCommand = (command: string): boolean => LONG_COMMAND.test(command);
+/**
+ * Commands that follow a stream and never exit by themselves: `tail -f`/`-F`/`--follow`, `journalctl -f`, `kubectl logs -f`,
+ * `docker logs -f`, `watch`. A pipe after one (`tail -f log | grep -m1 x`) does not end it either: tail notices the closed
+ * pipe only when it writes again, which may be never.
+ */
+/** Arguments before the flag, within one part of the line. */
+const ARGS = String.raw`(?:[^\s;&|]+\s+)*?`;
+const FOLLOW = new RegExp(
+	`${START}(?:${[
+		String.raw`tail\s+${ARGS}(?:-[A-Za-z0-9+]*[fF][A-Za-z0-9]*|--follow\S*)`,
+		String.raw`journalctl\s+${ARGS}(?:-[A-Za-z]*f[A-Za-z]*|--follow)`,
+		String.raw`(?:kubectl|docker|podman)\s+${ARGS}logs\s+${ARGS}(?:-f|--follow)`,
+		"watch",
+	].join("|")})(?=\\s|$|;|&|\\|)`,
+);
+
+/** Whether `command` follows a stream and never exits by itself (see {@link FOLLOW}). */
+export const neverExits = (command: string): boolean => FOLLOW.test(command);
+
+/** Whether `command` runs a test runner, the repository check, a build, a server or a stream follower (checked at the start of each part of the line). */
+export const isKnownLongCommand = (command: string): boolean => LONG_COMMAND.test(command) || neverExits(command);
 
 const SLEEP_SECONDS = /(?:^|[;&|(\n]\s*)sleep\s+(\d+(?:\.\d+)?)([smhd]?)(?=\s|$|;|&|\|)/g;
 const POLL_LOOP = /(?:^|[;&|(\n]\s*)(?:while|until|for)\b[\s\S]*\bsleep\s+\d/;

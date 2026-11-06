@@ -6,6 +6,7 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
+import { VirtualTerminal } from "../../../tui/test/virtual-terminal.ts";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { CustomEditor, ExtensionSelectorComponent } from "../../src/modes/interactive/components/index.ts";
@@ -36,9 +37,8 @@ const editorTheme: EditorTheme = {
 
 /** Runs the installed Octocode TuiBase input router without starting a physical terminal. */
 function terminal() {
-	const tui = new TuiMainScreen({ columns: 100, rows: 30 } as never);
+	const tui = new TuiMainScreen(new VirtualTerminal(100, 30));
 	tui.requestRender = vi.fn();
-	Reflect.set(tui, "requestImmediateRender", vi.fn());
 	const input = (data: string) => Reflect.get(tui, "handleTerminalInput").call(tui, data);
 	return { tui, input, keys: new KeybindingsManager() };
 }

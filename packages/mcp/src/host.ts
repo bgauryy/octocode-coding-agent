@@ -149,9 +149,6 @@ export interface McpRenderPort {
 	timedTool<TParams extends TSchema, TDetails, TState>(
 		tool: McpToolDefinition<TParams, TDetails, TState>,
 	): McpToolDefinition<TParams, TDetails, TState>;
-	/** The skill name of a call that reads exactly one loaded skill's instruction file. */
-	skillNameOfRead(args: unknown, cwd: string): string | undefined;
-	skillHeader(theme: McpTheme, context: McpRenderContext, name: string): Component;
 	formatToolCallWithArgs(title: string, args: unknown, theme: McpTheme, expanded: boolean): string;
 	getTextOutput(
 		result: { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> } | undefined,
@@ -176,9 +173,39 @@ export interface McpUiPort {
 	): Promise<void>;
 }
 
+/** Where a session runs, for the vendor switch: the host reads its settings (project settings only when trusted). */
+interface McpVendorPlace {
+	cwd: string;
+	agentDir: string;
+	projectTrusted: boolean;
+}
+
+/** The scope of a config file a vendor switch reaches: a project key switches only project files. */
+type McpVendorScope = "global" | "project";
+
+/** Other agents' config locations and the host's per-vendor switch (`/harness enable|disable <vendor>`). */
+export interface McpVendorsPort {
+	/** The user's home, where `~/.cursor/mcp.json` lives. */
+	home(): string;
+	/** Claude Code's user file: `$CLAUDE_CONFIG_DIR/.claude.json` when that variable is set, else `~/.claude.json`. */
+	claudeJsonPath(): string;
+	/** Codex's home (`CODEX_HOME`, else `~/.codex`), or the reason `CODEX_HOME` cannot be used. */
+	codexHome(): { dir: string } | { error: string };
+	/** The repository root of `cwd` (the folder itself outside a repository). */
+	repoRoot(cwd: string): string;
+	/** Parses TOML text; throws on invalid input without quoting it. */
+	parseToml(text: string): unknown;
+	/**
+	 * The vendor switch for one session place, read once: `vendorEnabled(vendor, scope)` says whether that vendor's files
+	 * of `scope` load. `vendor` is a harness id (`octocode`, `agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`).
+	 */
+	vendorSwitch(place: McpVendorPlace): (vendor: string, scope: McpVendorScope) => boolean;
+}
+
 export interface McpHostPorts {
 	identity: McpIdentityPort;
 	paths: McpPathsPort;
+	vendors: McpVendorsPort;
 	output: McpOutputPort;
 	images: McpImagePort;
 	trust: McpTrustPort;
@@ -203,6 +230,7 @@ function port<K extends keyof McpHostPorts>(name: K): McpHostPorts[K] {
 
 export const hostIdentity = (): McpIdentityPort => port("identity");
 export const hostPaths = (): McpPathsPort => port("paths");
+export const hostVendors = (): McpVendorsPort => port("vendors");
 export const hostOutput = (): McpOutputPort => port("output");
 export const hostImages = (): McpImagePort => port("images");
 export const hostTrust = (): McpTrustPort => port("trust");

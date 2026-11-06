@@ -59,7 +59,7 @@ function args(overrides: Partial<Args>): Args {
 	return {
 		messages: [],
 		fileArgs: [],
-		unknownFlags: new Map(),
+		unknownFlags: [],
 		diagnostics: [],
 		...overrides,
 	};

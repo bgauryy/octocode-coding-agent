@@ -279,6 +279,12 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	 * name the call shape instead of the whole signature. Never sent to a provider.
 	 */
 	validationHint?: (failure: ToolValidationFailure) => string | undefined;
+	/**
+	 * False: the arguments are checked against the schema exactly as the model sent them and passed on unchanged, with no
+	 * type conversion, null removal or JSON-string parsing; a call the schema rejects fails as usual. For a tool whose
+	 * input belongs to someone else (an MCP server). Never sent to a provider.
+	 */
+	coerceArguments?: false;
 }
 
 export interface ToolReference {

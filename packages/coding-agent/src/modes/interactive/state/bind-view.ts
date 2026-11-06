@@ -1,6 +1,7 @@
 /**
- * Binds the view slice to the component tree: expansion and thinking visibility reach the live rows, and the
- * notice reaches the footer. Writers only dispatch actions; `bindRender` requests the frame.
+ * Binds the view slice to the component tree: expansion and thinking visibility reach the live rows, and each
+ * notice becomes a status line in the messages list (the footer shows state only). Writers only dispatch actions;
+ * `bindRender` requests the frame.
  */
 
 import { watchSelection } from "@octocodeai/octocode-tui";
@@ -9,11 +10,9 @@ import type { InteractiveModeHost } from "../interactive-mode/host.ts";
 import { forEachAssistantMessage } from "./assistant-messages.ts";
 import { selectHideThinking, selectNotice, selectToolsExpanded } from "./view-slice.ts";
 
-const NOTICE_KEY = "notice";
-
 type BindViewHost = Pick<
 	InteractiveModeHost,
-	"builtInHeader" | "chatContainer" | "customHeader" | "footerDataProvider" | "loadedResourcesContainer" | "uiStore"
+	"builtInHeader" | "chatContainer" | "customHeader" | "loadedResourcesContainer" | "showStatus" | "uiStore"
 >;
 
 /** Starts following the view slice; returns the function that stops it. */
@@ -31,7 +30,7 @@ export function bindViewState(host: BindViewHost): () => void {
 			forEachAssistantMessage(host.chatContainer, (message) => message.setHideThinkingBlock(hide));
 		}),
 		watchSelection(store, selectNotice, (notice) => {
-			host.footerDataProvider.setExtensionStatus(NOTICE_KEY, notice?.text);
+			if (notice) host.showStatus(notice.text);
 		}),
 	];
 	return () => {

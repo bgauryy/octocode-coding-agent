@@ -1,8 +1,9 @@
 import util from "node:util";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { expandPromptRefs } from "../../src/octocode/external/refs.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
+import { CHILD_EXPOSURE_EVENT } from "../../src/octocode/permission/provenance/exposure.ts";
 import { recordChildReports } from "../../src/octocode/permission/provenance/reports.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import type { MessageReader } from "../../src/octocode/shared/references.ts";
@@ -252,8 +253,9 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 			on: (name: string, run: typeof handler) => {
 				if (name === "message_end") handler = run;
 			},
+			events: { on: () => () => undefined },
 		};
-		recordChildReports(api as never, provenance);
+		recordChildReports(api as never, provenance, { shutdown: () => undefined }, false);
 		const message = (customType: string) => ({
 			message: { role: "custom", customType, content: `Report: ${SPAN}`, details: { id: "researcher-1" } },
 		});
@@ -263,6 +265,54 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		expect(provenance.check(call("bash", { command: SPAN }), ctx)?.why).toMatch(
 			/contains text from agent researcher-1/,
 		);
+	});
+
+	it("trusts the report of a child its relay published as clean, and still flags one that read something untrusted", async () => {
+		const { provenance } = setup();
+		const published: Array<(data: unknown) => void> = [];
+		let message: ((event: unknown, context: unknown) => Promise<void>) | undefined;
+		const api = {
+			on: (name: string, run: typeof message) => {
+				if (name === "message_end") message = run;
+			},
+			events: {
+				on: (channel: string, run: (data: unknown) => void) => {
+					if (channel === CHILD_EXPOSURE_EVENT) published.push(run);
+					return () => undefined;
+				},
+			},
+		};
+		recordChildReports(api as never, provenance, { shutdown: () => undefined }, false);
+		const report = (id: string) => ({
+			message: { role: "custom", customType: AGENT_RESULT_TYPE, content: `Report: ${SPAN}`, details: { id } },
+		});
+		for (const run of published) {
+			run({ child: "clean-1", exposed: false });
+			run({ child: "dirty-1", exposed: true });
+			run({ child: 7, exposed: "no" });
+		}
+		await message?.(report("clean-1"), ctx);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)).toBeUndefined();
+		await message?.(report("dirty-1"), ctx);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)?.why).toMatch(/contains text from agent dirty-1/);
+	});
+
+	it("tells its parent what it read at the end of its own session, as a subagent only", () => {
+		const { provenance } = setup();
+		provenance.record(result("web", { url: "https://example.test" }, PAGE), ctx);
+		for (const isSubagent of [true, false]) {
+			const shutdown = vi.fn();
+			let handler: ((event: unknown, context: unknown) => Promise<void>) | undefined;
+			const api = {
+				on: (name: string, run: typeof handler) => {
+					if (name === "session_shutdown") handler = run;
+				},
+				events: { on: () => () => undefined },
+			};
+			recordChildReports(api as never, provenance, { shutdown }, isSubagent);
+			void handler?.({}, ctx);
+			expect(shutdown.mock.calls).toEqual(isSubagent ? [[ctx, true]] : []);
+		}
 	});
 
 	it("does not flag a task repeating what the task itself said in its report", () => {

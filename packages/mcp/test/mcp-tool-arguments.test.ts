@@ -1,7 +1,8 @@
+import { validateToolArguments } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { createMcpToolDefinition } from "../src/tool-definition.ts";
 
-const define = (inputSchema: Record<string, unknown>) =>
+const define = (inputSchema: Record<string, unknown>, sent: Record<string, unknown>[] = []) =>
 	createMcpToolDefinition({
 		server: "octocode",
 		tool: { name: "localFetch", inputSchema },
@@ -9,33 +10,16 @@ const define = (inputSchema: Record<string, unknown>) =>
 		exposure: "direct",
 		namespace: "mcp" as never,
 		timeoutMs: 1000,
-		getClient: async () => {
-			throw new Error("not called");
-		},
+		getClient: async () => ({
+			callTool: async (_name, args) => {
+				sent.push(args);
+				return { content: [{ type: "text", text: "OK" }] };
+			},
+		}),
 	});
 
-// Every native tool requires `reason`, so models add it to MCP calls too; servers that forbid extra keys rejected
-// those calls ("reason: schema is false") 4 times in one session.
-describe("MCP tool arguments", () => {
-	it("drops a top-level reason the server schema does not declare, before validation", () => {
-		const tool = define({ type: "object", properties: { path: { type: "string" } }, additionalProperties: false });
-		expect(tool.prepareArguments?.({ path: "a.ts", reason: "read it" })).toEqual({ path: "a.ts" });
-	});
-
-	it("keeps reason when the server declares it, and leaves other arguments alone", () => {
-		const declared = define({
-			type: "object",
-			properties: { reason: { type: "string" }, reasoning: { type: "string" } },
-		});
-		expect(declared.prepareArguments).toBeUndefined();
-		const keeps = define({ type: "object", properties: { reason: { type: "string" } } });
-		expect(keeps.prepareArguments?.({ reason: "r", reasoning: "x" })).toEqual({ reason: "r" });
-		const strict = define({ type: "object", properties: { path: { type: "string" } } });
-		const args = { path: "a.ts" };
-		expect(strict.prepareArguments?.(args)).toBe(args);
-		expect(strict.prepareArguments?.("raw")).toBe("raw");
-	});
-});
+const validate = (tool: ReturnType<typeof define>, args: Record<string, unknown>) =>
+	validateToolArguments(tool as never, { type: "toolCall", id: "c", name: tool.name, arguments: args as never });
 
 /** The octocode shape: `queries` items declare `reasoning` (not `reason`), `responseChars` and `cursor` sit at the root. */
 const ITEM = {
@@ -54,76 +38,41 @@ const OCTOCODE = {
 	additionalProperties: false,
 	$defs: { query: ITEM },
 };
-/** A tool whose cursor form takes the cursor alone (structureSearch, clasify). */
-const CURSOR_ALONE = {
-	anyOf: [
-		{
-			type: "object",
-			properties: { queries: { type: "array", items: ITEM }, responseChars: { type: "integer" } },
-			required: ["queries"],
-			additionalProperties: false,
-		},
-		{ type: "object", properties: { cursor: { type: "string" } }, required: ["cursor"], additionalProperties: false },
-	],
-};
 
-describe("MCP argument normalization", () => {
-	it("drops an undeclared reason inside queries items and keeps the declared reasoning", () => {
+// The server owns its input (user decision, 2026-11-05): nothing is added, dropped, moved, converted or parsed, and a
+// call its schema rejects fails instead of being repaired.
+describe("MCP tool arguments", () => {
+	it("declares no argument preparation and opts out of validator coercion", () => {
 		const tool = define(OCTOCODE);
-		expect(
-			tool.prepareArguments?.({ queries: [{ path: "a", reason: "r", reasoning: "why" }, { path: "b" }], reason: "x" }),
-		).toEqual({ queries: [{ path: "a", reasoning: "why" }, { path: "b" }] });
+		expect(tool.prepareArguments).toBeUndefined();
+		expect(tool.coerceArguments).toBe(false);
 	});
 
-	it("drops reasoning in a query only when the item schema does not declare it", () => {
-		const tool = define({
-			type: "object",
-			properties: { queries: { type: "array", items: { type: "object", properties: { path: { type: "string" } } } } },
-		});
-		expect(tool.prepareArguments?.({ queries: [{ path: "a", reasoning: "why", reason: "r" }] })).toEqual({
-			queries: [{ path: "a" }],
-		});
+	it("sends valid arguments to the server exactly as the model wrote them", async () => {
+		const sent: Record<string, unknown>[] = [];
+		const tool = define(OCTOCODE, sent);
+		const args = { queries: [{ path: "a", reasoning: "why" }, { path: "b" }], responseChars: 4000 };
+		const validated = validate(tool, args);
+		expect(validated).toEqual(args);
+		await tool.execute("c", validated, undefined, undefined, {} as never);
+		expect(sent).toEqual([args]);
 	});
 
-	it("moves responseChars from a query to the root when only the root declares it", () => {
+	it("keeps a reason the server declares", () => {
+		const tool = define({ type: "object", properties: { reason: { type: "string" } }, additionalProperties: false });
+		expect(validate(tool, { reason: "r" })).toEqual({ reason: "r" });
+	});
+
+	it("rejects the shapes it used to rewrite, instead of repairing them", () => {
 		const tool = define(OCTOCODE);
-		expect(
-			tool.prepareArguments?.({
-				queries: [
-					{ path: "a", responseChars: 4000 },
-					{ path: "b", responseChars: 9000 },
-				],
-			}),
-		).toEqual({ queries: [{ path: "a" }, { path: "b" }], responseChars: 9000 });
-		// A root value the model gave wins.
-		expect(tool.prepareArguments?.({ queries: [{ path: "a", responseChars: 4000 }], responseChars: 100 })).toEqual({
-			queries: [{ path: "a" }],
-			responseChars: 100,
-		});
-		// An item that declares responseChars keeps it.
-		const own = define({
-			type: "object",
-			properties: {
-				queries: { type: "array", items: { type: "object", properties: { responseChars: { type: "integer" } } } },
-				responseChars: { type: "integer" },
-			},
-		});
-		const args = { queries: [{ responseChars: 1 }] };
-		expect(own.prepareArguments?.(args)).toBe(args);
-	});
-
-	it("drops responseChars beside a cursor only when the cursor form takes the cursor alone", () => {
-		expect(define(CURSOR_ALONE).prepareArguments?.({ cursor: "c1", responseChars: 4000 })).toEqual({ cursor: "c1" });
-		const both = { cursor: "c1", responseChars: 4000 };
-		expect(define(OCTOCODE).prepareArguments?.(both)).toBe(both);
-	});
-
-	it("parses queries sent as a JSON string of an array, and leaves any other string alone", () => {
-		const tool = define(OCTOCODE);
-		expect(tool.prepareArguments?.({ queries: '[{"path":"a","reason":"r"}]' })).toEqual({ queries: [{ path: "a" }] });
-		const bad = { queries: "not json" };
-		expect(tool.prepareArguments?.(bad)).toBe(bad);
-		const object = { queries: '{"path":"a"}' };
-		expect(tool.prepareArguments?.(object)).toBe(object);
+		for (const args of [
+			{ queries: [{ path: "a" }], reason: "copied from a native tool" },
+			{ queries: [{ path: "a", reason: "r" }] },
+			{ queries: [{ path: "a", responseChars: 4000 }] },
+			{ queries: '[{"path":"a"}]' },
+			{ queries: [{ path: "a" }], responseChars: "4000" },
+		]) {
+			expect(() => validate(tool, args)).toThrow(/mcp__octocode__localFetch/);
+		}
 	});
 });

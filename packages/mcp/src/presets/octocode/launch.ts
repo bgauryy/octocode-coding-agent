@@ -1,9 +1,7 @@
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { hostDependencyBin } from "../../host-dependency.ts";
 import { hostIdentity, hostPaths } from "../../host.ts";
-import { findManifest } from "../../../../common/src/package.ts";
 import { warnOnce } from "./warnings.ts";
 export interface Launch {
 	command: string;
@@ -94,26 +92,8 @@ export function octocodeLaunch(
 	};
 }
 
-/**
- * Where the installed octocode-mcp package starts: its entry (a release's `exports` hide package.json, so walk up from
- * it), else its package.json (a linked local build may declare only `bin`, which the entry lookup cannot resolve).
- */
-function octocodeMcpStart(): string {
-	try {
-		return fileURLToPath(import.meta.resolve(MCP_PACKAGE));
-	} catch {
-		return createRequire(import.meta.url).resolve(`${MCP_PACKAGE}/package.json`);
-	}
-}
-
-/** Absolute path of the bundled octocode-mcp bin. */
+/** Absolute path of the octocode-mcp bin the host depends on, when it is built (`host-dependency.ts`). */
 function octocodeMcpEntry(): string | undefined {
-	try {
-		const found = findManifest(path.dirname(octocodeMcpStart()), MCP_PACKAGE, 4);
-		const bin = typeof found?.manifest.bin === "string" ? found.manifest.bin : found?.manifest.bin?.[MCP_PACKAGE];
-		return found && bin ? path.join(found.dir, bin) : undefined;
-	} catch {
-		// Not installed next to the extension.
-	}
-	return undefined;
+	const found = hostDependencyBin({ npm: MCP_PACKAGE, version: octocodeMcpRange() }, hostIdentity().packageDir());
+	return found && "bin" in found ? found.bin : undefined;
 }

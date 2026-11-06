@@ -137,7 +137,8 @@ describe("recent changes by agent", () => {
 	it("credits what a session wrote before joining to the name it joins with, not its pid", async () => {
 		const { a, b } = await pair();
 		b.team.join("peer");
-		// `b` joined, so the database exists; `a` writes first as an unnamed session.
+		// O6b (design B36): a session joins at start, so `a` leaves to be the unnamed session that writes first.
+		a.team.leave();
 		await wrote(a, "src/early.ts");
 		expect(text(await changes(b))).toContain(`src/early.ts · pid ${process.pid} via file`);
 		const idA = a.team.join("late").id;
@@ -175,16 +176,18 @@ describe("recent changes by agent", () => {
 		expect(text(await changes(b, { withinMinutes: 120 }))).not.toContain("You asked for");
 	});
 
-	it("never creates the team database for a session that does not collaborate", async () => {
+	it("creates the team database when a main session starts (O6b), and none for a team that never started", async () => {
 		const cwd = tmp();
 		const db = path.join(tmp(), "team.sqlite");
-		const solo = member(db, cwd);
-		started.push(solo);
-		await solo.emit("session_start", {}, solo.ctx);
-		await wrote(solo, "x.ts");
+		const idle = member(db, cwd);
+		started.push(idle);
+		// Before a session starts, nothing has opened the database.
 		expect(fs.existsSync(db)).toBe(false);
-		expect(text(await changes(solo))).toMatch(/^No agent changed files in the last 60m/);
-		expect(fs.existsSync(db)).toBe(false);
+		await idle.emit("session_start", {}, idle.ctx);
+		// O6b (design B36): a main session joins the team at session_start, so its row and run exist from the start.
+		expect(fs.existsSync(db)).toBe(true);
+		await wrote(idle, "x.ts");
+		expect(text(await changes(idle))).toContain("x.ts");
 	});
 
 	it("keeps paths outside the workspace out, and prunes rows older than a day with the periodic prune", () => {

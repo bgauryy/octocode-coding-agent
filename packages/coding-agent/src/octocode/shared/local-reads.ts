@@ -16,6 +16,9 @@ import { currentToolRoles } from "../../../../mcp/src/roles.ts";
  *   are all `N<TAB>text` (`--` separates groups) shows lines of the nearest enclosing object's `path` (resolved against
  *   the nearest absolute `root` or `base`, else cwd; with no such object, the input's only path). A line counts when its
  *   text is line N of the file. A string whose SHA-256 is the file's is a whole read.
+ * - In a batch (input naming no location at its top level, with one top-level array of requests), an object outside any
+ *   named file that carries a non-negative integer `index` and no `path` shows the file of the request at that index:
+ *   a server may leave a row's path out when it repeats the request's.
  */
 
 interface LocalRead {
@@ -53,6 +56,8 @@ const INPUT_PATH_DEPTH = 6;
 /** How deep a result is walked; deeper values are not credited. */
 const RESULT_DEPTH = 64;
 const NUMBERED = /^(\d+)\t([\s\S]*)$/;
+const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0;
+const nonnegative = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
 
 /**
  * Whether a tool is a reader or search role of the session's MCP entries (`roles` in their config, never server hints):
@@ -127,7 +132,8 @@ export async function snapshotLocalReads(
 			}
 			if (!stat.isFile() || stat.size > CREDIT_MAX_BYTES) continue;
 			const digest = await sha256File(file);
-			snapshots.set(file, { sha256: digest, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
+			if (digest)
+				snapshots.set(file, { sha256: digest, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
 		} catch {
 			/* Retrieval reports unreadable paths. */
 		}
@@ -173,8 +179,32 @@ function entries<T>(map: Map<string, T[]>, file: string): T[] {
 	return list;
 }
 
+/**
+ * For a batch input (see `readerLocations`) with exactly one top-level array of requests: each request's file, resolved
+ * as `snapshotLocalReads` resolves it, when it names exactly one `path`. Empty for any other input.
+ */
+function batchRequests(input: unknown, cwd: string): Array<string | undefined> {
+	if (!isRecord(input) || readerLocations(input).files.length === 0) return [];
+	if (Object.entries(input).some(([key, value]) => LOCATION_KEY.test(key) && typeof value === "string")) return [];
+	const batches = Object.values(input).filter(
+		(value): value is unknown[] => Array.isArray(value) && value.length > 0 && value.every(isRecord),
+	);
+	if (batches.length !== 1) return [];
+	return batches[0].map((request) => {
+		const paths = [...new Set(inputPaths(request))];
+		return paths.length === 1 ? canonicalPath(resolveToolPath(cwd, paths[0])) : undefined;
+	});
+}
+
 /** Collects, by the file each belongs to, the numbered lines and the strings a result shows. */
-function collect(value: unknown, file: string | undefined, base: string, depth: number, shown: Shown): void {
+function collect(
+	value: unknown,
+	file: string | undefined,
+	base: string,
+	depth: number,
+	shown: Shown,
+	requests: ReadonlyArray<string | undefined>,
+): void {
 	if (depth > RESULT_DEPTH) return;
 	if (typeof value === "string") {
 		if (file === undefined) return;
@@ -184,19 +214,22 @@ function collect(value: unknown, file: string | undefined, base: string, depth: 
 		return;
 	}
 	if (Array.isArray(value)) {
-		for (const item of value) collect(item, file, base, depth + 1, shown);
+		for (const item of value) collect(item, file, base, depth + 1, shown, requests);
 		return;
 	}
 	if (!isRecord(value)) return;
 	const root = [value.root, value.base].find((item) => typeof item === "string" && path.isAbsolute(item));
 	const nextBase = typeof root === "string" ? root : base;
 	const named = typeof value.path === "string" && value.path !== "" ? value.path : undefined;
+	const indexed =
+		file === undefined && named === undefined && nonnegative(value.index) ? requests[value.index] : undefined;
 	const nextFile =
 		named === undefined
-			? file
+			? (indexed ?? file)
 			: canonicalPath(path.isAbsolute(named) ? named : resolveToolPath(nextBase, named));
 	for (const [key, item] of Object.entries(value))
-		if (key !== "path" && key !== "root" && key !== "base") collect(item, nextFile, nextBase, depth + 1, shown);
+		if (key !== "path" && key !== "root" && key !== "base")
+			collect(item, nextFile, nextBase, depth + 1, shown, requests);
 }
 
 /** Credit only text that equals the file on disk, from files unchanged throughout retrieval. */
@@ -212,7 +245,7 @@ export async function completedLocalReads(
 	const requested = [...new Set(inputPaths(input))];
 	const only = requested.length === 1 ? canonicalPath(resolveToolPath(cwd, requested[0])) : undefined;
 	const shown: Shown = { lines: new Map(), texts: new Map() };
-	collect(data, only, cwd, 0, shown);
+	collect(data, only, cwd, 0, shown, only === undefined ? batchRequests(input, cwd) : []);
 	const reads: LocalRead[] = [];
 	for (const file of new Set([...shown.lines.keys(), ...shown.texts.keys()])) {
 		const source = unchangedSource(file, snapshots);
@@ -269,9 +302,6 @@ function unchangedSource(
 		return undefined;
 	}
 }
-
-const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0;
-const nonnegative = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
 
 /** Read metadata survives transcript persistence and read-result deduplication. */
 export function recordedLocalReads(details: unknown): LocalRead[] {

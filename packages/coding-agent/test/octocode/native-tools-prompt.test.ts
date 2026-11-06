@@ -60,7 +60,7 @@ describe("native tools and the system prompt", () => {
 		expect(policy).not.toMatch(/before a[^.\n]*compaction/i);
 	});
 
-	it("declares bash by default and points its line at the search and read tools", async () => {
+	it("declares bash by default, and its line leaves research routing to the policy", async () => {
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
@@ -70,10 +70,16 @@ describe("native tools and the system prompt", () => {
 		const tools = fake.api.getAllTools() as Registered[];
 		// The local-model tool was removed on 2026-11-02; nothing registers it.
 		expect(tools.find((tool) => tool.name === "ollama")).toBeUndefined();
-		// The bash line says where search and reads go, so the habit of `rg`/`cat` in bash has a counter-rule in every session.
-		expect(tools.find((tool) => tool.name === "bash")?.promptSnippet).toMatch(
-			/When search and read tools are declared, search and read code with them/,
+		// Research routing has one owner per session: `policy/research.md` with a research server, `system/rules-bash.md`
+		// without one. A routing clause on the bash line repeated it and read as a contradiction where no search tool exists.
+		const snippet = tools.find((tool) => tool.name === "bash")?.promptSnippet ?? "";
+		expect(snippet).toContain("Run builds, tests, git");
+		expect(snippet).not.toMatch(/search and read tools|`rg`/);
+		const research = readFileSync(
+			new URL("../../src/octocode/instructions/policy/research.md", import.meta.url),
+			"utf8",
 		);
+		expect(research).toContain("A quick look at one known file or a command's output can stay in bash");
 		const names = defaultToolNames([
 			{
 				owner: "native",

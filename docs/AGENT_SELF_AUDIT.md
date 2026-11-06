@@ -114,18 +114,18 @@ Of the claims checked, 15 were refuted (3 of them in part), 5 were already fixed
 
 **Live test (ran; `s1` transcripts).**
 
-| Time | What happened |
-|---|---|
-| 12:10:08 | Parent starts `jolly-tentacle` (researcher, `small:low`, background). |
-| 12:10:13 | Child calls `agent` `type:"message"`, `to:"parent"`, `replyRequired:true`, without being told how in its task. Result: "Queued message #1 … must answer with replyTo 1". |
-| 12:10:14 | Message is handed to the parent, with "(reply: agent type message, input.to jolly-tentacle, input.replyTo 1)". |
-| 12:10:17 | Child ends its turn: "I have no way to poll for it". The status becomes a report with no outcome word ("finished"). |
-| 12:10:23 | Parent replies with `replyTo:1`. Result: "Resumed jolly-tentacle with your message". |
-| 12:10:24-29 | Child receives #2, reads the file, writes `done:` with a correct fact. |
-| 12:10:47 | Parent ends its turn because the notices said "The full report follows when this turn ends". |
-| After that | It receives the first report only. That report still says "1 ask (1 unanswered)" and "is waiting for your reply", both false by then. |
-| 12:11:35 | Parent writes its final answer and reports the `done` report as lost. |
-| After that | The `done` report arrives. Parent at 12:11:54: "I was wrong earlier". |
+| Time        | What happened                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 12:10:08    | Parent starts `jolly-tentacle` (researcher, `small:low`, background).                                                                                                    |
+| 12:10:13    | Child calls `agent` `type:"message"`, `to:"parent"`, `replyRequired:true`, without being told how in its task. Result: "Queued message #1 … must answer with replyTo 1". |
+| 12:10:14    | Message is handed to the parent, with "(reply: agent type message, input.to jolly-tentacle, input.replyTo 1)".                                                           |
+| 12:10:17    | Child ends its turn: "I have no way to poll for it". The status becomes a report with no outcome word ("finished").                                                      |
+| 12:10:23    | Parent replies with `replyTo:1`. Result: "Resumed jolly-tentacle with your message".                                                                                     |
+| 12:10:24-29 | Child receives #2, reads the file, writes `done:` with a correct fact.                                                                                                   |
+| 12:10:47    | Parent ends its turn because the notices said "The full report follows when this turn ends".                                                                             |
+| After that  | It receives the first report only. That report still says "1 ask (1 unanswered)" and "is waiting for your reply", both false by then.                                    |
+| 12:11:35    | Parent writes its final answer and reports the `done` report as lost.                                                                                                    |
+| After that  | The `done` report arrives. Parent at 12:11:54: "I was wrong earlier".                                                                                                    |
 
 The child's reachability is confirmed. Its remark that "nothing gave the exact `to` value" is wrong: `oc/instructions/shared/ask-parent.md:1` and the tool schema ("Agent id, role or \"parent\"") both state it.
 
@@ -143,6 +143,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 12. **Do they agree?** Tool schema, policy and `native-features.md:382` agree on `to:"parent"` (read). The gap is what a child should do after asking (below).
 
 **What could be better**
+
 1. **Done 2026-11-04.** **Deliver waiting reports together.** Reports are follow-ups (`oc/subagents/handoff.ts:228`) and the default is one per drain (`ca/core/settings-defaults.ts:12`, `packages/agent/src/agent-loop.ts:341`). `s8`: "All three researchers have finished", then three separate turn ends to collect three reports. `s1`: a wrong final answer. Fix: drain consecutive report messages as one, leaving the user's own queue as it is.
 2. **Done 2026-11-04.** **Don't hand over a report its own resume has made false.** The footer is built when the run ends (`oc/subagents/run-execution.ts:101,108-117`), and a resume does not touch it (`oc/subagents/linger.ts:283-292`). Fix: when a resume starts, mark that run's unread report as superseded, or hold it for the new run's report.
 3. **Left: `instructions/shared/` is being edited by the coordinator; wording in the handoff.** **Say what happens after asking.** `ask-parent.md:1` says to finish with `blocked` but not that the answer resumes the conversation, so the child ended with a status and no outcome word. Fix: one clause in that line.
@@ -166,6 +167,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 10. **Wasted thinking.** No exact repeat of an Octocode call in any trial (ran). Wasted calls: see "How Octocode did".
 
 **What could be better**
+
 1. **Done 2026-11-04.** **Put verification state in the report.** Fix: a footer line on a child's report when the child edited after its last passing `verify` run. A note, not a gate; `oc/subagents/run-execution.ts:108-117` is where footers are built.
 2. **Left: `instructions/policy/` is being edited by the coordinator; wording in the handoff.** **State routing once.** `delegation.md` ("Route each task…") and the `model` field (`oc/subagents/agent-tool.ts:52`) both give a size table beside the role routes. Fix: keep the field's text and point the policy line at it.
 
@@ -188,6 +190,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 11. **Knowing a change helped.** `scripts/agent-eval/` compares builds (correctness, then cost); ceilings in `packages/coding-agent/test/octocode/prompt-size.test.ts:229,277` guard size. It misses long sessions and real user questions (inferred).
 
 **What could be better**
+
 1. **Done 2026-11-04 (correct form named).** **Accept or correct a misplaced `cursor`.** The error is generic ("queries.0.path: must have required properties path … unexpected property cursor", `packages/ai/src/utils/validation-errors.ts:126-130`), and `s7` gave up paging. Fix: name the correct form in that message, or accept `{queries:[{cursor}]}`.
 2. **Done 2026-11-04.** **Stop telling a headless agent to use `askUser`.** `canAsk` looks only at the tool list (`oc/turn.ts:75`, `oc/instructions/policy.ts:66`), while the tool answers "unavailable" with no UI (`oc/ask/tool.ts:150-151`). Fix: include `ctx.hasUI` in `canAsk`. No flag needed.
 3. **Left: the line is in the sibling repository.** **Remove the edit language from read-only roles.** The line comes from the `octocode-research` skill in the sibling repository. Fix: reword there. Impact is limited, because `oc/permission/read-only-role.ts` refuses edits anyway.
@@ -211,6 +214,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 8. **New contributor.** Two workspace import styles: 554 relative, 1,011 by name, in `ca/` (ran).
 
 **What could be better**
+
 1. **Done 2026-11-04.** **Fix `execCommand` (`ca/core/exec.ts`).** Ran the real module: a child that SIGKILLs itself returns `code:0, killed:false`; a child ignoring TERM with a 200 ms timeout ran its full 8 s, because `!proc.killed` (`:61`) is already false after SIGTERM; a spawn failure returns `code:1` with empty stderr. Effect is limited: the only caller is the public `api.exec` (`ca/core/features/api.ts:231`), with no in-repository use. Fix: track real exit for the SIGKILL, map a signal exit to non-zero, keep the spawn error text. No test covers it.
 2. **Done 2026-11-04 (deleted in the working tree).** **Remove the committed `.codex/hooks.json`.** It holds `echo same`, a test value, and is tracked in git. It failed on every main-agent tool call in all 8 trials (186 entries; ran). Fix: delete it.
 3. **Done 2026-11-04 (method names).** **Type `fakeHost`** so it can't drift from `ExtensionAPI` (`fake-host.ts:100`). Fix: `satisfies` on the parts it implements.
@@ -227,13 +231,13 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 
 **Measured (ran; read-only query of this machine's 391 samples from today, mostly short sessions).**
 
-| Process | First sample RSS | Average | Peak |
-|---|---|---|---|
-| main | 299 MB | 283 MB | 554 MB |
-| researcher | 259 MB | 216 MB | 365 MB |
-| general | 304 MB | 190 MB | 310 MB |
-| implementer | 234 MB | 147 MB | 300 MB |
-| Octocode MCP pair, per agent (node + native; `ps` and samples) | | 70-90 MB | |
+| Process                                                        | First sample RSS | Average  | Peak   |
+| -------------------------------------------------------------- | ---------------- | -------- | ------ |
+| main                                                           | 299 MB           | 283 MB   | 554 MB |
+| researcher                                                     | 259 MB           | 216 MB   | 365 MB |
+| general                                                        | 304 MB           | 190 MB   | 310 MB |
+| implementer                                                    | 234 MB           | 147 MB   | 300 MB |
+| Octocode MCP pair, per agent (node + native; `ps` and samples) |                  | 70-90 MB |        |
 
 1. **Idle and growth.** Starts near 300 MB, not Octocode's "80-150 MB" (refuted). Every entry stays in memory after compaction (`ca/core/session-manager/state.ts:29-30`, read). Growth per session length: not profiled.
 2. **Held twice.** On disk, yes: `session_entries` in `workspaces.db` is 158 MB beside a 235 MB sessions folder on this machine (`ca/core/session-manager/mirror.ts:95-111`; ran).
@@ -245,6 +249,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 8. **Agent memory.** Budgets of 1,200 and 2,400 characters, 600 per line with a pointer to the whole (`oc/memory/inject.ts:12-25`, read). Staleness is displayed, and `/memory review` lists it (`oc/memory/store.ts:148-150,325`, read). Nothing expires.
 
 **What could be better**
+
 1. **Left: design and blockers in the handoff.** **Share the Octocode MCP server across a session's children.** 70-90 MB per agent, spawned afresh (`packages/coding-agent/docs/native-features.md:197`). Fix: a per-session shared server; larger than the other fixes. This also helps CPU.
 2. **Left, owner's decision: the mirror recovers lost transcripts (`storage.ts:341`) and backs fork archives (`transcripts.ts:66`).** **Keep transcripts in one store, or prune the mirror sooner.** Fix: drop mirror rows for sessions not opened recently.
 3. **Left, owner's decision: nothing in this repository or the sibling's source writes it, and its profiles (last used in September) can hold logins.** **Sweep or bound `chrome-debug`** under the same retention, if the sibling doesn't.
@@ -259,11 +264,11 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 
 **Frame cost (ran; real `packages/tui` modules, Node 26, synthetic children returning cached lines).**
 
-| Lines | Fullscreen layout | Regular: render + reset + clip | Regular: diff |
-|---|---|---|---|
-| 1,000 | 0.12 ms | 1.2 ms | 0.05 ms |
-| 10,000 | 0.41 ms | 6.5 ms | 0.13 ms |
-| 100,000 | 0.90 ms | 76 ms | 1.24 ms |
+| Lines   | Fullscreen layout | Regular: render + reset + clip | Regular: diff |
+| ------- | ----------------- | ------------------------------ | ------------- |
+| 1,000   | 0.12 ms           | 1.2 ms                         | 0.05 ms       |
+| 10,000  | 0.41 ms           | 6.5 ms                         | 0.13 ms       |
+| 100,000 | 0.90 ms           | 76 ms                          | 1.24 ms       |
 
 1. **A frame.** Requests merge to one per 16 ms; keys paint at once (`tui/tui/render-scheduler.ts:20`, claimed). Default `tuiMode` is `fullscreen` (`ca/core/settings-defaults.ts:86`, read), which writes only changed screen rows (`tui/tui-alt-screen/frame.ts:82-85`, read).
 2. **Long sessions.** See table. Uncached components would cost more (inferred).
@@ -275,6 +280,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 8. **Work when nothing changed.** A spinner tick still rebuilds the tree: 0.9 ms at 100k in fullscreen (ran).
 
 **What could be better**
+
 1. **Done 2026-11-04 (100k lines: about 10 ms, was 76 ms).** **Make regular mode's frame cost follow the changed lines.** `applyLineResets` and `clipLinesToWidth` touch every line, each frame (`tui/tui-main-screen.ts:108`, `tui/tui/clip.ts:9-13`). This is the 76 ms. Fix: cache per input line.
 2. **Left: leaving out `3J` duplicates the whole transcript in scrollback on each resize event; `main-screen-clip.test.ts` pins that. Needs a viewport-only redraw.** **Keep the shell's scrollback on resize in regular mode.** A width change sends `\x1b[3J` (`tui/tui-main-screen.ts:117,151-154`). The transcript is redrawn, but what came before the session is gone, and regular mode exists for native scrollback. Fix: leave out `3J`.
 3. **Left, owner's decision between the two.** **Enable or remove render pacing.** All off (`tui/tui/render-pacing.ts:26-29`); only `tui.ts` and a test use `setRenderPacing` (ran).
@@ -297,6 +303,7 @@ The child's reachability is confirmed. Its remark that "nothing gave the exact `
 8. **Slow machine.** Settings exist (`terminal.reduceMotion`, `OCTOCODE_MAX_SUBAGENTS`), but no docs page mentions a slow machine (ran).
 
 **What could be better**
+
 1. **Done 2026-11-04 (at download; a downloaded model's size is not in the catalog).** **Warn before a local model that won't fit.** Fix: compare the file size with free memory when choosing (`oc/llama/index.ts:176-188`), warn, and let the user go on. A past run froze this machine.
 2. **Done 2026-11-04.** **Lower the default slot count on small machines.** Fix: derive `DEFAULT_MAX_SUBAGENTS` from `os.availableParallelism()` and total memory (`claim.ts:32`); the setting still wins.
 3. **Left: see section 5.** **Share the MCP server** (section 5, item 1).
@@ -321,6 +328,7 @@ Octocode's table of 52 commands is not copied here: `.octocode/self-audit/run-20
 7. **What a user can't do.** Seeing a child works (`oc/team/routing.ts:229-245`, read). Answering works too: `/agents tell` reaches a running child and resumes a lingering one (`oc/subagents/command.ts:83-87`, `oc/team/session/send.ts:222-234,255`, `oc/subagents/linger.ts:237`, read). What's missing is `replyTo`, so the question still counts as unanswered.
 
 **What could be better**
+
 1. **Done 2026-11-04.** **Ask before `/quit` stops running work.** Only a streaming reply prompts (`command-dispatch.ts:234`); background subagents and bash jobs are stopped at shutdown (`oc/subagents/tool.ts:197-202`). `/new` already asks (`oc/index.ts:154-167`). New finding. Fix: reuse that check.
 2. **Done 2026-11-04 (the text; the grant stays, so a manual-mode child can save its report).** **Correct the spawn prompt for read-only profiles.** A researcher shows "may edit files in the repository and run shell commands" (`s1` permission log; `oc/subagents/profiles.ts:326-335,363` ignores `readOnly`). New finding. Fix: leave out `file.workspace` when `profile.readOnly`.
 3. **Done 2026-11-04.** **Close the question when the user answers.** Fix: `/agents tell` accepts a message number and passes `replyTo` (`command.ts:83`).
@@ -337,11 +345,13 @@ Octocode's table of 52 commands is not copied here: `.octocode/self-audit/run-20
 **Tools.** It used its own research tools throughout: 243 Octocode calls, 0 bash reads, about 2 queries per call, no exact repeated calls, 90 to 97% cache hits, 8 of 8 graded pass, $7.81 in all. Bash was used only for what the tools can't do: running code, counting bytes, and reading JSONL lines in `s1`. Multi-call turns ran from 9% (`s4`) to 38% (`s8`), so `s4` and `s5` could have batched more.
 
 **What failed or misled.**
+
 - `cursor` inside `queries` in `s2`, `s7` and `s8`: each blamed itself, but three of eight points at the tool. `s7` gave up that search.
 - Harness, not tools: `s1`'s parent was told "full report follows when this turn ends", and it got only the older report (section 1).
 - `.codex/hooks.json` failed on every main-agent call, and no trial mentioned it: every answer said nothing failed. The log entries are in the transcripts, which models don't read.
 
 **Accuracy.** The citations were mostly right, and `exec.ts` was found by real testing. The misses share a pattern: a confident claim where one more read would have settled it.
+
 - `s8`: "isn't documented anywhere" about `/purge`, after loading the file that documents it; concluded a user can't answer from `team/relay.ts`, which handles peers, without following `send.ts`.
 - `s6`: benchmarked a copy of the diff in the non-default mode.
 - `s7`: multiplied a nesting limit that a child's tool doesn't allow.

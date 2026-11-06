@@ -76,10 +76,11 @@ describe("the end_hint migration", () => {
 		openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false }, plan);
 
 	it("is the first step, additive, and a migrated file has the shape of a new one", () => {
-		expect(SCHEMA_PLAN.version).toBe(3);
+		expect(SCHEMA_PLAN.version).toBe(4);
 		expect(SCHEMA_PLAN.migrations).toEqual([
 			expect.objectContaining({ to: 2, additive: true }),
 			expect.objectContaining({ to: 3, additive: true }),
+			expect.objectContaining({ to: 4, additive: true }),
 		]);
 		const old = path.join(root, "old.db");
 		const first = open(old, { version: 1, migrations: [] });
@@ -87,6 +88,7 @@ describe("the end_hint migration", () => {
 		for (const column of ["end_hint", "cwd", "branch", "process_title"])
 			first.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
 		first.db.exec("DROP TABLE agent_runs");
+		first.db.exec("DROP TABLE timers");
 		first.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		first.close();
 		expect(columns(old, "agents")).not.toContain("end_hint");
@@ -98,7 +100,7 @@ describe("the end_hint migration", () => {
 		expect(columns(old, "agents")).toEqual(columns(fresh, "agents"));
 		const raw = new DatabaseSync(old, { readOnly: true });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
-		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: 4 });
 		raw.close();
 	});
 

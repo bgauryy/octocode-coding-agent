@@ -132,8 +132,8 @@ function projectCandidates(command: BashCommand, behavior: "deny" | "ask" | "all
 	return result;
 }
 
-export function needsBashTokens(command: string): boolean {
-	command = command.trimStart();
+export function needsBashTokens(raw: string): boolean {
+	const command = raw.trimStart();
 	return (
 		/^(?:timeout|time|nice|nohup|stdbuf|command|builtin|noglob|xargs|watch|setsid|ionice|flock|find)\b/.test(command) ||
 		/^\w+=/.test(command)

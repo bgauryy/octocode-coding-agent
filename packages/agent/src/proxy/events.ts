@@ -171,7 +171,7 @@ export function processProxyEvent(
 
 		default: {
 			const _exhaustiveCheck: never = proxyEvent;
-			console.warn(`Unhandled proxy event type: ${(proxyEvent as { type: string }).type}`);
+			process.stderr.write(`Unhandled proxy event type: ${(proxyEvent as { type: string }).type}\n`);
 			return undefined;
 		}
 	}

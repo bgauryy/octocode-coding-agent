@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { Args } from "../src/cli/args.ts";
 import { requirePrompt } from "../src/main/startup.ts";
 
-const args = (messages: string[] = []): Args => ({ messages, fileArgs: [], unknownFlags: new Map(), diagnostics: [] });
+const args = (messages: string[] = []): Args => ({ messages, fileArgs: [], unknownFlags: [], diagnostics: [] });
 
 afterEach(() => vi.restoreAllMocks());
 

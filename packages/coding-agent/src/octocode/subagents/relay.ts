@@ -7,11 +7,13 @@ import {
 	childAuditEntry,
 	isRoutine,
 } from "../permission/audit.ts";
+import { EXPOSURE_NOTIFY_PREFIX, parseExposure } from "../permission/provenance/exposure.ts";
 import { type PermissionHeader, redactNonce, splitHeader } from "../permission/header.ts";
 import type { ActionClass, AskReason } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
 import { headerText } from "../shared/fence.ts";
 import { withDialog } from "../shared/locks.ts";
+import { checkedView, takeWriteIn } from "../shared/ask-view.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { stringList } from "../shared/util.ts";
 import type { RunningBudgets } from "./budget.ts";
@@ -53,6 +55,8 @@ export interface RelayHost {
 	ui?: Pick<ExtensionUIContext, "select" | "confirm" | "input" | "notify"> | undefined;
 	/** Registers the secret given to child `id` with the team, so the user's messages to it are signed; returns what ends that when the child is gone (`Team.vouch`). */
 	vouch?: ((id: string, secret: string) => () => void) | undefined;
+	/** Child `id` reported, on the channel only its own harness writes to, whether it read anything untrusted (`parseExposure`). */
+	exposure?: ((id: string, exposed: boolean) => void) | undefined;
 	/** Child `id` began or stopped waiting for the user's answer, so listings can say why it does nothing. */
 	awaitingApproval?: ((id: string, waiting: boolean) => void) | undefined;
 	/** Child `id` wrote output at `at`, so listings can say how long it has been quiet. */
@@ -95,8 +99,8 @@ export class ChildRelay {
 	#windowStart = 0;
 	#shown = 0;
 	#limited = false;
-	/** The note the next "Tell the agent why" input of this child gets (set when a prompt was denied for its rate). */
-	#denyNote: string | undefined;
+	/** The note the child's next input titled `title` gets: a prompt denied for its rate, or a note typed in the card's write-in. */
+	#denyNote: { title: string; note: string } | undefined;
 
 	constructor(who: ChildWho, host: RelayHost | undefined, options: RelayOptions) {
 		this.#who = who;
@@ -125,11 +129,11 @@ export class ChildRelay {
 		const title = typeof event.title === "string" ? event.title : "";
 		const options = stringList(event.options) ?? [];
 		const ui = this.#host?.ui;
-		// The note for a denial the limit made: the child's own deny-with-a-note follow-up asks for it.
+		// A note already given (a denial the limit made, or the card's write-in): the child's own follow-up input asks for it.
 		const note = this.#denyNote;
 		this.#denyNote = undefined;
-		if (method === "input" && title === NOTE_TITLE && note) {
-			this.#options.send({ type: "extension_ui_response", id, value: note });
+		if (method === "input" && note && title === note.title) {
+			this.#options.send({ type: "extension_ui_response", id, value: note.note });
 			return;
 		}
 		if (!ui || method === "editor" || this.#open.size > 0) {
@@ -141,7 +145,7 @@ export class ChildRelay {
 		if (header && this.#fastPath(id, header, options)) return;
 		if (this.#overLimit(ui)) {
 			if (method === "select" && options.includes(DENY_NOTE)) {
-				this.#denyNote = RELAY_LIMIT_NOTE;
+				this.#denyNote = { title: NOTE_TITLE, note: RELAY_LIMIT_NOTE };
 				this.#options.send({ type: "extension_ui_response", id, value: DENY_NOTE });
 				return;
 			}
@@ -156,9 +160,15 @@ export class ChildRelay {
 	 * no ⚠ action, nobody asked) stop being recorded one by one: they are counted by action and the totals go to the log
 	 * (`#report`); a destructive call, a denial, an `invariant` refusal, a mode change or a call a person answered is always
 	 * recorded. A message that fails the nonce or validation is counted and reported too, never dropped unseen. Any other
-	 * notification is none of the relay's business.
+	 * notification is none of the relay's business, apart from the child's report of what it read (`exposure`).
 	 */
 	#audit(message: unknown): void {
+		if (typeof message === "string" && message.startsWith(EXPOSURE_NOTIFY_PREFIX)) {
+			// A message that fails the nonce is ignored: the child then stays untrusted.
+			const exposed = parseExposure(message, this.#options.nonce);
+			if (exposed !== undefined) this.#host?.exposure?.(this.#who.id, exposed);
+			return;
+		}
 		if (typeof message !== "string" || !message.startsWith(AUDIT_NOTIFY_PREFIX)) return;
 		const entry = childAuditEntry(message, this.#who.id, this.#options.nonce);
 		if (entry && (!isRoutine(entry) || this.#adopted < CHILD_AUDIT_CAP)) {
@@ -278,8 +288,15 @@ export class ChildRelay {
 				if (method === "select") {
 					// Labels are drawn sanitized; the answer is the child's own label.
 					const drawn = options.map(shown);
-					const choice = await ui.select(heading, drawn, dialogOptions);
+					// The child's card, kept only when it shows nothing its verified title does not, under the child's name.
+					const view = checkedView(event.ask, drawn, shown(title));
+					const ask = view && { ...view, meta: [`${this.#label()} asks`, ...(view.meta ?? [])] };
+					const choice = await ui.select(heading, drawn, ask ? { ...dialogOptions, ask } : dialogOptions);
 					const index = choice === undefined ? -1 : drawn.indexOf(choice);
+					// A note typed in the card's write-in answers the child's follow-up input for it, unshown.
+					const written = ask?.writeIn && choice === ask.writeIn.label ? takeWriteIn(ask) : undefined;
+					const asked = (event.ask as { writeIn?: { title?: unknown } } | undefined)?.writeIn?.title;
+					if (written !== undefined && typeof asked === "string") this.#denyNote = { title: asked, note: written };
 					return index < 0 ? { cancelled: true } : { value: options[index] };
 				}
 				if (method === "confirm") {

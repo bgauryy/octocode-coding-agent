@@ -75,7 +75,7 @@ function movedResult(
 	cwd: string,
 	fullOutputPath?: string,
 	verification?: VerificationReceipt,
-	how: "deadline" | "threshold" | "message" = "deadline",
+	how: "deadline" | "threshold" | "message" | "cap" = "deadline",
 ) {
 	const lead =
 		how === "message"
@@ -87,7 +87,11 @@ function movedResult(
 		...(fullOutputPath ? [`Output so far, in full: ${fullOutputPath}`] : []),
 	].join("\n");
 	const threshold =
-		how === "threshold" ? `(${AUTO_NOTE}; pass background: false with a timeout to wait in the foreground)` : "";
+		how === "threshold"
+			? `(${AUTO_NOTE}; pass background: false with a timeout to wait in the foreground)`
+			: how === "cap"
+				? "(a foreground wait lasts at most 10 minutes)"
+				: "";
 	const text = [
 		output.trimEnd(),
 		moved,
@@ -131,7 +135,7 @@ export function foregroundFailure(
 		clamped: boolean;
 		cwd: string;
 		verification?: VerificationReceipt;
-		how: "deadline" | "threshold" | "message";
+		how: "deadline" | "threshold" | "message" | "cap";
 	},
 ) {
 	const full = adoptFullOutput(errorMessage(error), options.spilled, options.dir);

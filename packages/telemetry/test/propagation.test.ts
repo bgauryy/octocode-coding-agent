@@ -44,11 +44,10 @@ describe("propagation and links", () => {
 				caller.startSpan({ name }, async (trigger) => {
 					const parent = provider.extract(caller.inject(trigger));
 					await parent.startSpan({ name: `${name}.method` }, async (getter) => {
-						if (!shared)
-							shared = provider.startSpan({ name: "activation", links: [{ context: getter }] }, async (span) => {
-								activation = span;
-								await gate;
-							});
+						shared ??= provider.startSpan({ name: "activation", links: [{ context: getter }] }, async (span) => {
+							activation = span;
+							await gate;
+						});
 						if (activation) getter.addLink({ context: activation });
 						if (name === "later") finishActivation?.();
 						await shared;

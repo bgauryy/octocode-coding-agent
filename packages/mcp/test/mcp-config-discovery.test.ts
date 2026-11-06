@@ -171,7 +171,16 @@ describe("shared MCP discovery", () => {
 				?.config.description,
 		).toBeUndefined();
 	});
-	it.each([".pi/mcp.json", ".mcp.json", ".agents/mcp.json", ".octocode/mcp.json"])(
+	it("reads the project .pi/mcp.json only with Pi compatibility (the default home), after trust", () => {
+		const explicit = setup();
+		explicit.write(join(explicit.options.cwd, ".pi/mcp.json"), { pi: { command: "server" } });
+		expect(loadMcpConfig(explicit.options).servers).toEqual([]);
+		const { options, write } = globalSetup();
+		write(join(options.cwd, ".pi/mcp.json"), { pi: { command: "server" } });
+		expect(loadMcpConfig({ ...options, projectTrusted: false }).servers).toEqual([]);
+		expect(loadMcpConfig(options).servers.map((entry) => [entry.name, entry.vendor])).toEqual([["pi", "pi"]]);
+	});
+	it.each([".mcp.json", ".agents/mcp.json", ".octocode/mcp.json"])(
 		"loads %s only after trust and shares ownership with the built-in client",
 		(relative) => {
 			const { options, write } = setup();

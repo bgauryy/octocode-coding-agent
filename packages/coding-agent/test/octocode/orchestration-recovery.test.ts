@@ -5,7 +5,7 @@ import { FORK_NOTE_TYPE, resumeNote } from "../../src/octocode/subagents/childre
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
 import { WaitingApprovals, WAITING_APPROVAL } from "../../src/octocode/team/session/approvals.ts";
-import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { fakeHost } from "./fake-host.ts";
 
 /** The `agent` tool result a session records for a background child that has not reported. */

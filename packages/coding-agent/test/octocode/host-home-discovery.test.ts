@@ -3,8 +3,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { loadSkills } from "../../src/core/skills.ts";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
-import { extraSkillDirs } from "../../src/octocode/skills.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, vendorSkillFiles } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -44,8 +43,8 @@ it("retains Claude parsing and synced-skill exclusion under a custom home", () =
 			path.join(custom, "skills", dir, "SKILL.md"),
 			`---\nname: ${dir === "local" ? "local" : "remote"}\nuser-invocable: "no"\n---\nBody description.`,
 		);
-	const paths = extraSkillDirs(cwd, home, false);
-	expect(paths).toContain(path.join(fs.realpathSync(codex), "skills"));
+	const paths = vendorSkillFiles(cwd, home, false, process.env);
+	expect(paths.some((file) => file.startsWith(path.join(fs.realpathSync(codex), "skills")))).toBe(false);
 	const loaded = loadSkills({ cwd, agentDir: tmp(), includeDefaults: false, skillPaths: paths });
 	expect(loaded.skills).toHaveLength(1);
 	expect(loaded.skills[0]).toMatchObject({
@@ -59,7 +58,7 @@ it("does not fall back to other user skill profiles when selected homes are miss
 	const home = tmp();
 	for (const name of [".claude", ".codex"]) fs.mkdirSync(path.join(home, name, "skills"), { recursive: true });
 	expect(
-		extraSkillDirs(tmp(), home, false, {
+		vendorSkillFiles(tmp(), home, false, {
 			CLAUDE_CONFIG_DIR: path.join(home, "absent-claude"),
 			CODEX_HOME: path.join(home, "absent-codex"),
 		}),

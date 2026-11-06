@@ -5,7 +5,7 @@ import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 async function fixture(protocol: "claude" | "codex", command: string, extra = {}) {
 	const home = tmp();
@@ -18,7 +18,7 @@ async function fixture(protocol: "claude" | "codex", command: string, extra = {}
 			hooks: { UserPromptSubmit: [{ matcher: "[", hooks: [{ type: "command", command, ...extra }] }] },
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp() });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -101,7 +101,7 @@ describe("source-profile user prompt hooks", () => {
 		expect(commandsFor(config, "UserPromptSubmit", [])[0]?.timeoutMs).toBe(timeoutMs);
 	});
 	it("keeps prompt interception absent in a subagent without hooks", () => {
-		const f = fakeHost();
+		const f = fakeHost(HOOK_SETTINGS);
 		registerHooks(f.api, { OCTOCODE_SUBAGENT: "1" }, tmp());
 		expect(f.handlers.has("input")).toBe(false);
 	});

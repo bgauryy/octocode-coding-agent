@@ -59,7 +59,7 @@ function createAssistantMessage(text: string, usage?: Usage): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [{ type: "text", text }],
-		usage: usage || createMockUsage(100, 50),
+		usage: usage ?? createMockUsage(100, 50),
 		stopReason: "stop",
 		timestamp: Date.now(),
 		api: "anthropic-messages",

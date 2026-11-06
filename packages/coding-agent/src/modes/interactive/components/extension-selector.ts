@@ -8,6 +8,8 @@ import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { hintLine, keyText } from "./keybinding-hints.ts";
+import { DETAILS_KEY, hasMore, renderAskCard, startRow, writeInRow } from "../../../octocode/ask/card.ts";
+import { type AskView, giveWriteIn } from "../../../octocode/shared/ask-view.ts";
 
 interface ExtensionSelectorOptions {
 	tui?: TUI;
@@ -20,6 +22,12 @@ interface ExtensionSelectorOptions {
 	 * selection (the arrows still do). The dialog stays open: only the dialog's own Enter, with no message typed, selects.
 	 */
 	onSubmitText?: (text: string) => void;
+	/**
+	 * Draw the dialog as an ask card (`octocode/ask/card.ts`) instead of the plain title: used only when its option labels
+	 * are exactly `options`. Its write-in row opens an inline editor; Enter there hands the note over (`giveWriteIn`) and
+	 * selects the row, Esc returns to the options.
+	 */
+	ask?: AskView;
 }
 
 export class ExtensionSelectorComponent extends Container {
@@ -36,6 +44,11 @@ export class ExtensionSelectorComponent extends Container {
 	private onSubmitText: ((text: string) => void) | undefined;
 	private draft = "";
 	private draftText: Text | undefined;
+	private readonly ask: AskView | undefined;
+	private expanded = false;
+	/** The write-in's text while it is open. */
+	private writing: string | undefined;
+	private countdownLabel = "";
 
 	constructor(
 		title: string,
@@ -53,12 +66,19 @@ export class ExtensionSelectorComponent extends Container {
 		this.onToggleToolsExpanded = opts?.onToggleToolsExpanded;
 		this.onSubmitText = opts?.onSubmitText;
 		this.baseTitle = title;
+		const ask = opts?.ask;
+		this.ask =
+			ask && ask.options.length === options.length && ask.options.every((o, i) => o.label === options[i])
+				? ask
+				: undefined;
+		if (this.ask) this.selectedIndex = startRow(this.ask);
 
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
-		this.titleText = new Text(theme.fg("accent", theme.bold(title)), 1, 0);
-		this.addChild(this.titleText);
+		this.titleText = new Text(this.ask ? "" : theme.fg("accent", theme.bold(title)), 1, 0);
+		if (this.ask) this.addChild({ render: (width: number) => this.renderCard(width), invalidate: () => {} });
+		else this.addChild(this.titleText);
 		if (opts?.description) {
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("text", opts.description), 1, 0));
@@ -69,7 +89,10 @@ export class ExtensionSelectorComponent extends Container {
 			this.countdown = new CountdownTimer(
 				opts.timeout,
 				opts.tui,
-				(s) => this.titleText.setText(theme.fg("accent", theme.bold(`${this.baseTitle} (${s}s)`))),
+				(s) => {
+					this.countdownLabel = `${s}s left`;
+					if (!this.ask) this.titleText.setText(theme.fg("accent", theme.bold(`${this.baseTitle} (${s}s)`)));
+				},
 				() => this.onCancelCallback(),
 			);
 		}
@@ -83,25 +106,94 @@ export class ExtensionSelectorComponent extends Container {
 			this.addChild(new Spacer(1));
 			this.updateDraft();
 		}
-		this.addChild(
-			new Text(
-				hintLine([
-					["↑↓", "navigate"],
-					[keyText("tui.select.confirm"), "select"],
-					[keyText("tui.select.cancel"), "cancel"],
-				]),
-				1,
-				0,
-			),
-		);
+		if (!this.ask)
+			this.addChild(
+				new Text(
+					hintLine([
+						["↑↓", "navigate"],
+						[keyText("tui.select.confirm"), "select"],
+						[keyText("tui.select.cancel"), "cancel"],
+					]),
+					1,
+					0,
+				),
+			);
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());
 
 		this.updateList();
 	}
 
+	/** The ask card with its key hints (they depend on the width: `tab` is offered only when it reveals something). */
+	private renderCard(width: number): string[] {
+		const ask = this.ask as AskView;
+		const editor =
+			this.writing === undefined
+				? undefined
+				: [
+						`${theme.fg("dim", `${(ask.writeIn || undefined)?.title ?? "Write"}: `)}${theme.fg("text", this.writing)}${theme.fg("accent", "▏")}`,
+					];
+		const lines = renderAskCard(
+			ask,
+			{ cursor: this.selectedIndex, expanded: this.expanded, ...(editor ? { editor } : {}) },
+			theme,
+			width - 2,
+		).map((line) => ` ${line}`);
+		const hints =
+			this.writing !== undefined
+				? hintLine([
+						[keyText("tui.select.confirm"), "send"],
+						[keyText("tui.select.cancel"), "back"],
+					])
+				: hintLine([
+						[`↑↓/1-${Math.min(9, this.options.length)}`, "move"],
+						[keyText("tui.select.confirm"), "choose"],
+						...(hasMore(ask, width - 2) ? [["tab", this.expanded ? "less" : "details"] as [string, string]] : []),
+						[keyText("tui.select.cancel"), "cancel"],
+					]);
+		const after = this.countdownLabel ? ` ${theme.fg("dim", this.countdownLabel)}` : "";
+		return [...lines, ...(after ? [after] : []), "", ` ${hints}`];
+	}
+
+	/** Ask mode's own keys: the write-in's editing, `tab`, and digits that move the cursor. True when the key was used. */
+	private handleAskInput(keyData: string, kb: ReturnType<typeof getKeybindings>): boolean {
+		const ask = this.ask;
+		if (!ask) return false;
+		if (this.writing !== undefined) {
+			const typed = this.typedText(keyData);
+			if (typed !== undefined) this.writing += typed;
+			else if (keyData === "\x7f") this.writing = Array.from(this.writing).slice(0, -1).join("");
+			else if (kb.matches(keyData, "tui.select.cancel")) this.writing = undefined;
+			else if (kb.matches(keyData, "tui.select.confirm") || keyData === "\n") {
+				const label = this.options[this.selectedIndex];
+				giveWriteIn(ask, this.writing.trim());
+				this.writing = undefined;
+				if (label) this.onSelectCallback(label);
+			}
+			this.tui?.requestRender();
+			return true;
+		}
+		if (keyData === DETAILS_KEY) this.expanded = !this.expanded;
+		else if (!this.draft && /^[1-9]$/.test(keyData) && Number(keyData) <= this.options.length)
+			this.selectedIndex = Number(keyData) - 1;
+		else if (
+			(kb.matches(keyData, "tui.select.confirm") || keyData === "\n") &&
+			!this.draft &&
+			this.selectedIndex === writeInRow(ask)
+		)
+			this.writing = "";
+		else return false;
+		this.tui?.requestRender();
+		return true;
+	}
+
 	private updateList(): void {
 		this.listContainer.clear();
+		// The card draws its own option rows from the cursor.
+		if (this.ask) {
+			this.tui?.requestRender();
+			return;
+		}
 		for (let i = 0; i < this.options.length; i++) {
 			const isSelected = i === this.selectedIndex;
 			const text = isSelected
@@ -152,6 +244,7 @@ export class ExtensionSelectorComponent extends Container {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
+		if (this.handleAskInput(keyData, kb)) return;
 		if (this.onSubmitText && this.handleDraftInput(keyData, kb)) return;
 		const vimKeys = !this.onSubmitText;
 		if (kb.matches(keyData, "app.tools.expand")) {

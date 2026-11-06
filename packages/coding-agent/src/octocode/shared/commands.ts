@@ -13,7 +13,7 @@ type NoticeLevel = "info" | "warning" | "error";
 /**
  * Shows a notification. Octocode draws notify text as is, and notices carry file names, error messages, hook commands and
  * server text, so every notice goes through `sanitizeTerminalText` here. The one exception is the machine-read audit
- * relay (`childAuditMessage`), which a parent parses and never draws.
+ * relay (`childAuditMessage`) and its exposure report (`exposureMessage`), which a parent parses and never draws.
  */
 export function notify(ui: Pick<ExtensionUIContext, "notify">, text: string, level: NoticeLevel = "info"): void {
 	ui.notify(sanitizeTerminalText(text), level);
@@ -40,41 +40,6 @@ export interface Subcommand {
 	complete?(prefix: string): AutocompleteItem[] | null;
 }
 
-/** A retired `/octocode` input, with its arguments. */
-const RETIRED_COMMAND = /^\/octocode(?:\s+(.*))?$/s;
-
-/**
- * The retired `/octocode` forms and what replaced them: bare `/octocode [backlogs]` opened the web workspace, now `/web`,
- * and `/octocode <command> ...` was the old namespace. `from` is the retired form after `/octocode`, `to` the command
- * line to run instead; undefined when no single registered command replaces it.
- */
-function legacyReplacement(args: string, commands: readonly string[]): { from: string; to: string } | undefined {
-	const line = args.trim();
-	const name = line.split(/\s+/, 1)[0] ?? "";
-	const rest = line.slice(name.length).trimStart();
-	const withRest = (command: string) => (rest ? `${command} ${rest}` : command);
-	if ((name === "" || name === "backlogs") && commands.includes("web"))
-		return { from: line, to: line ? `web ${line}` : "web" };
-	if (name === "mcp" && /^restart(?:\s|$)/.test(rest)) return { from: "mcp restart", to: "mcp reconnect octocode" };
-	if (name === "external") return { from: name, to: withRest("agents external") };
-	// `/mcp` belongs to the MCP extension, so it is a replacement even when `commands` does not list it.
-	if (name === "mcp" || commands.includes(name)) return { from: name, to: withRest(name) };
-	return undefined;
-}
-
-/**
- * What to run instead of a retired `/octocode` form. `commands` are the registered names, so the list cannot go stale.
- */
-export function legacyNativeCommandGuidance(args: string, commands: readonly string[] = []): string {
-	const replacement = legacyReplacement(args, commands);
-	if (replacement)
-		return `/octocode${replacement.from ? ` ${replacement.from}` : ""} moved to /${replacement.to}. Run the new command to continue.`;
-	// `/mcp` belongs to the MCP extension, not to these subcommands.
-	const names = [...new Set([...commands, "mcp"])].sort().map((command) => `/${command}`);
-	const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
-	return `Commands now have direct names: ${list}.`;
-}
-
 /** Commands folded into `/harness`, with the subcommand that replaced each; their arguments carry over. */
 const FOLDED_INTO_HARNESS: Record<string, string> = {
 	plugins: "harness",
@@ -95,17 +60,11 @@ function foldedReplacement(text: string, commands: readonly string[]): string | 
 }
 
 /**
- * For input in a retired form, the registered command line that replaced it (`web`, `web backlogs`,
- * `permissions manual`, `harness hooks`), or null when no registered command does; undefined when `text` is not a
- * retired form.
+ * For input in a retired form, the registered command line that replaced it (`harness`, `harness hooks events`);
+ * undefined when `text` is not a retired form or nothing registered replaces it.
  */
-export function retiredCommandReplacement(text: string, commands: readonly string[]): string | null | undefined {
-	const folded = foldedReplacement(text, commands);
-	if (folded) return folded;
-	const match = RETIRED_COMMAND.exec(text.trim());
-	if (!match) return undefined;
-	const to = legacyReplacement(match[1] ?? "", commands)?.to;
-	return to && commands.includes(to.split(" ", 1)[0]) ? to : null;
+export function retiredCommandReplacement(text: string, commands: readonly string[]): string | undefined {
+	return foldedReplacement(text, commands);
 }
 
 export class Subcommands {
@@ -164,18 +123,8 @@ export class Subcommands {
 				say(ctx, `/${from} moved to /${FOLDED_INTO_HARNESS[from]}. Run /${to} to continue.`, "warning");
 				return { action: "handled" };
 			}
-			const match = RETIRED_COMMAND.exec(event.text.trim());
-			if (!match) return { action: "continue" };
-			say(ctx, this.guidance(match[1] ?? ""), "warning");
-			return { action: "handled" };
+			return { action: "continue" };
 		});
-	}
-	/** What to run instead of a retired `/octocode` form, naming the registered direct commands. */
-	private guidance(args: string): string {
-		return legacyNativeCommandGuidance(
-			args,
-			this.list().map(([name]) => name),
-		);
 	}
 }
 

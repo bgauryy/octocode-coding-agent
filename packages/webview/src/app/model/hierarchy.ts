@@ -24,7 +24,7 @@ const openTasks = (counts: TaskTally): number => counts.todo + counts.ongoing;
 
 /** The items an epic holds, in the order the snapshot lists them. */
 function childItems(index: BacklogIndex, epic: SnapshotItem): SnapshotItem[] {
-	const refs = new Set(epic.children ?? []);
+	const refs = new Set(epic.children);
 	for (const item of index.items) if (item.parentId === epic.ref) refs.add(item.ref);
 	return [...refs].flatMap((ref) => index.byRef.get(ref) ?? []);
 }

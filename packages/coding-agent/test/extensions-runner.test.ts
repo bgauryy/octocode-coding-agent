@@ -173,7 +173,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "conflict.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -196,7 +196,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "rebinding.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -223,7 +223,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "non-reserved.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -246,7 +246,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "rebound-reserved.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -270,7 +270,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "shared-reserved.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -293,7 +293,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "multi-reserved.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -317,7 +317,7 @@ describe("ExtensionRunner", () => {
 			`;
 			fs.writeFileSync(path.join(extensionsDir, "multi-non-reserved.ts"), extCode);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -351,7 +351,7 @@ describe("ExtensionRunner", () => {
 			fs.writeFileSync(path.join(extensionsDir, "ext1.ts"), extCode1);
 			fs.writeFileSync(path.join(extensionsDir, "ext2.ts"), extCode2);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -782,95 +782,6 @@ describe("ExtensionRunner", () => {
 
 			expect(runner.getEntryRenderer("my-entry")).toBeDefined();
 			expect(runner.getEntryRenderer("not-exists")).toBeUndefined();
-		});
-	});
-
-	describe("flags", () => {
-		it("collects flags from extensions", async () => {
-			const extCode = `
-				export default function(api) {
-					api.registerFlag("my-flag", {
-						description: "My flag",
-						handler: async () => {},
-					});
-				}
-			`;
-			fs.writeFileSync(path.join(extensionsDir, "with-flag.ts"), extCode);
-
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-			const flags = runner.getFlags();
-
-			expect(flags.has("my-flag")).toBe(true);
-		});
-
-		it("keeps first flag when two extensions register the same name", async () => {
-			const first = `
-				export default function(api) {
-					api.registerFlag("shared-flag", {
-						description: "first",
-						type: "boolean",
-						default: true,
-					});
-				}
-			`;
-			const second = `
-				export default function(api) {
-					api.registerFlag("shared-flag", {
-						description: "second",
-						type: "boolean",
-						default: false,
-					});
-				}
-			`;
-			fs.writeFileSync(path.join(extensionsDir, "a-first.ts"), first);
-			fs.writeFileSync(path.join(extensionsDir, "b-second.ts"), second);
-
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-			const flags = runner.getFlags();
-
-			expect(flags.get("shared-flag")?.description).toBe("first");
-			expect(result.runtime.flagValues.get("shared-flag")).toBe(true);
-		});
-
-		it("rejects default values that do not match the flag type", async () => {
-			const extCode = `
-				export default function(api) {
-					api.registerFlag("safe-mode", {
-						type: "boolean",
-						default: "false",
-					});
-				}
-			`;
-			fs.writeFileSync(path.join(extensionsDir, "bad-flag-default.ts"), extCode);
-
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-
-			expect(result.extensions).toHaveLength(0);
-			expect(result.errors[0]?.error).toContain('Invalid default for flag "safe-mode": expected boolean, got string');
-			expect(result.runtime.flagValues.has("safe-mode")).toBe(false);
-		});
-
-		it("can set flag values", async () => {
-			const extCode = `
-				export default function(api) {
-					api.registerFlag("test-flag", {
-						description: "Test flag",
-						handler: async () => {},
-					});
-				}
-			`;
-			fs.writeFileSync(path.join(extensionsDir, "flag.ts"), extCode);
-
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-
-			// Setting a flag value should not throw
-			runner.setFlagValue("--test-flag", true);
-
-			// The flag values are stored in the shared runtime
-			expect(result.runtime.flagValues.get("--test-flag")).toBe(true);
 		});
 	});
 

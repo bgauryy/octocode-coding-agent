@@ -8,6 +8,10 @@
  * in plain form instead: the server's description and JSON Schema as sent (`jsonToolBlock`). Providers get thin tool
  * declarations in both forms; calls are still validated against the server's own JSON Schema.
  *
+ * In `declared` mode (the default) no file is rendered: a tool is declared with the server's own description and full
+ * input schema, and the block holds the server's instructions (plus an index line per deferred tool). Preset
+ * overrides do not apply there; the server's text reaches the model verbatim.
+ *
  * Two copies of a server's file exist per session. The `latest` one follows the server (validation hints read it). The
  * `described` one is what the system prompt's block says of the server (`describe`): taken when the prompt first
  * describes the server's catalog, kept while the server reconnects, fails or drops, and renewed when the loadout is
@@ -19,7 +23,6 @@
  * once and holds across compaction, resume and fork.
  */
 
-import { isDeepStrictEqual } from "node:util";
 import type { Tool as McpTool } from "../client/index.ts";
 import {
 	checkToolBlock,
@@ -34,6 +37,7 @@ import {
 import { deferredLine, type McpDeferral } from "../deferral.ts";
 import { firstSentence } from "./declaration.ts";
 import { authoredTrigger, instructionsHead, residentBlock } from "./deferred.ts";
+import { changedContract, sameCatalog, sameContract, shownDescription } from "./contract.ts";
 import { jsonContract, jsonToolBlock } from "./json-block.ts";
 
 import { DEFAULT_MCP_PRESENTATION, type McpPresentationMode } from "./mode.ts";
@@ -92,45 +96,6 @@ interface Described extends DescribedServer {
 
 const NO_DEFERRAL: McpDeferral = { deferred: new Set() };
 
-const sameCatalog = (
-	generated: GeneratedServer,
-	instructions: string | undefined,
-	tools: readonly McpTool[],
-	toolNames: Readonly<Record<string, string>>,
-) =>
-	generated.instructions === instructions &&
-	isDeepStrictEqual(generated.toolNames, toolNames) &&
-	generated.tools.size === tools.length &&
-	tools.every((tool) => generated.tools.get(tool.name) === tool);
-
-/** The text the block shows as a tool's description: its own, else its title (`jsonToolBlock`). */
-const shownDescription = (tool: McpTool) => (tool.description?.trim() ? tool.description : tool.title?.trim());
-
-/**
- * What the block says of a tool: its description and schemas. Other fields the catalog keeps (`title` beside a
- * description, `execution`) are not part of it, so they neither renew the block nor undo a thin declaration.
- */
-const sameContract = (left: McpTool, right: McpTool) =>
-	left === right ||
-	(shownDescription(left) === shownDescription(right) &&
-		isDeepStrictEqual(left.inputSchema, right.inputSchema) &&
-		isDeepStrictEqual(left.outputSchema, right.outputSchema));
-
-/**
- * Whether the latest catalog changes what the block says: the server's instructions, or the description or schemas
- * of a tool it describes that the server still offers. A tool the server no longer offers or one it newly offers is
- * not a change of the block (the status names the first, the second is declared in full), nor is a reconnect, whose
- * catalog keeps the same tools (`McpCatalogCache`).
- */
-const changedContract = (described: GeneratedServer, latest: GeneratedServer, tools: ReadonlySet<string>) =>
-	described !== latest &&
-	((described.instructions ?? "") !== (latest.instructions ?? "") ||
-		[...tools].some((name) => {
-			const before = described.tools.get(name);
-			const now = latest.tools.get(name);
-			return before !== undefined && now !== undefined && !sameContract(before, now);
-		}));
-
 export class McpPresentation {
 	readonly #options: McpPresentationOptions;
 	readonly #latest = new Map<string, GeneratedServer>();
@@ -140,9 +105,14 @@ export class McpPresentation {
 		this.#options = options;
 	}
 
-	/** Whether servers are rendered as generated TypeScript files; false (`json`) describes every tool in plain form. */
+	/** Whether servers are rendered as generated TypeScript files: `compact` only. */
 	get enabled(): boolean {
-		return this.#options.mode() !== "json";
+		return this.#options.mode() === "compact";
+	}
+
+	/** Whether tools carry their description and schema in their own declarations (`declared`), not in the block. */
+	get declared(): boolean {
+		return this.#options.mode() === "declared";
 	}
 
 	/**
@@ -286,7 +256,7 @@ export class McpPresentation {
 			tools: new Set(tools),
 			pending: !ready,
 			deferred: resident?.deferred ?? new Set(),
-			directBytes: Buffer.byteLength(resident?.direct ?? ""),
+			directBytes: resident?.directBytes ?? 0,
 		};
 		this.#frozen.set(name, described);
 		return described;
@@ -306,12 +276,16 @@ export class McpPresentation {
 		let spent = 0;
 		for (const [server, described] of this.#frozen) if (server < name) spent += described.directBytes;
 		const prefix = `mcp__${generated.callName}__`;
+		const declared = this.declared;
 		return residentBlock({
 			offered,
 			deferral,
 			spent,
-			contractOf: (tools) => this.#contract(generated, tools, instructions),
-			instructionsOf: () => instructionsHead(generated, instructions),
+			contractOf: (tools) =>
+				declared
+					? this.#declaredContract(generated, tools, instructions)
+					: this.#contract(generated, tools, instructions),
+			instructionsOf: () => (declared ? (instructions?.trim() ?? "") : instructionsHead(generated, instructions)),
 			indexLine: (tool) => {
 				const call = generated.toolNames[tool]?.startsWith(prefix)
 					? generated.toolNames[tool].slice(prefix.length)
@@ -323,6 +297,23 @@ export class McpPresentation {
 				);
 			},
 		});
+	}
+
+	/**
+	 * `declared` mode: the block holds the server's instructions only; the tools' descriptions and schemas are in their
+	 * declarations. The bytes are what the instructions and those declarations cost, for an `auto:<bytes>` budget.
+	 */
+	#declaredContract(
+		generated: GeneratedServer,
+		tools: readonly string[],
+		instructions: string | undefined,
+	): { file: undefined; text: string; bytes: number } {
+		const text = instructions?.trim() ?? "";
+		const declarations = tools.map((tool) => {
+			const offered = generated.tools.get(tool) as McpTool;
+			return Buffer.byteLength(`${shownDescription(offered) ?? ""}${JSON.stringify(offered.inputSchema)}`);
+		});
+		return { file: undefined, text, bytes: declarations.reduce((sum, size) => sum + size, Buffer.byteLength(text)) };
 	}
 
 	/**
@@ -357,7 +348,9 @@ export class McpPresentation {
 	/** Whether the tool is declared as a thin stub: the prompt's block describes this tool's contract, in either form. */
 	isThin(name: string, tool: McpTool): boolean {
 		const described = this.#frozen.get(name);
-		if (!described?.contract || !described.tools.has(tool.name)) return false;
+		if (!described || !described.tools.has(tool.name)) return false;
+		// `declared`: only a deferred tool is thin; every other tool carries its full declaration.
+		if (this.declared ? !described.deferred.has(tool.name) : !described.contract) return false;
 		const before = described.generated?.tools.get(tool.name);
 		return before !== undefined && sameContract(before, tool);
 	}

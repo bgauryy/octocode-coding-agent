@@ -7,7 +7,6 @@ import { BUILTIN_SLASH_COMMANDS } from "../../slash-commands.ts";
 import type {
 	EntryRenderer,
 	Extension,
-	ExtensionFlag,
 	ExtensionShortcut,
 	MessageRenderer,
 	RegisteredCommand,
@@ -154,19 +153,6 @@ export function collectRegisteredTools(extensions: Extension[]): RegisteredTool[
 		}
 	}
 	return Array.from(toolsByName.values());
-}
-
-/** Registered flags by name; the first registration per name wins. */
-export function collectFlags(extensions: Extension[]): Map<string, ExtensionFlag> {
-	const allFlags = new Map<string, ExtensionFlag>();
-	for (const ext of extensions) {
-		for (const [name, flag] of ext.flags) {
-			if (!allFlags.has(name)) {
-				allFlags.set(name, flag);
-			}
-		}
-	}
-	return allFlags;
 }
 
 export function hasEventHandlers(extensions: Extension[], eventType: string): boolean {

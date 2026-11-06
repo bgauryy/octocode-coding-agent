@@ -9,7 +9,7 @@ import { createReadTool } from "../fixtures/read-tool.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_HARNESSES_ON, tmp } from "./helpers.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 type Options = {
@@ -134,6 +134,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 	});
 	const settingsManager = SettingsManager.inMemory({
 		retry: { enabled: false },
+		toggles: { ...HOOK_HARNESSES_ON },
 	});
 	if (options.projectTrusted !== undefined) settingsManager.setProjectTrusted(options.projectTrusted);
 	const makeResourceLoader = () =>

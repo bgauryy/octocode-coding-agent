@@ -24,7 +24,7 @@ export function agentToolSpec() {
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({
 				description:
-					"Task contract: objective, inputs (paths, evidence, decisions), constraints (scope, authorization, budget), output, Definition of Done. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",
+					"The brief `<delegation>` describes. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",
 			}),
 			item: Type.Optional(
 				Type.String({
@@ -50,7 +50,7 @@ export function agentToolSpec() {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Pass :high only for a child that coordinates others or a sensitive task: security, permissions, credentials, data loss or migration, releases. Default: the profile's (see models); no profile: medium; thinking medium.",
+						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Default: the profile's (see models); no profile: medium; thinking medium.",
 				}),
 			),
 			resultSchema: Type.Optional(

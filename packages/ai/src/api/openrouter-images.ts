@@ -175,12 +175,12 @@ function parseUsage(
 	},
 	model: ImageModel<ImageApi>,
 ) {
-	const promptTokens = rawUsage.prompt_tokens || 0;
+	const promptTokens = rawUsage.prompt_tokens ?? 0;
 	// cached_tokens counts reads only; writes are a separate count (same contract as openai-completions/usage.ts).
-	const cacheReadTokens = rawUsage.prompt_tokens_details?.cached_tokens || 0;
-	const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens || 0;
+	const cacheReadTokens = rawUsage.prompt_tokens_details?.cached_tokens ?? 0;
+	const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens ?? 0;
 	const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
-	const output = rawUsage.completion_tokens || 0;
+	const output = rawUsage.completion_tokens ?? 0;
 	const usage = createUsage({ input, output, cacheRead: cacheReadTokens, cacheWrite: cacheWriteTokens });
 	calculateCost(model, usage);
 	return usage;

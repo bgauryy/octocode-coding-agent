@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { AGENT_NAMES } from "../../src/octocode/team/identity.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
-import { describeMembers, messageText, resolveTarget } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
+import { messageText, resolveTarget } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -116,7 +117,10 @@ describe("agent identity on the team", () => {
 		await expect(coordinate.execute("c", { action: "join", goal: "   " }, undefined, undefined, ctx)).rejects.toThrow(
 			/goal is required/,
 		);
-		expect(team.id).toBeUndefined();
+		// O6b (design B36): a main session joins at session_start, without a goal; the refused join changes nothing.
+		const name = team.id;
+		expect(name).toBeDefined();
+		expect(team.members()[0]?.goal).toBeUndefined();
 		await coordinate.execute(
 			"c",
 			{ action: "join", goal: "refactor the whole auth module today please" },
@@ -124,7 +128,11 @@ describe("agent identity on the team", () => {
 			undefined,
 			ctx,
 		);
-		expect(team.members()[0]).toMatchObject({ role: "main", goal: "refactor the whole auth module today please" });
+		expect(team.members()[0]).toMatchObject({
+			id: name,
+			role: "main",
+			goal: "refactor the whole auth module today please",
+		});
 		expect(coordinate.parameters.properties.goal.description).toMatch(/^join: your goal/);
 		expect(coordinate.parameters.properties.goal).not.toHaveProperty("maxLength");
 		await fake.emit("session_shutdown", {}, ctx);

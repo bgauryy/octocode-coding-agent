@@ -21,12 +21,13 @@ import {
 	type PermissionMode,
 	parseGrants,
 	reasonAsks,
+	runsUnasked,
 	sessionStartMode,
 } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
 import { type CheckHost, checkPermission, selectedFileQueries } from "./ask/check.ts";
 import { TurnCap } from "./ask/cap.ts";
-import { modeSummary, revertedNotice, selectAnswer } from "./ask/text.ts";
+import { modeSummary, revertedNotice, selectAnswer, unaskedRunLine } from "./ask/text.ts";
 import { PermissionTrail } from "./ask/trail.ts";
 import type { ActionEvent, Asker, Dialog, PermissionResolver, PrepareReplacement, Verdict } from "./ask/types.ts";
 
@@ -186,18 +187,15 @@ export class Permission {
 		if (warning && !this.#warned && interactive(ctx, this.#isSubagent)) notify(ctx.ui, warning, "warning");
 		if (warning) this.#warned = true;
 		// An RPC or ACP worker has dialogs but `full` raises none, so its driver needs the same line a headless run gets.
-		if (mode === "full" && (!ctx.hasUI || ctx.mode === "rpc") && !this.#isSubagent) {
-			this.#stderr(
-				`octocode: permission mode full: every action runs without asking and is recorded in ${ctx.sessionManager.getSessionFile() ?? "this session (not saved to a file)"}; /permissions log lists them.\n`,
-			);
-		}
+		const unasked = (!ctx.hasUI || ctx.mode === "rpc") && !this.#isSubagent && unaskedRunLine(mode);
+		if (unasked) this.#stderr(unasked(ctx.sessionManager.getSessionFile()));
 		this.paint(ctx);
 	}
 
-	/** Session end: writes the rollup of unlogged entries and, in a run with no UI, prints what full mode did to stderr. */
-	shutdown(ctx: Pick<ExtensionContext, "hasUI">): void {
-		this.#trail.flush();
-		const summary = !ctx.hasUI && !this.#isSubagent && this.#mode === "full" ? this.#trail.summary() : undefined;
+	/** Session end: writes the rollup of unlogged entries, tells a subagent's parent whether it was `exposed`, and, in a run with no UI, prints what full mode did to stderr. */
+	shutdown(ctx: Pick<ExtensionContext, "hasUI">, exposed?: boolean): void {
+		this.#trail.flush(exposed);
+		const summary = !ctx.hasUI && !this.#isSubagent && runsUnasked(this.#mode) ? this.#trail.summary() : undefined;
 		if (summary) this.#stderr(`${summary}\n`);
 	}
 
@@ -242,7 +240,7 @@ export class Permission {
 		this.paint(ctx);
 		this.#trail.record({ action: "mode", what: [`${from} → ${mode}`], allowed: true, via: "user" });
 		if (interactive(ctx, this.#isSubagent))
-			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, mode === "full" ? "warning" : "info");
+			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, runsUnasked(mode) ? "warning" : "info");
 		// Hidden and turn-neutral: during a run Octocode appends it after the current turn's results, so the model reads it next.
 		const summary = modeSummary(mode);
 		void this.#api.sendMessage(

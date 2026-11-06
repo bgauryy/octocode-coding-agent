@@ -204,9 +204,7 @@ export function validateResultAnswer(answer: string, contract: ResultContract): 
 	try {
 		const data = copyJson(JSON.parse(raw), { bytes: RESULT_BYTES, depth: 32, nodes: 8192 });
 		if (!Value.Check(contract.schema as TSchema, data)) {
-			const error = Value.Errors(contract.schema as TSchema, data)
-				[Symbol.iterator]()
-				.next().value;
+			const error = Value.Errors(contract.schema as TSchema, data).at(0);
 			return invalid(contract, "schema", error?.instancePath);
 		}
 		return { version: 1, schemaHash: contract.hash, status: "valid", data };

@@ -1,7 +1,7 @@
 {
 	"name": "octocode",
 	"enabledEnv": "OCTOCODE_MCP",
-	"description": "Every code search and read: this checkout (localSearch, structureSearch, localFetch, lspSearch, astSearch), GitHub repositories and package registries; use before bash or web.",
+	"description": "Code search and read; each tool's description says when to use it. Use before bash or web.",
 	"exposure": "direct",
 	"command": "octocode-mcp",
 	"inheritEnv": true,
@@ -10,7 +10,7 @@
 		"ALLOWED_PATHS": "${researchRoots}",
 		"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}"
 	},
-	"install": { "npm": "octocode-mcp", "version": "20.2.0", "bin": "octocode-mcp" },
+	"install": { "npm": "octocode-mcp", "version": "20.2.0", "bin": "octocode-mcp", "hostDependency": true },
 	"roles": {
 		"reader": ["localFetch"],
 		"search": ["localSearch", "structureSearch", "astSearch", "lspSearch"],

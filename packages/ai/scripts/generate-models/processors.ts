@@ -12,6 +12,7 @@ import {
 import { getModelsDevCost } from "./pricing.ts";
 import { getGoogleThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog, ModelsDevModel, ModelsDevProvider } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** models.dev providers whose models need their own processing: Z.ai, Baseten, Google, Fireworks and Kimi For Coding. */
 
@@ -60,8 +61,8 @@ export function processZaiModels(data: ModelsDevCatalog): Model<Api>[] {
 					...(supportsReasoningEffort ? { supportsReasoningEffort: true } : {}),
 					...(!ZAI_TOOL_STREAM_UNSUPPORTED_MODELS.has(modelId) ? { zaiToolStream: true } : {}),
 				},
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions(provider, modelId, m);
 		}
@@ -157,8 +158,8 @@ export function processBasetenModels(provider: ModelsDevProvider | undefined): M
 			input: supportsImageInput ? ["text", "image"] : ["text"],
 			cost: getModelsDevCost(model.cost),
 			compat,
-			contextWindow: model.limit?.context || 4096,
-			maxTokens: model.limit?.output || 4096,
+			contextWindow: nonZeroOr(4096, model.limit?.context),
+			maxTokens: nonZeroOr(4096, model.limit?.output),
 		});
 	}
 
@@ -189,8 +190,8 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 				input: source.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(source.cost),
-				contextWindow: source.limit?.context || 4096,
-				maxTokens: source.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, source.limit?.context),
+				maxTokens: nonZeroOr(4096, source.limit?.output),
 			});
 		}
 	}
@@ -212,7 +213,7 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 			// models.dev reports Vertex cache_read/cache_write values for Gemini 2.5 Flash that
 			// do not match the official Gemini API standard pricing table. Usage only accounts
 			// cachedContentTokenCount as cacheRead.
-			const cacheRead = modelId === "gemini-2.5-flash" ? 0.03 : source.cost?.cache_read || 0;
+			const cacheRead = modelId === "gemini-2.5-flash" ? 0.03 : (source.cost?.cache_read ?? 0);
 			const cost = getModelsDevCost(source.cost);
 
 			models.push(
@@ -231,8 +232,8 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 						cacheWrite: 0,
 						...(cost.tiers ? { tiers: cost.tiers.map((tier) => ({ ...tier, cacheWrite: 0 })) } : {}),
 					},
-					contextWindow: source.limit?.context || 4096,
-					maxTokens: source.limit?.output || 4096,
+					contextWindow: nonZeroOr(4096, source.limit?.context),
+					maxTokens: nonZeroOr(4096, source.limit?.output),
 				}),
 			);
 		}
@@ -275,8 +276,8 @@ export function processFireworksModels(provider: ModelsDevProvider | undefined):
 			reasoning: model.reasoning === true,
 			input,
 			cost: getModelsDevCost(model.cost),
-			contextWindow: model.limit?.context || 4096,
-			maxTokens: model.limit?.output || 4096,
+			contextWindow: nonZeroOr(4096, model.limit?.context),
+			maxTokens: nonZeroOr(4096, model.limit?.output),
 		};
 
 		if (modelId.includes("glm-")) {
@@ -358,13 +359,13 @@ export function createKimiCodingModels(kimiModels: Record<string, ModelsDevModel
 			reasoning: m.reasoning === true,
 			input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 			cost: {
-				input: m.cost?.input || impliedCost?.input || 0,
-				output: m.cost?.output || impliedCost?.output || 0,
-				cacheRead: m.cost?.cache_read || impliedCost?.cacheRead || 0,
-				cacheWrite: m.cost?.cache_write || impliedCost?.cacheWrite || 0,
+				input: nonZeroOr(0, m.cost?.input, impliedCost?.input),
+				output: nonZeroOr(0, m.cost?.output, impliedCost?.output),
+				cacheRead: nonZeroOr(0, m.cost?.cache_read, impliedCost?.cacheRead),
+				cacheWrite: nonZeroOr(0, m.cost?.cache_write, impliedCost?.cacheWrite),
 			},
-			contextWindow: m.limit?.context || 4096,
-			maxTokens: m.limit?.output || 4096,
+			contextWindow: nonZeroOr(4096, m.limit?.context),
+			maxTokens: nonZeroOr(4096, m.limit?.output),
 			// Kimi Code reports every model as always-thinking.
 			thinkingLevelMap: { ...effortLevels, off: null },
 		});

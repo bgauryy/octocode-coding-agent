@@ -28,19 +28,9 @@ it("serves session/new and a prompt through the native feature set under --mode 
 	server = await startModelServer([{ text: "acp scripted answer" }]);
 	writeScriptedProvider(sandbox, server);
 	const invocation = getCliInvocation();
-	// An older parent also passes these; they must not stop the server from starting.
 	const child = spawn(
 		invocation.command,
-		[
-			...invocation.prefix,
-			"--mode",
-			"acp",
-			"--no-extensions",
-			"-e",
-			"builtin:mcp",
-			...QUIET_ARGS,
-			...SCRIPTED_MODEL_ARGS,
-		],
+		[...invocation.prefix, "--mode", "acp", ...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS],
 		{ cwd: sandbox.project, stdio: ["pipe", "pipe", "pipe"], env: sandbox.env },
 	);
 	let diagnostics = "";

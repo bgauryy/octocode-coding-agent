@@ -241,6 +241,45 @@ function loadRawConfig(path: string): Record<string, unknown> | undefined {
 	}
 }
 
+/** A keybindings file with entries Octocode ignores, and why each one. */
+export interface KeybindingProblem {
+	path: string;
+	/** `1 entry ignored (unknown action foo)` or `not loaded: invalid JSON`. */
+	problem: string;
+}
+
+/** The keybindings files that apply, Octocode's first, then Pi's (global roots only). */
+function keybindingFiles(agentDir: string): string[] {
+	return configDiscovery
+		.discover("keybinding", discoveryInput({ cwd: process.cwd(), agentDir, projectTrusted: false }))
+		.map((item) => item.provenance.path);
+}
+
+/** One problem per file that the loader skips whole or in part: invalid JSON, invalid key values, unknown action ids. */
+export function keybindingProblems(agentDir: string = getAgentDir()): KeybindingProblem[] {
+	return keybindingFiles(agentDir).flatMap((path): KeybindingProblem[] => {
+		if (!existsSync(path)) return [];
+		let parsed: unknown;
+		try {
+			parsed = readJsonFile(path);
+		} catch (error) {
+			return [
+				{ path, problem: `not loaded: invalid JSON (${error instanceof Error ? error.message : String(error)})` },
+			];
+		}
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+			return [{ path, problem: "not loaded: expected an object of action ids and keys" }];
+		const reasons = Object.entries(parsed).flatMap(([action, binding]) => {
+			if (action === "$schema") return [];
+			if (!Object.hasOwn(KEYBINDINGS, action)) return [`unknown action ${action}`];
+			return validateKeybindingValue.Check(binding) ? [] : [`invalid keys for ${action}`];
+		});
+		if (reasons.length === 0) return [];
+		const count = `${reasons.length} ${reasons.length === 1 ? "entry" : "entries"}`;
+		return [{ path, problem: `${count} ignored (${reasons.join(", ")}): fix or delete them` }];
+	});
+}
+
 export class KeybindingsManager extends TuiKeybindingsManager {
 	private readBindings: (() => KeybindingsConfig) | undefined;
 
@@ -264,13 +303,9 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	}
 
 	private static loadUserBindings(agentDir: string): KeybindingsConfig {
-		const files = configDiscovery.discover(
-			"keybinding",
-			discoveryInput({ cwd: process.cwd(), agentDir, projectTrusted: false }),
-		);
-		// Discovery lists Octocode's file first; later files override earlier ones.
-		return files.reduceRight<KeybindingsConfig>((merged, item) => {
-			const rawConfig = loadRawConfig(item.provenance.path);
+		// Discovery lists Octocode's file first; later files override earlier ones. `keybindingProblems` reports what is skipped.
+		return keybindingFiles(agentDir).reduceRight<KeybindingsConfig>((merged, path) => {
+			const rawConfig = loadRawConfig(path);
 			return rawConfig ? Object.assign(merged, toKeybindingsConfig(rawConfig)) : merged;
 		}, {});
 	}

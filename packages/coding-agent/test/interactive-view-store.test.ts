@@ -78,15 +78,19 @@ describe("interactive view store", () => {
 		uiStore.getState().setToolsExpanded(true);
 		const expanded = rows(chatContainer).length;
 		expect(expanded).toBeGreaterThan(collapsed);
-		// Two store changes: the expansion and its footer notice.
-		expect(requestRender).toHaveBeenCalledTimes(2);
+		// Two store changes (the expansion and its notice) and the notice's status line in the messages list.
+		expect(requestRender).toHaveBeenCalledTimes(3);
+		expect(rows(chatContainer).join("\n")).toContain("Tool output: expanded");
 
 		uiStore.getState().setToolsExpanded(true);
-		expect(requestRender).toHaveBeenCalledTimes(2);
+		expect(requestRender).toHaveBeenCalledTimes(3);
 
 		uiStore.getState().toggleToolsExpanded();
-		expect(rows(chatContainer).length).toBe(collapsed);
-		expect(requestRender).toHaveBeenCalledTimes(4);
+		// The tool row is back to its collapsed height; below it, one spacer and one status line, updated in place.
+		expect(rows(chatContainer).length).toBe(collapsed + 2);
+		expect(rows(chatContainer).join("\n")).toContain("Tool output: collapsed");
+		expect(rows(chatContainer).join("\n")).not.toContain("Tool output: expanded");
+		expect(requestRender).toHaveBeenCalledTimes(6);
 	});
 
 	it("renders rows added after the toggle in the current mode", () => {
@@ -112,23 +116,38 @@ describe("interactive view store", () => {
 		toggleThinkingBlockVisibility(host);
 		expect(uiStore.getState().view.hideThinking).toBe(true);
 		expect(rows(chatContainer).join("\n")).not.toContain("secret thought");
-		expect(rows(chatContainer).join("\n")).toContain("Reasoning");
+		// A hidden, finished block reads as a past event (assistant-message.ts: "Thought").
+		expect(rows(chatContainer).join("\n")).toContain("Thought");
 		expect(host.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
-		// The hidden flag and its footer notice.
-		expect(requestRender).toHaveBeenCalledTimes(2);
+		// The hidden flag, the notice in the store and its status line in the messages list.
+		expect(requestRender).toHaveBeenCalledTimes(3);
+		expect(rows(chatContainer).join("\n")).toContain("Thinking blocks: hidden");
 
 		uiStore.getState().setHideThinking(true);
-		expect(requestRender).toHaveBeenCalledTimes(2);
+		expect(requestRender).toHaveBeenCalledTimes(3);
 	});
 
-	it("mirrors the notice into the footer and clears it after the delay", () => {
-		vi.useFakeTimers();
-		const { uiStore, footerDataProvider } = setup();
-		uiStore.getState().showNotice("hello", 100);
-		expect(footerDataProvider.setExtensionStatus).toHaveBeenLastCalledWith("notice", "hello");
-		vi.advanceTimersByTime(101);
-		expect(footerDataProvider.setExtensionStatus).toHaveBeenLastCalledWith("notice", undefined);
-		expect(uiStore.getState().view.notice).toBeUndefined();
+	it("says each notice in the messages list, never in the footer, and a burst keeps one line", () => {
+		const { uiStore, chatContainer, footerDataProvider } = setup();
+		uiStore.getState().showNotice("hello");
+		expect(rows(chatContainer).filter((row) => row.trim() === "hello")).toHaveLength(1);
+		uiStore.getState().showNotice("hello");
+		uiStore.getState().showNotice("world");
+		const text = rows(chatContainer).join("\n");
+		expect(text).toContain("world");
+		// Back-to-back notices share the last status line: the latest replaces the earlier ones.
+		expect(text).not.toContain("hello");
+		expect(footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+	});
+
+	it("starts a new line once something else reached the messages list", () => {
+		const { uiStore, chatContainer } = setup();
+		uiStore.getState().showNotice("first");
+		chatContainer.addChild(new Container());
+		uiStore.getState().showNotice("second");
+		const text = rows(chatContainer).join("\n");
+		expect(text).toContain("first");
+		expect(text).toContain("second");
 	});
 
 	it("stops following the store after unbind", () => {

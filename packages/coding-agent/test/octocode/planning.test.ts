@@ -6,6 +6,7 @@ import { PLAN_REMINDER_TYPE } from "../../src/octocode/plan/prompts.ts";
 import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { setPlanStartup } from "../../src/octocode/plan/startup.ts";
 import { readPlan, PLAN_ENTRY } from "../../src/octocode/plan/state.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createHarness, getUserTexts, type Harness } from "../suite/harness.ts";
@@ -311,4 +312,30 @@ it("treats a slash-prefixed planning task as literal user text rather than execu
 	expect(getUserTexts(harness).at(-1)).toBe("/danger inspect, do not execute");
 	expect(invoked).not.toHaveBeenCalled();
 	expect(readPlan(harness.sessionManager.getBranch()).active).toBe(true);
+});
+
+it("starts in planning on the startup event only when --plan was given", async () => {
+	const startup = async (reason: "startup" | "resume") => {
+		const fake = fakeHost();
+		registerPlanning(
+			fake.api,
+			new Subcommands(),
+			vi.fn(async () => {}),
+		);
+		const appended: unknown[] = [];
+		fake.api.appendEntry = (_type: string, data: unknown) => void appended.push(data);
+		const ctx = fakeCtx({ cwd: "/repo" });
+		Object.assign(ctx, { sessionManager: { getSessionId: () => `plan-start-${reason}`, getBranch: () => [] } });
+		await fake.fire("session_start", { reason }, ctx);
+		return appended;
+	};
+	try {
+		setPlanStartup(true);
+		expect(await startup("startup")).toMatchObject([{ active: true }]);
+		expect(await startup("resume")).toEqual([]);
+		setPlanStartup(false);
+		expect(await startup("startup")).toEqual([]);
+	} finally {
+		setPlanStartup(false);
+	}
 });

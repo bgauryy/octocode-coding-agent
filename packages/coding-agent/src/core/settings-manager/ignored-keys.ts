@@ -41,9 +41,13 @@ export function ignoredSettingsKeys(settings: object): string[] {
 	);
 }
 
-/** One sentence naming an ignored key: a removed key says what controls it now, any other says to check the spelling. */
-export function describeIgnoredKey(key: string): string {
-	const removed = Object.hasOwn(REMOVED_KEYS, key) ? REMOVED_KEYS[key] : undefined;
-	if (removed) return `Setting "${key}" was removed, so it does nothing. ${removed} Delete it from the file.`;
-	return `Setting "${key}" is not a known setting, so it does nothing. Check the spelling, or delete it from the file.`;
+/**
+ * One line for every ignored key of a file: `2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): delete
+ * them`, or undefined when none. Why a removed key is gone is in the settings reference, not on every start.
+ */
+export function describeIgnoredKeys(keys: readonly string[]): string | undefined {
+	if (keys.length === 0) return undefined;
+	const named = keys.map((key) => `${key} ${Object.hasOwn(REMOVED_KEYS, key) ? "removed" : "unknown"}`);
+	const one = keys.length === 1;
+	return `${keys.length} ignored key${one ? "" : "s"} (${named.join(", ")}): ${one ? "delete it" : "delete them"}`;
 }

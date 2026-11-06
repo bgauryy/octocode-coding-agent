@@ -264,7 +264,7 @@ describe("session extras", () => {
 		);
 		const host = setup();
 		await host.start();
-		vi.spyOn(SessionIndex.prototype, "git").mockImplementation(() => {
+		const write = vi.spyOn(SessionIndex.prototype, "git").mockImplementation(() => {
 			throw new Error("index unavailable");
 		});
 		Object.defineProperty(host.ctx, "hasUI", {
@@ -272,8 +272,18 @@ describe("session extras", () => {
 				throw new Error("stale Octocode context");
 			},
 		});
-		finish({ branch: "late" });
-		await new Promise((resolve) => setImmediate(resolve));
+		const rejections: unknown[] = [];
+		const onRejection = (reason: unknown) => rejections.push(reason);
+		process.on("unhandledRejection", onRejection);
+		try {
+			finish({ branch: "late" });
+			await new Promise((resolve) => setImmediate(resolve));
+			await new Promise((resolve) => setImmediate(resolve));
+		} finally {
+			process.off("unhandledRejection", onRejection);
+		}
+		expect(write).toHaveBeenCalledWith(host.id, { branch: "late" });
+		expect(rejections).toEqual([]);
 	});
 
 	it("keeps no rows for a subagent and registers only the after-compaction running-work note", async () => {

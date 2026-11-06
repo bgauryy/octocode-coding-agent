@@ -2,6 +2,7 @@
  * CLI argument parsing and help display
  */
 
+import { APP_NAME } from "../config.ts";
 import { isValidThinkingLevel } from "../core/thinking-level.ts";
 import { flagSpec, invalidValue, looksLikeFlag, missingValue } from "./args/flags.ts";
 import type { Args } from "./args/types.ts";
@@ -19,8 +20,7 @@ export function parseArgs(args: string[]): Args {
 	const result: Args = {
 		messages: [],
 		fileArgs: [],
-		unknownFlags: new Map(),
-		unknownFlagWords: [],
+		unknownFlags: [],
 		diagnostics: [],
 	};
 	const error = (message: string) => result.diagnostics.push({ type: "error", message });
@@ -45,8 +45,8 @@ export function parseArgs(args: string[]): Args {
 		if (spec) {
 			const inline = eq === -1 ? undefined : arg.slice(eq + 1);
 			if (spec.kind === "boolean") {
-				if (inline !== undefined) error(`${spec.name} does not take a value`);
-				else spec.apply(result, undefined);
+				const failure = inline === undefined ? spec.apply(result, undefined) : `does not take a value`;
+				if (failure) error(`${spec.name} ${failure}`);
 				continue;
 			}
 			if (spec.kind === "optional") {
@@ -78,43 +78,17 @@ export function parseArgs(args: string[]): Args {
 			continue;
 		}
 		if (arg.startsWith("--")) {
-			// An extension flag: its type is known only once extensions load (see restoreBooleanFlagWords).
-			if (eq !== -1) {
-				result.unknownFlags.set(arg.slice(2, eq), arg.slice(eq + 1));
-				continue;
-			}
-			const flagName = arg.slice(2);
-			const next = args[i + 1];
-			if (next !== undefined && !next.startsWith("-") && !next.startsWith("@")) {
-				result.unknownFlags.set(flagName, next);
-				result.unknownFlagWords!.push({ flag: flagName, word: next, at: result.messages.length });
-				i++;
-			} else {
-				result.unknownFlags.set(flagName, true);
-			}
+			const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+			result.unknownFlags.push(name);
+			error(`Unknown option: --${name}. Run "${APP_NAME} --help" to see the options.`);
 			continue;
 		}
 		if (arg.startsWith("-") && arg.length > 1) {
-			error(`Unknown option: ${arg}`);
+			error(`Unknown option: ${arg}. Run "${APP_NAME} --help" to see the options.`);
 			continue;
 		}
 		result.messages.push(arg);
 	}
 
 	return result;
-}
-
-/**
- * An unknown `--flag word` is read as a flag with a value, because extension flags are typed only once extensions
- * load. A flag that turns out boolean gives its word back to the prompt, at the position it was typed.
- */
-export function restoreBooleanFlagWords(args: Args, isBoolean: (name: string) => boolean): void {
-	let shift = 0;
-	for (const { flag, word, at } of args.unknownFlagWords ?? []) {
-		if (!isBoolean(flag)) continue;
-		args.messages.splice(at + shift, 0, word);
-		args.unknownFlags.set(flag, true);
-		shift++;
-	}
-	args.unknownFlagWords = [];
 }

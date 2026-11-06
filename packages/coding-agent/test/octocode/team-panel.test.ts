@@ -6,7 +6,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AgentsView, trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import { collapsedRows, FINISHED_MS, shownWorking } from "../../src/octocode/team/panel-compact.ts";
 import { FinishedTracker } from "../../src/octocode/team/panel-finished.ts";
-import { describeMembers } from "../../src/octocode/team/routing.ts";
+import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";

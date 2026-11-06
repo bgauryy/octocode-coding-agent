@@ -17,6 +17,7 @@ import { BASH_ABORT_GRACE_MS, foregroundOperations, type HandoffReason, strayNot
 import { foregroundPlan } from "./bash/auto.ts";
 import { LONG_COMMAND_AFTER_SECONDS, sleepHint } from "./bash/long-commands.ts";
 import { hostQuirkHint } from "./bash/host-hints.ts";
+import { probeCliHost, renderCliGuide } from "./bash/cli-guide.ts";
 import { type BashDetails, renderBashResult, renderJobMessage } from "./render.ts";
 import {
 	adoptFullOutput,
@@ -73,7 +74,10 @@ export function registerBashTool(
 ): BashJobs {
 	// Octocode's bash, for its output schema; each call builds its own with that call's settings and process handling.
 	const builtin = createBashToolDefinition(process.cwd());
-	const readHint = createReadHint(() => api.getActiveTools?.() ?? []);
+	const readHint = createReadHint(
+		() => api.getActiveTools?.() ?? [],
+		envFlag(process.env, SUBAGENT_ENV) ? Number.POSITIVE_INFINITY : undefined,
+	);
 	let current: ExtensionContext | undefined;
 	// Set from session_shutdown: a job that ends meanwhile reports without waking anyone.
 	let closing = false;
@@ -178,7 +182,7 @@ export function registerBashTool(
 			abortGraceMs: BASH_ABORT_GRACE_MS,
 			description:
 				"Run a command in the working directory. Foreground calls return combined output. " +
-				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
+				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. A timeout does not undo side effects: inspect the result before rerunning a command.\n\n${renderCliGuide(probeCliHost())}`,
 			// What the shell is for, then the work other tools own: code research goes to the declared search and read tools,
 			// content changes to `file` (checkpointed for /rewind). `sed` stays out of the list so it does not read as an editor.
 			promptSnippet: renderInstruction("tools/bash/snippet.md"),
@@ -209,7 +213,7 @@ export function registerBashTool(
 				maxOutputTokens: maxOutputTokensParameter,
 				background: Type.Optional(
 					Type.Boolean({
-						description: "true: return at once; false with a timeout: wait in the foreground and stop at the timeout",
+						description: "true: return at once; false with a timeout: wait; stop at the timeout or move after 10 min",
 					}),
 				),
 				verify: Type.Optional(
@@ -260,7 +264,10 @@ export function registerBashTool(
 						},
 					};
 				}
-				const { timeout, clamped, movable, auto, deliberate } = foregroundPlan(params, settings.backgroundAfterSeconds);
+				const { timeout, clamped, movable, auto, deliberate, capped } = foregroundPlan(
+					params,
+					settings.backgroundAfterSeconds,
+				);
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;
 				let group: number | undefined;
@@ -361,7 +368,7 @@ export function registerBashTool(
 						clamped,
 						cwd: ctx.cwd,
 						verification,
-						how: movedFor === "message" ? "message" : auto ? "threshold" : "deadline",
+						how: movedFor === "message" ? "message" : capped ? "cap" : auto ? "threshold" : "deadline",
 					});
 				}
 			},

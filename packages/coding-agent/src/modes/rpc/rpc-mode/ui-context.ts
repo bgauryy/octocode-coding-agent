@@ -86,6 +86,7 @@ export const createExtensionUIContext = (
 				timeout: opts?.timeout,
 				...(opts?.permission ? { permission: opts.permission } : {}),
 				...(opts?.approval ? { approval: true } : {}),
+				...(opts?.ask ? { ask: opts.ask } : {}),
 			},
 			(r) => ("cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined),
 		),

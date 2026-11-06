@@ -15,10 +15,11 @@ function isCutPointMessage(message: AgentMessage): boolean {
 		case "branchSummary":
 		case "compactionSummary":
 			return true;
+		// Kept context never starts at a tool result (it answers the assistant call before it) or at a system update.
 		case "toolResult":
+		case "system":
 			return false;
 	}
-	return false;
 }
 
 function isTurnStartMessage(message: AgentMessage): boolean {
@@ -31,9 +32,9 @@ function isTurnStartMessage(message: AgentMessage): boolean {
 			return true;
 		case "assistant":
 		case "toolResult":
+		case "system":
 			return false;
 	}
-	return false;
 }
 
 function isTurnStartEntry(entry: SessionEntry): boolean {

@@ -59,8 +59,8 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		imageWidthCells: host.settingsManager.getImageWidthCells(),
 		requestRender: () => host.ui.requestRender(),
 	});
-	const showMessage = (message: ApplicationMessage) => {
-		message = fullContent.message(message, readAsset);
+	const showMessage = (received: ApplicationMessage) => {
+		const message = fullContent.message(received, readAsset);
 		const previous = messages.get(message.id);
 		messages.set(message.id, message);
 		if (message.role === "user") {
@@ -104,7 +104,8 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		}
 		host.ui.requestRender();
 	};
-	return (event) => {
+	return (received) => {
+		let event = received;
 		if (event.type === "tool.started" || event.type === "tool.progress" || event.type === "tool.completed") {
 			const data = fullContent.data(event.full, readAsset);
 			if (data)
@@ -191,6 +192,9 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				host.ui.requestRender();
 				break;
 			}
+			default:
+				// Lifecycle, queue and receipt events reach the UI through the application state store.
+				break;
 		}
 	};
 }

@@ -5,6 +5,7 @@ import { buildSystemPromptSections, diffSystemPromptSections } from "../src/core
 import { SYSTEM_PROMPT_SECTIONS, systemPromptSectionSpec } from "../src/core/system-prompt-spec.ts";
 import { leanPromptSections } from "../src/octocode/instructions/lean.ts";
 import { octocodePromptSections } from "../src/octocode/instructions/policy.ts";
+import { FAKE_RESEARCH } from "./octocode/fake-research.ts";
 
 describe("system prompt section spec", () => {
 	test("pins every section's order, tier and custom-prompt rule", () => {
@@ -35,7 +36,7 @@ describe("system prompt section spec", () => {
 	});
 
 	test("declares every section name the native producers write", () => {
-		const policy = octocodePromptSections({ octocode: true, canDelegate: true, profiles: [] });
+		const policy = octocodePromptSections({ research: FAKE_RESEARCH, canDelegate: true, profiles: [] });
 		const lean = leanPromptSections({ canShell: true, canSave: true, readOnly: false });
 		const produced = [
 			...Object.keys(policy),

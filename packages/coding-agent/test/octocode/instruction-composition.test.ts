@@ -16,6 +16,10 @@ import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instru
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { createHarness } from "../suite/harness.ts";
 import { fakeHost } from "./fake-host.ts";
+import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
+
+// The research server is the one whose entry gives reader and search roles (`mcp/src/roles.ts`), never a name.
+useResearchRoles();
 
 let root: string;
 beforeEach(() => {
@@ -79,8 +83,8 @@ it("updates the named policy section when selected research tools change", async
 		await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 		return buildSystemPromptSections(options);
 	};
-	const first = await render(["read", "mcp__octocode__localSearch"]);
-	const unchanged = await render(["read", "mcp__octocode__localSearch"]);
+	const first = await render(["read", RESEARCH.search]);
+	const unchanged = await render(["read", RESEARCH.search]);
 	expect(diffSystemPromptSections(first, unchanged)).toBeUndefined();
 	const removed = await render(["read"]);
 	// With the research server's tools selected the section leaves research to the server; without them it names the fallback.
@@ -91,7 +95,7 @@ it("updates the named policy section when selected research tools change", async
 });
 
 it("sends the updated policy to the model through the real session pipeline", async () => {
-	const name = "mcp__octocode__localSearch";
+	const name = RESEARCH.search;
 	const harness = await createHarness({
 		initialActiveToolNames: ["read", name],
 		extensionFactories: [

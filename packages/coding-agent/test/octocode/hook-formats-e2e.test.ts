@@ -77,6 +77,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			retry: { enabled: false },
 			plugins: reviewed,
 			packages: [packageDir],
+			toggles: { "harness:claude": true, "harness:codex": true },
 		});
 		settingsManager.setProjectTrusted(true);
 		loader = new DefaultResourceLoader({
@@ -189,7 +190,11 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		expect(text).toContain("claude-kit (plugin, claude manifest)");
 		expect(text).toMatch(/claude-kit[^\n]*hooks loads[^\n]*not loaded: lspServers/);
 		expect(text).toContain("portable-kit (plugin, portable manifest)");
-		expect(inventory.items.every((item) => item.on)).toBe(true);
+		const harnesses = inventory.items.filter((item) => item.id.startsWith("harness:"));
+		expect(harnesses.filter((item) => item.on).map((item) => item.id)).toEqual(
+			expect.arrayContaining(["harness:claude", "harness:codex"]),
+		);
+		expect(inventory.items.filter((item) => !harnesses.includes(item)).every((item) => item.on)).toBe(true);
 		expect(inventory.stale).toEqual([]);
 	});
 

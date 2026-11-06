@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 const DENY = JSON.stringify({
 	hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "no rm" },
@@ -27,7 +27,7 @@ async function gate(script: string, extra: Record<string, unknown> = {}) {
 			},
 		}),
 	);
-	const { api, fire } = fakeHost();
+	const { api, fire } = fakeHost(HOOK_SETTINGS);
 	const audit = vi.fn();
 	const hooks = registerHooks(api, {}, home, audit);
 	const ctx = {

@@ -76,10 +76,20 @@ describe("main screen redraw triggers", () => {
 		tui.stop();
 	});
 
-	it("still redraws when a row above the viewport changes", async () => {
-		const { tui, rows } = setup(10, numbered(30));
+	it("leaves a row above the viewport as the terminal has it when its text changes in place", async () => {
+		const { terminal, tui, rows } = setup(10, numbered(30));
 		const before = tui.fullRedraws;
 		rows.lines = ["changed", ...numbered(29, 1)];
+		tui.renderNow();
+		assert.strictEqual(tui.fullRedraws, before);
+		assert.deepStrictEqual(await visible(terminal), numbered(10, 20));
+		tui.stop();
+	});
+
+	it("still redraws when a row is inserted above the viewport", async () => {
+		const { tui, rows } = setup(10, numbered(30));
+		const before = tui.fullRedraws;
+		rows.lines = ["inserted", ...numbered(30)];
 		tui.renderNow();
 		assert.strictEqual(tui.fullRedraws, before + 1);
 		tui.stop();

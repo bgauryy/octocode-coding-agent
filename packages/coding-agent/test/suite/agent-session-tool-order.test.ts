@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { orderToolNames } from "../../src/core/agent-session/tool-definitions.ts";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
 import { createHarness, type Harness } from "./harness.ts";
-import { clearResearch, FAKE_READER, FAKE_SEARCHES, publishFakeResearch } from "../octocode/fake-research.ts";
+import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "../octocode/fake-research-roles.ts";
 
 const register = (api: ExtensionAPI, name: string, namespace?: string) =>
 	api.registerTool({
@@ -53,18 +53,18 @@ describe("declared tool order", () => {
 });
 
 describe("orderToolNames", () => {
-	beforeAll(() => publishFakeResearch());
-	afterAll(() => clearResearch());
+	beforeAll(() => publishRoles([RESEARCH_ENTRY]));
+	afterAll(() => publishRoles([]));
 	// The server with roles sorts after `mcp__a` by name, so its place first comes from its roles.
 	const namespaces: Record<string, string> = {
 		mcp__b__x: "mcp__b",
 		mcp__a__y: "mcp__a",
 		mcp__a__x: "mcp__a",
-		[FAKE_READER]: "mcp__codesearch",
-		[FAKE_SEARCHES[0]]: "mcp__codesearch",
+		[RESEARCH.reader]: "mcp__research",
+		[RESEARCH.search]: "mcp__research",
 	};
 	const namespaceOf = (name: string) => namespaces[name];
-	const research = [FAKE_SEARCHES[0], FAKE_READER].toSorted();
+	const research = [RESEARCH.search, RESEARCH.reader].toSorted();
 
 	it("keeps other tools in order, then MCP tools by namespace and name, without duplicates", () => {
 		expect(orderToolNames(["read", "mcp__b__x", "bash", "mcp__a__y", "mcp__a__x", "read"], namespaceOf)).toEqual([

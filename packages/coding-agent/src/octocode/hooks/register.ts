@@ -69,7 +69,7 @@ export function registerHooks(
 					: `on, ${plural(hookCount(session.config), "hook")}`
 				: "off in this subagent (its profile does not set hooks: true)",
 		promptSection: () => (enabled && !paused?.() ? hooksPromptSection(session.config) : ""),
-		report: (cwd) => hooksReport(enabled, session.config, session.errors, cwd, home, timings),
+		report: (cwd) => hooksReport(enabled, session.config, session.errors, cwd, home, timings, session.switchedOff),
 		preToolUse: async () => undefined,
 		permissionRequest: async () => undefined,
 		hasFilePermissionRequest: () => false,

@@ -1,7 +1,12 @@
 import path from "node:path";
 import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+import { OCTOCODE_DIR } from "../shared/home.ts";
 
-/** Hints one session can receive: enough to reach the model, too few to become noise. */
+/**
+ * Hints a main session can receive: enough to reach the model, too few to become noise beside the user's own steering.
+ * A subagent has no user steering it, and after a capped hint it went back to bash for three reads in four
+ * (2026-11-05 transcript audit), so its hints are unlimited.
+ */
 export const READ_HINT_LIMIT = 3;
 
 /** The research role that replaces each read command: a search role finds, the reader role prints known lines. */
@@ -31,10 +36,34 @@ const FIND_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "
 /** Redirects that only discard or merge output. */
 const QUIET_REDIRECT = /^(?:2>\/dev\/null|>\/dev\/null|2>&1)(?=$|[\s;|&])/u;
 
+/** Directories git usually ignores: what a read finds there is output or dependencies, not source to research. */
+const GENERATED_DIRECTORIES = new Set([OCTOCODE_DIR, ".git", "node_modules", "dist", "build", "coverage", "tmp"]);
+
+/** Extensions of logs and captured output: a quick look at them may stay in bash. */
+const OUTPUT_EXTENSIONS = new Set([".log", ".txt", ".out"]);
+
 const inside = (root: string, target: string): boolean => {
 	const relative = path.relative(root, target);
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 };
+
+const generated = (target: string, root: string): boolean =>
+	path
+		.relative(root, target)
+		.split(path.sep)
+		.some((part) => GENERATED_DIRECTORIES.has(part));
+
+/**
+ * Whether a word of a read names a log, captured output or a path in a generated directory (a pattern or flag never does).
+ * A read with no such word (`ls`, `ls -la`) reads the directory it runs in, so that directory decides.
+ */
+function namesOutput(args: readonly string[], directory: string, root: string): boolean {
+	const operands = args.filter((arg) => !arg.startsWith("-"));
+	if (operands.length === 0) return generated(directory, root);
+	return operands.some(
+		(arg) => OUTPUT_EXTENSIONS.has(path.extname(arg).toLowerCase()) || generated(path.resolve(directory, arg), root),
+	);
+}
 
 /** One command of a list; `piped`: it reads the output of the command before it. */
 interface Step {
@@ -129,7 +158,9 @@ const isNeutral = ([name, subcommand]: readonly string[]): boolean =>
  * The research role a command could have used, when all it does is read this workspace: at least one `rg`, `grep`,
  * `find`, `ls`, `cat`, `head`, `tail`, `nl` or `sed -n`, whose output may be piped through filters that narrow it, joined
  * with `cd` steps that stay inside and commands that change nothing (`echo`, `wc`, `git diff` and the like). Any other
- * command, such as a build, a script or `sed -i`, means the shell is doing work those tools can't: no reader.
+ * command, such as a build, a script or `sed -i`, means the shell is doing work those tools can't: no reader. A read that
+ * names a `.log`, `.txt` or `.out` file, or a path under a generated directory (the workspace's Octocode folder,
+ * `node_modules`, `dist` and the like), is a look at output, which the research policy leaves to bash: no reader.
  */
 export function codeReadTool(command: string, cwd: string): ReadRole | undefined {
 	const steps = stepsOf(command);
@@ -148,6 +179,8 @@ export function codeReadTool(command: string, cwd: string): ReadRole | undefined
 		} else if (!isNeutral(words)) {
 			const found = readerFor(words, directory, cwd);
 			if (!found) return undefined;
+			// A read of a log or generated output is no source read: it neither earns a hint nor spoils a list that has one.
+			if (namesOutput(words.slice(1), directory, cwd)) continue;
 			reader ??= found;
 		}
 	}
@@ -165,12 +198,13 @@ const hintText = (tools: readonly string[]): string =>
 	`Hint: for code reads like this, use ${tools.map((tool) => `\`${tool}\``).join(" or ")}. Keep bash for builds, tests, scripts and git.`;
 
 /**
- * One line for a tool result after a successful read, at most `READ_HINT_LIMIT` times per session and only while the
- * research server's tools for that read (by their roles) are declared. It lands in the conversation, never in the cached
- * prompt, and it never blocks the read.
+ * One line for a tool result after a successful read, at most `limit` times per session and only while the research
+ * server's tools for that read (by their roles) are declared. It lands in the conversation, never in the cached prompt,
+ * and it never blocks the read.
  */
 export function createReadHint(
 	active: () => readonly string[],
+	limit = READ_HINT_LIMIT,
 ): (command: string, cwd: string, session: string) => string | undefined {
 	let current = "";
 	let given = 0;
@@ -179,7 +213,7 @@ export function createReadHint(
 			current = session;
 			given = 0;
 		}
-		if (given >= READ_HINT_LIMIT) return undefined;
+		if (given >= limit) return undefined;
 		const role = codeReadTool(command, cwd);
 		const tools = role ? researchTools(role, active()) : [];
 		if (tools.length === 0) return undefined;

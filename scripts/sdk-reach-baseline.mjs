@@ -43,7 +43,7 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/octocode/team/panel-traffic.ts -> tui",
 	"coding-agent/src/octocode/team/tools/messages.ts -> tui",
 	"coding-agent/src/octocode/ui/activity.ts -> coding-agent/src/modes/interactive/components/status-indicator.ts",
-	"coding-agent/src/octocode/ui/activity.ts -> tui",
+	"coding-agent/src/octocode/ui/activity-model.ts -> tui",
 	"coding-agent/src/octocode/ui/banner.ts -> tui",
 	"coding-agent/src/octocode/ui/chrome.ts -> tui",
 	"coding-agent/src/octocode/ui/delivery.ts -> tui",

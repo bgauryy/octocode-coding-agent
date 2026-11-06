@@ -45,17 +45,17 @@ export function renderInlineTokens(
 
 			case "paragraph":
 				// Paragraph tokens contain nested inline tokens
-				result += renderInlineTokens(host, token.tokens || [], resolvedStyleContext);
+				result += renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);
 				break;
 
 			case "strong": {
-				const boldContent = renderInlineTokens(host, token.tokens || [], resolvedStyleContext);
+				const boldContent = renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);
 				result += host.theme.bold(boldContent) + stylePrefix;
 				break;
 			}
 
 			case "em": {
-				const italicContent = renderInlineTokens(host, token.tokens || [], resolvedStyleContext);
+				const italicContent = renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);
 				result += host.theme.italic(italicContent) + stylePrefix;
 				break;
 			}
@@ -65,7 +65,7 @@ export function renderInlineTokens(
 				break;
 
 			case "link": {
-				const linkText = renderInlineTokens(host, token.tokens || [], resolvedStyleContext);
+				const linkText = renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);
 				const styledLink = host.theme.link(host.theme.underline(linkText));
 				if (getCapabilities().hyperlinks) {
 					// OSC 8: render as a clickable hyperlink. The URL is not printed inline,
@@ -91,7 +91,7 @@ export function renderInlineTokens(
 				break;
 
 			case "del": {
-				const delContent = renderInlineTokens(host, token.tokens || [], resolvedStyleContext);
+				const delContent = renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);
 				result += host.theme.strikethrough(delContent) + stylePrefix;
 				break;
 			}

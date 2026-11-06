@@ -1,5 +1,5 @@
 import "../mcp-host.ts";
-import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
+import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -79,7 +79,9 @@ describe("installed MCP and skills through the native SDK", () => {
 							octocode: {
 								command,
 								args,
-								env: owner === "configured-default" ? { WORKSPACE_ROOT: cwd } : env,
+								// A user entry owns its launch env: the default entry's `${researchRoots}` (workspace, sessions,
+								// loaded skills) reaches the skills only when the entry passes it too.
+								env: owner === "configured-default" ? { WORKSPACE_ROOT: cwd, ALLOWED_PATHS: "${researchRoots}" } : env,
 								exposure: "direct",
 							},
 						},
@@ -115,7 +117,9 @@ describe("installed MCP and skills through the native SDK", () => {
 									name: "builtin:mcp",
 									factory: (api: Parameters<ExtensionFactory>[0]) =>
 										createMcpExtension({
-											presets: [octocodePreset(() => api.getSkillDirectories())],
+											// The default entry as runtime registers it (`default.ts`): its `roles` make localFetch the
+											// reader whose reads the file guard credits, and a same-named user entry inherits them.
+											presets: recommendedPresets(),
 											logPath: path.join(root, "mcp.log"),
 										})(api),
 								},

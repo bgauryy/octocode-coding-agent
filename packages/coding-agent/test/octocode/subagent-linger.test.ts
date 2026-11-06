@@ -88,7 +88,7 @@ describe("a background subagent that reported blocked", () => {
 			await t.control.settle();
 			expect(t.reports()[0]).toContain(`reported blocked`);
 			expect(t.reports()[0]).toContain(
-				`${id} is blocked and stays resumable for ${BLOCKED_LINGER_SECONDS} s: answer it with \`agent\` type \`message\` to ${id}`,
+				`${id} is blocked and stays resumable for ${BLOCKED_LINGER_SECONDS} s: \`agent\` type \`message\` to ${id} continues this conversation`,
 			);
 			expect(await t.team.send(id, "linger answered: use the second option", { replyRequired: false })).toHaveProperty(
 				"resumed",

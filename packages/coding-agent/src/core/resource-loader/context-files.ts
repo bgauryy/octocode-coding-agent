@@ -5,9 +5,11 @@ import chalk from "chalk";
 import { canonicalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import { stripBom } from "../../../../common/src/text.ts";
 import { CONTEXT_FILE_CANDIDATES } from "../discovery/sources.ts";
+import type { Toggles } from "../extensibility/toggles.ts";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import type { ConfigKind } from "../discovery/types.ts";
 import { findGitPaths } from "../footer-data-provider.ts";
+import { gitMarkerDir } from "../../utils/git-marker.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { ResourceRoots } from "./source-info.ts";
 
@@ -20,7 +22,9 @@ export function resolvePromptInput(input: string | undefined, description: strin
 		try {
 			return stripBom(readFileSync(input, "utf-8"));
 		} catch (error) {
-			console.error(chalk.yellow(`Warning: Could not read ${description} file ${input}: ${String(error)}`));
+			process.stderr.write(
+				`${chalk.yellow(`Warning: Could not read ${description} file ${input}: ${String(error)}`)}\n`,
+			);
 			return input;
 		}
 	}
@@ -53,7 +57,7 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
 					content: capContextFile(filePath, stripBom(readFileSync(filePath, "utf-8"))),
 				};
 			} catch (error) {
-				console.error(chalk.yellow(`Warning: Could not read ${filePath}: ${String(error)}`));
+				process.stderr.write(`${chalk.yellow(`Warning: Could not read ${filePath}: ${String(error)}`)}\n`);
 			}
 		}
 	}
@@ -70,6 +74,14 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
  * (macOS `/tmp` -> `/private/tmp`).
  */
 function findShadowedContextFile(cwd: string): string | undefined {
+	const nested = nestedWorktree(cwd);
+	if (!nested) return undefined;
+	const worktreeContextFile = loadContextFileFromDir(nested.worktreeRoot);
+	return worktreeContextFile ? join(nested.mainRepoRoot, basename(worktreeContextFile.path)) : undefined;
+}
+
+/** A linked worktree inside its own main repository: both roots, canonicalized. */
+function nestedWorktree(cwd: string): { worktreeRoot: string; mainRepoRoot: string } | undefined {
 	const gitPaths = findGitPaths(cwd);
 	if (!gitPaths) return undefined;
 	const commonGitDir = canonicalizePath(gitPaths.commonGitDir);
@@ -83,19 +95,38 @@ function findShadowedContextFile(cwd: string): string | undefined {
 	// `proj/main`) it is just the directory holding `.bare`, which tracks nothing; a
 	// submodule's gitdir has no `commondir`, so it lands under `.git/modules`.
 	if (canonicalizePath(join(mainRepoRoot, ".git")) !== commonGitDir) return undefined;
-	const worktreeContextFile = loadContextFileFromDir(worktreeRoot);
-	return worktreeContextFile ? join(mainRepoRoot, basename(worktreeContextFile.path)) : undefined;
+	return { worktreeRoot, mainRepoRoot };
 }
 
 /**
- * `contextRoot` is the folder a trust grant is on (`FolderTrustView.root`): project instructions load from it down to
- * `cwd` and nothing above it is read. Without it (or when it is not an ancestor of `cwd`) the walk reaches the
- * filesystem root, as before.
+ * Whether the project walk ends at `dir`: it is the repository root of `cwd` (the nearest folder with a `.git`, or the
+ * main repository's root for a linked worktree checked out inside it, which shares that scope) and a parent repository
+ * lies above it. That repository is another project, so its instructions never load here; plain folders above a
+ * repository still do.
+ */
+function parentRepositoryTest(cwd: string): (dir: string) => boolean {
+	const mainRepoRoot = nestedWorktree(cwd)?.mainRepoRoot;
+	const root = gitMarkerDir(cwd);
+	const isRoot = (dir: string) => (mainRepoRoot ? canonicalizePath(dir) === mainRepoRoot : dir === root);
+	return (dir) => isRoot(dir) && dirname(dir) !== dir && gitMarkerDir(dirname(dir)) !== undefined;
+}
+
+/**
+ * Project instructions load from `cwd` upward, but never past its repository root (nearest `.git`) into a parent
+ * repository, such as the superproject of a submodule or a repository holding this one in a subfolder. `contextRoot` is
+ * the folder a trust grant is on (`FolderTrustView.root`): nothing above it is read either. Otherwise (or when the grant
+ * is not an ancestor of `cwd`) the walk reaches the filesystem root.
  */
 export function loadProjectContextFiles(options: {
 	cwd: string;
 	agentDir: string;
 	contextRoot?: string;
+	/** With these, a trusted workspace also gets Claude Code's auto memory when `harness:claude:memory` is on. */
+	projectTrusted?: boolean;
+	toggles?: Toggles;
+	/** The user home and environment discovery reads; default: the process's. */
+	home?: string;
+	env?: NodeJS.ProcessEnv;
 }): Array<{ path: string; content: string }> {
 	const resolvedCwd = resolvePath(options.cwd);
 	const resolvedRoot = options.contextRoot === undefined ? undefined : resolvePath(options.contextRoot);
@@ -110,7 +141,15 @@ export function loadProjectContextFiles(options: {
 
 	// The global file: Octocode's, else Pi's (`~/.pi/agent`), as discovery ranks them.
 	const globalFile = configDiscovery
-		.discover("context", discoveryInput({ cwd: resolvedCwd, agentDir: resolvedAgentDir, projectTrusted: false }))
+		.discover(
+			"context",
+			discoveryInput({
+				cwd: resolvedCwd,
+				agentDir: resolvedAgentDir,
+				projectTrusted: false,
+				...(options.toggles ? { toggles: options.toggles } : {}),
+			}),
+		)
 		.find((item) => item.loaded);
 	const globalContext = globalFile ? loadContextFileFromDir(dirname(globalFile.provenance.path)) : null;
 	if (globalContext) {
@@ -121,6 +160,7 @@ export function loadProjectContextFiles(options: {
 	const ancestorContextFiles: Array<{ path: string; content: string }> = [];
 
 	const shadowedContextFile = findShadowedContextFile(resolvedCwd);
+	const belowParentRepository = parentRepositoryTest(resolvedCwd);
 	let currentDir = resolvedCwd;
 
 	while (true) {
@@ -136,7 +176,7 @@ export function loadProjectContextFiles(options: {
 			seenPaths.add(contextFile.path);
 		}
 
-		if (currentDir === boundary) break;
+		if (currentDir === boundary || belowParentRepository(currentDir)) break;
 		const parentDir = dirname(currentDir);
 		if (parentDir === currentDir) break;
 		currentDir = parentDir;
@@ -144,7 +184,37 @@ export function loadProjectContextFiles(options: {
 
 	contextFiles.push(...ancestorContextFiles);
 
+	const memory = configDiscovery
+		.discover(
+			"memory",
+			discoveryInput({
+				cwd: resolvedCwd,
+				agentDir: resolvedAgentDir,
+				projectTrusted: options.projectTrusted ?? false,
+				toggles: options.toggles,
+				home: options.home,
+				env: options.env,
+			}),
+		)
+		.find((item) => item.loaded);
+	if (memory) contextFiles.push(claudeMemoryEntry(memory.provenance.path));
+
 	return contextFiles;
+}
+
+/** Claude Code reads the first 200 lines or 25 KB of `MEMORY.md` at start; the same here. */
+const MEMORY_MAX_LINES = 200;
+const MEMORY_MAX_BYTES = 25 * 1024;
+
+/** Claude Code's notes for this project, labeled as such: read-only, and below AGENTS.md and Octocode's memories. */
+function claudeMemoryEntry(path: string): { path: string; content: string } {
+	const lines = stripBom(readFileSync(path, "utf-8")).split("\n").slice(0, MEMORY_MAX_LINES).join("\n");
+	const bytes = Buffer.from(lines, "utf8");
+	let end = Math.min(bytes.length, MEMORY_MAX_BYTES);
+	while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
+	const body = bytes.subarray(0, end).toString("utf8");
+	const header = renderInstruction("notices/claude-memory.md", { path, dir: dirname(path) }).trimEnd();
+	return { path, content: `${header}\n\n${body}` };
 }
 
 /** The highest-ranked `SYSTEM.md` or `APPEND_SYSTEM.md`: Octocode's project then global file, then Pi's. */
@@ -157,6 +227,7 @@ function discoverPromptFile(
 		cwd: roots.cwd,
 		agentDir: roots.agentDir,
 		projectTrusted: settingsManager.isProjectTrusted(),
+		toggles: settingsManager.getToggles(),
 	});
 	return configDiscovery.discover(kind, input).find((item) => item.loaded)?.provenance.path;
 }

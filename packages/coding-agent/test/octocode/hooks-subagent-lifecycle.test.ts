@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 it.each(["guidance", "guidance".repeat(4000)])(
@@ -30,7 +30,7 @@ it.each(["guidance", "guidance".repeat(4000)])(
 				},
 			}),
 		);
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		const ctx = fakeCtx({
 			cwd: tmp(),
 			hasUI: false,
@@ -89,7 +89,7 @@ it("reports missing standalone child metadata without inventing permission or pa
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	try {
@@ -145,7 +145,7 @@ it("child source termination wins over native Stop continuation", async () => {
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({
 		cwd: tmp(),
 		hasUI: false,
@@ -186,7 +186,7 @@ it("reads the live permission owner for each shell hook dispatch", async () => {
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({
 		cwd: tmp(),
 		hasUI: false,

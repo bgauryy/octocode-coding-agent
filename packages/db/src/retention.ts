@@ -1,6 +1,7 @@
 import type { AgentDb } from "./db.ts";
 import * as agentRuns from "./queries/agent-runs.ts";
 import * as history from "./queries/history.ts";
+import * as timers from "./queries/timers.ts";
 import type { HistoryTable } from "./queries/history.ts";
 import { num, type Row } from "./rows.ts";
 import { DAY_MS, HOUR_MS } from "../../common/src/time.ts";
@@ -88,6 +89,8 @@ export function archiveHistory(
 			}
 			// Agent runs are the audit of who ran what: they stay for the keep window and are not archived.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => agentRuns.purgeBefore(db, now - keepMs));
+			// Timers likewise: ended ones, and active ones no session came back to fire within the window.
+			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
 		});
 	} catch (error) {
 		if (history.isBusy(error)) return { ...result, skipped: "busy" };

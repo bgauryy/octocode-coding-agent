@@ -5,6 +5,10 @@
  * paths. Each uses the `mcpServers` shape shared by other MCP clients. Later entries replace earlier
  * transports with the same namespace; conflicting spellings within one file are refused. A replacement without its own
  * `description` keeps the replaced entry's (a built-in server's, say), since the prompt's purpose line comes from it.
+ * A replacement of a default entry's name without its own `roles` keeps the roles of the entry it replaces, so the
+ * native features still find that name's research tools; `"roles": {}` clears them. A local (stdio) replacement of a
+ * default entry's name also keeps each `env` value of that default entry it does not set itself (the built-in
+ * `octocode` entry's workspace and research roots, say); only the default's values pass, never another file's.
  *
  * An entry without `command`, `url`, or `type` overrides only `enabled`, `defaultActive`, `exposure`,
  * `toolExposure` of an earlier server with the same namespace, for example to turn it off in one project:
@@ -29,13 +33,22 @@
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { globalMcpConfigPath, globalMcpConfigPaths, projectMcpConfigPaths, projectMcpConfigPath } from "./paths.ts";
+import { hostVendors } from "./host.ts";
+import { readMcpConfigFile } from "./config-read.ts";
+import {
+	FOREIGN_MCP_VENDORS,
+	globalMcpConfigPath,
+	type McpConfigFile,
+	type McpConfigVendor,
+	mcpConfigFiles,
+	projectMcpConfigPath,
+} from "./paths.ts";
 import { DEFAULT_MCP_EXPOSURE, type McpExposure, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
 import { stripBom } from "../../common/src/text.ts";
 import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type { McpExposure, McpHttpServerConfig, McpOAuthConfig, McpServerConfig } from "./servers.ts";
 export { getMcpToolExposure } from "./servers.ts";
@@ -53,7 +66,13 @@ export interface McpServerEntry {
 	/** Latest `mcp.json` overriding this server's `enabled`, `defaultActive`, `exposure` or `toolExposure`. */
 	override?: string;
 	overrideScope?: "global" | "project";
+	/** The harness whose file defined the entry (`claude`, `codex`, `cursor`, ...); absent for defaults and extensions. */
+	vendor?: McpConfigVendor;
 }
+
+/** The file `/mcp` may write for this entry: none for another agent's file, which only an override can change. */
+export const writableSource = (entry: McpServerEntry): string | undefined =>
+	entry.vendor && FOREIGN_MCP_VENDORS.has(entry.vendor) ? undefined : entry.source;
 
 export interface LoadedMcpConfig {
 	servers: McpServerEntry[];
@@ -74,54 +93,78 @@ function isMcpOverride(value: Record<string, unknown>): boolean {
 interface McpConfigState {
 	servers: Map<string, McpServerEntry>;
 	errors: string[];
+	/** The default entries, by namespace. */
+	defaults: ReadonlyMap<string, McpServerEntry>;
+	/** Namespaces defined only in files of vendors that are off: an override of one is kept aside, not an error. */
+	switchedOff: Set<string>;
 }
 
-/** The `mcpServers` object of one file: nothing when the file is missing, an error when it cannot be used. */
-function parseConfigFile(path: string): { servers: Record<string, unknown> } | { error: string } | undefined {
-	if (!existsSync(path)) return undefined;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(stripJsonComments(stripBom(readFileSync(path, "utf8"))));
-	} catch (error) {
-		return { error: `${path}: ${errorMessage(error)}` };
-	}
-	if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers)))
-		return { error: `${path}: expected an object with an "mcpServers" object` };
-	return { servers: parsed.mcpServers ?? {} };
-}
-
-/** What one `mcp.json` holds, for listing: each server name and whether the entry only overrides another server. */
-export function listMcpFileEntries(path: string): { entries: { name: string; override: boolean }[]; error?: string } {
-	const file = parseConfigFile(path);
-	if (!file) return { entries: [] };
-	if ("error" in file) return { entries: [], error: file.error };
+/**
+ * `config` with what it inherits from the entry it replaces: the description, and for a default entry's name the roles,
+ * when it sets none, and the default entry's launch `env` values it does not set, when both are local (stdio).
+ */
+function inheritFromReplaced(
+	config: McpServerConfig,
+	replaced: McpServerEntry | undefined,
+	defaultEntry: McpServerEntry | undefined,
+): McpServerConfig {
+	const description = config.description === undefined ? replaced?.config.description : undefined;
+	const roles = config.roles === undefined && defaultEntry ? replaced?.config.roles : undefined;
+	const defaultEnv = defaultEntry && !("url" in defaultEntry.config) ? defaultEntry.config.env : undefined;
+	const env = defaultEnv && !("url" in config) ? { ...defaultEnv, ...config.env } : undefined;
 	return {
-		entries: Object.entries(file.servers).map(([name, value]) => ({
-			name,
-			override: isRecord(value) && isMcpOverride(value),
-		})),
+		...config,
+		...(description === undefined ? {} : { description }),
+		...(roles === undefined ? {} : { roles: structuredClone(roles) }),
+		...(env === undefined ? {} : { env }),
 	};
 }
 
-function readConfigFile(path: string, scope: "global" | "project", state: McpConfigState): void {
+/** What one config file holds, for listing: each server name and whether the entry only overrides another server. */
+export function listMcpFileEntries(
+	file: McpConfigFile,
+	cwd: string,
+): { entries: { name: string; override: boolean }[]; error?: string } {
+	const read = readMcpConfigFile(file, cwd);
+	if (!read) return { entries: [] };
+	if ("error" in read) return { entries: [], error: read.error };
+	const foreign = FOREIGN_MCP_VENDORS.has(file.vendor);
+	return {
+		entries: Object.entries(read.servers).map(([name, value]) => ({
+			name,
+			override: !foreign && isRecord(value) && isMcpOverride(value),
+		})),
+		...(read.errors.length ? { error: read.errors.join("; ") } : {}),
+	};
+}
+
+function readConfigFile(file: McpConfigFile, cwd: string, state: McpConfigState): void {
 	const { servers, errors } = state;
-	const file = parseConfigFile(path);
-	if (!file) return;
-	if ("error" in file) {
-		errors.push(file.error);
+	const { path, scope } = file;
+	const read = readMcpConfigFile(file, cwd);
+	if (!read) return;
+	if ("error" in read) {
+		errors.push(read.error);
 		return;
 	}
+	errors.push(...read.errors);
+	// Another agent's file defines servers only: it never overrides, and never replaces a default or an Octocode-format
+	// file's server of the same name (that one wins whole; discovery lists the other as shadowed).
+	const foreign = FOREIGN_MCP_VENDORS.has(file.vendor);
 	const names = new Map<string, string>();
-	for (const [name, value] of Object.entries(file.servers)) {
+	for (const [name, value] of Object.entries(read.servers)) {
 		const namespace = mcpNamespace(name);
 		const clash = names.get(namespace);
 		if (clash && clash !== name) {
 			errors.push(`${path}: server "${name}" conflicts with "${clash}"`);
 			continue;
 		}
-		if (isRecord(value) && isMcpOverride(value)) {
+		const held = servers.get(namespace);
+		if (foreign && held && !(held.vendor && FOREIGN_MCP_VENDORS.has(held.vendor))) continue;
+		if (!foreign && isRecord(value) && isMcpOverride(value)) {
 			const base = servers.get(namespace);
 			const extra = Object.keys(value).filter((key) => !OVERRIDE_KEYS.includes(key));
+			if (!base && state.switchedOff.has(namespace)) continue;
 			if (!base) {
 				// An override has neither "command" nor "url", so validation returns the reason it is incomplete.
 				const invalid = validateMcpServerConfig(name, value);
@@ -151,20 +194,30 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 			errors.push(`${path}: server "${name}": auth is only allowed in the global mcp.json`);
 			continue;
 		}
-		// The purpose describes the server under that name (the built-in's, say), so a replacement without its own keeps it.
-		const inherited = config.description === undefined ? servers.get(namespace)?.config.description : undefined;
+		// The purpose describes the server under that name (the built-in's, say), so a replacement without its own keeps it;
+		// a default name's roles tell native features which tools read and search, so they stay unless the entry sets roles,
+		// and its launch env (workspace, research roots) stays under each key the entry leaves unset.
 		servers.set(namespace, {
 			name,
-			config: inherited === undefined ? config : { ...config, description: inherited },
+			config: inheritFromReplaced(config, servers.get(namespace), state.defaults.get(namespace)),
 			source: path,
 			scope,
+			vendor: file.vendor,
 		});
 		names.set(namespace, name);
 	}
 }
 
+/** The names a file of a vendor that is off defines, so an override of one stays quiet. */
+function noteSwitchedOff(file: McpConfigFile, cwd: string, state: McpConfigState): void {
+	const read = readMcpConfigFile(file, cwd);
+	if (read && !("error" in read))
+		for (const name of Object.keys(read.servers)) state.switchedOff.add(mcpNamespace(name));
+}
+
 /**
- * Load global and (when trusted) project MCP configuration. Disabled servers are included with
+ * Load global and (when trusted) project MCP configuration from every file `mcpConfigFiles` lists whose vendor is on
+ * (the host's `vendorSwitch`, read now, so a reload sees the current settings). Disabled servers are included with
  * `enabled: false`, so they can be enabled again.
  */
 export function loadMcpConfig(options: {
@@ -176,12 +229,20 @@ export function loadMcpConfig(options: {
 	const state: McpConfigState = {
 		servers: new Map((options.defaults ?? []).map((entry) => [mcpNamespace(entry.name), structuredClone(entry)])),
 		errors: [],
+		defaults: new Map((options.defaults ?? []).map((entry) => [mcpNamespace(entry.name), structuredClone(entry)])),
+		switchedOff: new Set(),
 	};
-	const globalConfig = globalMcpConfigPath(options.agentDir);
-	for (const file of globalMcpConfigPaths(options.agentDir)) readConfigFile(file, "global", state);
-	const projectConfig = options.projectTrusted ? projectMcpConfigPath(options.cwd) : undefined;
-	if (projectConfig) {
-		for (const file of projectMcpConfigPaths(options.cwd)) readConfigFile(file, "project", state);
+	const { agentDir, cwd, projectTrusted } = options;
+	const vendorEnabled = hostVendors().vendorSwitch({ agentDir, cwd, projectTrusted });
+	const codexHome = hostVendors().codexHome();
+	if ("error" in codexHome && vendorEnabled("codex", "global"))
+		state.errors.push(`Codex MCP servers were not loaded: ${codexHome.error}`);
+	const globalConfig = globalMcpConfigPath(agentDir);
+	const projectConfig = projectTrusted ? projectMcpConfigPath(cwd) : undefined;
+	for (const file of mcpConfigFiles(agentDir, cwd)) {
+		if (file.scope === "project" && !projectTrusted) continue;
+		if (vendorEnabled(file.vendor, file.scope)) readConfigFile(file, cwd, state);
+		else noteSwitchedOff(file, cwd, state);
 	}
 	return {
 		servers: [...state.servers.values()],

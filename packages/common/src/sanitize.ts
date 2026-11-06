@@ -184,7 +184,8 @@ export function redactSecretFragments(fragments: readonly string[]): string[] {
 	let rangeIndex = 0;
 	return fragments.map((fragment) => {
 		const start = offset;
-		const end = (offset += fragment.length);
+		const end = offset + fragment.length;
+		offset = end;
 		let cursor = start;
 		let result = "";
 		while (rangeIndex < merged.length && merged[rangeIndex].end <= start) rangeIndex++;

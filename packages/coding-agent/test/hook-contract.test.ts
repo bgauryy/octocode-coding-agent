@@ -15,6 +15,7 @@ import {
 	writeScriptedProvider,
 	writeSettings,
 } from "./helpers/feature-host-cli.ts";
+import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 
 /**
  * The hook contract of Claude Code, driven through the real CLI (`octocode -p`) with a scripted model: what a command
@@ -57,6 +58,7 @@ async function run(prompt = "go") {
 
 const setup = () => {
 	sandbox = createSandbox({ OCTOCODE_PERMISSION: "full" });
+	writeSettings(sandbox, { ...HOOK_SETTINGS });
 	return join(sandbox.directory, "captured");
 };
 

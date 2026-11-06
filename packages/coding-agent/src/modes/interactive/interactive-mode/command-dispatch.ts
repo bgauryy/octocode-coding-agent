@@ -245,8 +245,8 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 
 export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 	// oxlint-disable-next-line typescript/no-misused-promises -- the editor ignores the callback's result
-	host.defaultEditor.onSubmit = async (text: string) => {
-		text = text.trim();
+	host.defaultEditor.onSubmit = async (submitted: string) => {
+		const text = submitted.trim();
 		if (!text) {
 			// Enter in an empty editor sends the messages carried over a session switch.
 			await host.sendCarriedMessages();

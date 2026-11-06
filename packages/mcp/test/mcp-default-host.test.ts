@@ -3,7 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadMcpConfig } from "../src/config.ts";
-import { presetEntries } from "../src/preset.ts";
+import { type McpServerPreset, presetEntries } from "../src/preset.ts";
+import { recommendedPresets } from "../src/recommended/index.ts";
 import { octocodePreset } from "../src/presets/octocode/index.ts";
 import { saveConfig, setExposure } from "../src/persistence.ts";
 import { reconnect } from "../src/connections.ts";
@@ -113,17 +114,25 @@ describe("default MCP in the shared host", () => {
 		expect(h.transports).toHaveLength(1);
 		expect(h.state.findServer("octocode")?.connection?.tools).toHaveLength(9);
 		expect(sections.mcps).not.toContain("state=");
-		// The generated file carries the instructions and signatures, in the server's contract section.
+		// `declared` (the default): the block carries the instructions; each tool carries its own description and schema.
 		expect(sections.mcps).toContain("Echo test server.");
-		expect(sections.mcps).toContain("localFetch");
+		expect(sections.mcps).not.toContain("localFetch");
+		expect(h.tools.get("mcp__octocode__localFetch")?.parameters).toMatchObject({ type: "object" });
 		expect(sections.octocode_mcp).toBeUndefined();
 		expect(await h.call("mcp__octocode__shout", { text: "hello" })).toMatchObject({ content: [{ text: "HELLO" }] });
 		expect(await h.call("mcp__octocode__roots")).toMatchObject({
 			content: [{ text: expect.stringContaining(h.ctx.cwd) }],
 		});
 	});
-	it("allows the default local reader in planning but rejects configured replacements and foreign owners", async () => {
-		const h = host();
+	it("allows the default local reader in planning, and a same-named replacement only while it keeps the default's roles", async () => {
+		// The default entry as runtime registers it (`default.ts`): its `roles` declare localFetch read-only. `prepareLaunch`
+		// runs the echo fixture instead, so its npm `install` is left out (installing is `mcp-install.test.ts`'s subject).
+		const presets: McpServerPreset[] = recommendedPresets({}).map((preset) => {
+			if (!preset.config || !("command" in preset.config)) return preset;
+			const { install: _install, ...config } = preset.config;
+			return { ...preset, config };
+		});
+		const h = host({ presets });
 		await h.start();
 		await h.prompt();
 		const name = "mcp__octocode__localFetch";
@@ -137,16 +146,28 @@ describe("default MCP in the shared host", () => {
 				status,
 			),
 		).toContain("blocks");
-		const configured = host({
-			servers: [
-				{ name: "octocode", config: { command: process.execPath, args: [echo] }, source: "config", scope: "global" },
-			],
-		});
-		await configured.start();
-		await configured.prompt();
-		expect(
-			planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(configured.api.events)),
-		).toContain("blocks");
+		// D2 (`config.ts`, `inheritFromReplaced`): a user entry named like a default entry, without its own `roles`, keeps
+		// the default's roles; `"roles": {}` clears them, and its tools are no longer read-only.
+		for (const roles of [undefined, {}]) {
+			const agentDir = tmp(),
+				cwd = tmp();
+			const entry = { command: process.execPath, args: [echo], ...(roles ? { roles } : {}) };
+			writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: entry } }));
+			const configured = host({
+				cwd,
+				presets,
+				loadConfig: (_ctx, defaults) => loadMcpConfig({ agentDir, cwd, projectTrusted: true, defaults }),
+			});
+			await configured.start();
+			await configured.prompt();
+			const refusal = planningRefusal(
+				{ toolName: name, input: {} },
+				definition,
+				getMcpSessionStatus(configured.api.events),
+			);
+			if (roles) expect(refusal).toContain("blocks");
+			else expect(refusal).toBeUndefined();
+		}
 		await h.call("mcp", { intent: "stop", server: "octocode" });
 		expect(planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(h.api.events))).toContain(
 			"blocks",
@@ -201,7 +222,7 @@ describe("default MCP in the shared host", () => {
 		const stopped = await h.prompt();
 		// The block keeps its contract; the stop goes to the status section only.
 		expect(stopped.mcps).toContain('<mcp name="octocode" tools="mcp__octocode__*">');
-		expect(stopped.mcps).toContain("declare namespace octocode");
+		expect(stopped.mcps).toContain("Echo test server.");
 		expect(stopped.mcp_status).toContain("- octocode: stopped");
 		expect(h.transports).toHaveLength(1);
 		expect(h.tools.get("mcp__octocode__shout").exposure).toBe("hidden");

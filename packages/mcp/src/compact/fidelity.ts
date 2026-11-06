@@ -60,7 +60,7 @@ function requiredTokens(schema: JsonSchema | undefined, out: Set<string>, seen =
 
 /** An override must add no URL the source lacks. */
 function checkText(label: string, text: string, source: string, problems: string[]): void {
-	const known = new Set(source.match(URL_PATTERN) ?? []);
+	const known = new Set(source.match(URL_PATTERN));
 	for (const url of text.match(URL_PATTERN) ?? []) if (!known.has(url)) problems.push(`${label}: adds URL ${url}`);
 }
 

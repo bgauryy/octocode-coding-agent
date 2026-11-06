@@ -67,7 +67,11 @@ it.each(["cycle", "typed", "function", "deep"])(
 		if (kind === "cycle") input.self = input;
 		if (kind === "deep") {
 			let next = input;
-			for (let i = 0; i < 100; i++) next = next.child = {};
+			for (let i = 0; i < 100; i++) {
+				const child = {};
+				next.child = child;
+				next = child;
+			}
 		}
 		let called = false;
 		const tool = wrapToolDefinition(

@@ -86,7 +86,9 @@ function runCommand(
 						if (child.pid !== undefined) {
 							try {
 								process.kill(-child.pid, "SIGKILL");
-							} catch {}
+							} catch {
+								// The group already exited.
+							}
 						}
 					}, options.timeoutMs);
 		child.on("error", reject);

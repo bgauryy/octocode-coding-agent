@@ -136,7 +136,9 @@ export function applyEntities(
 		if (!c.summary.trim() || !c.verification.summary.trim())
 			throw new BacklogError("Completion needs a summary and verification explanation.");
 		if (actor.kind !== "human" && !["passed", "not_applicable"].includes(c.verification.status))
-			throw new BacklogError("Agents must verify the goal before completing it.");
+			throw new BacklogError(
+				`An agent closes an item only with verification passed or not_applicable, not ${c.verification.status}: keep ${before.ref} ongoing, add a note saying what failed, and close it after a passing check.`,
+			);
 		if (before.state === "done" && c.replaces !== latest)
 			throw new BacklogError(
 				`${before.ref} is done: a correction replaces the latest completion, ${latest}; omit completion.replaces or set it to ${latest}, with a new operationKey.`,

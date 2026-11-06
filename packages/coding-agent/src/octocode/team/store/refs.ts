@@ -66,6 +66,11 @@ export class MessageRefs {
 		};
 	}
 
+	/** Whether `recipient` holds a delivery of message `id` (sent, forwarded, relayed or handed to a resumed run). */
+	received(id: number, recipient: string): boolean {
+		return deliveries.holds(this.db, id, recipient);
+	}
+
 	/**
 	 * Delivers stored message `id` to more recipients, in one write transaction: a delivery row each (the body is not
 	 * copied) with `forwarded_by` and the note. Recipients that cannot read mail are `departed`; one that already holds a

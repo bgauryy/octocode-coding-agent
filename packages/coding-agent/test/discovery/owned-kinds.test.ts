@@ -128,14 +128,16 @@ describe("agents, hooks and plugins through discovery", () => {
 		const rows = summary(items);
 		expect(rows).toEqual(
 			expect.arrayContaining([
-				"settings.json|octocode|global|claude|loaded",
+				"settings.json|octocode|global|claude|switched-off",
 				"hooks.json|octocode|global|octocode|loaded",
 				"hooks.json|octocode|project|octocode|loaded",
-				"hooks.json|octocode|project|codex|loaded",
+				"hooks.json|octocode|project|codex|switched-off",
 				"mine.ts|pi|global|pi|ignored-code",
 			]),
 		);
-		const loaded = items.filter((item) => item.loaded).map((item) => item.provenance.path);
+		const loaded = items
+			.filter((item) => item.loaded || item.provenance.notLoaded === "switched-off")
+			.map((item) => item.provenance.path);
 		expect(hookFiles(sandbox.cwd, true, sandbox.home)).toEqual(loaded);
 		expect(hookFiles(sandbox.cwd, false, sandbox.home).every((file) => !file.startsWith(sandbox.cwd))).toBe(true);
 	});

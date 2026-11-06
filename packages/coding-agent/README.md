@@ -25,7 +25,7 @@ See [native features](docs/native-features.md) for ownership and migration detai
 
 ## Command hints
 
-Use `/login` to connect an AI account or API key, manage saved credentials, or import Pi configuration. `/model` selects the model for this chat; `/modelsettings` manages model shortcuts, catalog details and agent routing. `/effort` changes reasoning effort and `/context size` selects a session context budget. `/github` connects code-search access separately from AI providers.
+Use `/login` to connect an AI account or API key, manage saved credentials, or import Pi configuration. `/model` selects the model for this chat; `/modelsettings` manages model shortcuts, catalog details and agent routing. `/effort` changes reasoning effort and `/context size` selects a session context budget. `/octocode auth login` connects GitHub code-search access separately from AI providers.
 
 Each command has one name: start over with `/new` (or its equivalents `/clear` and `/reset`), leave with `/quit`, and open settings with `/settings`. Session workflows include `/btw`, `/compact [instructions]`, `/context`, `/diff` and native `/plan`. The [complete command reference](docs/commands.md) lists all built-in commands, bundled skills, command operations and shell entry points.
 

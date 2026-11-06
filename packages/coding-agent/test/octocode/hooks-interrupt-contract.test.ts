@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 it("normalizes Codex Interrupt timeout, ignores matcher, and retains async and MCP handlers", () => {
 	const home = tmp();
@@ -25,7 +25,7 @@ it("normalizes Codex Interrupt timeout, ignores matcher, and retains async and M
 			},
 		}),
 	);
-	const loaded = loadHooks(tmp(), false, home);
+	const loaded = loadHooks(tmp(), false, home, HOOK_SETTINGS);
 	expect(loaded.errors).toEqual([]);
 	const hooks = commandsFor(loaded.config, "Interrupt", []);
 	expect(hooks.map((hook) => hook.timeoutMs)).toEqual([1000, 3000, 1000]);
@@ -67,7 +67,7 @@ it.each(["command", "mcp_tool"] as const)(
 				},
 			}),
 		);
-		const loaded = loadHooks(tmp(), false, home);
+		const loaded = loadHooks(tmp(), false, home, HOOK_SETTINGS);
 		expect(commandsFor(loaded.config, "Interrupt", []).map((hook) => hook.timeoutMs)).toEqual([
 			1000, 1000, 1000, 1000, 3000, 3000,
 		]);
@@ -104,7 +104,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 				},
 			}),
 		);
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		fake.api.events = createEventBus();
 		let called = false;
 		const unregister = registerMcpHookCaller(fake.api.events, async (request) => {

@@ -39,26 +39,29 @@ type Cursor = Partial<Record<DataSource, Position>>;
 
 function cursorOf(value: string | undefined): Cursor {
 	if (!value) return {};
+	let parsed: unknown;
 	try {
-		const parsed: unknown = JSON.parse(Buffer.from(value, "base64url").toString());
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-		for (const [source, before] of Object.entries(parsed)) {
-			if (
-				!SOURCES.includes(source as DataSource) ||
-				!before ||
-				typeof before !== "object" ||
-				!Number.isSafeInteger(before.seq) ||
-				before.seq < 0 ||
-				(before.pinned !== undefined && ![0, 1, 2].includes(before.pinned)) ||
-				(before.updated !== undefined && !Number.isSafeInteger(before.updated)) ||
-				(before.offset !== undefined && (!Number.isSafeInteger(before.offset) || before.offset < 0))
-			)
-				throw new Error();
-		}
-		return parsed;
+		parsed = JSON.parse(Buffer.from(value, "base64url").toString());
 	} catch {
-		throw new Error("Invalid archive cursor; restart the search without cursor.");
+		parsed = undefined;
 	}
+	if (!isCursor(parsed)) throw new Error("Invalid archive cursor; restart the search without cursor.");
+	return parsed;
+}
+
+function isCursor(parsed: unknown): parsed is Cursor {
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+	return Object.entries(parsed).every(
+		([source, before]) =>
+			SOURCES.includes(source as DataSource) &&
+			before &&
+			typeof before === "object" &&
+			Number.isSafeInteger(before.seq) &&
+			before.seq >= 0 &&
+			(before.pinned === undefined || [0, 1, 2].includes(before.pinned)) &&
+			(before.updated === undefined || Number.isSafeInteger(before.updated)) &&
+			(before.offset === undefined || (Number.isSafeInteger(before.offset) && before.offset >= 0)),
+	);
 }
 
 function summaryText(row: compactions.SummaryRow): string {

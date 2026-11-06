@@ -63,10 +63,10 @@ Interface-visible runtime state uses a session-scoped Zustand vanilla store in t
 
 **Retention and cleanup.** One global policy decides how long Octocode keeps data; `0` keeps a class forever.
 
-| Setting (global `settings.json`) | Default | Environment override | Governs |
-| --- | --- | --- | --- |
-| `retention.days` | 30 | `OCTOCODE_CLEANUP_DAYS` | Output, bash logs, checkpoints and folders of sessions Octocode no longer lists, subagent scratch and screenshots, `<workspace>/.octocode/tmp` entries, compaction detail copies, and the database's history rows. |
-| `retention.sessionDays` | 90 | `OCTOCODE_SESSION_RETENTION_DAYS` | Session transcripts (JSONL) in `.octocode/code/sessions/` and the legacy `<octocode home>/sessions/--<folder>--/` directories. |
+| Setting (global `settings.json`) | Default | Environment override              | Governs                                                                                                                                                                                                            |
+| -------------------------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `retention.days`                 | 30      | `OCTOCODE_CLEANUP_DAYS`           | Output, bash logs, checkpoints and folders of sessions Octocode no longer lists, subagent scratch and screenshots, `<workspace>/.octocode/tmp` entries, compaction detail copies, and the database's history rows. |
+| `retention.sessionDays`          | 90      | `OCTOCODE_SESSION_RETENTION_DAYS` | Session transcripts (JSONL) in `.octocode/code/sessions/` and the legacy `<octocode home>/sessions/--<folder>--/` directories.                                                                                     |
 
 A value must be a whole number of days, 0 or more; the environment wins over the setting, a bad value is ignored (a bad setting is reported as a settings warning) and a project settings file cannot set it. An environment value that is not a whole number is ignored, including a negative one. The sweep runs at session start, off the start path, at most once every 6 hours across all workspaces, as one pass over every known root: each registered workspace whose root exists (`.octocode/code` session data and temp, and only `.octocode/tmp`, never another `.octocode/<topic>/` folder), the global `<octocode home>/agent/sessions`, and the legacy transcript folders. A transcript whose last write is older than `sessionDays` goes with its session folders and database rows, through the same removal the delete commands use; the current session, a running session (by the process recorded in its row), a directory that cannot be read, and a live bash job are never removed. A listing failure removes nothing. Nothing is followed through a symbolic link, and each removal stays strictly inside its root. The pass reports one summary line (what it removed and what failed) as a warning when something was removed or failed. `planSweep` lists the candidates with path, reason and size without removing anything; `applySweep` removes them.
 
@@ -118,19 +118,22 @@ order. Octocode configuration takes precedence:
   relative to their original Pi directory. An identically located native
   resource wins. Existing package resources are supported; missing Pi packages
   are not installed automatically.
-- Instruction files: `AGENTS.md` (or `CLAUDE.md`) in `~/.pi/agent/` loads as the
+- Instruction files: `AGENTS.md` in `~/.pi/agent/` loads as the
   global context file only when the Octocode directory has none; `SYSTEM.md` and
   `APPEND_SYSTEM.md` in `~/.pi/agent/` apply when no Octocode file does; and
   `keybindings.json` in `~/.pi/agent/` is read beneath Octocode's own, action by
-  action. Project `AGENTS.md` and `CLAUDE.md` files are shared by both products.
+  action. Project `AGENTS.md` files are shared by both products; `CLAUDE.md` is
+  not read.
+- Switch: Pi's skills, prompts, themes and MCP files follow the `pi` harness
+  switch (on by default; `/harness disable pi`). Its models, settings and
+  keybindings load whatever the switch says.
 - Project `.pi/` folder: in a trusted folder, `.pi/skills/`, `.pi/prompts/`,
   `.pi/themes/`, `.pi/SYSTEM.md` and `.pi/APPEND_SYSTEM.md` are read under the same
   folder trust as `.octocode/`. Nothing in `.pi/` is read in an untrusted folder.
 - Pi code is never loaded. TypeScript in Pi's `extensions/` and `hooks/` folders
   (global and project) and Pi extension packages are listed at startup as
   "Pi extension, not loaded" with a hint to convert the behavior to a
-  `hooks.json` entry or a plugin; the files are not executed. `--no-extensions`
-  has nothing to disable.
+  `hooks.json` entry or a plugin; the files are not executed.
 
 Names that exist in both products resolve by one rule. Collections (skills,
 prompts, themes): scope first, product second. A project copy beats a global one,

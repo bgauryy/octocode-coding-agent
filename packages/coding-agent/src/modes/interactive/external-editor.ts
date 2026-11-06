@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { stripBom } from "../../../../common/src/text.ts";
+import { holdTerminalForChild } from "../../utils/foreground-child.ts";
 
 interface ExternalEditorOptions {
 	command: string;
@@ -20,6 +21,8 @@ export type ExternalEditorResult = { status: "complete"; content: string } | { s
  */
 export async function editInExternalEditor(options: ExternalEditorOptions): Promise<ExternalEditorResult> {
 	let directory: string | undefined;
+	// The editor's Ctrl+C is its own, not a request to shut Octocode down.
+	const release = holdTerminalForChild();
 	try {
 		directory = mkdtempSync(join(runtimeTempDir(), "octocode-editor-"));
 		const filePath = join(directory, "prompt.md");
@@ -49,6 +52,7 @@ export async function editInExternalEditor(options: ExternalEditorOptions): Prom
 		// Callers drop the promise from key handlers; a rejection here would end the process.
 		return { status: "failed", error: errorMessage(error) };
 	} finally {
+		release();
 		try {
 			if (directory) rmSync(directory, { recursive: true, force: true });
 		} catch {

@@ -47,7 +47,11 @@ export const BoardCard = memo(function BoardCard({
 			) : taskTallyText(it.tasks) ? (
 				<p className="muted card-tasks">{taskTallyText(it.tasks)}</p>
 			) : null}
-			{(it.blockedBy?.length || it.needsReview || it.parentId || it.children?.length || it.state === "ongoing") && (
+			{((it.blockedBy?.length ?? 0) > 0 ||
+				it.needsReview ||
+				it.parentId ||
+				(it.children?.length ?? 0) > 0 ||
+				it.state === "ongoing") && (
 				<div className="card-flags">
 					{it.blockedBy?.length ? <Badge tone="warning">Blocked by {it.blockedBy.join(", ")}</Badge> : null}
 					{it.needsReview && <Badge tone="warning">Needs review</Badge>}

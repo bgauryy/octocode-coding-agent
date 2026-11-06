@@ -9,6 +9,7 @@ import {
 	type AskReason,
 	PERMISSION_MODES,
 	type PermissionMode,
+	runsUnasked,
 } from "./mode.ts";
 
 /** The `via` of an entry a parent writes when it answers its subagent's prompt itself: the child's own entry counts the call. */
@@ -199,7 +200,7 @@ export class AuditLog {
 		const warn = WARN_ACTIONS.has(entry.action);
 		if (isCall(entry) && entry.allowed) {
 			this.#byAction.set(entry.action, (this.#byAction.get(entry.action) ?? 0) + 1);
-			if (entry.mode === "full")
+			if (runsUnasked(entry.mode))
 				this.#ran = { actions: this.#ran.actions + 1, warnings: this.#ran.warnings + (warn ? 1 : 0) };
 			if (warn) {
 				if (this.#warned.length < this.ceiling) this.#warned.push(`${entry.action}: ${entry.what[0] ?? ""}`);

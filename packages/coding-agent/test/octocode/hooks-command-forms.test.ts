@@ -7,7 +7,7 @@ import type { HookCommand } from "../../src/octocode/hooks/contracts.ts";
 import { runHook } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 function parse(handler: Record<string, unknown>, protocol: "claude" | "codex" | "octocode" = "claude") {
 	const errors: string[] = [];
@@ -109,7 +109,7 @@ describe("source command forms", () => {
 					},
 				}),
 			);
-			const { api, fire } = fakeHost();
+			const { api, fire } = fakeHost(HOOK_SETTINGS);
 			const audit = vi.fn();
 			const hooks = registerHooks(api, {}, home, audit);
 			const ctx = {
@@ -152,7 +152,7 @@ describe("source command forms", () => {
 					hooks: { PreCompact: [{ hooks: [{ type: "command", command, ...(onFailure ? { onFailure } : {}) }] }] },
 				}),
 			);
-			const { api, fire } = fakeHost();
+			const { api, fire } = fakeHost(HOOK_SETTINGS);
 			registerHooks(api, {}, home);
 			const ctx = {
 				cwd: tmp(),

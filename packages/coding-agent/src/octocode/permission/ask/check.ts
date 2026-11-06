@@ -9,6 +9,7 @@ import { commandWriteTargets } from "../shell/write-targets.ts";
 import { computeCard } from "../effect.ts";
 import { type ActionClass, decide, kindOf, type PermissionMode, UNGRANTABLE } from "../mode.ts";
 import type { PermissionRequest } from "../request.ts";
+import { grantableSource, sourceGrantKey } from "../provenance/grant.ts";
 import { type Snapshot, takeSnapshot } from "../snapshot.ts";
 import { deniedMessage, DISMISSED, forcingReasons, headlessMessage, withPurpose } from "./text.ts";
 import type { Asker, Dialog, PermissionResolver, ReplacementCheck, Verdict } from "./types.ts";
@@ -121,6 +122,9 @@ export async function checkPermission(
 	const classes = [...(action ? [action] : []), ...(request.also ?? [])];
 	const grant = action && !forced() && !UNGRANTABLE.has(action) && classes.length === 1 ? request.grant : undefined;
 	const grantKey = grant ? `${action}\0${grant.key}` : undefined;
+	// The one session answer a forcing reason has: its provenance hit came from a subagent, and that source is allowed from now on.
+	const sourceAllow = grantableSource(call, forcingReasons(host.mode(), request));
+	let grantNote: string | undefined;
 	let snapshot: Snapshot | undefined;
 	const snap = async (): Promise<void> => {
 		if (action === "shell.destructive" && !snapshot)
@@ -131,7 +135,7 @@ export async function checkPermission(
 	};
 	const decided = (verdict: Verdict, note?: string): Verdict => {
 		if (verdict.allowed && source?.decision === "ask" && invocation?.active) host.answeredSourceAsks().add(invocation);
-		return host.decided(request, verdict, note ?? transaction?.auditNote, snapshot);
+		return host.decided(request, verdict, note ?? transaction?.auditNote ?? grantNote, snapshot);
 	};
 	const completeAllowed = async (
 		verdict: Extract<Verdict, { allowed: true }>,
@@ -307,7 +311,10 @@ export async function checkPermission(
 				via: "cancelled",
 				message: DISMISSED,
 			});
-		if (answer === "session") {
+		if (answer === "session" && sourceAllow) {
+			host.grants.set(sourceGrantKey(sourceAllow), sourceAllow.label);
+			grantNote = `The user allowed ${sourceAllow.label} for this session`;
+		} else if (answer === "session") {
 			if (!grant || !grantKey)
 				return decided({
 					allowed: false,

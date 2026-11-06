@@ -10,15 +10,19 @@ export interface TuiMainScreenRenderState {
 	previousViewportTop: number;
 }
 
-/** Find the first and last changed lines, widened to whole Kitty image blocks; both are -1 when nothing changed. */
+/**
+ * Find the first and last changed lines, widened to whole Kitty image blocks; both are -1 when nothing changed.
+ * Rows before `fromRow` are not compared: the caller has decided they cannot be redrawn.
+ */
 export function findChangedLineRange(
 	previousLines: string[],
 	newLines: string[],
+	fromRow = 0,
 ): { firstChanged: number; lastChanged: number; appendedLines: boolean } {
 	let firstChanged = -1;
 	let lastChanged = -1;
 	const maxLines = Math.max(newLines.length, previousLines.length);
-	for (let i = 0; i < maxLines; i++) {
+	for (let i = fromRow; i < maxLines; i++) {
 		const oldLine = i < previousLines.length ? previousLines[i] : "";
 		const newLine = i < newLines.length ? newLines[i] : "";
 
@@ -32,7 +36,7 @@ export function findChangedLineRange(
 	const appendedLines = newLines.length > previousLines.length;
 	if (appendedLines) {
 		if (firstChanged === -1) {
-			firstChanged = previousLines.length;
+			firstChanged = Math.max(previousLines.length, fromRow);
 		}
 		lastChanged = newLines.length - 1;
 	}

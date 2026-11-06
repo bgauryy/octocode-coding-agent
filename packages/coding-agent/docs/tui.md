@@ -2,7 +2,6 @@
 
 > **Removed API.** Octocode no longer supports user code extensions, and the package root exports no extension API. This page describes the extension loader's last behavior and is removed with it.
 
-
 For user-facing command navigation, `/help` opens a searchable command picker and `/skills` filters it to loaded skills. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for command names and the combined status, models, and trust menus.
 
 The built-in footer reserves its own line for the coordinator's provider/model and thinking level. On narrower terminals it separates model identity from thinking so usage totals cannot hide either. Models without reasoning support show `thinking unavailable`; virtual selections additionally show the latest physical route. `/effort` changes reasoning effort, and `/context size` chooses a session context budget. Extension-provided replacement footers control their own layout.
@@ -25,6 +24,8 @@ Start with `ctx.ui` methods. Build a custom component only when the UI needs its
 These APIs receive Octocode’s active theme and keybindings where needed. Do not create a second terminal renderer inside an extension.
 
 Pass a footer status as plain text with an optional tone instead of colouring it: `ctx.ui.setStatus("jobs", "2 jobs", "accent")`. The tone is one of `accent`, `muted`, `dim`, `success`, `warning` or `error`. The terminal footer paints it with the live theme, so a theme switch recolours it, and RPC clients receive the text without escape codes. Text coloured beforehand with `ctx.ui.theme.fg()` still shows in the terminal footer (its colour codes are kept, other controls are removed), but it keeps the theme it was painted with and reaches RPC clients with its escape codes. A custom footer reads the same data from `footerData.getState().statuses` (`{ text, tone }` per key) and can `subscribe()` to changes.
+
+The footer holds state that lasts (model, permission mode, context, running agents and jobs, queued messages, cost). Something that happened goes to the messages list instead: `ctx.ui.notify(text, level)` adds a line there that is neither saved in the session nor sent to the model, and the toggle acknowledgements (`Tool output: expanded` for Ctrl+O, `Thinking blocks: hidden` for Ctrl+T) are such lines. Back-to-back info lines share one line, the latest replacing the earlier, so a burst of toggles adds one row.
 
 ## Understand the component model
 

@@ -77,11 +77,12 @@ describe("folder trust gate (CLI)", () => {
 		expect(second.stderr).not.toContain("is not trusted");
 	});
 
-	it("--approve is an unknown flag: it grants nothing and the undecided folder still stops the run", () => {
+	it("--approve is an unknown flag: it grants nothing and stops the run before any work", () => {
 		const box = sandbox();
 		const result = run(box, box.project, ["-p", "hello", "--approve"]);
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("is not trusted");
+		expect(result.stderr).toContain("Unknown option: --approve");
+		expect(result.stderr).not.toContain("SENTINEL");
 		expect(result.stderr).not.toContain("--approve is deprecated");
 		expect(resolveFolderTrust(box.project, { env: box.env, home: box.home }).state).toBe("undecided");
 	});

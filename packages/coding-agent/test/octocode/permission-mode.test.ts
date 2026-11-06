@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { modeSummary } from "../../src/octocode/permission/ask/text.ts";
+import { heldTo, TurnCap } from "../../src/octocode/permission/ask/cap.ts";
+import { headlessMessage, modeSummary, unaskedRunLine } from "../../src/octocode/permission/ask/text.ts";
 import {
 	ACTION_CLASSES,
 	type ActionClass,
 	ASK_REASONS,
 	type AskReason,
 	actionWhy,
+	CHIPS,
+	CHOOSABLE_MODES,
+	chipText,
 	decide,
 	declaredPermissions,
 	kindOf,
 	type PermissionMode,
 	parseGrants,
 	reasonAsks,
+	shortChip,
 	SPAWN_GRANTABLE,
 	startMode,
 	UNGRANTABLE,
@@ -31,6 +36,7 @@ const MATRIX: Record<ActionClass, [string, string, string]> = {
 	"browser.cookies": ["ask", "ask", "ask"],
 	"net.private": ["ask", "ask", "allow"],
 	"upload.outside": ["ask", "ask", "allow"],
+	"mcp.read": ["allow", "allow", "allow"],
 	"mcp.write": ["ask", "allow", "allow"],
 	"mcp.destructive": ["ask", "ask", "allow"],
 	"agent.spawn": ["ask", "allow", "allow"],
@@ -80,6 +86,41 @@ describe("permission modes", () => {
 			mode: "manual",
 			warning: expect.stringContaining("yolo"),
 		});
+	});
+
+	it("lets bypass run every class and reason, a superset of full", () => {
+		for (const action of ACTION_CLASSES) expect(decide("bypass", action), action).toBe("allow");
+		for (const reason of ASK_REASONS) expect(reasonAsks("bypass", reason), reason).toBe(false);
+		expect(startMode({ [PERMISSION_ENV]: "bypass" })).toEqual({ mode: "bypass" });
+		expect(CHOOSABLE_MODES).not.toContain("bypass");
+		expect(modeSummary("bypass")).toMatch(/not even what full still asks about.*--dangerously-skip-permissions/);
+		// A headless refusal of an always-ask class names the one start that allows it.
+		expect(headlessMessage({ action: "worktree.merge", title: "Merge?", what: ["merge b1"] }, "full", false)).toContain(
+			"start Octocode with --dangerously-skip-permissions",
+		);
+		expect(headlessMessage({ action: "shell", title: "Run?", what: ["ls"] }, "manual", false)).toContain(
+			"start Octocode with --permission-mode workspace",
+		);
+	});
+
+	it("never holds bypass to a session-API turn ceiling, and holds every other mode", () => {
+		expect(heldTo("bypass", "workspace")).toBe("bypass");
+		expect(heldTo("full", "workspace")).toBe("workspace");
+		expect(heldTo("manual", "workspace")).toBe("manual");
+		const cap = new TurnCap();
+		cap.set("manual");
+		expect(cap.apply("bypass")).toBe("bypass");
+		expect(cap.apply("full")).toBe("manual");
+	});
+
+	it("counts and shortens a bypass chip like a full one, and prints the unasked start line", () => {
+		expect(chipText("bypass")).toBe(CHIPS.bypass.text);
+		const counted = chipText("bypass", { actions: 3, warnings: 1 });
+		expect(counted).toMatch(/^⏵⏵⏵ permission: bypass · 3 actions · 1 ⚠ · /);
+		expect(shortChip(counted)).toBe("⏵⏵⏵ bypass · 3 actions · 1 ⚠");
+		expect(shortChip(chipText("full", { actions: 2, warnings: 0 }))).toBe("⏵⏵ full · 2 actions");
+		expect(unaskedRunLine("bypass")?.("s.jsonl")).toContain("permission mode bypass: every action runs without asking");
+		expect(unaskedRunLine("workspace")).toBeUndefined();
 	});
 
 	it("says what each mode does", () => {

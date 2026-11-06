@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { TuiMode } from "../../core/settings-manager.ts";
+import type { PermissionMode } from "../../octocode/permission/mode.ts";
 
 export type Mode = "text" | "json" | "rpc" | "acp";
 
@@ -28,9 +29,11 @@ export interface Args {
 	excludeTools?: string[];
 	noTools?: boolean;
 	noBuiltinTools?: boolean;
-	/** Removed flags the command line used (`-e`, `--extension`, `--no-extensions`); the run exits with status 2. */
-	removedFlags?: string[];
+	/** The start mode `--permission-mode` or `--dangerously-skip-permissions` (`bypass`) chose. */
+	permissionMode?: PermissionMode;
 	noMcp?: boolean;
+	/** `--plan`: start with the planning constraint on. */
+	plan?: boolean;
 	print?: boolean;
 	/** `--no-stdin`: never read piped stdin, so a pipe the parent leaves open cannot hold the run. */
 	noStdin?: boolean;
@@ -53,10 +56,8 @@ export interface Args {
 	trust?: boolean;
 	messages: string[];
 	fileArgs: string[];
-	/** Unknown flags (potentially extension flags) - map of flag name to value */
-	unknownFlags: Map<string, boolean | string>;
-	/** Words unknown flags consumed as values, returned to `messages` if the flag is boolean. */
-	unknownFlagWords?: Array<{ flag: string; word: string; at: number }>;
+	/** Names of the `--flags` the parser does not know; each also has an error in `diagnostics`. */
+	unknownFlags: string[];
 	diagnostics: Array<{ type: "warning" | "error"; message: string }>;
 }
 

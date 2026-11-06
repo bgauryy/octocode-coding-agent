@@ -35,7 +35,7 @@ export function findWordBackward(text: string, cursor: number, options?: WordNav
 		!isAtomic?.(segments[segments.length - 1]?.segment || "") &&
 		isWhitespaceChar(segments[segments.length - 1]?.segment || "")
 	) {
-		newCursor -= segments.pop()?.segment.length || 0;
+		newCursor -= segments.pop()?.segment.length ?? 0;
 	}
 
 	if (segments.length === 0) return newCursor;
@@ -63,7 +63,7 @@ export function findWordBackward(text: string, cursor: number, options?: WordNav
 			!segments[segments.length - 1]?.isWordLike &&
 			!isWhitespaceChar(segments[segments.length - 1]?.segment || "")
 		) {
-			newCursor -= segments.pop()?.segment.length || 0;
+			newCursor -= segments.pop()?.segment.length ?? 0;
 		}
 	}
 

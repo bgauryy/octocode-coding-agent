@@ -11,6 +11,12 @@ import { clip, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { answerLine } from "../shared/ask-answer.ts";
 import { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
+import { type AskView, isRecommended, takeWriteIn } from "../shared/ask-view.ts";
+
+/** The most options one question offers (the schema asks for 2-4); the UI adds the write-in. */
+const MAX_OPTIONS = 6;
+/** An option the UI already offers as its write-in row. */
+const OTHER = /^\s*(other|something else)\b/i;
 
 /** RPC hosts have dialogs but no custom TUI components: fall back to select/input per question. */
 async function askWithDialogs(
@@ -50,11 +56,21 @@ async function askWithDialogs(
 			const title = q.multiSelect
 				? `${q.question} (choose one or more, then ${SUBMIT_PICKS}${selected ? `; selected: ${selected}` : ""})`
 				: q.question;
-			const picked = await ctx.ui.select(sanitizeTerminalText(title), [...remaining, ...extra], options);
+			const choices = [...remaining, ...extra];
+			// The same question as a card for a terminal that draws one (a parent showing this subagent's question).
+			const view: AskView = {
+				question: sanitizeTerminalText(q.forwarded?.ask ?? q.question),
+				...(q.forwarded ? { body: { label: q.forwarded.label, text: q.forwarded.text, collapsible: true } } : {}),
+				options: choices.map((label) => ({ label, ...(isRecommended(label) ? { recommended: true } : {}) })),
+				writeIn: { label: TYPE_OWN, title: sanitizeTerminalText(q.question) },
+			};
+			const picked = await ctx.ui.select(sanitizeTerminalText(title), choices, { ...options, ask: view });
 			if (signal?.aborted || picked === undefined) return cancelled();
 			if (picked === TYPE_OWN) {
-				// An empty answer is no answer, as in the TUI dialog.
-				typed = (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))?.trim();
+				// An empty answer is no answer, as in the TUI dialog. A card's inline write-in already holds the text.
+				typed = (
+					takeWriteIn(view) ?? (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))
+				)?.trim();
 				if (signal?.aborted) return cancelled();
 				if (!typed) {
 					typed = undefined;
@@ -111,7 +127,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				),
 				questions: Type.Array(
 					Type.Object({
-						question: Type.String({ description: "Question with the context to answer it" }),
+						question: Type.String({ description: "One sentence; context goes in your reply first" }),
 						header: Type.Optional(
 							Type.String({
 								description: "Tab label, ~12 characters shown",
@@ -140,11 +156,22 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 			async execute(_id, params, signal, _onUpdate, ctx) {
 				// multiSelect means nothing without options: a free-text question opens its editor directly.
 				let skippedOptions = 0;
-				const questions = params.questions
+				const dropped = { duplicate: 0, other: 0, over: 0 };
+				const questions: AskQuestion[] = params.questions
 					.filter((q) => q.question.trim())
 					.map((q) => {
-						const options = (q.options ?? []).filter((option) => option.label.trim());
-						skippedOptions += (q.options?.length ?? 0) - options.length;
+						const labelled = (q.options ?? []).filter((option) => option.label.trim());
+						skippedOptions += (q.options?.length ?? 0) - labelled.length;
+						const seen = new Set<string>();
+						const options = labelled.filter((option) => {
+							// Identical options only: a repeated label with its own description stays, told apart by its number.
+							const key = `${option.label.trim().toLowerCase()}\n${option.description?.trim() ?? ""}`;
+							if (seen.has(key)) dropped.duplicate += 1;
+							else if (OTHER.test(option.label)) dropped.other += 1;
+							else if (seen.size >= MAX_OPTIONS) dropped.over += 1;
+							else return seen.add(key);
+							return false;
+						});
 						return {
 							...q,
 							options,
@@ -159,6 +186,11 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 					questions[0] = {
 						...questions[0],
 						question: `${stored.from} asks (message #${params.forward}):\n${stored.text}\n\n${questions[0].question}`,
+						forwarded: {
+							label: `${stored.from} asks (message #${params.forward}):`,
+							text: stored.text,
+							ask: questions[0].question,
+						},
 					};
 				}
 				const result: AskResult = signal?.aborted
@@ -175,6 +207,10 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				const skipped = [
 					skippedQuestions > 0 && plural(skippedQuestions, "empty question"),
 					skippedOptions > 0 && plural(skippedOptions, "option with an empty label", "options with an empty label"),
+					dropped.duplicate > 0 && plural(dropped.duplicate, "duplicate option"),
+					dropped.other > 0 && `${plural(dropped.other, '"Other" option')} (the UI adds a write-in)`,
+					dropped.over > 0 &&
+						plural(dropped.over, `option past the first ${MAX_OPTIONS}`, `options past the first ${MAX_OPTIONS}`),
 				].filter(Boolean);
 				const note = skipped.length > 0 ? `\n(Not asked: ${skipped.join(" and ")}.)` : "";
 				return { content: [{ type: "text", text: `${formatAnswers(result)}${note}` }], details: result };

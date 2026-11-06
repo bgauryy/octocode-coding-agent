@@ -18,6 +18,30 @@ CREATE INDEX agent_runs_session ON agent_runs(session_id);
 CREATE INDEX agent_runs_registration ON agent_runs(registration_id);
 `;
 
+/**
+ * Timers (`queries/timers.ts`): a session's own wakes. `once` wakes at `due_at`; `every` wakes every `interval_ms` until
+ * `max_runs` or `deadline_at`; `until` checks its condition (`condition_kind`: `command` exits 0 in `cwd`, `unlocked`: no
+ * other agent's reservation covers the path in `condition`) every `interval_ms` and wakes once when it is met or the
+ * deadline passes. Only the owner session (`session_id`) fires a row; a fire claims it with one guarded UPDATE. A new file
+ * creates the table with the rest, a version 3 file by migration 4.
+ */
+export const TIMERS_SCHEMA = `
+CREATE TABLE timers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL,
+  agent TEXT, tool_call_id TEXT, note TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('once','every','until')), due_at INTEGER NOT NULL, interval_ms INTEGER,
+  condition_kind TEXT CHECK(condition_kind IN ('command','unlocked')), condition TEXT, cwd TEXT,
+  max_runs INTEGER, runs INTEGER NOT NULL DEFAULT 0, deadline_at INTEGER,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','done','cancelled','expired','failed')), stop_reason TEXT,
+  last_fired_at INTEGER, last_exit INTEGER, last_output TEXT,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ended_at INTEGER,
+  CHECK((kind = 'once') = (interval_ms IS NULL)),
+  CHECK((kind = 'until') = (condition_kind IS NOT NULL)),
+  CHECK((condition_kind IS NULL) = (condition IS NULL)));
+CREATE INDEX timers_due ON timers(session_id, due_at) WHERE status = 'active';
+CREATE INDEX timers_ended ON timers(ended_at) WHERE status <> 'active';
+`;
+
 export const SCHEMA = `
 CREATE TABLE workspaces (
   id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, root TEXT NOT NULL, binding TEXT NOT NULL,
@@ -232,6 +256,7 @@ CREATE INDEX agent_events_workspace ON agent_events(workspace_id, seq DESC);
 CREATE INDEX agent_events_agent ON agent_events(workspace_id, name, seq DESC);
 CREATE INDEX agent_events_session ON agent_events(workspace_id, session_id, seq DESC);
 ${AGENT_RUNS_SCHEMA}
+${TIMERS_SCHEMA}
 CREATE TABLE compaction_summaries (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL, entry_id TEXT NOT NULL,
   summary TEXT NOT NULL, committed_at INTEGER, origin_verified INTEGER NOT NULL DEFAULT 0,

@@ -144,7 +144,7 @@ function truncateErrorText(text: string, maxChars: number): string {
 function safeJsonStringify(value: unknown): string {
 	try {
 		const serialized = JSON.stringify(value);
-		return serialized === undefined ? String(value) : serialized;
+		return serialized ?? String(value);
 	} catch {
 		return String(value);
 	}

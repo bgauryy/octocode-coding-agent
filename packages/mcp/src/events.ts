@@ -2,12 +2,13 @@
 
 import { isDeepStrictEqual } from "node:util";
 import { presetEntries } from "./preset.ts";
+import { applyServerChanges, reloadMcpConfig } from "./reload.ts";
 import { hostPaths } from "./host.ts";
 import type { McpContext } from "./host/types.ts";
 import { type McpServerEntry, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
 import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
-import { registerMcpSwitch, switchMcpServer } from "./switch.ts";
+import { registerMcpReload, registerMcpSwitch, switchMcpServer } from "./switch.ts";
 import { reportProblems } from "./report.ts";
 import { say } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
@@ -26,7 +27,7 @@ import {
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import { hideTools, registerTools } from "./tool-registry.ts";
+import { registerTools } from "./tool-registry.ts";
 import { takeLaunchWarnings } from "./warnings.ts";
 
 /** Whether the launch the server would get now differs from the one it got; a launch that cannot be prepared does not count. */
@@ -96,7 +97,7 @@ function describeServers(
 	const listings = serverListings(state);
 	for (const connection of state.connections()) if (connection.state === "connected") registerTools(state, connection);
 	options.mcpServers = mcpServerPurposes(listings);
-	const mcps = renderMcpsSection(listings);
+	const mcps = renderMcpsSection(listings, { declared: state.presentation.declared });
 	if (mcps) options.baseSections[MCPS_SECTION] = mcps;
 	else delete options.baseSections[MCPS_SECTION];
 	const status = renderMcpStatusSection(listings, { canManage: state.api.getActiveTools().includes("mcp") });
@@ -118,7 +119,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 
 	api.on("session_start", (_event, ctx) => {
 		state.presentation.reset();
-		const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
+		const load = () => (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
+		const loaded = load();
 		state.configErrors = loaded.errors;
 		state.projectConfig = loaded.projectConfig;
 		state.globalConfig = loaded.globalConfig;
@@ -130,6 +132,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		const { signal } = state.session;
 		state.unregisterSwitch?.();
 		state.unregisterSwitch = registerMcpSwitch(api.events, (request) => switchMcpServer(state, request));
+		state.unregisterReload?.();
+		state.unregisterReload = registerMcpReload(api.events, () => state.track(reloadMcpConfig(state, ctx, load)));
 		state.unregisterHookCaller?.();
 		state.unregisterHookCaller = registerMcpHookCaller(api.events, async (request) => {
 			const callSignal = AbortSignal.any([signal, request.signal]);
@@ -189,7 +193,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				// The session may have been disposed meanwhile, which makes ctx stale.
 				try {
 					ctx.ui.notify(`MCP failed to load: ${errorMessage(error)}`, "error");
-				} catch {}
+				} catch {
+					// No session is left to show the notice.
+				}
 			});
 	});
 
@@ -277,30 +283,14 @@ export function registerSessionEvents(state: McpExtensionState): void {
 					next.get(mcpNamespace(server.entry.name))?.registeredConfig !== server.registeredConfig) ||
 				(server.entry.scope === "default" && next.get(mcpNamespace(server.entry.name))?.entry.scope === "extension"),
 		);
-		state.servers = state.servers.filter((server) => !removed.includes(server));
-		for (const server of removed) hideTools(state, server.entry.name);
 		const added = desired.filter(
 			(server) =>
-				!state.servers.some((current) => mcpNamespace(current.entry.name) === mcpNamespace(server.entry.name)),
+				!state.servers.some(
+					(current) =>
+						!removed.includes(current) && mcpNamespace(current.entry.name) === mcpNamespace(server.entry.name),
+				),
 		);
-		for (const server of added) server.unselected = isEnabled(server) && !isSelected(state.api, server.entry);
-		state.servers.push(...added);
-		state.emitChange();
-		await Promise.all(removed.flatMap((server) => server.connection?.close() ?? []));
-		const connecting = added.filter((server) => isEnabled(server) && !server.unselected);
-		if (signal.aborted || connecting.length === 0) return;
-		try {
-			await Promise.all(connecting.map((server) => startConnection(state, server)));
-			if (signal.aborted) {
-				await Promise.all(connecting.flatMap((server) => server.connection?.close() ?? []));
-				return;
-			}
-		} catch (error) {
-			ctx.ui.notify(`MCP failed to load: ${errorMessage(error)}`, "error");
-			return;
-		}
-		if (signal.aborted) return;
-		reportProblems(state, ctx, connecting);
+		await applyServerChanges(state, ctx, removed, added);
 	});
 
 	api.on("session_shutdown", async () => {
@@ -308,6 +298,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.unregisterHookCaller = undefined;
 		state.unregisterSwitch?.();
 		state.unregisterSwitch = undefined;
+		state.unregisterReload?.();
+		state.unregisterReload = undefined;
 		state.session.abort();
 		const closing = state.connections();
 		state.servers = [];

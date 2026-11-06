@@ -88,7 +88,7 @@ export function ItemDetail({
 				</ul>
 			)}
 			{actions && <div className="sheet-actions">{actions}</div>}
-			{(it.blockedBy?.length || it.needsReview) && (
+			{((it.blockedBy?.length ?? 0) > 0 || it.needsReview) && (
 				<div className="callout tone-warning" role="note">
 					{it.blockedBy?.length ? <p>Blocked by {it.blockedBy.join(", ")}.</p> : null}
 					{it.needsReview && <p>Needs review: related work was reopened.</p>}

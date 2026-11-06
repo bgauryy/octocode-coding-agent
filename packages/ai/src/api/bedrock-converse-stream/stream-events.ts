@@ -213,10 +213,10 @@ export function handleMetadata(
 	output: AssistantMessage,
 ): void {
 	if (event.usage) {
-		output.usage.input = event.usage.inputTokens || 0;
-		output.usage.output = event.usage.outputTokens || 0;
-		output.usage.cacheRead = event.usage.cacheReadInputTokens || 0;
-		output.usage.cacheWrite = event.usage.cacheWriteInputTokens || 0;
+		output.usage.input = event.usage.inputTokens ?? 0;
+		output.usage.output = event.usage.outputTokens ?? 0;
+		output.usage.cacheRead = event.usage.cacheReadInputTokens ?? 0;
+		output.usage.cacheWrite = event.usage.cacheWriteInputTokens ?? 0;
 		output.usage.cacheWrite1h = event.usage.cacheDetails?.reduce(
 			(total, detail) => total + (detail.ttl === CacheTTL.ONE_HOUR ? (detail.inputTokens ?? 0) : 0),
 			0,
@@ -253,6 +253,12 @@ export function handleContentBlockStop(
 			// carries parsed arguments.
 			delete (block as Block).partialJson;
 			stream.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial: output });
+			break;
+		// The Bedrock stream opens only text, thinking and tool call blocks.
+		case "image":
+		case "media":
+		case "resource":
+		case "unsupported":
 			break;
 	}
 }

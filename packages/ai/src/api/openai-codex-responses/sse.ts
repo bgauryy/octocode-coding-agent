@@ -90,7 +90,9 @@ export async function parseErrorResponse(response: Response): Promise<{ message:
 			}
 			message = err.message || friendlyMessage || message;
 		}
-	} catch {}
+	} catch {
+		// A body that is not JSON carries no error details; keep the raw text as the message.
+	}
 
 	return { message, friendlyMessage };
 }

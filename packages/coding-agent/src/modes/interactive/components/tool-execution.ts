@@ -58,7 +58,7 @@ export class ToolExecutionComponent extends Container {
 		toolName: string,
 		toolCallId: string,
 		args: any,
-		options: ToolExecutionOptions = {},
+		options: ToolExecutionOptions,
 		toolDefinition: ToolRenderers | ToolDefinition<any, any> | undefined,
 		ui: TUI,
 		cwd: string,
@@ -107,7 +107,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private hasRendererDefinition(): boolean {
-		return Boolean(this.toolDefinition?.renderCall || this.toolDefinition?.renderResult);
+		return Boolean(this.toolDefinition?.renderCall ?? this.toolDefinition?.renderResult);
 	}
 
 	private getRenderShell(): "default" | "self" {
@@ -288,7 +288,7 @@ export class ToolExecutionComponent extends Container {
 					hasContent = true;
 				}
 			}
-			const reason = reasonRow(this.toolName, this.args);
+			const reason = reasonRow(this.toolName, this.args, this.result?.structuredContent);
 			if (reason) renderContainer.addChild(this.createResultRegion(reason));
 
 			if (this.result) {
@@ -331,7 +331,7 @@ export class ToolExecutionComponent extends Container {
 				toolName: this.toolName,
 				toolCallId: this.toolCallId,
 				args: this.args,
-				content: this.result?.content ?? [],
+				result: this.result,
 				expanded: this.expanded,
 				showImages: this.showImages,
 				imageWidthCells: this.imageWidthCells,

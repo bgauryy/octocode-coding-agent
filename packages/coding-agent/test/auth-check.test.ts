@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InMemoryModelsStore } from "@octocodeai/octocode-ai";
@@ -8,6 +8,7 @@ import { checkProviderAuth, createAuthCheckModelRuntime, getProviderCredential }
 import { parseAuthCommand } from "../src/cli/auth-command.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
+import { FileModelsStore } from "../src/core/models-store.ts";
 
 const tempDir = join(tmpdir(), `octocode-test-auth-check-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -165,7 +166,41 @@ describe("auth check command", () => {
 	});
 
 	test("creates an auth-check runtime without catalog storage", async () => {
+		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tempDir);
+		const storePath = join(tempDir, "models-store.json");
+		await new FileModelsStore(storePath).write("openai", {
+			models: [
+				{
+					id: "stored-only",
+					name: "stored-only",
+					api: "openai-responses",
+					provider: "openai",
+					baseUrl: "https://example.test/v1",
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 1000,
+					maxTokens: 100,
+				},
+			],
+			checkedAt: Date.now(),
+			// Newer than the bundled catalog, so a runtime that reads the store overlays it.
+			lastModified: Date.now() + 365 * 24 * 3_600_000,
+		});
+		const stored = readFileSync(storePath, "utf8");
+		// Control: a default runtime reads the agent directory's catalog store.
+		const defaults = await ModelRuntime.create({
+			credentials: AuthStorage.inMemory(),
+			allowModelNetwork: false,
+			refreshOnCreate: false,
+		});
+		await defaults.refresh({ allowNetwork: false });
+		expect(defaults.getModel("openai", "stored-only")?.id).toBe("stored-only");
+
 		const runtime = await createAuthCheckModelRuntime(AuthStorage.inMemory());
-		expect(runtime.getProvider("openai")).toBeDefined();
+		await runtime.refresh({ allowNetwork: false });
+		expect(runtime.getProvider("openai")?.id).toBe("openai");
+		expect(runtime.getModel("openai", "stored-only")).toBeUndefined();
+		expect(readFileSync(storePath, "utf8")).toBe(stored);
 	});
 });

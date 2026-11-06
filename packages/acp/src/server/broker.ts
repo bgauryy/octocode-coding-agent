@@ -13,6 +13,7 @@ import { redactSecrets } from "../../../common/src/sanitize.ts";
 import type { AcpBrokerHost } from "../host.ts";
 import { AcpSession, type AcpWorker } from "./session.ts";
 import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay, sessionNotFound } from "./history.ts";
+import { reportToStderr } from "../../../common/src/stderr.ts";
 
 export type { AcpWorker } from "./session.ts";
 /**
@@ -107,7 +108,7 @@ export class AcpBroker {
 				signal.addEventListener(
 					"abort",
 					() => {
-						void session.cancel().catch((error: unknown) => console.error("ACP cancellation failed", error));
+						void session.cancel().catch((error: unknown) => reportToStderr("ACP cancellation failed", error));
 					},
 					{ once: true },
 				);

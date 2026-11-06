@@ -19,8 +19,12 @@ import type { Expandable } from "./types.ts";
 
 export interface LoadedRowSpec {
 	label: string;
-	/** Item count; a row whose count is 0 draws nothing. */
+	/** Item count; a row whose count is 0 draws nothing unless `showZero` is set. */
 	count: () => number;
+	/** Draw the row at count 0 too, for a kind whose absence is worth seeing (`Hooks  0`). */
+	showZero?: boolean;
+	/** Draw the row only when the listing is expanded (ctrl+o). */
+	expandedOnly?: boolean;
 	/** Collapsed text after the count; built on demand so it follows theme changes. */
 	summary: () => string;
 	/** Text after the count when expanded; defaults to the summary. */
@@ -34,6 +38,11 @@ export interface LoadedRowSpec {
 	 * text. A row with cells is fitted to the width with the other such rows instead of wrapping its summary.
 	 */
 	cells?: () => { sources: string; tail?: string };
+	/**
+	 * The collapsed text as lines that fit `room` cells after the label and count, for a row that chooses what to drop
+	 * itself instead of being wrapped or cut. Later lines are indented under the first.
+	 */
+	fitSummary?: (room: number) => string[];
 }
 
 export interface LoadedColumns {
@@ -51,7 +60,9 @@ const MIN_TEXT_WIDTH = 16;
 
 /** Column widths over the rows that draw (count above 0). */
 export function loadedColumns(specs: readonly LoadedRowSpec[]): LoadedColumns {
-	const shown = specs.map((spec) => ({ spec, label: spec.label, count: spec.count() })).filter((row) => row.count > 0);
+	const shown = specs
+		.map((spec) => ({ spec, label: spec.label, count: spec.count() }))
+		.filter((row) => row.count > 0 || row.spec.showZero);
 	const label = Math.max(0, ...shown.map((row) => row.label.length));
 	const count = Math.max(0, ...shown.map((row) => String(row.count).length));
 	const celled = shown.filter((row) => row.spec.cells);
@@ -134,7 +145,7 @@ export class LoadedRow implements Component, Expandable {
 		const key = `${width}:${columns.label}:${columns.count}`;
 		if (this.cached?.key === key) return this.cached.lines;
 		const count = spec.count();
-		if (count === 0) {
+		if ((count === 0 && !spec.showZero) || (spec.expandedOnly && !this.expanded)) {
 			this.cached = { key, lines: [] };
 			return [];
 		}
@@ -146,8 +157,12 @@ export class LoadedRow implements Component, Expandable {
 		const indent = visibleWidth(head);
 		const summary = this.expanded && spec.expandedSummary ? spec.expandedSummary() : spec.summary();
 		const fitted = columns.fit?.(spec, width);
-		const [first = "", ...rest] = fitted === undefined ? wrapAfter(summary, width, indent) : [];
-		const lines = fitted === undefined ? [head + first, ...rest] : [fitted];
+		const own =
+			spec.fitSummary && !(this.expanded && spec.expandedSummary) ? spec.fitSummary(width - indent) : undefined;
+		const [first = "", ...rest] =
+			own?.map((line, index) => (index === 0 ? line : " ".repeat(indent) + line)) ??
+			(fitted === undefined ? wrapAfter(summary, width, indent) : []);
+		const lines = fitted === undefined || own ? [head + first, ...rest] : [fitted];
 		if (this.expanded && spec.details) {
 			for (const line of spec.details().split("\n")) {
 				// Detail lines carry their own nesting; keep it, shifted under the summary column.

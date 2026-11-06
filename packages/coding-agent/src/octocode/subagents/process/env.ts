@@ -118,7 +118,7 @@ export function subagentProcessEnv(
 	mcpServersFile?: string,
 ): NodeJS.ProcessEnv {
 	const inherited = { ...base };
-	// User settings survive; run identity, trust delegation, permissions and browser mode belong to this child.
+	// User settings survive; run identity, permissions and browser mode belong to this child (trust comes from the shared trust store).
 	for (const key of [...CHILD_OWNED_ENV, PERMISSION_ENV]) delete inherited[key];
 	return {
 		...inherited,

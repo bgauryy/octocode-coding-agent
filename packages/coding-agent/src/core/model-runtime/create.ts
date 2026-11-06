@@ -7,9 +7,10 @@ import {
 } from "@octocodeai/octocode-ai";
 import * as builtinProviderCatalog from "@octocodeai/octocode-ai/providers/all";
 import { personalizeOpenRouterCatalog } from "@octocodeai/octocode-ai/providers/openrouter";
-import { getAgentDir } from "../../config.ts";
+import { getAgentDir, getLegacyConfigDirs } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { AuthStorage as DefaultAuthStorage } from "../auth-storage.ts";
+import { PiFallbackCredentialStore } from "../auth-storage/pi-fallback.ts";
 import { ModelConfig } from "../model-config.ts";
 import { FileModelsStore } from "../models-store.ts";
 import { withPersonalizedCatalog, withRemoteCatalog } from "../remote-catalog-provider.ts";
@@ -29,7 +30,7 @@ export interface ModelRuntimeParts {
 
 /** Load credentials, models.json and the catalog store, and create the built-in providers. */
 export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions): Promise<ModelRuntimeParts> {
-	const credentials = new RuntimeCredentials(options.credentials ?? DefaultAuthStorage.create(options.authPath));
+	const credentials = new RuntimeCredentials(options.credentials ?? defaultCredentialStore(options.authPath));
 	const modelsPath =
 		options.modelsPath === null ? undefined : (options.modelsPath ?? join(getAgentDir(), "models.json"));
 	const config = await ModelConfig.load(modelsPath);
@@ -40,6 +41,16 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 			: new InMemoryModelsStore());
 	const providers = createBuiltinProviders(options.catalogBaseUrl);
 	return { credentials, config, modelsPath, modelsStore, providers, modelNetworkEnabled: !isOfflineModeEnabled() };
+}
+
+/**
+ * Octocode's auth.json; for Octocode's own home with Pi compatibility on, Pi's auth.json files back it read-only (the
+ * same rule that layers Pi's models.json under Octocode's in `ModelConfig.load`).
+ */
+function defaultCredentialStore(authPath = join(getAgentDir(), "auth.json")) {
+	const storage = DefaultAuthStorage.create(authPath);
+	const piDirs = getLegacyConfigDirs(dirname(authPath));
+	return piDirs.length ? new PiFallbackCredentialStore(storage, piDirs) : storage;
 }
 
 /** The built-in providers, each refreshing its catalog from `catalogBaseUrl`. */

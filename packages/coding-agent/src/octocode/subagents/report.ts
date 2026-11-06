@@ -207,7 +207,12 @@ export class ReportTracker {
 	 */
 	incoming(role: unknown, job?: string, quiet?: boolean): void {
 		if (quiet && job) {
-			if (this.sections > 0) this.note(`After this report: ${job}`);
+			if (this.sections === 0) return;
+			this.note(`After this report: ${job}`);
+			// The run-end hold (`files/bash/child-hold.ts`) can give the child a turn on it: that answer is a follow-up section,
+			// not a replacement glued to the report above.
+			this.fresh = true;
+			this.job = job;
 			return;
 		}
 		if (role === "user" || role === "custom") {

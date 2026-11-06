@@ -6,8 +6,8 @@ import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 
@@ -70,7 +70,7 @@ describe("documented hook discovery and controls", () => {
 			scope: i < 3 ? "user" : "project",
 		}));
 		const ofDialect = (dialect: string) => expected.filter((origin) => origin.dialect === dialect);
-		const config = loadHooks(root, true, home).config;
+		const config = loadHooks(root, true, home, HOOK_SETTINGS).config;
 		expect(config.PreToolUse.flatMap((group) => group.hooks).map((hook) => hook.origins)).toEqual(
 			expected.map((origin) => [origin]),
 		);
@@ -119,12 +119,47 @@ describe("documented hook discovery and controls", () => {
 				}),
 			);
 		}
-		const loaded = loadHooks(cwd, true, home);
+		const loaded = loadHooks(cwd, true, home, HOOK_SETTINGS);
 		expect(loaded.errors).toEqual([]);
 		expect(commandsFor(loaded.config, "PreToolUse", ["Bash"]).map((hook) => hook.source)).toEqual([
 			...userFiles,
 			...projectFiles,
 		]);
-		expect(commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"])).toHaveLength(3);
+		expect(commandsFor(loadHooks(cwd, false, home, HOOK_SETTINGS).config, "PreToolUse", ["Bash"])).toHaveLength(3);
+	});
+
+	it("runs no Claude Code or Codex project hook file until /harness switches that harness on", async () => {
+		vi.stubEnv("OCTOCODE_HOME", tmp());
+		const home = tmp();
+		const cwd = fs.realpathSync(tmp());
+		fs.mkdirSync(path.join(cwd, ".git"));
+		const markers = [".claude/settings.json", ".codex/hooks.json"].map((name, index) => {
+			const marker = path.join(cwd, `ran-${index}`);
+			const file = path.join(cwd, name);
+			fs.mkdirSync(path.dirname(file), { recursive: true });
+			const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(`require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`)}`;
+			fs.writeFileSync(file, JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command }] }] } }));
+			return marker;
+		});
+		// A session passes its settings' toggles, an empty map by default.
+		const off = loadHooks(cwd, true, home, { toggles: {} });
+		expect(off.config.SessionStart).toEqual([]);
+		expect(off.switchedOff).toBe(2);
+		const start = async (settings: Record<string, unknown>) => {
+			const fake = fakeHost(settings);
+			registerHooks(fake.api, {}, home);
+			const ctx = fakeCtx({ cwd, hasUI: false });
+			await fake.fire("session_start", { reason: "startup" }, ctx);
+			// The first prompt waits for the SessionStart hooks.
+			await fake.emit("before_agent_start", {}, ctx);
+			await fake.fire("session_shutdown", { reason: "quit" }, ctx);
+			return markers.filter((marker) => fs.existsSync(marker));
+		};
+		expect(await start({})).toEqual([]);
+		// The same files run once the user switches both harnesses on.
+		expect(loadHooks(cwd, true, home, HOOK_SETTINGS).config.SessionStart.flatMap((group) => group.hooks)).toHaveLength(
+			2,
+		);
+		expect(await start(HOOK_SETTINGS)).toEqual(markers);
 	});
 });

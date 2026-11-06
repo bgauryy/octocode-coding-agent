@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "../audit.ts";
+import { exposureMessage } from "../provenance/exposure.ts";
 import { auditLine, auditLines } from "../effect.ts";
 import {
 	type ActionClass,
@@ -68,6 +69,10 @@ export class PermissionTrail {
 	 * session file has no other record. Its entries still go to its own session when it has one.
 	 */
 	#toParent(entry: AuditEntry): void {
+		this.#send((nonce) => childAuditMessage(entry, nonce));
+	}
+
+	#send(message: (nonce: string) => string): void {
 		const ctx = this.#paintCtx;
 		if (!this.#isSubagent || !ctx?.hasUI) return;
 		if (this.#nonce === "") {
@@ -79,7 +84,7 @@ export class PermissionTrail {
 			return;
 		}
 		try {
-			ctx.ui.notify(childAuditMessage(entry, this.#nonce), "info");
+			ctx.ui.notify(message(this.#nonce), "info");
 		} catch {
 			// The RPC session is gone: the entry stays in the child's own log.
 		}
@@ -94,8 +99,10 @@ export class PermissionTrail {
 		this.#log.reset(this.#recorded(ctx));
 	}
 
-	flush(): void {
+	/** Writes the rollup; a subagent that says `exposed` also tells its parent whether it read anything untrusted (`exposureMessage`). */
+	flush(exposed?: boolean): void {
 		this.#log.flush(Date.now(), this.#mode(), this.#agent());
+		if (exposed !== undefined && this.#isSubagent) this.#send((nonce) => exposureMessage(exposed, nonce));
 	}
 
 	summary(): string | undefined {
@@ -155,7 +162,7 @@ export class PermissionTrail {
 	}
 
 	decided(request: PermissionRequest, verdict: Verdict, note?: string, snapshot?: Snapshot): Verdict {
-		const reasons = [...new Set(request.reasons ?? [])];
+		const reasons = [...new Set(request.reasons)];
 		const action = request.action ?? "call";
 		this.record({
 			action,

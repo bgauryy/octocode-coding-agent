@@ -1,22 +1,18 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import path from "node:path";
 import { mutatedPaths } from "../shared/file-input.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE_NOTE } from "../shared/fence.ts";
-import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/format.ts";
+import { formatAgo, formatDuration } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
-import { firstLine } from "../shared/util.ts";
-import { type Ask, asksLabel } from "./asks.ts";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
-import { STALLED_LISTED_MS } from "./store/limits.ts";
-import type { BudgetStanding, DeadLetter, Lease, LeaseConflict, Message, OpenQuestion } from "./model.ts";
+import type { DeadLetter, Lease, LeaseConflict, Message } from "./model.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { cutText } from "../../../../common/src/text.ts";
 
-/** Pure text and routing helpers for the team: recipients, what `coordinate list` prints, which paths a call edits. */
+/** Pure text and routing helpers for the team: recipients, refusals, which paths a call edits (`coordinate list`: `member-list.ts`). */
 
 /** A message body stays bounded when sent and when projected from another process into context. */
 export const MESSAGE_MAX_CHARS = 8_000;
@@ -152,14 +148,15 @@ export function resolveLockPath(cwd: string | undefined, entry: string): string 
 
 /**
  * The ids of `id`'s session tree: its topmost live ancestor and every live descendant of that ancestor. A broadcast
- * stays inside it, so it never reaches another user's session working in the same repository.
+ * stays inside it, so it never reaches another user's session working in the same repository. An ancestor that is not
+ * listed (left, or not joined yet) still roots the tree, so the children it started stay one team.
  */
-export function sessionTree(members: Member[], id: string): Set<string> {
+export function sessionTree(members: readonly Member[], id: string): Set<string> {
 	const byId = new Map(members.map((member) => [member.id, member]));
 	let root = id;
 	for (
 		let parent = byId.get(root)?.parentId, hops = 0;
-		parent && byId.has(parent) && hops < members.length;
+		parent && hops <= members.length;
 		parent = byId.get(root)?.parentId, hops++
 	)
 		root = parent;
@@ -176,10 +173,16 @@ export function sessionTree(members: Member[], id: string): Set<string> {
 	return tree;
 }
 
+/** The refusal a subagent gets for a recipient outside its session tree: only its parent reaches other trees. */
+const outsideTeam = (who: string, parentId: string | undefined) =>
+	`${who} is outside your team; ask your parent (${parentId}) to relay.`;
+
 /**
  * Who a message goes to: an id, a role held by one agent, `parent`, or `all` (every other agent in the session tree of
  * `scope`, the sender by default). Returns the recipients or an error text. `stalled` (`TeamStore.list` with `stalled`:
- * process running, not seen for `STALE_MS`) are reached by id or as `parent`, never by role or `all`.
+ * process running, not seen for `STALE_MS`) are reached by id or as `parent`, never by role or `all`. A subagent sender
+ * (`parentId` set, `from` an agent) reaches only its session tree, its parent included, plus `answering` (the sender of
+ * the message it replies to, who opened that conversation); anything beyond goes through its parent.
  */
 export function resolveTarget(
 	members: Member[],
@@ -188,10 +191,16 @@ export function resolveTarget(
 	parentId?: string,
 	scope = from,
 	stalled: readonly Member[] = [],
+	answering?: string,
 ): Member[] | string {
 	const wanted = to === "parent" ? parentId : to;
-	const named = [...members, ...stalled].find((member) => member.id !== from && member.id === wanted);
-	if (named && to !== "all") return [named];
+	const everyone = [...members, ...stalled];
+	const confined = parentId !== undefined && !outside(from);
+	// Built from stalled members too, so a silent parent still links its children to the tree.
+	const team = confined ? sessionTree(everyone, scope) : undefined;
+	const inTeam = (member: Member) => !team || team.has(member.id) || member.id === parentId || member.id === answering;
+	const named = everyone.find((member) => member.id !== from && member.id === wanted);
+	if (named && to !== "all") return inTeam(named) ? [named] : outsideTeam(named.id, parentId);
 	const others = members.filter((member) => member.id !== from);
 	if (to === "all") {
 		const tree = sessionTree(members, scope);
@@ -200,94 +209,18 @@ export function resolveTarget(
 			? reached
 			: "No other agents are in your session tree (the top session and every subagent under it).";
 	}
-	const byRole = others.filter((member) => member.role === wanted);
+	const roleHolders = others.filter((member) => member.role === wanted);
+	const byRole = roleHolders.filter(inTeam);
 	if (byRole.length === 1) return byRole;
-	const known = others.map((member) => member.id).join(", ") || "none";
+	if (byRole.length === 0 && roleHolders.length > 0) return outsideTeam(`Every "${to}"`, parentId);
+	const known =
+		others
+			.filter(inTeam)
+			.map((member) => member.id)
+			.join(", ") || "none";
 	return byRole.length > 1
 		? `"${to}" matches several agents (${known}); use one id.`
 		: `No live agent "${to}". Live agents: ${known}.`;
-}
-
-/**
- * The `coordinate list` text: one block per agent with join and last-seen times, unanswered messages and reserved paths.
- * `asks` (by agent id; `/agents` passes it) adds each subagent's questions to its parent. `questions` (`Team.openQuestions`)
- * names each unanswered message by id and sender; without it only their count is shown. `standing` adds the requests of a
- * child this agent started against its limit.
- */
-export function describeMembers(
-	members: Member[],
-	selfId: string | undefined,
-	now = Date.now(),
-	asks?: ReadonlyMap<string, readonly Ask[]>,
-	questions?: readonly OpenQuestion[],
-	standing?: (id: string) => BudgetStanding | undefined,
-	stalled: readonly Member[] = [],
-): string {
-	const gone = stalled.filter((member) => now - member.updatedAt > STALLED_LISTED_MS);
-	if (members.length === 0 && gone.length === 0) return "No agents have joined in this repository.";
-	const here = members.find((member) => member.id === selfId)?.checkout;
-	// Goals, activity and paths come from other processes' rows: untrusted text the model reads.
-	const silent = gone.map(
-		(member) =>
-			`${member.id} · ${member.role} · stalled${member.parentId ? ` · parent ${member.parentId}` : ""}\n  pid ${member.pid} runs, but it has not been seen for ${formatAgo(now - member.updatedAt)} (last status ${member.status}): suspended or hung. It keeps its mail and its name still reaches it; it is not stopped.`,
-	);
-	return visibleControls(
-		[
-			...members.map((member) => {
-				const you = member.id === selfId ? " (you)" : "";
-				const parent = member.parentId ? ` · parent ${member.parentId}` : "";
-				const model = member.model ? ` · ${member.model}` : "";
-				const doing = member.status === "working" ? (member.activity ?? "working") : "idle";
-				const asked = asksLabel(asks?.get(member.id));
-				const waiting = (asks?.get(member.id) ?? []).filter((ask) => !ask.answer);
-				const output =
-					member.lastOutputAt === undefined ? "" : ` · last output ${formatAgo(now - member.lastOutputAt)}`;
-				// Another worktree of the repository: its folder name says where, and its locks are paths in that checkout.
-				const elsewhere = here && member.checkout && member.checkout !== here;
-				const worktree = elsewhere ? ` · worktree ${path.basename(member.checkout!)}` : "";
-				const budget = standing?.(member.id);
-				const requests = budget ? ` · ${budget.used} of ${budget.soft} requests, stops at ${budget.hard}` : "";
-				return [
-					`${member.id}${you} · ${member.role} · ${member.status}${model}${parent}${worktree}`,
-					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
-					...(member.cwd ? [`  in ${member.cwd}${member.branch ? ` @ ${member.branch}` : ""}`] : []),
-					`  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
-					`  ${firstLine(doing)}${output}`,
-					...awaiting(member, now, questions),
-					...(asked ? [`  ${asked} to its parent`] : []),
-					...waiting.map(
-						(ask) =>
-							`    #${ask.id} waiting on its parent (${formatAgo(now - ask.askedAt)}): ${cutText(firstLine(ask.text), 80, { chars: true })}`,
-					),
-					...(member.locks?.length
-						? [
-								`  holds ${member.locks.join(", ")}${elsewhere ? ` (in worktree ${path.basename(member.checkout!)})` : ""}`,
-							]
-						: []),
-				].join("\n");
-			}),
-			...silent,
-		].join("\n"),
-	);
-}
-
-/** Questions shown per member in `coordinate list`; the rest are counted. */
-const QUESTIONS_SHOWN = 5;
-
-/** `member`'s unanswered questions: a count line, then `#id from sender (age): first line` for the oldest few. */
-function awaiting(member: Member, now: number, questions: readonly OpenQuestion[] | undefined): string[] {
-	if (!member.pending) return [];
-	const head = `  ${member.pending} message${member.pending === 1 ? "" : "s"} awaiting its reply`;
-	const mine = questions?.filter((question) => question.recipient === member.id) ?? [];
-	if (mine.length === 0) return [head];
-	const shown = mine
-		.slice(0, QUESTIONS_SHOWN)
-		.map(
-			(question) =>
-				`    #${question.id} from ${question.from} (${formatAgo(now - question.at)}): ${cutText(firstLine(question.text), 80, { chars: true })}`,
-		);
-	const more = mine.length > QUESTIONS_SHOWN ? [`    (${mine.length - QUESTIONS_SHOWN} more)`] : [];
-	return [`${head}:`, ...shown, ...more];
 }
 
 /** How long a lease has been held, for refusals: `locked 12m ago`. */

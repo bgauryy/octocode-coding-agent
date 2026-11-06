@@ -2,6 +2,7 @@ import type { Component } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
+import { notify } from "../shared/commands.ts";
 import { plural } from "../shared/render/text.ts";
 import { STATUS } from "../shared/status.ts";
 import { needsYou } from "./panel-attention.ts";
@@ -9,6 +10,7 @@ import { FINISHED_MS, safe } from "./panel-compact.ts";
 import { type AgentEnd, FinishedTracker } from "./panel-finished.ts";
 import { widgetLines } from "./panel-layout.ts";
 import { PanelMotion } from "./panel-motion.ts";
+import { TeamOutage } from "./panel-outage.ts";
 import { descendants, liveMembers, roster } from "./panel-roster.ts";
 import { panelState } from "./panel-state.ts";
 import { trafficRow } from "./panel-traffic.ts";
@@ -29,6 +31,8 @@ export class AgentsView {
 	private members: Member[] = [];
 	private traffic: Traffic[] = [];
 	private readonly finished = new FinishedTracker();
+	/** Says a team database failure and its recovery in the messages list; the footer keeps only the short state. */
+	private readonly outage = new TeamOutage();
 	private shown = false;
 	/** Last footer text sent: an unchanged one is not sent again on every tick. */
 	private status: string | undefined;
@@ -110,6 +114,7 @@ export class AgentsView {
 		this.members = [];
 		this.traffic = [];
 		this.finished.clear();
+		this.outage.reset();
 	}
 
 	private setStatus(ctx: ExtensionContext, text: string | undefined, tone?: StatusTone): void {
@@ -134,6 +139,8 @@ export class AgentsView {
 	private paint(ctx: ExtensionContext): void {
 		try {
 			const { members, traffic, error, retrying } = this.team.view;
+			const said = this.outage.next(error, retrying);
+			if (said) notify(ctx.ui, said.text, said.level);
 			this.members = members;
 			this.traffic = traffic;
 			const self = this.team.id;
@@ -144,12 +151,9 @@ export class AgentsView {
 			const visible = live.length > 0 || this.finished.finished.some((entry) => now - entry.at <= FINISHED_MS);
 			if (error) {
 				// A foreign database turns the team off for this session; a locked one is retried on the next tick.
-				// Either way the widget keeps its state, and mounts once a read succeeds.
-				this.setStatus(
-					ctx,
-					retrying ? `team retrying: ${safe(error, 80)}` : `team off: ${safe(error, 80)}`,
-					retrying ? "warning" : "error",
-				);
+				// Either way the widget keeps its state, and mounts once a read succeeds. The footer shows the state; the
+				// error itself went to the messages list above.
+				this.setStatus(ctx, retrying ? "team retrying" : "team off", retrying ? "warning" : "error");
 				this.showBackground(ctx);
 				return;
 			}

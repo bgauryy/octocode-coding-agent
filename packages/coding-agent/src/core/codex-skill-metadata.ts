@@ -43,8 +43,8 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 	function blank(node: unknown): boolean {
 		return node == null || (isScalar(node) && node.type === "PLAIN" && node.source === "");
 	}
-	function optional(node: unknown): boolean {
-		node = resolve(node);
+	function optional(raw: unknown): boolean {
+		const node = resolve(raw);
 		if (node == null) return true;
 		if (!isScalar(node) || node.type !== "PLAIN") return false;
 		if (node.tag && node.tag !== "tag:yaml.org,2002:null") return false;

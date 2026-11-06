@@ -11,7 +11,9 @@ import { BUILTIN_FEATURE_IDS } from "../features/builtin-ids.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import { hostInstalledPlugins } from "./host-plugins.ts";
-import { hostSkillItems } from "../../octocode/harness/host-skills.ts";
+import { vendorItems } from "../../octocode/harness/vendor-items.ts";
+import { discoveryInput } from "../discovery/service.ts";
+import { harnessStatuses } from "../discovery/vendors/index.ts";
 import { EMPTY_INVENTORY, type Inventory, type InventoryHost, type InventoryItem } from "./inventory-types.ts";
 import { count, pluginItems } from "../../octocode/harness/plugin-items.ts";
 
@@ -29,6 +31,7 @@ export { EMPTY_INVENTORY, type Inventory, type InventoryHost, type InventoryItem
 
 /** Headings in display order. */
 export const HOST_TITLES: Record<InventoryHost, string> = {
+	harness: "Harnesses",
 	claude: "Claude Code",
 	codex: "Codex",
 	octocode: "Octocode",
@@ -36,7 +39,26 @@ export const HOST_TITLES: Record<InventoryHost, string> = {
 	mcp: "MCP servers",
 	skills: "Skills",
 };
-function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, home?: string): InventoryItem[] {
+/**
+ * A switched-off harness's hooks do not load, whatever their own switches say: their rows read off and name the harness.
+ * Their own switches stay editable and apply once the harness is on.
+ */
+function harnessOff(item: InventoryItem): InventoryItem {
+	const title = HOST_TITLES[item.host];
+	return {
+		...item,
+		on: false,
+		detail: `off: ${title} harness switched off${item.detail ? ` · ${item.detail}` : ""}`,
+	};
+}
+
+function hookItems(
+	settings: Settings,
+	cwd: string,
+	projectTrusted: boolean,
+	hostOn: (host: ToggleHost) => boolean,
+	home?: string,
+): InventoryItem[] {
 	const toggles = settings.toggles;
 	const { config } = loadHooks(cwd, projectTrusted, home, { plugins: effectivePlugins(settings, cwd) });
 	const byHost = new Map<ToggleHost, Map<string, { project: boolean; label: string; hooks: InventoryItem[] }>>();
@@ -74,7 +96,8 @@ function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, hom
 	for (const [host, files] of byHost) {
 		const hostId = hookHostToggleId(host);
 		const total = [...files.values()].reduce((sum, file) => sum + file.hooks.length, 0);
-		items.push({
+		const hostItems: InventoryItem[] = [];
+		hostItems.push({
 			id: hostId,
 			host,
 			kind: "hooks",
@@ -85,7 +108,7 @@ function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, hom
 		});
 		for (const [source, file] of files) {
 			const id = hookSourceToggleId(host, source);
-			items.push(
+			hostItems.push(
 				{
 					id,
 					host,
@@ -100,6 +123,7 @@ function hookItems(settings: Settings, cwd: string, projectTrusted: boolean, hom
 				...file.hooks,
 			);
 		}
+		items.push(...(hostOn(host) ? hostItems : hostItems.map(harnessOff)));
 	}
 	const trusted = new Set(hookFiles(cwd, projectTrusted, home));
 	for (const file of hookFiles(cwd, true, home).filter((candidate) => !trusted.has(candidate)))
@@ -212,7 +236,17 @@ export async function buildInventory(options: {
 }): Promise<Inventory> {
 	const notes: string[] = [];
 	const configured = new Set((options.settings.plugins ?? []).map((entry) => path.resolve(entry.path)));
+	const statuses = harnessStatuses(
+		discoveryInput({
+			cwd: options.cwd,
+			agentDir: options.agentDir,
+			projectTrusted: options.projectTrusted,
+			...(options.home ? { home: options.home } : {}),
+			...(options.settings.toggles ? { toggles: options.settings.toggles } : {}),
+		}),
+	);
 	const items = [
+		...vendorItems(statuses, options.settings.toggles),
 		...pluginItems(
 			options.settings,
 			options.cwd,
@@ -233,9 +267,14 @@ export async function buildInventory(options: {
 				detail: `${plugin.enabledThere ? "enabled" : "disabled"} there · not added to Octocode; switch on to add it (adding approves its hooks and MCP servers)`,
 				install: { path: plugin.path, protocol: plugin.protocol },
 			})),
-		...hookItems(options.settings, options.cwd, options.projectTrusted, options.home),
+		...hookItems(
+			options.settings,
+			options.cwd,
+			options.projectTrusted,
+			(host) => statuses.find((status) => status.id === host)?.on !== false,
+			options.home,
+		),
 		...(await resourceItems(options.manager, options.cwd, options.agentDir)),
-		...hostSkillItems(options.cwd, options.agentDir, options.projectTrusted, options.home),
 		...mcpItems(options.mcp ?? [], options.home),
 	];
 	const ids = new Set(items.map((item) => item.id));
@@ -284,7 +323,7 @@ export function renderInventory(inventory: Inventory, items: readonly InventoryI
 	if (full && inventory.notes.length) lines.push("", "Diagnostics:", ...inventory.notes.map((note) => `  ${note}`));
 	lines.push(
 		"",
-		"/harness enable|disable <id|name>... [--local] [--force] · MCP switches apply now; /reload applies the rest",
+		"/harness enable|disable <id|name>... [--project] [--force] · MCP switches (and a harness's MCP servers) apply now; /reload applies the rest",
 	);
 	return lines.join("\n");
 }

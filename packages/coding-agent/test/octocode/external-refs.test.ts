@@ -22,7 +22,11 @@ vi.mock("../../src/octocode/shared/references.ts", async (importOriginal) => ({
 }));
 
 const managers: ExternalAgents[] = [];
-beforeEach(() => vi.stubEnv("OCTOCODE_HOME", tmp()));
+beforeEach(() => {
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	// The tool is declared only when something is discoverable; these tests exercise it, not the machine's PATH.
+	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
+});
 afterEach(async () => {
 	await Promise.all(managers.splice(0).map((manager) => manager.reset()));
 	vi.restoreAllMocks();
@@ -55,11 +59,6 @@ async function connected(withReferences = true) {
 	const prompt = (input: Record<string, unknown>) => manager.call({ action: "prompt", id: "peer", ...input }, ctx);
 	return { ctx, backend, policy, context, manager, prompt };
 }
-
-// The tool is declared only when something is discoverable; these tests exercise it, not the machine's PATH.
-beforeEach(() => {
-	vi.spyOn(ExternalAgents.prototype, "discoverable").mockReturnValue(true);
-});
 
 describe("external prompt refs", () => {
 	it("expands refs before the send hook and the permission dialog, so both see the text the peer gets", async () => {

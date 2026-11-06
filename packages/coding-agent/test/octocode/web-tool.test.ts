@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
@@ -15,6 +15,7 @@ import { search } from "../../src/octocode/web/search.ts";
 import { registerWebTool, webSummary } from "../../src/octocode/web/web.ts";
 import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
 import { asText, noisyPng, pixelSize, tmp } from "./helpers.ts";
+import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "./fake-research-roles.ts";
 
 type ToolResult = {
 	content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
@@ -372,23 +373,25 @@ describe("web tool", () => {
 		await expect(tool.execute("id", {})).rejects.toThrow("Provide url or query.");
 	});
 
-	it("names the Octocode tools this session has for reading the saved page, clasify first", async () => {
+	it("names the research server's search and reader tools this session has for reading the saved page", async () => {
 		vi.stubEnv("OCTOCODE_HOME", tmp());
+		publishRoles([RESEARCH_ENTRY]);
+		onTestFinished(() => publishRoles([]));
 		const base = await serve((_req, res) => {
 			res.writeHead(200, { "content-type": "text/plain" });
 			res.end("y".repeat(30_000));
 		});
 		const call = async (active: string[]) =>
 			text(await webTool(active).execute("id", { url: `${base}/`, maxChars: 1_000 }));
-		const all = await call(["mcp__octocode__clasify", "mcp__octocode__localSearch", "mcp__octocode__localFetch"]);
+		const all = await call([RESEARCH.readOnly, RESEARCH.search, RESEARCH.reader]);
 		expect(all).toMatch(
-			/is in \/\S+: screen a bounded unread selection with mcp__octocode__clasify \(source \{tool:"localFetch", query:\{path:<this file>, ranges:<observed line ranges>\}\}, a noul question about one stated fact; typed answers only, read deciding evidence\); search literal text with mcp__octocode__localSearch \(headings: regex "\^#\{1,3\} "\); read line ranges with mcp__octocode__localFetch\]$/,
+			/is in \/\S+: search it with `mcp__research__search_code`; read it by line range with `mcp__research__read_file`\]$/,
 		);
 		const saved = /is in (\/\S+):/.exec(all)![1];
 		expect(fs.readFileSync(saved, "utf8")).toBe("y".repeat(30_000));
-		// Without the classification provider the local tools remain; without Octocode tools the generic wording stands.
-		expect(await call(["mcp__octocode__localSearch", "mcp__octocode__localFetch"])).toMatch(
-			/is in \/\S+: search literal text with mcp__octocode__localSearch \(headings: regex "\^#\{1,3\} "\); read line ranges with mcp__octocode__localFetch\]$/,
+		// Only the declared role tools are named; without them the generic wording stands.
+		expect(await call([RESEARCH.reader])).toMatch(
+			/is in \/\S+: read it by line range with `mcp__research__read_file`\]$/,
 		);
 		expect(await call(["read", "bash"])).toMatch(/is in \S+: search it or read it by line range\]$/);
 	});
@@ -797,7 +800,8 @@ describe("web images", () => {
 		const base2 = await serve((_req, res) => {
 			res.writeHead(200, { "content-type": "image/webp" });
 			const chunk = Buffer.alloc(1024 * 1024, 1);
-			const write = (count: number) => {
+			const write = (written: number) => {
+				let count = written;
 				while (count < 8) {
 					count += 1;
 					if (!res.write(chunk)) return void res.once("drain", () => write(count));

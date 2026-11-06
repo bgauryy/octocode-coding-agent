@@ -24,12 +24,15 @@ let server: ModelServer | undefined;
 let agent: AcpAgent | undefined;
 let sessions: SessionObserver | undefined;
 
+function expectNoLiveSessions(observer: SessionObserver | undefined): void {
+	expect(observer?.started().filter(processAlive)).toEqual([]);
+}
+
 afterEach(async () => {
 	await agent?.stop();
 	// The agent process exiting does not end the session workers it started: a worker closing its session still writes
 	// into the sandbox (database, session files). Remove the folder only after every one of them is gone.
-	if (sessions)
-		await vi.waitFor(() => expect(sessions?.started().filter(processAlive)).toEqual([]), { timeout: 30_000 });
+	if (sessions) await vi.waitFor(() => expectNoLiveSessions(sessions), { timeout: 30_000 });
 	await server?.close();
 	sandbox?.cleanup();
 	agent = undefined;

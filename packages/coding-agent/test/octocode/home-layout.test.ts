@@ -7,9 +7,8 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { globalPaths, HOME_NAMES, sessionDir, sessionDirName, workspacePaths } from "../../src/octocode/shared/home.ts";
-import { extraSkillDirs } from "../../src/octocode/skills.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, vendorSkillFiles } from "./helpers.ts";
 
 /** A git repo with `files` written under it, and a nested `pkg/src` folder to start sessions from. */
 function repo(files: Record<string, string> = {}): { root: string; sub: string } {
@@ -160,7 +159,7 @@ describe("profiles, hooks and skills in .octocode", () => {
 		const home = tmp();
 		const { sub } = repo({ ".octocode/skills/s/SKILL.md": "---\nname: s\ndescription: Root skill\n---\nBody" });
 		// Core discovery owns the folder, so the `skills` patterns and project precedence apply to it.
-		expect(extraSkillDirs(sub, home, true, {})).toEqual([]);
+		expect(vendorSkillFiles(sub, home, true, {})).toEqual([]);
 		const names = async (projectTrusted: boolean) => {
 			const agentDir = tmp();
 			const settingsManager = SettingsManager.create(sub, agentDir, { projectTrusted });

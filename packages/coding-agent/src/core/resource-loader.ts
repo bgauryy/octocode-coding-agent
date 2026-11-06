@@ -209,6 +209,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 						cwd: this.cwd,
 						agentDir: this.agentDir,
 						contextRoot: this.contextRoot,
+						projectTrusted: this.settingsManager.isProjectTrusted(),
+						toggles: this.settingsManager.getToggles(),
 					}),
 		};
 		const resolvedAgentsFiles = this.agentsFilesOverride ? this.agentsFilesOverride(agentsFiles) : agentsFiles;

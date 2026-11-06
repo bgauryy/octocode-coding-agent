@@ -25,7 +25,7 @@ export function createEventBus(): EventBusController {
 				try {
 					await handler(data);
 				} catch (err) {
-					console.error(`Event handler error (${channel}):`, err);
+					process.stderr.write(`Event handler error (${channel}): ${String(err)}\n`);
 				}
 			};
 			let handlers = channels.get(channel);

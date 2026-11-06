@@ -65,12 +65,12 @@ describe("Pi skills", () => {
 		expect(trusted.getThemes().themes.map((theme) => theme.name)).toEqual(["pi-project-theme"]);
 	});
 
-	it("ranks a Pi project skill above an Octocode global skill of the same name, and an Octocode project skill above both", async () => {
+	it("ranks an Octocode skill of any scope above a Pi project skill of the same name, project before global", async () => {
 		skillFile(join(sandbox.agentDir, "skills"), "dup", { description: "octocode global" });
 		skillFile(join(sandbox.cwd, ".pi", "skills"), "dup", { description: "pi project" });
 		const loader = createLoader(sandbox, true);
 		await loader.reload();
-		expect(loader.getSkills().skills.map((skill) => skill.description)).toEqual(["pi project"]);
+		expect(loader.getSkills().skills.map((skill) => skill.description)).toEqual(["octocode global"]);
 		skillFile(join(sandbox.cwd, ".octocode", "skills"), "dup", { description: "octocode project" });
 		await loader.reload();
 		expect(loader.getSkills().skills.map((skill) => skill.description)).toEqual(["octocode project"]);

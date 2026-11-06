@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 it("observes final failures without continuing, running Stop, or observing successful/aborted turns", async () => {
@@ -26,7 +26,7 @@ it("observes final failures without continuing, running Stop, or observing succe
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);

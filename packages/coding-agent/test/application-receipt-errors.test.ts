@@ -35,7 +35,7 @@ describe("application receipt persistence failures", () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	test("go to the subscribers' error handler, redacted and once, instead of over the terminal", async () => {
-		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const service = getApplicationPort(session("receipt-handler"));
 		service.setReceiptStore(failingStore);
 		const reported: string[] = [];
@@ -61,7 +61,7 @@ describe("application receipt persistence failures", () => {
 	});
 
 	test("interactive mode shows the failure as it is, not as a display failure", async () => {
-		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const agentSession = session("receipt-interactive");
 		const showError = vi.fn();
 		const host = createFakeHost({
@@ -88,7 +88,7 @@ describe("application receipt persistence failures", () => {
 	});
 
 	test("fall back to stderr once when no subscriber has a handler", async () => {
-		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const service = getApplicationPort(session("receipt-stderr"));
 		service.setReceiptStore(failingStore);
 		service.subscribe(() => {});

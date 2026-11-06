@@ -5,6 +5,7 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
+import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 
 it("delivers the persisted provider error once at the real session settlement boundary", async () => {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "stop-failure-session-"));
@@ -24,7 +25,7 @@ it("delivers the persisted provider error once at the real session settlement bo
 		}),
 	);
 	const harness = await createHarness({
-		settings: { retry: { enabled: false } },
+		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		extensionFactories: [
 			(api) => {
 				registerHooks(api, {}, home);

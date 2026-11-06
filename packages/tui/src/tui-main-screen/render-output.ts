@@ -1,4 +1,5 @@
 import { isImageLine } from "../terminal-image.ts";
+import { trimTrailingBlanks } from "../tui/trailing-blanks.ts";
 import { getKittyImageReservedRows } from "./kitty-images.ts";
 import type { BoundedTerminalWriter } from "./terminal-writer.ts";
 
@@ -68,4 +69,52 @@ export function cursorMoveSequence(rowDelta: number, targetCol: number): string 
 	// Move to absolute column (1-indexed)
 	buffer += `\x1b[${targetCol + 1}G`;
 	return buffer;
+}
+
+/**
+ * Write rows `firstChanged` to `renderEnd`, the cursor already on `firstChanged`, skipping unchanged rows between
+ * changed ones. Returns why the frame must replay the transcript instead when a Kitty image block cannot be redrawn
+ * in place, otherwise undefined.
+ */
+export function appendChangedRows(
+	output: BoundedTerminalWriter,
+	frame: {
+		newLines: string[];
+		previousLines: string[];
+		firstChanged: number;
+		renderEnd: number;
+		viewportTop: number;
+		height: number;
+	},
+): string | undefined {
+	const { newLines, previousLines, firstChanged, renderEnd, viewportTop, height } = frame;
+	for (let i = firstChanged; i <= renderEnd; i++) {
+		if (i > firstChanged) output.append("\r\n");
+		const line = newLines[i];
+		const isImage = isImageLine(line);
+		const imageReservedRows = isImage ? getKittyImageReservedRows(newLines, i, renderEnd) : 1;
+		if (imageReservedRows > 1) {
+			const imageStartScreenRow = i - viewportTop;
+			if (imageStartScreenRow < 0 || imageStartScreenRow + imageReservedRows > height) {
+				return `kitty image pre-clear would scroll (${imageStartScreenRow} + ${imageReservedRows} > ${height})`;
+			}
+
+			output.append("\x1b[2K");
+			for (let row = 1; row < imageReservedRows; row++) {
+				output.append("\r\n\x1b[2K");
+			}
+			output.append(`\x1b[${imageReservedRows - 1}A`);
+			output.append(line);
+			output.append(`\x1b[${imageReservedRows - 1}B`);
+			i += imageReservedRows - 1;
+			continue;
+		}
+
+		// An unchanged row between changed ones is already on screen: step over it.
+		if (i < previousLines.length && line === previousLines[i] && !isImage) continue;
+		output.append("\x1b[2K"); // Clear current line
+		output.append(isImage ? line : trimTrailingBlanks(line));
+	}
+
+	return undefined;
 }

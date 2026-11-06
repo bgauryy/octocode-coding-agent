@@ -82,7 +82,6 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 			tools: new Map(),
 			messageRenderers: new Map(),
 			commands: new Map(),
-			flags: new Map(),
 			shortcuts: new Map(),
 		};
 	}
@@ -260,7 +259,6 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 			tools: new Map(),
 			messageRenderers: new Map(),
 			commands: new Map(),
-			flags: new Map(),
 			shortcuts: new Map(),
 		};
 
@@ -310,7 +308,6 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 			tools: new Map(),
 			messageRenderers: new Map(),
 			commands: new Map(),
-			flags: new Map(),
 			shortcuts: new Map(),
 		};
 
@@ -342,7 +339,6 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 			tools: new Map(),
 			messageRenderers: new Map(),
 			commands: new Map(),
-			flags: new Map(),
 			shortcuts: new Map(),
 		};
 

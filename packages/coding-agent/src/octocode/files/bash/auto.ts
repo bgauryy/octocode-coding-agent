@@ -1,12 +1,15 @@
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import { envInt } from "../../../../../common/src/env.ts";
-import { isKnownLongCommand, LONG_COMMAND_AFTER_SECONDS } from "./long-commands.ts";
+import { isKnownLongCommand, LONG_COMMAND_AFTER_SECONDS, neverExits } from "./long-commands.ts";
 import { effectiveTimeout } from "./results.ts";
 
 /** When a foreground command moves to the background by itself: the threshold, and which calls it applies to. */
 
 /** Overrides the `bashBackgroundAfterSeconds` setting; 0 turns the automatic move off. */
 export const BACKGROUND_AFTER_ENV = "OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS";
+
+/** The longest a deliberate foreground wait lasts before the command moves to the background (user decision, 2026-11-05). */
+const DELIBERATE_MAX_SECONDS = 600;
 
 /** A command starting with `sleep` is stopped at its deadline, not moved to the background (as Claude Code does). */
 const SLEEP_COMMAND = /^\s*sleep(?:\s|$)/;
@@ -26,18 +29,27 @@ export function backgroundAfterSeconds(setting: number | undefined, env: NodeJS.
  * threshold is off or not shorter than the call's own deadline. A deliberate wait is also stopped at its deadline
  * (`deliberate`) instead of moving: `background: false` means the call wants its answer within that timeout.
  * A known long command (test runner, `yarn run check`, build, server) moves after `LONG_COMMAND_AFTER_SECONDS` when that is
- * sooner than the threshold; every other command keeps the threshold.
+ * sooner than the threshold; every other command keeps the threshold. A command that never exits by itself (`tail -f`) is
+ * never a deliberate wait: waiting for it only runs out its timeout, so it moves like any other long command. A deliberate
+ * wait longer than `DELIBERATE_MAX_SECONDS` waits that long and then moves (`capped`), as an automatic move does.
  */
 export function foregroundPlan(
 	params: { command: string; timeout?: unknown; background?: boolean },
 	afterSetting: number | undefined,
 	env: NodeJS.ProcessEnv = process.env,
-): { timeout: number; clamped: boolean; movable: boolean; auto: boolean; deliberate: boolean } {
+): { timeout: number; clamped: boolean; movable: boolean; auto: boolean; deliberate: boolean; capped: boolean } {
 	const { seconds, clamped } = effectiveTimeout(params.timeout);
 	const movable = !SLEEP_COMMAND.test(params.command);
 	const base = backgroundAfterSeconds(afterSetting, env);
 	const after = base > 0 && isKnownLongCommand(params.command) ? Math.min(base, LONG_COMMAND_AFTER_SECONDS) : base;
-	const deliberate = params.background === false && typeof params.timeout === "number" && params.timeout > 0;
+	const asked =
+		params.background === false &&
+		typeof params.timeout === "number" &&
+		params.timeout > 0 &&
+		!neverExits(params.command);
+	const capped = asked && movable && seconds > DELIBERATE_MAX_SECONDS;
+	if (capped) return { timeout: DELIBERATE_MAX_SECONDS, clamped, movable, auto: true, deliberate: false, capped };
+	const deliberate = asked;
 	const auto = movable && !deliberate && after > 0 && after < seconds;
-	return { timeout: auto ? after : seconds, clamped, movable, auto, deliberate };
+	return { timeout: auto ? after : seconds, clamped, movable, auto, deliberate, capped };
 }

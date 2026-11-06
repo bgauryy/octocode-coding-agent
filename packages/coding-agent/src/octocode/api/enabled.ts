@@ -15,16 +15,17 @@ export function sessionApiEnabled(agentDir: string = getAgentDir()): boolean {
 }
 
 /**
- * The mode a turn an API client starts on an idle session is held to (the `sessionApiTurnPermission` setting): `workspace`
- * by default, so a session in `full` still asks about what `workspace` asks about, and `session` (the old behavior) keeps
- * the session's own mode. Read from the global settings only: a project file must not loosen what the user set. A
- * missing, unknown or unreadable value holds the turn.
+ * The mode a turn an API client starts is held to (the `sessionApiTurnPermission` setting): none by default, so the turn
+ * runs in the session's own mode (a session in `full` takes the message and runs the turn unasked, audited, and a remote
+ * agent is never stuck on a prompt), and `workspace` holds API-started turns, and messages that steer a running turn,
+ * to `workspace` even in a `full` session. Read from the global settings only: a project file must not change what the
+ * user set. Only an explicit `workspace` holds the turn.
  */
 export function sessionApiTurnCeiling(agentDir: string = getAgentDir()): TurnCeiling | undefined {
 	try {
 		const settings = SettingsManager.create(agentDir, agentDir, { projectTrusted: false }).getGlobalSettings();
-		return settings.sessionApiTurnPermission === "session" ? undefined : "workspace";
+		return settings.sessionApiTurnPermission === "workspace" ? "workspace" : undefined;
 	} catch {
-		return "workspace";
+		return undefined;
 	}
 }

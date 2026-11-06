@@ -266,7 +266,7 @@ export function setExtensionHeader(
 	}
 
 	// Find the index of the current header in the header container
-	const currentHeader = host.customHeader || host.builtInHeader;
+	const currentHeader = host.customHeader ?? host.builtInHeader;
 	const index = host.headerContainer.children.indexOf(currentHeader);
 
 	if (factory) {

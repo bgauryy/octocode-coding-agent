@@ -27,7 +27,7 @@ describe("an update listener that fails while a tool runs", () => {
 	beforeEach(() => {
 		unhandled.length = 0;
 		process.on("unhandledRejection", onUnhandled);
-		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	});
 	afterEach(() => {
 		process.off("unhandledRejection", onUnhandled);
@@ -54,7 +54,9 @@ describe("an update listener that fails while a tool runs", () => {
 		expect(outcome.isError).toBe(false);
 		expect(outcome.result.content).toEqual([{ type: "text", text: "done" }]);
 		expect(unhandled).toEqual([]);
-		expect(console.error).toHaveBeenCalledWith("Tool update listener error (work):", expect.any(Error));
+		expect(process.stderr.write).toHaveBeenCalledWith(
+			expect.stringContaining("Tool update listener error (work): Error"),
+		);
 	});
 
 	it("keeps a failing tool's own error too", async () => {

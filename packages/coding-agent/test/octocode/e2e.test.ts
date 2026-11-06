@@ -253,8 +253,12 @@ describe("with Octocode MCP (default)", () => {
 		// growing (M14: never trim it to fit a ceiling), so the cap now covers only our own text.
 		// 43_100 (2026-11-04, own 42,457 of 92,668; MCP server text 50,212, uncapped and logged): the 88_000 headroom over
 		// 86,642 (about 1.6%), applied to our own text.
+		// 45_700 (2026-11-05, B55): the bash description's CLI guide with the probed host, requested by the user, measured
+		// +2,569 chars (42,919 -> 45,488 in the same run setup).
+		// 46_100 (2026-11-05, B59): the octocode CLI research line, fallback clause and CLI-guide Scope clause, requested by
+		// the user, measured +410 in main; the rest from concurrent B60/B61 edits.
 		expect(ownChars, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
-			43_100,
+			46_100,
 		);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
@@ -282,17 +286,21 @@ describe("with Octocode MCP (default)", () => {
 		// The extension's client connects before the first request is built, so the guidance and the server's contract
 		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
 		// The research section routes code search to the server, and the bash search rule is left out.
-		expect(turn.systemPrompt).toContain("Use Octocode MCP (`mcp__octocode__*`)");
-		expect(turn.systemPrompt).toContain("block routes each question");
+		expect(turn.systemPrompt).toContain("Use the research tools (`mcp__octocode__*`)");
+		expect(turn.systemPrompt).toContain("descriptions route each question");
 		expect(turn.systemPrompt).not.toContain("Search with bash");
-		expect(turn.systemPrompt).toMatch(/<mcps>\n[^\n]*\n<mcp name="octocode" tools="mcp__octocode__\*">\n\/\*\* \S/);
+		expect(turn.systemPrompt).toMatch(/<mcps>\n[^\n]*\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
+		// Declared mode: the block is the server's instructions; the tools carry their own description and full schema.
+		expect(turn.systemPrompt).not.toContain("declare namespace");
+		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
+		expect(JSON.stringify(declared?.parameters)).toContain('"matchString"');
 		// `<tools>` lists native tools one by one and each described server once by its purpose (stated there, not in
 		// its `<mcps>` block); the server's tools are in `<mcps>`.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
 		expect(toolLines.every((line) => /^- [\w-]+(?:__\*)?: \S/.test(line))).toBe(true);
 		expect(toolLines).toContain(
-			"- mcp__octocode__*: Every code search and read: this checkout (localSearch, structureSearch, localFetch, lspSearch, astSearch), GitHub repositories and package registries; use before bash or web.",
+			"- mcp__octocode__*: Code search and read; each tool's description says when to use it. Use before bash or web.",
 		);
 		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
 			expect(
@@ -448,7 +456,9 @@ describe("with Octocode MCP (default)", () => {
 	}, 60_000);
 
 	it("gives the model a page over 20 KB of UTF-8 whole, with no truncation marker", async () => {
-		// Octocode budgets pages in characters, so a page of non-ASCII source is far over 20 KB of UTF-8.
+		// The server measures a page by its serialized JSON size: at its default 20,000 budget this non-ASCII page comes
+		// to about 10,000 characters and just under 20 KB of UTF-8. A 40,000 budget makes one page well over 20 KB, which
+		// must reach the model whole: nothing on Octocode's side trims an MCP result to 20 KB.
 		const files = ["one", "two"].map((name) => {
 			const file = path.join(s.cwd, `${name}.ts`);
 			fs.writeFileSync(
@@ -464,23 +474,18 @@ describe("with Octocode MCP (default)", () => {
 			calls(
 				fauxToolCall("mcp__octocode__localFetch", {
 					queries: files.map((file) => ({ path: file, ranges: [{ startLine: 1, endLine: 600 }] })),
+					responseChars: 40_000,
 				}),
 			),
 			say("done"),
 		]);
 		const text = turns.at(-1)!.lastResults[0].text;
 		expect(Buffer.byteLength(text)).toBeGreaterThan(20 * 1024);
-		expect(text).not.toMatch(/truncated|fullOutputPath|pi-mcp/i);
-		// The server answers in JSON: both rows arrive whole, each with its first returned line and a cursor to continue.
-		const { results } = JSON.parse(text) as {
-			results: Array<{ data: { content: string; pagination: { hasMore: boolean }; next: unknown } }>;
-		};
-		expect(results).toHaveLength(2);
-		["one", "two"].forEach((name, row) => {
-			expect(results[row].data.content).toContain(`export const ${name}0 = `);
-			expect(results[row].data.pagination.hasMore).toBe(true);
-			expect(JSON.stringify(results[row].data.next)).toMatch(/"cursor":"[^"]+"/);
-		});
+		expect(text).not.toMatch(/truncated|trimmed|fullOutputPath|pi-mcp/i);
+		// The server's JSON answer arrives whole: it still parses, and both files' first lines are in it. How the server
+		// shapes its rows and cursors is its own contract (M22), tested in its repository.
+		expect(() => JSON.parse(text)).not.toThrow();
+		for (const name of ["one", "two"]) expect(text).toContain(`export const ${name}0 = `);
 	}, 60_000);
 });
 
@@ -498,8 +503,11 @@ describe("with the user's own octocode server in mcp.json", () => {
 		expect(first.tools).toContain("mcp__octocode__shout");
 		expect(first.tools).not.toContain("mcp__octocode__localSearch");
 		// The prompt follows the tools by server name (`turn.ts`: `isOctocodeTool`), so the user's own `octocode` entry still
-		// counts as the research server: it gets the routing line and no native fallback.
-		expect(first.systemPrompt).toContain("Use Octocode MCP");
+		// counts as the research server: it gets the routing line and no native fallback. The same-named entry inherits the
+		// default entry's roles (`packages/mcp/src/config.ts`), so that line names the default server's search tools even
+		// though this server does not offer them.
+		expect(first.systemPrompt).toContain("Use the research tools (`mcp__octocode__*`)");
+		expect(first.systemPrompt).toContain("search with `localSearch`, `structureSearch`, `astSearch` or `lspSearch`");
 		expect(first.systemPrompt).not.toContain("Search with bash");
 		expect(first.systemPrompt).not.toContain("# Octocode MCP server instructions");
 		expect(turns.at(-1)!.lastResults[0]).toEqual({
@@ -541,12 +549,13 @@ describe("with another MCP server and Octocode disabled", () => {
 		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
 		expect(turn.tools).toContain("mcp");
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
-		// The mcp.json entry replaces the registration, so there is no research server: the native fallback shows.
-		expect(turn.systemPrompt).not.toContain("Use Octocode MCP");
-		expect(turn.systemPrompt).toContain("Search with bash");
+		// The mcp.json entry replaces the registration, so there is no research server: the bash search fallback shows.
+		const fallback = "Search with bash";
+		expect(turn.systemPrompt).not.toContain("Use the research tools");
+		expect(turn.systemPrompt).toContain(fallback);
 		const next = (await s.run("again", [say("ok")])).at(-1)!;
-		expect(next.systemPrompt).not.toContain("Use Octocode MCP");
-		expect(next.systemPrompt).toContain("Search with bash");
+		expect(next.systemPrompt).not.toContain("Use the research tools");
+		expect(next.systemPrompt).toContain(fallback);
 	});
 
 	it("calls another server's tools through Octocode's MCP, surfacing remote errors", async () => {

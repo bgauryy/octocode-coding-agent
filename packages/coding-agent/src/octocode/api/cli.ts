@@ -7,6 +7,7 @@ import { API_COMMAND_FLAGS, integerFlag, parseArgs, pickInstance } from "./args.
 import { ApiCallError, ApiClient } from "./client.ts";
 import { CLIENT_MARGIN_MS, EXTERNAL_CALL_MARGIN_MS, EXTERNAL_PROMPT_DEFAULT_MS, WAIT_MS } from "./protocol.ts";
 import { runSucceeded, type RunResult } from "./receipts.ts";
+import { EVENTS_LIMIT, eventsReport } from "./cli/events.ts";
 import { probeInstances } from "./probe.ts";
 import { apiDir, describeInstance, type InstanceRecord, listInstances } from "./registry.ts";
 
@@ -18,6 +19,7 @@ const USAGE = `octocode-api — talk to running Octocode sessions on this machin
   octocode-api send [--to <id>] [--from <name>] [--wait] [--mode steer|followUp]
     [--key <key>] [--session <sessionId>] [--timeout <ms>] [--require-idle] [--] <text…>
   octocode-api watch [--to <id>] [--types a,b] [--top-level] [--since <sequence>]
+  octocode-api events [--since <sequence>] [--limit <n>] [--json]
   octocode-api abort [--to <id>]
   octocode-api external [--to <id>] '<JSON>'
 
@@ -28,6 +30,8 @@ A session marks what send delivers as external, naming the caller as a claim; --
 --session refuses delivery after a session switch; --require-idle refuses a busy session.
 --timeout sets the server wait in milliseconds (${WAIT_MS.min}-${WAIT_MS.max}; default ${WAIT_MS.default}).
 -- ends flag parsing, so message text can begin with --.
+events reads this directory's agent lifecycle events (on, state, off with the reason) after the sequence from the
+agent database; no session needs to run. It prints the last sequence: pass it as --since to see only what is new.
 --top-level drops tool events of calls other tools made (those with parentId).`;
 
 /** The instance this run is talking to, for an error the transport reports without it. */
@@ -87,6 +91,17 @@ async function main(argv: string[]): Promise<void> {
 		throw new Error(`${command} does not accept message text.`);
 	const timeout = integerFlag(flags, "timeout", WAIT_MS);
 	const since = integerFlag(flags, "since", { min: 0, max: Number.MAX_SAFE_INTEGER });
+	if (command === "events") {
+		const { output, notice } = eventsReport({
+			since: since ?? 0,
+			limit: integerFlag(flags, "limit", EVENTS_LIMIT) ?? EVENTS_LIMIT.default,
+			json: flags.get("json") === true,
+			cwd: process.cwd(),
+		});
+		if (notice) console.error(notice);
+		console.log(output);
+		return;
+	}
 	const instances = listInstances(apiDir());
 	if (command === "list") {
 		for (const line of await listLines(instances)) console.log(line);

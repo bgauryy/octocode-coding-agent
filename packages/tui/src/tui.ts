@@ -22,6 +22,7 @@ import { ResizeDebounce } from "./tui/resize-debounce.ts";
 import { InputListeners, type TuiInputListener } from "./tui/input-listeners.ts";
 import { OverlayCompositor } from "./tui/overlay-compositor.ts";
 import type { OverlayHandle, OverlayOptions } from "./tui/overlay-types.ts";
+import { RenderLedger } from "./tui/render-counters.ts";
 import type { RenderPacingOptions, RenderPacingStats } from "./tui/render-pacing.ts";
 import { appendRenderErrorLog, type RenderErrorListener, withRenderIsolation } from "./tui/render-isolation.ts";
 import { RenderScheduler } from "./tui/render-scheduler.ts";
@@ -77,6 +78,7 @@ export abstract class TuiBase extends Container implements TUI {
 	private showHardwareCursor = false;
 	private clearOnShrink = false;
 	protected fullRedrawCount = 0;
+	protected readonly ledger = new RenderLedger();
 	protected stopped = false;
 	private readonly imageReupload = new TmuxImageReupload();
 	/** Directory for debug/crash logs. When undefined, debug logging is disabled and crash dumps fall back to the OS temp directory. */
@@ -94,7 +96,7 @@ export abstract class TuiBase extends Container implements TUI {
 	private readonly scheduler = new RenderScheduler({
 		terminal: () => this.terminal,
 		isStopped: () => this.stopped,
-		paint: () => withRenderIsolation(this.reportRenderError, () => this.doRender()),
+		paint: () => this.ledger.frame(() => withRenderIsolation(this.reportRenderError, () => this.doRender())),
 	});
 	private readonly reportRenderError: RenderErrorListener = (error, component) =>
 		this.onRenderError
@@ -236,6 +238,7 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	override invalidate(): void {
+		this.ledger.askRepaint(); // a look change (theme, cell size) reaches every row
 		for (const root of this.getMountedRoots()) root.invalidate();
 		for (const overlay of this.focus.stack) overlay.component.invalidate();
 	}
@@ -295,25 +298,22 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	requestRender(force = false): void {
+		this.ledger.counters.requested += 1;
 		this.focus.rememberMountedFocus();
 		if (force) {
 			this.resetRenderState();
-			this.requestImmediateRender();
+			this.scheduler.requestImmediate();
 			return;
 		}
 		this.scheduler.request();
 	}
 
-	private requestImmediateRender(): void {
-		this.scheduler.requestImmediate();
-	}
-
-	private handleTerminalInput(data: string): void {
-		if (this.queries.consumeReply(data)) {
+	private handleTerminalInput(received: string): void {
+		if (this.queries.consumeReply(received)) {
 			return;
 		}
 		// tmux sends a focus-in when a client attaches; it does not consume the event.
-		if (data === FOCUS_IN && kittyPlaceholderMode()) {
+		if (received === FOCUS_IN && kittyPlaceholderMode()) {
 			void this.imageReupload.focusIn(
 				() => this.renderedLines(),
 				(uploads) => {
@@ -322,11 +322,11 @@ export abstract class TuiBase extends Container implements TUI {
 			);
 		}
 
-		const filtered = this.inputListeners.filter(data);
+		const filtered = this.inputListeners.filter(received);
 		if (filtered === undefined) {
 			return;
 		}
-		data = filtered;
+		const data = filtered;
 
 		// Global debug key handler (Shift+Ctrl+D)
 		if (matchesKey(data, "shift+ctrl+d") && this.onDebug) {
@@ -348,7 +348,7 @@ export abstract class TuiBase extends Container implements TUI {
 			focused.handleInput(data);
 			// Keyboard input is latency-sensitive. Avoid the throttled timer path,
 			// where even setTimeout(0) can take a full 16 ms tick on Windows.
-			this.requestImmediateRender();
+			this.scheduler.requestImmediate();
 		}
 	}
 

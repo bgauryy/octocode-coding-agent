@@ -15,7 +15,7 @@ let elsewhere: string;
 let errors: string[];
 
 function args(overrides: Partial<Args>): Args {
-	return { messages: [], fileArgs: [], unknownFlags: new Map(), diagnostics: [], ...overrides };
+	return { messages: [], fileArgs: [], unknownFlags: [], diagnostics: [], ...overrides };
 }
 
 function savedSession(cwd: string, id: string): string {

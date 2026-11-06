@@ -46,7 +46,8 @@ const ALLOWED: Record<string, string[]> = {
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
 	external: ["shared", "api", "worktrees"],
 	ask: ["shared"],
-	files: ["shared", "permission"],
+	// `cli`: the bash guide names the research CLI only when its shim is installed.
+	files: ["shared", "permission", "cli"],
 	team: ["shared"],
 	discovery: ["shared"],
 	hooks: ["shared", "discovery"],
@@ -77,6 +78,10 @@ const ALLOWED: Record<string, string[]> = {
 	"native-skills": [],
 	"terminal-launch": [],
 	worktrees: ["shared", "terminal-launch", "trust"],
+	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
+	timer: ["shared", "files", "permission", "plan"],
+	// `/octocode` and the agent-shell shim for the research CLI.
+	cli: ["shared"],
 };
 
 describe("source layout", () => {

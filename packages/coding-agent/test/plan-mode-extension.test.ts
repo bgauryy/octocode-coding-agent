@@ -43,7 +43,6 @@ function setup(options: { activeTools?: string[]; selectChoice?: string; editorT
 	const appendEntry = vi.fn<ExtensionAPI["appendEntry"]>();
 
 	const api = {
-		registerFlag: vi.fn(),
 		registerCommand(name: string, command: { handler: CommandHandler }) {
 			commands.set(name, command.handler);
 		},
@@ -51,7 +50,6 @@ function setup(options: { activeTools?: string[]; selectChoice?: string; editorT
 		on(event: string, handler: unknown) {
 			if (event === "agent_end") agentEndHandler = handler as AgentEndHandler;
 		},
-		getFlag: vi.fn(() => false),
 		getActiveTools: vi.fn(() => [...activeTools]),
 		setActiveTools,
 		sendMessage,

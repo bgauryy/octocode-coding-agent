@@ -9,7 +9,7 @@ import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { parsePatch, transformPatch } from "../../src/octocode/shared/codex-patch/patch.ts";
 import { sha256 } from "../../../common/src/atomic-file.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 type Edit = { oldText: string; newText: string; replaceAll?: boolean; line?: number; sourceSha256?: string };
 
@@ -142,7 +142,7 @@ it("runs matching Codex PreToolUse and PostToolUse hooks for edit queries with o
 		JSON.stringify({ hooks: { PreToolUse: hooks, PostToolUse: hooks } }),
 	);
 	const { cwd, file, projectEdit, snapshots } = setup(LETTERS);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const view = registerHooks(fake.api, {}, home, undefined, undefined, undefined, projectEdit);
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);

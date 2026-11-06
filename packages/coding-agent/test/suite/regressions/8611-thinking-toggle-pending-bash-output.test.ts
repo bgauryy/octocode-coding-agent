@@ -47,7 +47,8 @@ describe("thinking visibility while a bash tool is running (#8611)", () => {
 		toggleThinkingBlockVisibility(host);
 
 		expect(fakeThis.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
-		expect(fakeThis.footerDataProvider.setExtensionStatus).toHaveBeenCalledWith("notice", "Thinking blocks: hidden");
+		expect(fakeThis.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(renderChat(chatContainer)).toContain("Thinking blocks: hidden");
 		expect(chatContainer.children).toContain(component);
 		expect(renderChat(chatContainer)).toContain("first");
 	});

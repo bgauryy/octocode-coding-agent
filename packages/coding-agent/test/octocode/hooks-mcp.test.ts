@@ -6,7 +6,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 function hook(input: unknown = { path: "${tool_input.file_path}" }) {
 	return commandsFor(
@@ -227,7 +227,7 @@ it("counts a run whose MCP server is missing as failed in the hooks report", asy
 			hooks: { PreToolUse: [{ hooks: [{ type: "mcp_tool", server: "missing", tool: "check", timeout: 1 }] }] },
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const hooks = registerHooks(fake.api, {}, home);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);

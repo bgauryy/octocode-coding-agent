@@ -35,7 +35,6 @@ export function createExtensionAPI(
 	cwd: string,
 	eventBus: EventBus,
 ): { api: ExtensionAPI; commit: () => void; discard: () => void } {
-	const pendingFlagValues = new Map<string, boolean | string>();
 	const pendingRuntimeChanges: Array<() => void> = [];
 	const pendingMcpChanges: McpServerChange[] = [];
 	const loadingUnsubscribers: Array<() => void> = [];
@@ -68,7 +67,6 @@ export function createExtensionAPI(
 		} else runtime.mcpServers.apply([change]);
 	};
 	const clearPending = () => {
-		pendingFlagValues.clear();
 		pendingRuntimeChanges.length = 0;
 		pendingMcpChanges.length = 0;
 		loadingUnsubscribers.length = 0;
@@ -143,24 +141,6 @@ export function createExtensionAPI(
 			extension.shortcuts.set(shortcut, { shortcut, extensionPath: extension.path, ...options });
 		},
 
-		registerFlag(
-			name: string,
-			options: { description?: string; type: "boolean" | "string"; default?: boolean | string },
-		): void {
-			assertActive();
-			if (options.default !== undefined && typeof options.default !== options.type) {
-				throw new Error(`Invalid default for flag "${name}": expected ${options.type}, got ${typeof options.default}`);
-			}
-			extension.flags.set(name, { name, extensionPath: extension.path, ...options });
-			if (options.default !== undefined && !runtime.flagValues.has(name)) {
-				if (state === "loading") {
-					if (!pendingFlagValues.has(name)) pendingFlagValues.set(name, options.default);
-				} else {
-					runtime.flagValues.set(name, options.default);
-				}
-			}
-		},
-
 		registerMessageRenderer<T>(customType: string, renderer: MessageRenderer<T>): void {
 			assertActive();
 			extension.messageRenderers.set(customType, renderer as MessageRenderer);
@@ -181,13 +161,6 @@ export function createExtensionAPI(
 			assertActive();
 			extension.toolRenderers ??= [];
 			extension.toolRenderers.push(resolver);
-		},
-
-		// Flag access - checks extension registered it, reads from runtime
-		getFlag(name: string): boolean | string | undefined {
-			assertActive();
-			if (!extension.flags.has(name)) return undefined;
-			return runtime.flagValues.has(name) ? runtime.flagValues.get(name) : pendingFlagValues.get(name);
 		},
 
 		// Action methods - delegate to shared runtime
@@ -376,9 +349,6 @@ export function createExtensionAPI(
 			if (state !== "loading") return;
 			runtime.assertActive();
 			runtime.mcpServers.apply(pendingMcpChanges);
-			for (const [name, value] of pendingFlagValues) {
-				if (!runtime.flagValues.has(name)) runtime.flagValues.set(name, value);
-			}
 			for (const apply of pendingRuntimeChanges) apply();
 			state = "active";
 			clearPending();

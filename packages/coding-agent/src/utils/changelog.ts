@@ -165,7 +165,7 @@ export function parseChangelog(changelogPath: string): ChangelogEntry[] {
 
 		return entries;
 	} catch (error) {
-		console.error(`Warning: Could not parse changelog: ${String(error)}`);
+		process.stderr.write(`Warning: Could not parse changelog: ${String(error)}\n`);
 		return [];
 	}
 }

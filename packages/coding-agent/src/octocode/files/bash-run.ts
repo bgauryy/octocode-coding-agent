@@ -193,10 +193,10 @@ export function foregroundOperations(
 	{ watch, stopAtDeadline = false }: { watch?: PendingWatch; stopAtDeadline?: boolean } = {},
 ): BashOperations {
 	return {
-		exec: async (command, cwd, { onData, signal, timeout, env }) => {
+		exec: async (command, cwd, { onData, signal, timeout: requestedTimeout, env }) => {
 			if (signal?.aborted) throw new Error("aborted");
 			// Node timers stop at MAX_TIMER_SECONDS (clamped here): a longer timeout is that long, and a non-positive one is no timeout.
-			timeout = clampTimeoutSeconds(timeout);
+			const timeout = clampTimeoutSeconds(requestedTimeout);
 			if (!fs.existsSync(cwd))
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);
 			const child = await spawnShell(resolveShell(settings), command, {

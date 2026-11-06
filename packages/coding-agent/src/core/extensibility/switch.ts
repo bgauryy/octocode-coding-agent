@@ -1,9 +1,37 @@
+import { VENDORS } from "../discovery/vendors/registry.ts";
+import { vendorDefaultOn } from "../discovery/vendors/switch.ts";
+import { type VendorId, vendorToggleId } from "../discovery/vendors/types.ts";
 import { ResourceSettings } from "../package-manager/resource-settings.ts";
 import type { SettingsManager } from "../settings-manager.ts";
-import type { InventoryItem } from "./inventory.ts";
+import type { InventoryItem } from "./inventory-types.ts";
 import { isSwitchedOn } from "./toggles.ts";
 
 export type SwitchScope = "global" | "project";
+
+/** A whole harness for `/harness enable|disable <vendor>`: writes `harness:<id>`. */
+export interface VendorSwitchTarget {
+	vendor: VendorId;
+	label: string;
+}
+
+/** The switch target of a harness by id or label (case-insensitive), or undefined; Octocode itself has no switch. */
+export function vendorSwitchTarget(query: string): VendorSwitchTarget | undefined {
+	const wanted = query.trim().toLowerCase();
+	const vendor = VENDORS.find((entry) => entry.id === wanted || entry.label.toLowerCase() === wanted);
+	return vendor?.switchable ? { vendor: vendor.id, label: vendor.label } : undefined;
+}
+
+/** Write `harness:<id>`: removed when the harness's default already gives the wanted state. */
+function switchVendor(target: VendorSwitchTarget, on: boolean, scope: SwitchScope, manager: SettingsManager): string {
+	if (scope === "project" && !manager.isProjectTrusted()) throw new Error("Trust this project first (/trust).");
+	const id = vendorToggleId(target.vendor);
+	// A project key falls back to the global key, then the default; a global key falls back to the default.
+	const global = manager.getToggles()[id];
+	const parentOn = scope === "project" && global !== undefined ? global : vendorDefaultOn(target.vendor);
+	manager.setToggle(scope, id, on === parentOn ? undefined : on);
+	const where = scope === "project" ? "for this project's own files" : "globally";
+	return `${target.label} switched ${on ? "on" : "off"} ${where}.`;
+}
 
 /** Why `item` cannot be switched in `scope`, or undefined. The terminal list dims such rows and shows this reason. */
 export function blockedReason(item: InventoryItem, scope: SwitchScope): string | undefined {
@@ -26,12 +54,13 @@ export function blockedReason(item: InventoryItem, scope: SwitchScope): string |
  * `extensions` patterns `octocode config` uses. Throws a user-facing message when the switch is not allowed.
  */
 export function switchItem(
-	item: InventoryItem,
+	item: InventoryItem | VendorSwitchTarget,
 	on: boolean,
 	scope: SwitchScope,
 	manager: SettingsManager,
 	options: { cwd: string; agentDir: string; force?: boolean },
 ): string {
+	if ("vendor" in item) return switchVendor(item, on, scope, manager);
 	if (item.kind === "mcp") throw new Error(`${item.label}: MCP servers switch through the MCP owner.`);
 	if (scope === "project" && !manager.isProjectTrusted()) throw new Error("Trust this project first (/trust).");
 	if (!on && item.gate && !options.force)

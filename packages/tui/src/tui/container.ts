@@ -1,4 +1,5 @@
 import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type TuiMouseEvent } from "./component.ts";
+import { activeLayoutRecorder } from "./layout-recorder.ts";
 import { renderIsolated } from "./render-isolation.ts";
 
 /**
@@ -65,8 +66,20 @@ export class Container implements Component {
 		const children = this.children;
 		const arrays: string[][] = [];
 		let same = previous?.width === width && previous.components.length === children.length;
+		const layout = activeLayoutRecorder();
+		const base = layout?.base ?? 0;
+		let offset = 0;
 		for (const [i, child] of children.entries()) {
+			const leavesBefore = layout?.leaves.length ?? 0;
+			if (layout) layout.base = base + offset;
 			const childLines = renderIsolated(child, width);
+			// A child that reported no leaf of its own is a leaf itself.
+			if (layout) {
+				if (layout.leaves.length === leavesBefore)
+					layout.leaves.push({ component: child, start: base + offset, length: childLines.length });
+				layout.base = base;
+			}
+			offset += childLines.length;
 			arrays.push(childLines);
 			if (same && (previous?.components[i] !== child || previous.arrays[i] !== childLines)) same = false;
 		}

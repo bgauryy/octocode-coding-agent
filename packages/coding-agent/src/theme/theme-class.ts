@@ -220,9 +220,9 @@ export class Theme {
 		return this.resolvedColors.colors;
 	}
 
-	style(text: string, options: ThemeStyle): string {
-		const { fg, bg } = options;
-		if (typeof fg === "string" && this.dimTokens.has(fg)) options = { ...options, dim: true };
+	style(text: string, requested: ThemeStyle): string {
+		const { fg, bg } = requested;
+		const options = typeof fg === "string" && this.dimTokens.has(fg) ? { ...requested, dim: true } : requested;
 		return styleTextWithAnsi(
 			text,
 			fg === undefined

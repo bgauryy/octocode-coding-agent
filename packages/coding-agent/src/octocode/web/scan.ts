@@ -51,7 +51,8 @@ export function rewrite(
 			continue;
 		}
 		out += text.slice(last, open.index) + span.text;
-		last = opener.lastIndex = span.end;
+		last = span.end;
+		opener.lastIndex = span.end;
 	}
 	return out + text.slice(last);
 }
@@ -151,7 +152,8 @@ export function elementEnds(html: string, tag: string): ElementEnd {
 	};
 	return (start) => {
 		if (origin < 0 || start < origin) {
-			origin = token.lastIndex = start;
+			origin = start;
+			token.lastIndex = start;
 			done = false;
 			open = [];
 			seen = new Set();

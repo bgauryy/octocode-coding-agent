@@ -4,7 +4,6 @@ import path from "node:path";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
-	fauxToolCall,
 	getCurrentSystemMessage,
 	getCurrentTools,
 	type TranscriptContext,
@@ -18,15 +17,18 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { createTestSession } from "../helpers/session.ts";
+import { nativeCall } from "./e2e-calls.ts";
 import { trustFolder } from "./helpers.ts";
 
 /**
- * A user-configured stdio MCP server in a real session on a scripted model: its own instructions and, for each tool
- * enabled for the agent, the tool's description and schema are in the `<mcps>` section, in one block, whichever server
- * it is. Provider declarations of its tools stay thin. The sibling Octocode server is switched off here so the
+ * A user-configured stdio MCP server in a real session on a scripted model. By default (`declared`) each enabled tool's
+ * provider declaration carries the server's own description and full input schema and the `<mcps>` section holds its
+ * instructions. With `mcpPresentation: "compact"` (`COMPACT` here) the section holds the instructions and each enabled
+ * tool's description and schema in one block, and the declarations stay thin. The sibling Octocode server is switched off here so the
  * section holds the one server (`fixtures/docs-mcp.mjs`).
  */
 const SERVER = path.join(import.meta.dirname, "fixtures", "docs-mcp.mjs");
+const COMPACT = { mcpPresentation: "compact" };
 const OCTOCODE_OFF = { octocode: { command: "false", enabled: false } };
 
 interface FirstRequest {
@@ -160,8 +162,51 @@ const docsTools = (request: FirstRequest): string[] =>
 	request.declared.map((tool) => tool.name).filter((name) => name.startsWith("mcp__docs__"));
 
 describe("the mcps section of an agent with a user-configured MCP server", () => {
-	it("holds the server's instructions and each enabled tool's description and schema", async () => {
+	it("declares each enabled tool with the server's description and full schema, and the block holds the instructions", async () => {
 		const request = await firstRequest({ toolExposure: { purge: "hidden" } });
+		const mcps = request.sections.mcps;
+		expect(mcps.startsWith("<mcps>\nEach block is one MCP server's instructions.")).toBe(true);
+		expect(mcps).toContain('<mcp name="docs" tools="mcp__docs__*">\nDocs server. Search with lookup');
+		expect(mcps.match(/<mcp /g)).toHaveLength(1);
+		expect(request.sections.tools).toContain("\n- mcp__docs__*: Product docs\n");
+		expect(mcps).not.toContain("Product docs");
+		// Tool text is in the declarations, not the block.
+		for (const text of ["Find a document by its title words", "Title words to search for.", "function lookup"])
+			expect(mcps, text).not.toContain(text);
+		expect(docsTools(request)).toEqual(["mcp__docs__legacy", "mcp__docs__lookup", "mcp__docs__publish"]);
+		const lookup = request.declared.find((tool) => tool.name === "mcp__docs__lookup")!;
+		expect(lookup.description).toContain(
+			"Find a document by its title words. Returns the matching pages with their ids.",
+		);
+		const schema = JSON.stringify(lookup.parameters);
+		for (const text of ["Title words to search for.", "Most pages to return.", '"changelog"', '"maximum":20'])
+			expect(schema, text).toContain(text);
+		const legacy = request.declared.find((tool) => tool.name === "mcp__docs__legacy")!;
+		// A $ref to a missing definition is the one part of the schema the host drops (providers reject it); the rest is as sent.
+		expect(JSON.stringify(legacy.parameters)).toContain("Report only.");
+		expect(JSON.stringify(request.declared)).not.toContain("Delete a page permanently.");
+		expect(request.sections.mcp_status).toBeUndefined();
+	});
+
+	it("limits the declarations to the tools a role's allow-list enables, and keeps the instructions", async () => {
+		const profile = parseProfile(
+			"docs-reader",
+			"---\nname: docs-reader\ndescription: Reads the docs.\ntools: mcp__docs__lookup\n---\nRead the docs.\n",
+		);
+		const { tools, excludeTools } = parseArgs(
+			buildAgentArgs(profile, undefined, { dir: os.tmpdir(), id: "child" }, []),
+		);
+		const request = await firstRequest({}, { tools, excludeTools });
+		expect(docsTools(request)).toEqual(["mcp__docs__lookup"]);
+		expect(request.sections.mcps).toContain("Docs server. Search with lookup");
+		const declared = JSON.stringify(request.declared);
+		expect(declared).toContain("Title words to search for.");
+		for (const left of ["Publish a draft page", "Import a page", "Delete a page"])
+			expect(declared, left).not.toContain(left);
+	});
+
+	it("(compact) holds the server's instructions and each enabled tool's description and schema", async () => {
+		const request = await firstRequest({ toolExposure: { purge: "hidden" } }, { settings: COMPACT });
 		const mcps = request.sections.mcps;
 		expect(mcps.startsWith("<mcps>\nEach block is one MCP server:")).toBe(true);
 		expect(mcps).toContain('<mcp name="docs" tools="mcp__docs__*">\n/** ');
@@ -193,8 +238,8 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 		expect(request.sections.mcp_status).toBeUndefined();
 	});
 
-	it("declares the tools thin: a trigger and top-level types, never a second copy of the schema", async () => {
-		const request = await firstRequest({ toolExposure: { purge: "hidden" } });
+	it("(compact) declares the tools thin: a trigger and top-level types, never a second copy of the schema", async () => {
+		const request = await firstRequest({ toolExposure: { purge: "hidden" } }, { settings: COMPACT });
 		const lookup = request.declared.find((tool) => tool.name === "mcp__docs__lookup")!;
 		expect(lookup.description).toBe("Find a document by its title words.");
 		expect(lookup.parameters).toEqual({
@@ -210,7 +255,7 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 			expect(declarations, text).not.toContain(text);
 	});
 
-	it("limits the block to the tools a role's allow-list enables", async () => {
+	it("(compact) limits the block to the tools a role's allow-list enables", async () => {
 		const profile = parseProfile(
 			"docs-reader",
 			"---\nname: docs-reader\ndescription: Reads the docs.\ntools: mcp__docs__lookup\n---\nRead the docs.\n",
@@ -218,7 +263,7 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 		const { tools, excludeTools } = parseArgs(
 			buildAgentArgs(profile, undefined, { dir: os.tmpdir(), id: "child" }, []),
 		);
-		const request = await firstRequest({}, { tools, excludeTools });
+		const request = await firstRequest({}, { tools, excludeTools, settings: COMPACT });
 		expect(docsTools(request)).toEqual(["mcp__docs__lookup"]);
 		const mcps = request.sections.mcps;
 		expect(mcps).toContain("Docs server. Search with lookup");
@@ -227,12 +272,12 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 			expect(mcps, left).not.toContain(left);
 	});
 
-	it("describes every declared tool in full, and ignores a server's leftover contract settings", async () => {
+	it("(compact) describes every declared tool in full, and ignores a server's leftover contract settings", async () => {
 		const call = (name: string, args: Record<string, unknown>) =>
-			fauxAssistantMessage([fauxToolCall(name, { reason: "scripted e2e step", ...args })], { stopReason: "toolUse" });
+			fauxAssistantMessage([nativeCall(name, args)], { stopReason: "toolUse" });
 		const request = await firstRequest(
 			{ toolExposure: { purge: "hidden" }, toolContract: { publish: "indexed" }, contract: "indexed" },
-			{},
+			{ settings: COMPACT },
 			[
 				call("mcp__docs__publish", { page: "draft" }),
 				call("mcp", { intent: "tools", server: "docs", tool: "publish" }),

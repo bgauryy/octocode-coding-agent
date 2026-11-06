@@ -7,7 +7,12 @@ import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
 import { shellParserReady } from "./shell/mutation.ts";
 import { commandWriteTargets } from "./shell/write-targets.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
+import type {
+	ExtensionContext,
+	ToolAnnotations,
+	ToolCallEvent,
+	ToolCallEventResult,
+} from "../../core/features/index.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Classification } from "../../utils/windows/winclassify/types.ts";
 import type { SourceDecision } from "./source-policy/rules.ts";
@@ -15,6 +20,8 @@ import { classifyPowerShell } from "../../utils/windows/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
+import type { AllowedSource, CheckContext } from "./provenance/ignorable.ts";
+import { grantedSource, sourceGrant } from "./provenance/grant.ts";
 import { args, callRequest, classify, reasonPurpose } from "./gate/classify.ts";
 
 /**
@@ -45,7 +52,11 @@ interface PermissionGateOptions {
 	permission: Permission;
 	/** The provenance tripwire's check (`permission/provenance`). */
 	provenance: {
-		check(event: ToolCallEvent, ctx: { cwd: string }): { why: string } | undefined;
+		check(
+			event: ToolCallEvent,
+			ctx: CheckContext,
+			allowed?: AllowedSource,
+		): { why: string; agent?: string } | undefined;
 	};
 	/** Whether a PowerShell command is `shell.destructive`; the Windows helper's parse by default (replaceable in tests). */
 	powershell?: (command: string) => Promise<boolean>;
@@ -55,6 +66,8 @@ interface PermissionGateOptions {
 	 * undefined leaves the call to `classify`.
 	 */
 	network?: (toolName: string, input: Record<string, unknown>, cwd: string) => Promise<PermissionRequest | undefined>;
+	/** The tool's annotations (`destructiveHint` makes an MCP call `mcp.destructive`); none by default. */
+	annotations?: (toolName: string) => ToolAnnotations | undefined;
 	/** Says whether a `bash` git call reaches the protected branch, which then asks as `worktree.merge` (`landing.ts`); unset leaves `bash` to `classify`. */
 	protectedBranch?: FindProtectedBranch;
 	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
@@ -69,6 +82,8 @@ interface PermissionGateOptions {
 /** The `tool_call` gate: every call with an effect class (or a reason) reaches `Permission.check`, which applies the mode, records the call and asks when it must. A user's yes covers the call. */
 export function permissionGate(options: PermissionGateOptions) {
 	const { permission, provenance, powershell = powershellDestructive } = options;
+	// Text from a subagent the user allowed for this session is no provenance hit; the grant is revoked with the others.
+	const allowedSource = grantedSource(permission);
 	return async (
 		event: ToolCallEvent,
 		ctx: ExtensionContext,
@@ -110,7 +125,9 @@ export function permissionGate(options: PermissionGateOptions) {
 				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
 				(await powershell(optionalString(input.command) ?? ""));
 			const network = await options.network?.(event.toolName, input, ctx.cwd);
-			const classified = network ? callRequest(network, event, ctx) : classify(event, ctx, forceDestructive);
+			const classified = network
+				? callRequest(network, event, ctx)
+				: classify(event, ctx, forceDestructive, options.annotations?.(event.toolName));
 			const request = options.protectedBranch
 				? await landingRequest(
 						event,
@@ -120,7 +137,7 @@ export function permissionGate(options: PermissionGateOptions) {
 						permission.kindGranted("worktree.merge"),
 					)
 				: classified;
-			const hit = provenance.check(event, ctx);
+			const hit = provenance.check(event, ctx, allowedSource);
 			const reasons: AskReason[] = [
 				...(hit ? (["provenance"] as const) : []),
 				...(prior?.ask ? (["hook.ask"] as const) : []),
@@ -137,6 +154,7 @@ export function permissionGate(options: PermissionGateOptions) {
 								...(event.parentToolCallId ? { nested: true } : {}),
 							}),
 							reasons,
+							...(hit?.agent ? { sourceGrant: sourceGrant(hit.agent) } : {}),
 							...(reason
 								? {
 										reason: [request?.reason, reason].filter(Boolean).join("\n"),
@@ -198,7 +216,7 @@ export function permissionGate(options: PermissionGateOptions) {
 							if (roleRefused) throw new Error(roleRefused);
 							const classified = classify(candidate, ctx, false);
 							if (!classified) throw new Error("Cannot classify Bash replacement");
-							const candidateHit = provenance.check(candidate, ctx);
+							const candidateHit = provenance.check(candidate, ctx, allowedSource);
 							const nextInvocation = captureToolInvocation(
 								candidate.toolCallId,
 								candidate.toolName,

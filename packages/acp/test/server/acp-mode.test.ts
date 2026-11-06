@@ -227,15 +227,14 @@ describe("inbound ACP protocol", () => {
 		await h.initialize();
 		const { sessionId } = await h.newSession();
 		h.workers[0].abort.mockImplementation(() => new Promise(() => {}));
-		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		const logged = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const run = h.prompt(sessionId);
 		await expect.poll(() => h.workers[0].prompt.mock.calls.length).toBe(1);
 		await h.cancel(sessionId);
 		await expect(run).resolves.toMatchObject({ stopReason: "cancelled" });
-		expect(logged).toHaveBeenCalledWith(
-			expect.stringContaining("ACP cancellation did not complete"),
-			expect.objectContaining({ message: "Cancellation deadline" }),
-		);
+		const reported = String(logged.mock.calls[0]?.[0]);
+		expect(reported).toContain("ACP cancellation did not complete");
+		expect(reported).toContain("Cancellation deadline");
 		logged.mockRestore();
 		expect(h.workers[0].stop).toHaveBeenCalledOnce();
 		await expect(h.prompt(sessionId)).rejects.toThrow();

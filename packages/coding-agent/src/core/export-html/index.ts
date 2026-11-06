@@ -26,6 +26,8 @@ export interface ToolHtmlRenderer {
 		result: Array<{ type: string; text?: string; data?: string; mimeType?: string }>,
 		details: unknown,
 		isError: boolean,
+		/** The result's structured data, where an MCP result may state its call's purpose. */
+		structuredContent?: unknown,
 	): { collapsed?: string; expanded?: string } | undefined;
 }
 
@@ -231,6 +233,7 @@ function preRenderCustomTools(
 					msg.content,
 					msg.details,
 					msg.isError || false,
+					msg.structuredContent,
 				);
 				if (rendered) {
 					renderedTools[msg.toolCallId] = {
@@ -255,7 +258,7 @@ export async function exportSessionToHtml(
 	state?: AgentState,
 	options?: ExportOptions | string,
 ): Promise<string> {
-	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : options || {};
+	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : (options ?? {});
 
 	const sessionFile = sm.getSessionFile();
 	if (!sessionFile) {
@@ -303,7 +306,7 @@ export async function exportSessionToHtml(
  * Used by CLI for exporting arbitrary session files.
  */
 export async function exportFromFile(inputPath: string, options?: ExportOptions | string): Promise<string> {
-	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : options || {};
+	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : (options ?? {});
 	const resolvedInputPath = resolvePath(inputPath);
 
 	if (!existsSync(resolvedInputPath)) {

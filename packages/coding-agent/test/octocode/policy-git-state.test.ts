@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
+import { FAKE_RESEARCH } from "./fake-research.ts";
 
 const LINE =
 	"- Leave the git index, stashes, commits and other agents' files alone; format and lint only the files you changed.";
@@ -15,14 +16,18 @@ const roleHasShell = (role: string): boolean => {
 
 describe("the subagent git-state line", () => {
 	it("is in a subagent's prompt when it has bash", () => {
-		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canShell: true })).toContain(LINE);
+		expect(octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false, canShell: true })).toContain(
+			LINE,
+		);
 	});
 
 	it("is not in a browser child's prompt (no shell), nor in the main session's", () => {
 		expect(roleHasShell("browser")).toBe(false);
 		expect(
-			octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canShell: roleHasShell("browser") }),
+			octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false, canShell: roleHasShell("browser") }),
 		).not.toContain(LINE);
-		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: true, canShell: true })).not.toContain(LINE);
+		expect(octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: true, canShell: true })).not.toContain(
+			LINE,
+		);
 	});
 });

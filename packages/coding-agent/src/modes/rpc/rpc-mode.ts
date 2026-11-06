@@ -218,7 +218,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	// failed write reports on every record still queued, so only the first failure may start it.
 	onRawStdoutFailure((failure) => {
 		if (shuttingDown) return;
-		console.error(`octocode: stopping, stdout failed: ${failure.message}`);
+		process.stderr.write(`octocode: stopping, stdout failed: ${failure.message}\n`);
 		void shutdown(1);
 	});
 	output({

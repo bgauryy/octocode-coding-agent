@@ -100,7 +100,9 @@ export async function resizeImage(
 	if (typeof process.versions.bun === "string") {
 		try {
 			return await resizeImageInWorker("./src/utils/image-resize-worker.ts", inputBytes, mimeType, options);
-		} catch {}
+		} catch {
+			// Not a compiled executable with an embedded worker: try the URL worker below.
+		}
 	}
 
 	try {

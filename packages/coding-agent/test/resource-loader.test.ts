@@ -475,10 +475,8 @@ Content`,
 			});
 			await loader.reload();
 
-			expect(loader.getAgentsFiles().agentsFiles).toContainEqual({
-				path: join(cwd, "CLAUDE.md"),
-				content: "Fallback instructions",
-			});
+			const paths = loader.getAgentsFiles().agentsFiles.map((file) => file.path);
+			expect(paths.filter((file) => file.startsWith(cwd))).toEqual([]);
 			expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(join(cwd, "AGENTS.md")));
 			expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(join(cwd, "AGENTS.override.md")));
 			consoleError.mockRestore();
@@ -1309,6 +1307,24 @@ Content`,
 			expect(loaded.content).not.toContain("TAIL");
 		});
 
+		it("stops at the working folder's repository root, not a parent repository, even when trust is granted above it", () => {
+			const outer = join(tempDir, "parent-repo");
+			const nested = join(outer, ".octocode", "harness", "fixture");
+			const sub = join(nested, "src");
+			mkdirSync(join(outer, ".git"), { recursive: true });
+			mkdirSync(join(nested, ".git"), { recursive: true });
+			mkdirSync(sub, { recursive: true });
+			writeFileSync(join(outer, "AGENTS.md"), "parent repository");
+			writeFileSync(join(nested, "AGENTS.md"), "nested repository");
+			writeFileSync(join(sub, "AGENTS.md"), "subfolder");
+
+			const files = loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: outer });
+			expect(files.map((f) => f.content)).toEqual(["nested repository", "subfolder"]);
+			// The trust limit still applies below the repository root.
+			const trusted = loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: sub });
+			expect(trusted.map((f) => f.content)).toEqual(["subfolder"]);
+		});
+
 		it("keeps a context file under the cap whole", () => {
 			mkdirSync(cwd, { recursive: true });
 			writeFileSync(join(cwd, "AGENTS.md"), "small");
@@ -1386,11 +1402,10 @@ Content`,
 		});
 
 		it("should only skip the same filename, not a differently named context file", () => {
-			// The repo tracks CLAUDE.md; the worktree adds an AGENTS.md, which
-			// loadContextFileFromDir prefers. The main repo's CLAUDE.md is nobody's
-			// duplicate, so dropping it would lose its content entirely.
+			// The repo tracks AGENTS.override.md; the worktree adds an AGENTS.md. The main repo's
+			// override is nobody's duplicate, so dropping it would lose its content entirely.
 			const { main, worktree, worktreeSrc } = setupNestedWorktree();
-			writeFileSync(join(main, "CLAUDE.md"), "main repo instructions");
+			writeFileSync(join(main, "AGENTS.override.md"), "main repo instructions");
 			writeFileSync(join(worktree, "AGENTS.md"), "worktree instructions");
 
 			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
@@ -1451,7 +1466,7 @@ Content`,
 			expect(files.map((f) => f.content)).toEqual(["outer instructions", "sibling worktree instructions"]);
 		});
 
-		it("should NOT skip the superproject's context from inside a submodule", () => {
+		it("should not load the superproject's context from inside a submodule (a parent repository)", () => {
 			// A submodule's `.git` file is also `gitdir:`-style, but its gitdir has no
 			// commondir, so it resolves under `.git/modules` - never an ancestor of cwd.
 			const sup = join(tempDir, "super");
@@ -1467,7 +1482,7 @@ Content`,
 
 			const files = loadProjectContextFiles({ cwd: subSrc, agentDir });
 
-			expect(files.map((f) => f.content)).toEqual(["superproject instructions", "submodule instructions"]);
+			expect(files.map((f) => f.content)).toEqual(["submodule instructions"]);
 		});
 
 		it("should keep climbing past an ordinary repo root", () => {
@@ -1498,5 +1513,46 @@ Content`,
 
 			expect(files.map((f) => f.content)).toEqual(["repo instructions", "src instructions"]);
 		});
+	});
+});
+
+describe("Pi harness switch on Pi's instruction files", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("loads Pi's AGENTS.md, SYSTEM.md and APPEND_SYSTEM.md only while harness:pi is on", async () => {
+		const home = join(tmpdir(), `rl-pi-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const piDir = join(home, ".pi", "agent");
+		const cwd = join(home, "project");
+		mkdirSync(piDir, { recursive: true });
+		mkdirSync(cwd, { recursive: true });
+		vi.stubEnv("HOME", home);
+		vi.stubEnv("OCTOCODE_HOME", "");
+		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", "");
+		const agentDir = join(home, ".octocode", "octocodecode");
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(join(piDir, "AGENTS.md"), "pi agents");
+		writeFileSync(join(piDir, "SYSTEM.md"), "pi system");
+		writeFileSync(join(piDir, "APPEND_SYSTEM.md"), "pi append");
+		const load = async (toggles: Record<string, boolean>) => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ toggles }));
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+			return loader;
+		};
+
+		const on = await load({});
+		expect(on.getAgentsFiles().agentsFiles.map((file) => file.content)).toContain("pi agents");
+		expect(on.getSystemPrompt()).toBe("pi system");
+		expect(on.getAppendSystemPrompt()).toContain("pi append");
+
+		const off = await load({ "harness:pi": false });
+		expect(off.getAgentsFiles().agentsFiles.map((file) => file.content)).not.toContain("pi agents");
+		expect(off.getSystemPrompt()).toBeUndefined();
+		expect(off.getAppendSystemPrompt()).toEqual([]);
 	});
 });

@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createSandbox,
 	QUIET_ARGS,
@@ -23,6 +23,9 @@ import {
 	startModelServer,
 	writeScriptedProvider,
 } from "../helpers/feature-host-cli.ts";
+
+// A case starts the real CLI up to eight times; under a full parallel run that outlasts the 30s default.
+vi.setConfig({ testTimeout: 120_000 });
 
 /**
  * `octocode marketplace` and `octocode plugin` through the real CLI against a local bare git repository (no network):

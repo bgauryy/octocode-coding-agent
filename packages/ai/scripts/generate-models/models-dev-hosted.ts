@@ -13,6 +13,7 @@ import { getModelsDevCost, roundCost } from "./pricing.ts";
 import { processBasetenModels, processFireworksModels, processZaiModels } from "./processors.ts";
 import { getTogetherCompat, getTogetherThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** models.dev providers xAI, Meta, Z.ai, Mistral, Hugging Face, Fireworks, NVIDIA NIM, Together AI and Baseten. */
 export function addModelsDevHostedModels(
@@ -36,8 +37,8 @@ export function addModelsDevHostedModels(
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("xai", modelId, m);
 		}
@@ -58,8 +59,8 @@ export function addModelsDevHostedModels(
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("meta", modelId, m);
 		}
@@ -87,13 +88,13 @@ export function addModelsDevHostedModels(
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: {
-					input: m.cost?.input || 0,
-					output: m.cost?.output || 0,
+					input: m.cost?.input ?? 0,
+					output: m.cost?.output ?? 0,
 					cacheRead: m.cost?.cache_read ?? (m.cost?.input ? roundCost(m.cost.input * 0.1) : 0),
-					cacheWrite: m.cost?.cache_write || 0,
+					cacheWrite: m.cost?.cache_write ?? 0,
 				},
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 		}
 	}
@@ -116,8 +117,8 @@ export function addModelsDevHostedModels(
 				compat: {
 					supportsDeveloperRole: false,
 				},
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("huggingface", modelId, m);
 		}
@@ -148,8 +149,8 @@ export function addModelsDevHostedModels(
 				input: m.modalities.input.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
 				compat: NVIDIA_OPENAI_COMPAT,
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("nvidia", liveModelId, m);
 		}
@@ -176,8 +177,8 @@ export function addModelsDevHostedModels(
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
 				compat: getTogetherCompat(modelId, reasoning),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions("together", modelId, m);
 		}

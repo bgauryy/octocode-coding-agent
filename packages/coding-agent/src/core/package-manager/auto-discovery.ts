@@ -1,5 +1,5 @@
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
-import type { ConfigKind } from "../discovery/types.ts";
+import type { ConfigItem, ConfigKind } from "../discovery/types.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import { isEnabledByOverrides } from "./patterns.ts";
 import { addResource, getTargetMap } from "./resources.ts";
@@ -17,6 +17,17 @@ const AUTO_KINDS: ReadonlyArray<readonly [ConfigKind, ResourceType]> = [
 	["prompt", "prompts"],
 	["theme", "themes"],
 ];
+
+/**
+ * Whether a discovered item joins the resources: not one its harness switched off, and not a skill another harness
+ * supplies under the same name (cross-harness duplicates are settled by discovery; within one harness the loader still
+ * reports its own collisions).
+ */
+function autoLoadable(item: ConfigItem): boolean {
+	const { notLoaded, shadowedBy, vendor } = item.provenance;
+	if (notLoaded === "switched-off") return false;
+	return !(item.kind === "skill" && shadowedBy && shadowedBy.vendor !== vendor);
+}
 
 /**
  * Add what the standard folders hold (Octocode's global directory, the shared `.agents` folders, and for a trusted folder
@@ -37,11 +48,14 @@ export function addAutoDiscoveredResources(
 		agentDir: host.agentDir,
 		home: getHomeDir(),
 		projectTrusted: host.settingsManager.isProjectTrusted(),
+		toggles: host.settingsManager.getToggles(),
 	});
 	for (const [kind, type] of AUTO_KINDS) {
 		const target = getTargetMap(accumulator, type);
-		for (const { provenance } of configDiscovery.discover(kind, input)) {
+		for (const item of configDiscovery.discover(kind, input)) {
+			const { provenance } = item;
 			if (provenance.scope === "builtin" || (provenance.product === "pi" && provenance.scope === "global")) continue;
+			if (!autoLoadable(item)) continue;
 			const project = provenance.scope === "project";
 			const baseDir = provenance.baseDir ?? (project ? projectBaseDir : globalBaseDir);
 			const metadata: PathMetadata = {

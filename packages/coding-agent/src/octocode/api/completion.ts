@@ -7,11 +7,12 @@ export function completeApi(words: string[], instanceIds: readonly string[] = []
 	const command = words[0];
 	const filter = (values: readonly string[]) =>
 		values.filter((value) => value.startsWith(prefix) && !/[\r\n\t]/.test(value));
-	if (words.length <= 1) return filter(["list", "status", "send", "watch", "abort", "external", "completion"]);
+	if (words.length <= 1)
+		return filter(["list", "status", "send", "watch", "events", "abort", "external", "completion"]);
 	if (command === "completion") return words.length === 2 ? filter(["bash", "zsh", "fish"]) : [];
 	if (words.slice(1, -1).includes("--")) return [];
 	if (previous === "--to") return filter(instanceIds);
-	if (["--from", "--key", "--session", "--timeout", "--since"].includes(previous ?? "")) return [];
+	if (["--from", "--key", "--session", "--timeout", "--since", "--limit"].includes(previous ?? "")) return [];
 	if (command === "send" && previous === "--mode") return filter(["steer", "followUp"]);
 	if (command === "watch" && previous === "--types") {
 		const start = prefix.slice(0, prefix.lastIndexOf(",") + 1);

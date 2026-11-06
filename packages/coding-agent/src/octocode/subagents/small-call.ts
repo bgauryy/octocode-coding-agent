@@ -37,7 +37,7 @@ export async function callSmallModel(ctx: ExtensionContext, options: SmallCallOp
 		const chosen = resolveTier("small", available, ctx.model, currentCatalog());
 		const session = ctx.model;
 		const model =
-			(chosen && available.find((each) => each.provider === chosen.provider && each.id === chosen.id)) ||
+			(chosen && available.find((each) => each.provider === chosen.provider && each.id === chosen.id)) ??
 			(options.fallbackToSession ? session : undefined);
 		if (!model) return { error: "no cheaper model is available" };
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);

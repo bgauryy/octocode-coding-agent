@@ -1,3 +1,4 @@
+import { returnedPurpose } from "@octocodeai/octocode-contracts";
 import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { isMcpToolName } from "../../../../../../mcp/src/servers.ts";
@@ -24,13 +25,17 @@ class ReasonLine implements Component {
 }
 
 /**
- * The reason row for a tool call's arguments, shared by the terminal tool view and the HTML export. Native tools and
- * the `mcp` tool require a `reason`; models add one to MCP calls too (the MCP tool definition drops it before the
- * server sees it, but the row shows the call as the model made it). Extension tools define their own arguments, so a
- * `reason` there may mean something else: no row. None either when the call gives no reason or one too short to say
- * more than the title (`Edit`).
+ * The reason row of a tool call, shared by the terminal tool view and the HTML export. Native tools and the `mcp` tool
+ * require a `reason`, read from the call's arguments. An MCP tool's input belongs to its server, so its row shows only
+ * the goal or reason the server's returned data states (`returnedPurpose` of the result's `structuredContent`), never
+ * one from the arguments. Extension tools define their own arguments, so a `reason` there may mean something else: no
+ * row. None either when there is no reason or one too short to say more than the title (`Edit`).
  */
-export function reasonRow(toolName: string, args: unknown): Component | undefined {
-	const reason = takesCallReason(toolName) || isMcpToolName(toolName) ? callReason(args) : undefined;
+export function reasonRow(toolName: string, args: unknown, structuredContent?: unknown): Component | undefined {
+	const reason = takesCallReason(toolName)
+		? callReason(args)
+		: isMcpToolName(toolName)
+			? returnedPurpose(structuredContent)
+			: undefined;
 	return isInformativeReason(reason) ? new ReasonLine(reason) : undefined;
 }

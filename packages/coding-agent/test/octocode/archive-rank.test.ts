@@ -65,7 +65,8 @@ function tool(cwd: string) {
 	const ctx = fakeCtx({ cwd });
 	return async (params: Record<string, unknown>) => {
 		const out = await archive.execute("t1", params, undefined, undefined, ctx);
-		return { text: out.content[0].text as string, details: out.details };
+		// Op-less calls are session history (source sessions); its own details sit under `history`.
+		return { text: out.content[0].text as string, details: out.details.history ?? out.details };
 	};
 }
 

@@ -59,9 +59,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setShowImages(show: boolean): void {
-		if (!this.globalSettings.terminal) {
-			this.globalSettings.terminal = {};
-		}
+		this.globalSettings.terminal ??= {};
 		this.globalSettings.terminal.showImages = show;
 		this.markModified("terminal", "showImages");
 		this.save();
@@ -76,9 +74,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setImageWidthCells(width: number): void {
-		if (!this.globalSettings.terminal) {
-			this.globalSettings.terminal = {};
-		}
+		this.globalSettings.terminal ??= {};
 		this.globalSettings.terminal.imageWidthCells = Math.max(1, Math.floor(width));
 		this.markModified("terminal", "imageWidthCells");
 		this.save();
@@ -94,9 +90,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setClearOnShrink(enabled: boolean): void {
-		if (!this.globalSettings.terminal) {
-			this.globalSettings.terminal = {};
-		}
+		this.globalSettings.terminal ??= {};
 		this.globalSettings.terminal.clearOnShrink = enabled;
 		this.markModified("terminal", "clearOnShrink");
 		this.save();
@@ -107,9 +101,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setShowTerminalProgress(enabled: boolean): void {
-		if (!this.globalSettings.terminal) {
-			this.globalSettings.terminal = {};
-		}
+		this.globalSettings.terminal ??= {};
 		this.globalSettings.terminal.showTerminalProgress = enabled;
 		this.markModified("terminal", "showTerminalProgress");
 		this.save();
@@ -130,9 +122,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setReduceMotion(value: boolean | "auto"): void {
-		if (!this.globalSettings.terminal) {
-			this.globalSettings.terminal = {};
-		}
+		this.globalSettings.terminal ??= {};
 		this.globalSettings.terminal.reduceMotion = value;
 		this.markModified("terminal", "reduceMotion");
 		this.save();
@@ -200,9 +190,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setImageAutoResize(enabled: boolean): void {
-		if (!this.globalSettings.images) {
-			this.globalSettings.images = {};
-		}
+		this.globalSettings.images ??= {};
 		this.globalSettings.images.autoResize = enabled;
 		this.markModified("images", "autoResize");
 		this.save();
@@ -213,9 +201,7 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 	}
 
 	setBlockImages(blocked: boolean): void {
-		if (!this.globalSettings.images) {
-			this.globalSettings.images = {};
-		}
+		this.globalSettings.images ??= {};
 		this.globalSettings.images.blockImages = blocked;
 		this.markModified("images", "blockImages");
 		this.save();

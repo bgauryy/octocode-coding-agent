@@ -1,4 +1,4 @@
-import { parseApplicationTool } from "@octocodeai/octocode-contracts";
+import { parseApplicationTool, returnedPurpose } from "@octocodeai/octocode-contracts";
 import type {
 	ApplicationAsset,
 	ApplicationContentBlock,
@@ -317,7 +317,7 @@ export function ToolContent({
 					{tool?.durationMs === undefined ? "" : ` · ${Math.round(tool.durationMs)} ms`}
 				</span>
 			</header>
-			<ToolReason args={tool?.arguments ?? args} />
+			<ToolReason name={name} args={tool?.arguments ?? args} structuredContent={tool?.structuredContent} />
 			{(tool?.arguments ?? args) !== undefined && <JsonDetails label="Arguments" value={tool?.arguments ?? args} />}
 			{tool?.content ? (
 				<ContentBlocks
@@ -352,14 +352,17 @@ export function ToolContent({
 }
 
 /**
- * The call's `reason` (every native tool requires one; models add it to MCP calls) as one line under the tool's name,
- * like the terminal's `↳` row. A one-word reason (`Edit`) says no more than the name.
+ * Why the call was made, as one line under the tool's name like the terminal's `↳` row: a native call's `reason`
+ * argument (every native tool requires one), or for an MCP tool (`mcp__…`), whose input is its server's, only the goal
+ * or reason its returned data states. A one-word reason (`Edit`) says no more than the name.
  */
-function ToolReason({ args }: { args: unknown }) {
-	const reason =
-		args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
-			? args.reason.replace(/\s+/g, " ").trim()
-			: "";
+function ToolReason({ name, args, structuredContent }: { name: string; args: unknown; structuredContent: unknown }) {
+	const stated = name.startsWith("mcp__")
+		? returnedPurpose(structuredContent)
+		: args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
+			? args.reason
+			: undefined;
+	const reason = stated?.replace(/\s+/g, " ").trim() ?? "";
 	return reason.includes(" ") ? <p className="tool-reason">↳ {reason}</p> : null;
 }
 

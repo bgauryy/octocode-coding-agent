@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { HOOK_SETTINGS } from "./helpers.ts";
 const run = (stdout: string, code = 0, stderr = "") => ({
 	stdout,
 	code,
@@ -98,7 +99,7 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 			},
 		}),
 	);
-	const fake = fakeHost(),
+	const fake = fakeHost(HOOK_SETTINGS),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const hooks = registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -181,7 +182,7 @@ it.each([false, true])("keeps invalid Codex effects neutral unless failClosed=%s
 			},
 		}),
 	);
-	const fake = fakeHost(),
+	const fake = fakeHost(HOOK_SETTINGS),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const hooks = registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -245,7 +246,7 @@ it("retains interruption from a later denied file constituent", async () => {
 			},
 		}),
 	);
-	const fake = fakeHost(),
+	const fake = fakeHost(HOOK_SETTINGS),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const hooks = registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);

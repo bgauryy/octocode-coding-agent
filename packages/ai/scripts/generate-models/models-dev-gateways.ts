@@ -17,6 +17,7 @@ import { getOpenCodeAnthropicCacheMetadata } from "./opencode.ts";
 import { getModelsDevCost } from "./pricing.ts";
 import { getGoogleThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** models.dev gateways: OpenCode (Zen and Go) and GitHub Copilot. */
 export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<any>[]): void {
@@ -113,8 +114,8 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 				cost: getModelsDevCost(m.cost),
 				...(compat ? { compat } : {}),
 				...(promptCache ? { promptCache } : {}),
-				contextWindow: m.limit?.context || 4096,
-				maxTokens: m.limit?.output || 4096,
+				contextWindow: nonZeroOr(4096, m.limit?.context),
+				maxTokens: nonZeroOr(4096, m.limit?.output),
 			});
 			recordModelsDevReasoningOptions(variant.provider, modelId, m);
 		}
@@ -155,8 +156,8 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: m.limit?.context || 128000,
-				maxTokens: m.limit?.output || 8192,
+				contextWindow: nonZeroOr(128000, m.limit?.context),
+				maxTokens: nonZeroOr(8192, m.limit?.output),
 				headers: { ...COPILOT_STATIC_HEADERS },
 				...(anthropicCompat ? { compat: anthropicCompat } : {}),
 				// compat only applies to openai-completions

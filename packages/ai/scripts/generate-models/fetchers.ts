@@ -10,6 +10,7 @@ import {
 import { generatorOptions } from "./options.ts";
 import { roundCost } from "./pricing.ts";
 import type { AiGatewayModel, NvidiaNimModelListItem } from "./types.ts";
+import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** Fetchers for the NVIDIA NIM, OpenRouter and Vercel AI Gateway catalogs. */
 
@@ -115,7 +116,7 @@ export async function fetchAiGatewayModels(): Promise<{
 						cacheRead: 0,
 						cacheWrite: 0,
 					},
-					contextWindow: model.context_window || 4096,
+					contextWindow: nonZeroOr(4096, model.context_window),
 				});
 				continue;
 			}
@@ -138,8 +139,8 @@ export async function fetchAiGatewayModels(): Promise<{
 				input,
 				compat: { allowEmptySignature: true },
 				cost: getAiGatewayCost(model.pricing),
-				contextWindow: model.context_window || 4096,
-				maxTokens: model.max_tokens || 4096,
+				contextWindow: nonZeroOr(4096, model.context_window),
+				maxTokens: nonZeroOr(4096, model.max_tokens),
 			});
 		}
 

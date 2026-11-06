@@ -25,6 +25,7 @@ import { startNotices } from "./start-notices.ts";
 import { agentToolSpec } from "./agent-tool.ts";
 import { FORK_NOTE_TYPE, forkNote, resumeNote } from "./children.ts";
 import { type MergeResult, mergeChild } from "./merge-child.ts";
+import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenance/exposure.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { startBackground } from "./run-execution.ts";
 import { spawnAgent, type SpawnEnv } from "./spawn.ts";
@@ -190,6 +191,7 @@ export function registerAgentTool(
 	/** What this session offers a child: its permission state, its UI when a person can be asked, and its team's signature for the user's messages. */
 	const relayHost = (ctx: Pick<ExtensionContext, "hasUI" | "ui">): RelayHost => ({
 		permission,
+		exposure: (child, exposed) => api.events.emit(CHILD_EXPOSURE_EVENT, { child, exposed } satisfies ChildExposure),
 		vouch: (id, secret) => team.vouch(id, secret),
 		awaitingApproval: (id, waiting) => team.awaitingApproval(id, waiting),
 		output: (id, at) => team.approvals.noteOutput(id, at),

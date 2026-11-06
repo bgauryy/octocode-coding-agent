@@ -6,9 +6,12 @@ import { READ_ONLY_ENV } from "../../../common/src/env.ts";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
+import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp, allSections } from "./helpers.ts";
 
 describe("registerTurnSetup", () => {
+	// The research server is the one whose entry gives reader and search roles (`mcp/src/roles.ts`), never a name.
+	useResearchRoles();
 	const setup = () => {
 		const fake = fakeHost();
 		for (const name of ["read", "bash", "file"]) fake.tools.set(name, { name });
@@ -67,16 +70,16 @@ describe("registerTurnSetup", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("routes declared Octocode research tools without suggesting scripts or discovery", async () => {
+	it("routes declared research tools without suggesting scripts or discovery", async () => {
 		const { fake } = setup();
-		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "direct" });
-		fake.api.setActiveTools(["mcp__octocode__ghSearchCode"]);
+		fake.tools.set(RESEARCH.other, { name: RESEARCH.other, exposure: "direct" });
+		fake.api.setActiveTools([RESEARCH.other]);
 		const prompt = await run(fake);
-		// With the server reachable the research rule routes to `mcp__octocode__*` as a family and names no single
-		// server tool (the server's own text describes each); no fallback.
+		// With the server reachable the research rule routes to `mcp__research__*` as a family and names no full
+		// server tool name (the server's own text describes each); no fallback.
 		expect(prompt).not.toContain(NO_LOOKUP_TOOL);
-		expect(prompt).toContain("`mcp__octocode__*`");
-		expect(prompt).not.toMatch(/mcp__octocode__\w/);
+		expect(prompt).toContain("`mcp__research__*`");
+		expect(prompt).not.toMatch(/mcp__research__\w/);
 		expect(prompt).not.toContain("are called from `codemode`");
 		expect(prompt).not.toContain("tool_search");
 	});
@@ -228,8 +231,8 @@ describe("registerTurnSetup", () => {
 
 	it("keeps native research guidance stable for a fixed selected catalog", async () => {
 		const { fake } = setup();
-		fake.tools.set("mcp__octocode__localSearch", { name: "mcp__octocode__localSearch" });
-		const selected = ["read", "mcp__octocode__localSearch"];
+		fake.tools.set(RESEARCH.search, { name: RESEARCH.search });
+		const selected = ["read", RESEARCH.search];
 		const first = await run(fake, selected);
 		expect(first).not.toContain(NO_LOOKUP_TOOL);
 		expect(first).not.toContain("# Using Octocode MCP tools");
@@ -239,18 +242,18 @@ describe("registerTurnSetup", () => {
 	});
 	it("leaves server instructions to the shared MCP section", async () => {
 		const { fake } = setup();
-		fake.tools.set("mcp__octocode__localSearch", {
-			name: "mcp__octocode__localSearch",
-			namespace: { name: "mcp__octocode", instructions: "SERVER_ONLY_INVENTORY" },
+		fake.tools.set(RESEARCH.search, {
+			name: RESEARCH.search,
+			namespace: { name: "mcp__research", instructions: "SERVER_ONLY_INVENTORY" },
 		});
-		const native = await run(fake, ["read", "mcp__octocode__localSearch"]);
+		const native = await run(fake, ["read", RESEARCH.search]);
 		expect(native).not.toContain(NO_LOOKUP_TOOL);
 		expect(native).not.toContain("SERVER_ONLY_INVENTORY");
 	});
 	it("drops the native research fallback when the research server's tools become available and restores it after deselection or reset", async () => {
 		const { fake } = setup();
 		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
-		expect(await run(fake, ["read", "mcp__octocode__localSearch"])).not.toContain(NO_LOOKUP_TOOL);
+		expect(await run(fake, ["read", RESEARCH.search])).not.toContain(NO_LOOKUP_TOOL);
 		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
 		setupTurn(fake).reset();
 		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);

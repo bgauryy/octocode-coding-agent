@@ -26,10 +26,13 @@ const expectOwnTypedFields = (properties: unknown) => {
 	expect(JSON.stringify(properties)).toBe(expectedProperties);
 };
 
-afterEach(() => {
+/** Named so the assertions are not written inside the hook: a leaked name is reported by whichever test ran last. */
+function expectPrototypeUntouched(): void {
 	expect(Object.getOwnPropertyNames(Object.prototype).sort()).toEqual(prototypeKeys);
 	expect(({} as Record<string, unknown>).type).toBeUndefined();
-});
+}
+
+afterEach(expectPrototypeUntouched);
 
 describe("thin MCP declarations of fields named after Object.prototype members", () => {
 	for (const [label, schema] of [

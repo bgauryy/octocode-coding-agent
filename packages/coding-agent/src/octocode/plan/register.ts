@@ -4,6 +4,7 @@ import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { planningRefusal, type ShellReader } from "./gate.ts";
 import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
+import { planStartupRequested } from "./startup.ts";
 import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "./state.ts";
 import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";
 
@@ -32,13 +33,11 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 		restore(ctx);
 		unbind = bindPlanConstraint(ctx.sessionManager.getSessionId(), blocked);
 	};
-	api.registerFlag("plan", { type: "boolean", description: "Start with the native planning constraint" });
 	api.on("session_start", async (_event, ctx) => {
 		restore(ctx);
 		unbind?.();
 		unbind = bindPlanConstraint(ctx.sessionManager.getSessionId(), blocked);
-		if (_event.reason === "startup" && api.getFlag("plan") === true && !state.active)
-			write({ ...state, active: true }, ctx);
+		if (_event.reason === "startup" && planStartupRequested() && !state.active) write({ ...state, active: true }, ctx);
 	});
 	api.on("session_tree", async (_event, ctx) => restore(ctx));
 	api.on("before_agent_start", async (event, ctx) => {

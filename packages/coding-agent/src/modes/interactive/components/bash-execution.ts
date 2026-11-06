@@ -144,11 +144,9 @@ export class BashExecutionComponent extends Container {
 	 * message arrive raw. Every control goes per piece, so a sequence split across chunks cannot rejoin. */
 	private writeToCurrentLine(piece: string): void {
 		const lastCarriageReturn = piece.lastIndexOf("\r");
-		if (lastCarriageReturn !== -1) {
-			this.currentLine = "";
-			piece = piece.slice(lastCarriageReturn + 1);
-		}
-		this.currentLine = (this.currentLine + sanitizeTerminalText(piece)).slice(-DEFAULT_MAX_BYTES);
+		if (lastCarriageReturn !== -1) this.currentLine = "";
+		const visible = lastCarriageReturn !== -1 ? piece.slice(lastCarriageReturn + 1) : piece;
+		this.currentLine = (this.currentLine + sanitizeTerminalText(visible)).slice(-DEFAULT_MAX_BYTES);
 	}
 
 	/** Drop the oldest lines beyond what the view can show (the same limits as the bash tool, twice the bytes). */

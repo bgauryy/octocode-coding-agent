@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { enableHarnesses } from "./e2e-helpers/harness-toggles.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -59,6 +60,8 @@ describe("sections built from what the session loaded", () => {
 		const skill = path.join(box.home, ".agents", "skills", "demo-skill", "SKILL.md");
 		const hooks = path.join(box.home, ".claude", "settings.json");
 
+		// The hook file is Claude Code's, which loads only once its harness is on.
+		enableHarnesses(box, "claude");
 		write(
 			mcp,
 			JSON.stringify({

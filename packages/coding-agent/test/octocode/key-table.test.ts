@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { KeyTable } from "../../src/octocode/permission/key-table.ts";
 
 /** A seeded generator, so a failure repeats. */
-function random(seed: number): () => number {
+function random(initial: number): () => number {
+	let seed = initial;
 	return () => {
 		seed = (seed * 48_271) % 2_147_483_647;
 		return seed / 2_147_483_647;

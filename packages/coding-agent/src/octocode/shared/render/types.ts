@@ -5,10 +5,14 @@ import type { Theme } from "../../../theme/theme.ts";
 export interface ToolRow {
 	/** When a row without a call id first drew as running (see `runStart`). */
 	startedAt?: number;
-	/** The row holds the clock now: it is the newest running row (see `track`). */
+	/** The row's elapsed-time clock is subscribed (see `track`). */
 	ticking?: boolean;
-	/** The row took the clock once; a row that lost it to a newer one never takes it back. */
-	clocked?: boolean;
+	/** Ends the elapsed-time subscription; `releaseToolRowState` calls it when the row leaves the transcript. */
+	unsubscribe?: () => void;
+	/** The elapsed text the last tick asked a frame for: a tick that would draw the same text asks for none. */
+	tickedText?: string;
+	/** When the row first drew as waiting: its mark pulses from here for `WAIT_PULSE_MS`, then holds still. */
+	waitedAt?: number;
 	/** `checks 1.2s · queued 3s`: the time the call waited before it ran (see `timingOf`). */
 	waits?: string;
 	/** The call was interrupted (Esc, a kill, a requested stop), not failed: drawn `◼` in the warning colour. */
@@ -20,8 +24,6 @@ export interface ToolRow {
 	/** The state the row's animation subscription paints, and how to end it (see `rowMark`). */
 	marking?: string;
 	unmark?: () => void;
-	/** The moving state (`running`, `waiting`) in which the row last took the one animated mark (see `rowMark`). */
-	movedAs?: string;
 }
 
 /** The part of Octocode's ToolRenderContext these helpers read. */

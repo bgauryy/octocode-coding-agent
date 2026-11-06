@@ -96,7 +96,7 @@ export class SessionExtensionBindings {
 
 	/** Whether a mode bound extensions, so a reload starts the reloaded extensions. */
 	get hasBindings(): boolean {
-		return !!(this._uiContext || this._commandContextActions || this._shutdownHandler || this._errorListener);
+		return !!(this._uiContext ?? this._commandContextActions ?? this._shutdownHandler ?? this._errorListener);
 	}
 
 	/** Keep the given bindings; omitted ones keep their current value. */

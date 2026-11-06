@@ -3,13 +3,7 @@
 import type { AgentMessage, AgentTool } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import type { SystemMessage } from "@octocodeai/octocode-ai/compat";
-import {
-	type ToolDefinition,
-	type ToolExposure,
-	type ToolInfo,
-	type ToolLoadout,
-	wrapRegisteredTools,
-} from "../features/index.ts";
+import { type ToolDefinition, type ToolExposure, type ToolInfo, wrapRegisteredTools } from "../features/index.ts";
 import { createToolNameMatcher, isMcpToolName } from "../../../../mcp/src/servers.ts";
 import { applyToolModifiers } from "../settings-manager.ts";
 import {
@@ -17,14 +11,15 @@ import {
 	buildSystemPromptSections,
 	diffSystemPromptSections,
 	type NormalizedBuildSystemPromptOptions,
-	normalizeBuildSystemPromptOptions,
 } from "../system-prompt.ts";
 import type { SessionInternals } from "./host.ts";
 import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.ts";
 import { selectsToolPrefix } from "./tool-selection.ts";
 import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { toolsToActivate, toToolInfo } from "./tool-loadout/activation.ts";
+import { runPrepareLoadoutHooks } from "./tool-loadout/prepare-hooks.ts";
+import { buildBaseSystemPromptOptions } from "./tool-loadout/prompt-options.ts";
 
 export interface ToolLoadoutOptions {
 	customTools?: ToolDefinition[];
@@ -101,17 +96,9 @@ export class SessionToolLoadout {
 	}
 
 	getAllTools(): ToolInfo[] {
-		return Array.from(this._toolDefinitions.values()).map(({ definition, sourceInfo }) => ({
-			name: definition.name,
-			description: definition.description,
-			parameters: definition.parameters,
-			...(definition.outputSchema ? { outputSchema: definition.outputSchema } : {}),
-			promptGuidelines: definition.promptGuidelines,
-			exposure: this._getToolExposure(definition.name),
-			...(definition.namespace ? { namespace: definition.namespace } : {}),
-			...(definition.annotations ? { annotations: { ...definition.annotations } } : {}),
-			sourceInfo,
-		}));
+		return Array.from(this._toolDefinitions.values()).map((entry) =>
+			toToolInfo(entry, this._getToolExposure(entry.definition.name)),
+		);
 	}
 
 	getToolDefinition(name: string): ToolDefinition | undefined {
@@ -221,71 +208,39 @@ export class SessionToolLoadout {
 			const entry = this._toolDefinitions.get(tool.name);
 			return entry?.definition.prepareLoadout ? [entry] : [];
 		});
-		const hidden = new Set<string>();
-		let declared = tools;
-		if (hooks.length > 0) {
-			const loadout: ToolLoadout = {
+		const { declared, hidden } = runPrepareLoadoutHooks(
+			tools,
+			hooks,
+			() => ({
 				declared: tools,
 				callable: this.getCallableTools(new Set(tools.map((tool) => tool.name))),
 				registered: [...this._toolRegistry.values()],
 				getExposure: (name) => this._getToolExposure(name),
 				getNamespace: (name) => this._toolDefinitions.get(name)?.definition.namespace,
 				getPromptGuidelines: (name) => this._toolPromptGuidelines.get(name) ?? [],
-			};
-			const descriptions = new Map<string, string>();
-			for (const { definition, sourceInfo } of hooks) {
-				try {
-					const changes = definition.prepareLoadout?.(loadout);
-					for (const [name, description] of Object.entries(changes?.descriptions ?? {})) {
-						descriptions.set(name, description);
-					}
-					for (const name of changes?.hiddenDeclarations ?? []) hidden.add(name);
-				} catch (error) {
-					this.host.session.extensionRunner.emitError({
-						extensionPath: sourceInfo.path,
-						event: "prepare_loadout",
-						error: errorMessage(error),
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				}
-			}
-			declared = tools.map((tool) => {
-				const description = descriptions.get(tool.name);
-				return description === undefined ? tool : { ...tool, description };
-			});
-		}
+			}),
+			(entry, error, stack) =>
+				this.host.session.extensionRunner.emitError({
+					extensionPath: entry.sourceInfo.path,
+					event: "prepare_loadout",
+					error,
+					stack,
+				}),
+		);
 		this._hiddenDeclarations = hidden;
 		this.host.session.agent.state.tools = declared;
 		return declared;
 	}
 
 	rebuildSystemPrompt(toolNames: string[]): void {
-		const validToolNames = toolNames.filter((name) => this._toolRegistry.has(name));
-		const toolSnippets: Record<string, string> = {};
-		for (const name of this._toolRegistry.keys()) {
-			const snippet = this._toolPromptSnippets.get(name);
-			// Tools without a snippet are not listed.
-			if (snippet) toolSnippets[name] = snippet;
-		}
-
-		const resourceLoader = this.host.session.resourceLoader;
-		const loaderSystemPrompt = resourceLoader.getSystemPrompt();
-		const loaderAppendSystemPrompt = resourceLoader.getAppendSystemPrompt();
-		const appendSystemPrompt = loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : "";
-		const loadedSkills = resourceLoader.getSkills().skills;
-		const loadedContextFiles = resourceLoader.getAgentsFiles().agentsFiles;
-
-		this.baseSystemPromptOptions = normalizeBuildSystemPromptOptions({
-			cwd: this.host.cwd,
-			skills: loadedSkills,
-			contextFiles: loadedContextFiles,
-			customPrompt: loaderSystemPrompt,
-			appendSystemPrompt,
-			selectedTools: validToolNames,
-			hiddenTools: [...this._hiddenDeclarations],
-			toolSnippets,
-			toolGuidelines: Object.fromEntries(this._toolPromptGuidelines),
-		});
+		this.baseSystemPromptOptions = buildBaseSystemPromptOptions(
+			this.host,
+			this._toolRegistry,
+			toolNames,
+			this._toolPromptSnippets,
+			this._toolPromptGuidelines,
+			[...this._hiddenDeclarations],
+		);
 	}
 
 	/**
@@ -340,9 +295,8 @@ export class SessionToolLoadout {
 		const previousActiveToolNames = this.host.session.getActiveToolNames();
 		const allowedTools = this._allowedTools;
 
-		const registeredTools = this.host.session.extensionRunner.getAllRegisteredTools();
 		const { allCustomTools, definitions, promptSnippets, promptGuidelines } = buildToolDefinitionRegistry(
-			registeredTools,
+			this.host.session.extensionRunner.getAllRegisteredTools(),
 			this._customTools,
 			this._baseToolDefinitions,
 			(name) => this._isAllowedTool(name),
@@ -350,8 +304,7 @@ export class SessionToolLoadout {
 		this._toolDefinitions = definitions;
 		this._toolPromptSnippets = promptSnippets;
 		this._toolPromptGuidelines = promptGuidelines;
-		const runner = this.host.session.extensionRunner;
-		const wrappedTools = wrapRegisteredTools([...definitions.values()], runner);
+		const wrappedTools = wrapRegisteredTools([...definitions.values()], this.host.session.extensionRunner);
 		this._toolRegistry = new Map(wrappedTools.map((tool) => [tool.name, tool]));
 
 		const nextActiveToolNames = (
@@ -360,24 +313,19 @@ export class SessionToolLoadout {
 				: [...(this._toolPolicy ? this._policyRequestedTools : previousActiveToolNames)]
 		).filter((name) => this._isAllowedTool(name));
 
-		if (allowedTools) {
-			for (const toolName of this._toolRegistry.keys()) {
-				// Naming or matching a tool activates it even when it is not active by default.
-				if (allowedTools(toolName) && this._isDeclarable(toolName) && !this._deselectedToolNames.has(toolName)) {
-					nextActiveToolNames.push(toolName);
-				}
-			}
-		} else if (options?.includeAllExtensionTools) {
-			for (const tool of allCustomTools) {
-				if (tool.sourceInfo.owner !== "native" && this._isActivatedOnRegistration(tool.definition.name))
-					nextActiveToolNames.push(tool.definition.name);
-			}
-		} else if (!options?.activeToolNames) {
-			for (const toolName of this._toolRegistry.keys()) {
-				const known = previousActivatedOnRegistration.has(toolName) || this._deselectedToolNames.has(toolName);
-				if (!known && this._isActivatedOnRegistration(toolName)) nextActiveToolNames.push(toolName);
-			}
-		}
+		nextActiveToolNames.push(
+			...toolsToActivate({
+				allowedTools,
+				explicitActiveNames: options?.activeToolNames !== undefined,
+				includeAllExtensionTools: options?.includeAllExtensionTools === true,
+				registered: this._toolRegistry.keys(),
+				customTools: allCustomTools,
+				previousActivated: previousActivatedOnRegistration,
+				deselected: this._deselectedToolNames,
+				isDeclarable: (name) => this._isDeclarable(name),
+				isActivatedOnRegistration: (name) => this._isActivatedOnRegistration(name),
+			}),
+		);
 		// Pending tools that are registered now become active.
 		nextActiveToolNames.push(...this._pendingToolNames);
 

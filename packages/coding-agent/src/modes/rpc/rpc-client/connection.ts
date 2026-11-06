@@ -7,6 +7,7 @@ import type { RpcReady } from "../session-identity.ts";
 import { collectUntilSettled, guarded, notifyAll } from "./listeners.ts";
 import type { RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./types.ts";
 import { leadsProcessGroup } from "../../../utils/shell.ts";
+import { reportToStderr } from "../../../../../common/src/stderr.ts";
 
 /**
  * The agent process behind an RpcClient: spawns it, reads its JSONL output, dispatches events and
@@ -182,7 +183,7 @@ export class RpcConnection {
 			try {
 				listener(error);
 			} catch (listenerError) {
-				console.error("RPC close listener failed", listenerError);
+				reportToStderr("RPC close listener failed", listenerError);
 			}
 		}
 	}
@@ -300,7 +301,7 @@ export class RpcConnection {
 	private protocolError(message: string): void {
 		this.lastProtocolError = message;
 		if (this.options.onProtocolError) this.options.onProtocolError(message);
-		else console.error(`RPC protocol error: ${message}`);
+		else reportToStderr(`RPC protocol error: ${message}`);
 	}
 
 	private createProcessExitError(code: number | null, signal: NodeJS.Signals | null): Error {

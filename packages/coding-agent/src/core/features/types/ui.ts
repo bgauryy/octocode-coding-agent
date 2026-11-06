@@ -30,8 +30,30 @@ export interface ExtensionUIPermissionRequest {
 	rejectOnce: string;
 }
 
+/**
+ * A select dialog's structured view (`octocode/ask/view.ts` builds and checks it): a short question, dim metadata, a
+ * quoted body, details behind a toggle, options with descriptions and a write-in row. Every option label equals a
+ * select option string, so a host that does not draw it shows the plain title and options unchanged.
+ */
+export interface ExtensionUIAskView {
+	/** One sentence, drawn bold. */
+	question: string;
+	/** Dim lines under the question: who asks, from where. */
+	meta?: string[];
+	/** Quoted text; `collapsible` bodies show `previewLines` (default 3) until expanded. Approved targets are never collapsible. */
+	body?: { text: string; label?: string; previewLines?: number; collapsible?: boolean };
+	/** The details block (effect, undo, why it asks, risk), shown on demand. */
+	notes?: { text: string; tone: "muted" | "warning" }[];
+	options: { label: string; description?: string; recommended?: boolean; tone?: "danger" }[];
+	/** The option row that opens an inline editor instead of answering at once. */
+	writeIn?: { label: string; title: string; placeholder?: string } | false;
+	multiSelect?: boolean;
+}
+
 /** Options for extension UI dialogs. */
 export interface ExtensionUIDialogOptions {
+	/** Select dialogs only: the structured view a terminal draws instead of the plain title. */
+	ask?: ExtensionUIAskView;
 	/** AbortSignal to programmatically dismiss the dialog. */
 	signal?: AbortSignal;
 	/** Timeout in milliseconds. Dialog auto-dismisses with live countdown display. */

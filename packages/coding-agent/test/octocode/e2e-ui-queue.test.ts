@@ -250,7 +250,7 @@ describe("messages typed during compaction", () => {
 			["TURN-C", "answer three"],
 		]) {
 			t.press(`\x1b[200~${bulky(label)}\x1b[201~`);
-			await new Promise((resolve) => setTimeout(resolve, 300));
+			await t.until(shows(/\[paste #\d+ \d+ chars\]/), "the paste in the editor");
 			t.press(KEY.enter);
 			await t.until(shows(answer), answer);
 			await t.until(() => !t!.host.session.isStreaming, "turn to finish");

@@ -11,6 +11,7 @@ import type { SkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { collectSettingsDiagnostics } from "../core/settings-diagnostics.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { isLocalPath } from "../../../common/src/paths.ts";
+import { setPlanStartup } from "../octocode/plan/startup.ts";
 import { recordOperatorLimits } from "../octocode/subagents/process/operator-limits.ts";
 import { missingCliPathWarnings } from "./cli-path-warnings.ts";
 import { buildSessionOptions, resolveCliPaths } from "./session-options.ts";
@@ -41,6 +42,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
 	recordOperatorLimits(parsed);
+	setPlanStartup(parsed.plan === true);
 	return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
 		// The startup gate decided the first folder before this runs. A session switch into another folder lands here
 		// without a gate: it must already be trusted, and nothing of an untrusted folder is read.
@@ -56,7 +58,6 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			agentDir,
 			settingsManager: runtimeSettingsManager,
 			modelRuntimeSignal: AbortSignal.timeout(15_000),
-			extensionFlagValues: parsed.unknownFlags,
 			resourceLoaderOptions: {
 				skillResourceSnapshot,
 				additionalSkillPaths: resolvedSkillPaths,
@@ -112,11 +113,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			modelPatterns && modelPatterns.length > 0
 				? await resolveModelScope(modelPatterns, modelRuntime, { signal: AbortSignal.timeout(15_000) })
 				: [];
-		const {
-			options: sessionOptions,
-			cliThinkingFromModel,
-			diagnostics: sessionOptionDiagnostics,
-		} = buildSessionOptions(
+		const { options: sessionOptions, diagnostics: sessionOptionDiagnostics } = buildSessionOptions(
 			parsed,
 			scopedModels,
 			sessionManager.buildSessionContext().messages.length > 0,
@@ -148,10 +145,6 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			noTools: sessionOptions.noTools,
 			customTools: sessionOptions.customTools,
 		});
-		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
-		if (created.session.model && cliThinkingOverride) {
-			created.session.setThinkingLevel(created.session.thinkingLevel);
-		}
 
 		return {
 			...created,

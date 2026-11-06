@@ -11,6 +11,8 @@ export function codexConfigDir(home = homedir(), env: NodeJS.ProcessEnv = proces
 	try {
 		const directory = realpathSync(env.CODEX_HOME);
 		if (statSync(directory).isDirectory()) return directory;
-	} catch {}
+	} catch {
+		// A missing or unreadable path is reported by the error below.
+	}
 	throw new Error("CODEX_HOME must resolve to an existing directory");
 }

@@ -11,7 +11,7 @@ import { recommendedPresets } from "./recommended/index.ts";
 import { existsSync } from "node:fs";
 import chalk from "chalk";
 import { hostIdentity, hostTrust } from "./host.ts";
-import { globalMcpConfigPath, projectMcpConfigPaths, projectMcpConfigPath } from "./paths.ts";
+import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 import { MCP_COMMANDS } from "./cli/commands.ts";
 import { compact, compactUsage } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
@@ -20,7 +20,7 @@ import { login } from "./cli/login.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { createConnection, helpHint, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
 import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts";
-import { loadMcpConfig, type McpExposure, updateMcpServerConfig } from "./config.ts";
+import { loadMcpConfig, type McpExposure, updateMcpServerConfig, writableSource } from "./config.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 
@@ -71,8 +71,8 @@ Other options:
 const DEFAULT_LOGIN_TIMEOUT_SECONDS = 300;
 
 /** Run `octocode mcp <args>` and return the exit code. */
-export async function runMcpCommand(args: string[], options: McpCommandOptions): Promise<number> {
-	options = { ...options, presets: options.presets ?? [...recommendedPresets(), browserPreset()] };
+export async function runMcpCommand(args: string[], given: McpCommandOptions): Promise<number> {
+	const options = { ...given, presets: given.presets ?? [...recommendedPresets(), browserPreset()] };
 	const log = options.log ?? ((line: string) => console.log(line));
 	const error = options.error ?? ((line: string) => console.error(line));
 	const [command, ...rest] = args;
@@ -109,7 +109,8 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 		defaults: presetEntries(options.presets ?? []),
 	});
 	const untrustedNote =
-		!projectTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
+		!projectTrusted &&
+		mcpConfigFiles(options.agentDir, options.cwd).some((file) => file.scope === "project" && existsSync(file.path))
 			? `Project MCP configuration is ignored because the folder is not trusted. Run \`${hostIdentity().appName} trust add\` in it, or start ${hostIdentity().appName} there to trust it.`
 			: undefined;
 	const credentials = options.credentials ?? new McpOAuthCredentialStore();
@@ -157,14 +158,14 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 				return 1;
 			}
 			const projectOverride = entry.override && entry.overrideScope !== "global";
+			// Another agent's file is never written: a change becomes an override in Octocode's file of that scope.
+			const ownProject = entry.scope === "project" ? writableSource(entry) : undefined;
 			const target = local
-				? entry.scope === "project"
-					? entry.source
-					: (loaded.projectConfig ?? projectConfig)
+				? (ownProject ?? loaded.projectConfig ?? projectConfig)
 				: projectOverride
 					? entry.override!
 					: entry.scope === "project"
-						? entry.source
+						? (ownProject ?? loaded.projectConfig ?? projectConfig)
 						: (loaded.globalConfig ?? globalMcpConfigPath(options.agentDir));
 			try {
 				updateMcpServerConfig(

@@ -46,9 +46,7 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 	}
 
 	setRetryEnabled(enabled: boolean): void {
-		if (!this.globalSettings.retry) {
-			this.globalSettings.retry = {};
-		}
+		this.globalSettings.retry ??= {};
 		this.globalSettings.retry.enabled = enabled;
 		this.markModified("retry", "enabled");
 		this.save();

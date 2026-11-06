@@ -43,7 +43,7 @@ export function readParked(session: string, workspace?: string): ParkedWorker[] 
 			!Number.isFinite(worker.until) ||
 			worker.until <= Date.now() ||
 			typeof identity?.id !== "string" ||
-			!identity.id.match(/^[a-zA-Z0-9._-]{1,80}$/) ||
+			!/^[a-zA-Z0-9._-]{1,80}$/.test(identity.id) ||
 			typeof identity.goal !== "string" ||
 			typeof identity.role !== "string" ||
 			identity.parentSession !== session ||

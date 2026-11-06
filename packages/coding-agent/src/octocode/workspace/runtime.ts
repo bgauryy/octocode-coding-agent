@@ -11,6 +11,7 @@ import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
 import type { Team } from "../team/session.ts";
 import { HEARTBEAT_MS } from "../team/session/activity.ts";
+import { descendants } from "../team/panel-roster.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
@@ -32,11 +33,20 @@ interface Operations {
 	expiry?(): string;
 }
 
-/** The team inputs of a workspace snapshot, with the expiry stamp the team's own view uses (it re-reads each heartbeat). */
+/**
+ * The team inputs of a workspace snapshot, with the expiry stamp the team's own view uses (it re-reads each heartbeat).
+ * The team database is shared by every session in the workspace, so, like the terminal panel, the web view lists only
+ * this session's descendants (`descendants`) and the messages that involve this session or them.
+ */
 export function teamView(team: Team): Pick<Operations, "members" | "traffic" | "expiry"> {
 	return {
-		members: () => team.members(),
-		traffic: () => team.snapshot().traffic,
+		members: () => descendants(team.members(), team.id),
+		traffic: () => {
+			const { members, traffic } = team.snapshot();
+			const mine = new Set(descendants(members, team.id).map((member) => member.id));
+			if (team.id) mine.add(team.id);
+			return traffic.filter((message) => mine.has(message.from) || message.to.some((id) => mine.has(id)));
+		},
 		expiry: () => String(Math.trunc(Date.now() / HEARTBEAT_MS)),
 	};
 }
@@ -290,6 +300,9 @@ export class WorkspaceRuntime {
 						message = "Message accepted for delivery. Follow its delivery status in Agents.";
 					} else {
 						if (!command.to) throw new Error("Choose an agent to stop.");
+						// The list is already scoped to this session's agents; refuse any other id here too, not only hide it.
+						if (!this.operations.members().some((member) => member.id === command.to))
+							throw new Error("That agent is not one of this session's agents.");
 						const refused = this.operations.stop(command.to);
 						if (refused) throw new Error(refused);
 						message = "Stop requested.";

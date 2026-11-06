@@ -27,7 +27,6 @@ export interface ExtensionRuntimeHost extends Pick<SessionInternals, "session" |
 
 export interface BuildRuntimeOptions {
 	activeToolNames?: string[];
-	flagValues?: Map<string, boolean | string>;
 	includeAllExtensionTools?: boolean;
 }
 
@@ -55,12 +54,6 @@ export function buildExtensionRuntime(host: ExtensionRuntimeHost, options: Build
 	tools.setBaseToolDefinitions(
 		new Map(Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition])),
 	);
-
-	if (options.flagValues) {
-		for (const [name, value] of options.flagValues) {
-			extensionsResult.runtime.flagValues.set(name, value);
-		}
-	}
 
 	const runner = new ExtensionRunner(
 		extensionsResult.extensions,
@@ -92,7 +85,6 @@ export async function reloadExtensionRuntime(
 ): Promise<void> {
 	const { session, tools } = host;
 	const oldRunner = session.extensionRunner;
-	const previousFlagValues = oldRunner.getFlagValues();
 	await emitSessionShutdownEvent(oldRunner, {
 		type: "session_shutdown",
 		reason: "reload",
@@ -120,7 +112,6 @@ export async function reloadExtensionRuntime(
 	tools.markActiveToolsPending();
 	buildExtensionRuntime(host, {
 		activeToolNames: [...policyRequestedTools, ...addedDefaultTools],
-		flagValues: previousFlagValues,
 		includeAllExtensionTools: true,
 	});
 

@@ -24,12 +24,12 @@ type Host = Pick<
 /** Live delivery and history use the same user block styles, including skill invocation folding. */
 export function addApplicationUserMessage(
 	host: Host,
-	message: ApplicationMessage,
+	received: ApplicationMessage,
 	options?: { populateHistory?: boolean },
 ): void {
 	const port = getApplicationPort(host.session);
 	const readAsset = (id: string) => port.readAsset(id);
-	message = new FullContentReader().message(message, readAsset);
+	const message = new FullContentReader().message(received, readAsset);
 	const text =
 		message.content
 			?.filter((block) => block.type === "text")

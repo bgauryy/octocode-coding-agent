@@ -73,7 +73,8 @@ export function parseHooks(
 				errors.push(`${source}: unsupported ${event} group fields ${extraGroupFields.join(", ")}; skipped`);
 				continue;
 			}
-			const commands = group.hooks.flatMap((hook): HookHandler[] => {
+			const commands = group.hooks.flatMap((declared): HookHandler[] => {
+				let hook = declared;
 				const invalidHandler = (failure: string): HookHandler[] => {
 					const required =
 						isRecord(hook) &&

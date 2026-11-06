@@ -37,8 +37,8 @@ function findToolResult(toolCallId) {
 	return null;
 }
 
-function formatExpandableOutput(text, maxLines, lang) {
-	text = replaceTabs(text);
+function formatExpandableOutput(rawText, maxLines, lang) {
+	const text = replaceTabs(rawText);
 	const lines = text.split("\n");
 	const displayLines = lines.slice(0, maxLines);
 	const remaining = lines.length - maxLines;

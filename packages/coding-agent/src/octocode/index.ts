@@ -9,6 +9,9 @@ import { BASH_READER, FileGuard, mcpReader } from "./files/tool/guard.ts";
 import { plural } from "./shared/render/text.ts";
 import { spilledMessage } from "./team/session/spilled-message.ts";
 import { registerWebCommands } from "./remote/register.ts";
+import { setShellPathEntries } from "../utils/shell.ts";
+import { registerOctocodeCli } from "./cli/command.ts";
+import { octocodeShimDir } from "./cli/shim.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
 import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
@@ -24,7 +27,7 @@ import { registerArchiveTool } from "./archive/tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import { externalAgentsEnabled } from "./external/enabled.ts";
-import { externalPermissionDialog } from "./external/permission-dialog.ts";
+import { externalPermission } from "./external/permission-dialog.ts";
 import { Peers } from "./external/peers.ts";
 import { externalIdentity, registerExternal } from "./external/register.ts";
 import { applyBashEnvironmentSetting } from "./files/bash-env.ts";
@@ -43,6 +46,7 @@ import { registerPermissionCommand } from "./permission/command.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { recordChildReports, startPermissionState } from "./permission/provenance/reports.ts";
 import { parsedShell, reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
+import { installPermissionPorts } from "./permission/ports.ts";
 import { readOnlyCommand } from "./permission/shell/read-only.ts";
 import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
@@ -67,6 +71,7 @@ import { registerModelsTool } from "./subagents/models-tool.ts";
 import type { AgentProfile } from "./subagents/profiles.ts";
 import { registerIdentityReminder } from "./subagents/identity-reminder.ts";
 import { loadSessionProfiles } from "./subagents/session-profiles.ts";
+import { registerHarnessSync } from "./subagents/harness-sync.ts";
 import { type AgentControl, budgetsThrough, mergeThrough, registerAgentTool } from "./subagents/tool.ts";
 import { messagePolicy } from "./message-policy.ts";
 import { Team } from "./team/session.ts";
@@ -94,10 +99,12 @@ import { installOctocodeDiscovery } from "./discovery/index.ts";
  *   (`compaction/register`) are registered before the headless hold at the end of this function, so a continued or
  *   retried run is decided before the hold waits for background work.
  */
-export default function octocode(api: ExtensionAPI): void {
-	api = withNativePermissionOwners(api);
+export default function octocode(host: ExtensionAPI): void {
+	const api = withNativePermissionOwners(host);
 	installOctocodeDiscovery(); // Agents, hooks, plugins and MCP servers join configuration discovery.
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
+	setShellPathEntries(() => [octocodeShimDir()].filter((dir) => dir !== undefined)); // `octocode` in agent shells.
+	installPermissionPorts({ mcpReadOnly: () => currentToolRoles().readOnly });
 	// First, so every feature's api.sendMessage goes through it and its agent_settled handler runs before theirs.
 	Delivery.install(api);
 	const commands = new Subcommands();
@@ -130,21 +137,15 @@ export default function octocode(api: ExtensionAPI): void {
 	const localReads = registerReadReceipts(api);
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	api.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
-	recordChildReports(api, provenance);
+	recordChildReports(api, provenance, permission, isSubagent);
 	guard.reservedBy = (file) => team.reservation(file, file);
 	guard.modifiedBy = (file) => changeNote(team.editLog(), file, team.id);
 	const checkpoints = new Checkpoints();
-	registerFileTool(
-		api,
-		guard,
-		permission,
-		checkpoints,
-		{
-			enabled: (input, cwd) => hooks.hasFilePermissionRequest(input, cwd),
-			committed: (id, input, cwd) => hooks.fileInputCommitted(id, input, cwd),
-			refresh: (ctx) => sourcePolicy.refresh(ctx),
-		},
-	);
+	registerFileTool(api, guard, permission, checkpoints, {
+		enabled: (input, cwd) => hooks.hasFilePermissionRequest(input, cwd),
+		committed: (id, input, cwd) => hooks.fileInputCommitted(id, input, cwd),
+		refresh: (ctx) => sourcePolicy.refresh(ctx),
+	});
 	// Octocode's bash with a foreground deadline and background jobs.
 	const jobs = registerBashTool(api, commands);
 	// `octocode-<role>-<id>` process title, periodic memory samples, and `/processes`.
@@ -251,6 +252,7 @@ export default function octocode(api: ExtensionAPI): void {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
 		registerEditor(api, permission);
 		registerTrustCommand(commands);
+		registerOctocodeCli(api, commands, permission.typed.bind(permission));
 		registerWorktrees(
 			api,
 			commands,
@@ -321,7 +323,7 @@ export default function octocode(api: ExtensionAPI): void {
 				beforeSend: messaging.beforeMessage,
 				afterReceive: (message, ctx) => hooks.messageReceive(message, ctx),
 				authorize: messaging.authorizeExternal,
-				permission: externalPermissionDialog,
+				permission: externalPermission(permission),
 			},
 			// Opt-in: without the `externalAgents` setting the `agent` tool does not declare `external` (`/agents external` stays).
 			externalAgentsEnabled() ? agentTool.collect : () => undefined,
@@ -343,8 +345,9 @@ export default function octocode(api: ExtensionAPI): void {
 	registerSkillTool(api);
 	registerRunGuards(api); // after the file guard: see run-guards.ts
 	registerHarnessCommand(commands, hooks, api);
-	// Subagents have no terminal of their own: their parent's row and report carry their state.
-	if (!isSubagent) registerNotify(api, { onNotice: hooks.notification });
+	// Subagents have no terminal of their own: their parent's row and report carry their state. A child follows the parent's `/harness` switches instead.
+	if (isSubagent) registerHarnessSync(api);
+	else registerNotify(api, { onNotice: hooks.notification });
 	const externalApi = isSubagent
 		? undefined
 		: registerApi(
@@ -366,7 +369,6 @@ export default function octocode(api: ExtensionAPI): void {
 					},
 				},
 			);
-
 	api.on("session_start", async (_event, ctx) => {
 		// Per-session state first: a later step that throws (API port in use) must not carry the old session's over.
 		turn.reset();

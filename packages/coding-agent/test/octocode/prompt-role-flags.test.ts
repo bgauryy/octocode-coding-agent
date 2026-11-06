@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { READ_ONLY_ENV } from "../../../common/src/env.ts";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { identityBlock, withIdentity } from "../../src/octocode/instructions/task.ts";
@@ -8,6 +8,13 @@ import { AGENT_ROLE_ENV } from "../../src/octocode/team/store/env.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 import { allSections, tmp } from "./helpers.ts";
+import { publishRoles, RESEARCH_ENTRY } from "./fake-research-roles.ts";
+
+// Whether the research CLI resolves depends on the host; `prompt-routing.test.ts` pins the available case.
+vi.mock("../../src/octocode/cli/shim.ts", async (original) => ({
+	...(await original<object>()),
+	octocodeCliAvailable: () => false,
+}));
 
 const BROWSER_RULE =
 	"Use the browser tools to interact with your own isolated browser as far as the task requires, within the task and the user's authorization; call other MCP tools only when they cannot change files or external state.";
@@ -90,6 +97,9 @@ describe("policy flags each agent derives from its profile and servers", () => {
 
 	it("gives the native research fallback while the research server is unselected, not while it connects (T16)", async () => {
 		const natives = ["bash", "file", "mcp"];
+		// The research role comes from the server's config entry; publish it as the MCP registry does.
+		publishRoles([{ ...RESEARCH_ENTRY, name: "octocode" }]);
+		onTestFinished(() => publishRoles([]));
 		const unselected = await sections({ isSubagent: true }, natives, [server("octocode", "unselected")]);
 		expect(unselected.research).toContain("Search with bash (`rg`, `fd`)");
 		const connecting = await sections({ isSubagent: true }, natives, [server("octocode", "connecting")]);

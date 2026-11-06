@@ -201,8 +201,9 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 					if (area !== undefined) place(found, area, command.dirs, moved, "unreadAreas");
 			}
 		}
-		// `octocode --help` prints; any other run is a session of its own, top-level, with none of this role's limits.
-		if (name === "octocode" && !/^(?:--version|-v|--help|-h)$/.test(rest[0] ?? "")) found.opaque.push("octocode");
+		// Whichever `octocode` runs (the product or another program by that name), the guard does not model it: the product
+		// starts a session of its own, with none of this role's limits.
+		if (name === "octocode") found.opaque.push("octocode");
 		// Words read at run time may be operands or options (`-delete`, `-o f`): a program judged by its words cannot be judged.
 		const input = fed.get(at);
 		if (input && inputMayWrite(name, rest, input)) {

@@ -15,18 +15,28 @@ export const MAX_LIST_LIMIT = 200;
 const DEFAULT_LIST_STATES: State[] = ["ongoing", "todo"];
 
 /**
- * The fields only `list` reads. `list` also filters by fields other operations write (`title`, `type`, `parentId`,
- * `priority`, `tags`, `paths`, `dependsOn`, `from`); their descriptions say so beside the write meaning.
+ * The fields only `list` reads. `list` also filters by fields other operations write (`id`, `title`, `type`,
+ * `parentId`, `priority`, `tags`, `paths`, `dependsOn`, `from`); their descriptions say so beside the write meaning.
  */
 export const listFields = {
-	ids: Type.Optional(Type.Array(Type.String(), { description: "list: these ids, any state unless states is set" })),
-	assignee: Type.Optional(Type.String({ description: 'list: held by this session id, or "me"' })),
-	blocked: Type.Optional(Type.Boolean({ description: "list: true: an unfinished dependsOn; false: ready" })),
-	since: Type.Optional(Type.String({ description: "list: updated since an ISO time or age (2h, 7d)" })),
-	createdSince: Type.Optional(Type.String({ description: "list: created since, same forms as since" })),
+	since: Type.Optional(
+		Type.String({ description: "list: updated (with sort created: created) since an ISO time or age (2h, 7d)" }),
+	),
 	sort: Type.Optional(
 		StringEnum(queries.ITEM_SORTS, { description: "list: board (default), or newest updated/created first" }),
 	),
+};
+
+/**
+ * List filters the declaration no longer shows, still accepted so calls recorded in the old shape (a resumed session,
+ * an RPC caller, a Next line printed before) validate and run: `ids` is `id` as a list, `createdSince` is `since` with
+ * sort created, and `assignee` and `blocked` had no callers in recorded sessions.
+ */
+export const legacyListFields = {
+	ids: Type.Optional(Type.Array(Type.String())),
+	assignee: Type.Optional(Type.String()),
+	blocked: Type.Optional(Type.Boolean()),
+	createdSince: Type.Optional(Type.String()),
 };
 
 /** What a list call may carry; the write fields it shares with add/update keep their declared types. */
@@ -34,6 +44,8 @@ export interface ListParams {
 	states?: State[];
 	query?: string;
 	from?: string;
+	/** list: one id or several, separated by commas or spaces. */
+	id?: string;
 	ids?: string[];
 	title?: string;
 	parentId?: string | null;
@@ -67,13 +79,18 @@ function sinceTime(since: string | undefined, now: number, field = "since"): str
 /** A list argument with entries, else undefined: an empty list filters nothing, like an omitted one. */
 const entries = <T>(values: readonly T[] | undefined): T[] | undefined => (values?.length ? [...values] : undefined);
 
+/** The ids a call names: `id` (comma- or space-separated) and the older `ids` list. */
+function givenIds(params: ListParams): string[] | undefined {
+	return entries([...(params.id?.split(/[\s,]+/).filter(Boolean) ?? []), ...(params.ids ?? [])]);
+}
+
 /** The filters of a call as it may repeat them: empty lists dropped and an age made a fixed time, so Next pages the same set. */
 function givenFilters(params: ListParams, now: number): Partial<ListParams> {
 	if (params.parentId === null) throw new Error("list: parentId takes an item id, e.g. B3.");
 	const filters: Partial<ListParams> = {
 		query: params.query || undefined,
 		from: params.from || undefined,
-		ids: entries(params.ids),
+		id: givenIds(params)?.join(","),
 		title: params.title?.trim() || undefined,
 		parentId: params.parentId,
 		type: params.type,
@@ -97,7 +114,11 @@ export function runList(
 	now = Date.now(),
 ): { content: Array<{ type: "text"; text: string }>; details: { shown: number; total: number } } {
 	const filters = givenFilters(params, now);
-	const states = params.states?.length ? params.states : filters.ids ? [...STATES] : DEFAULT_LIST_STATES;
+	const ids = filters.id?.split(",");
+	const states = params.states?.length ? params.states : ids ? [...STATES] : DEFAULT_LIST_STATES;
+	// `since` follows the order: with sort created it bounds creation time, as the older `createdSince` did.
+	const createdSince = filters.createdSince ?? (filters.sort === "created" ? filters.since : undefined);
+	const updatedSince = filters.sort === "created" ? undefined : filters.since;
 	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIST_LIMIT)));
 	const offset = Math.max(0, Math.floor(params.offset ?? 0));
 	// "me" is this session; a subagent never holds an item, so for it "me" is the parent session it works for.
@@ -113,7 +134,7 @@ export function runList(
 		offset,
 		...(filters.query ? { query: filters.query } : {}),
 		...(filters.from ? { from: filters.from } : {}),
-		...(filters.ids ? { ids: filters.ids } : {}),
+		...(ids ? { ids } : {}),
 		...(filters.title ? { title: filters.title } : {}),
 		...(filters.parentId ? { parentId: filters.parentId } : {}),
 		...(filters.type ? { types: [filters.type] } : {}),
@@ -125,8 +146,8 @@ export function runList(
 			: {}),
 		...(filters.blocked !== undefined ? { blocked: filters.blocked } : {}),
 		...(assignees ? { assignees } : {}),
-		...(filters.since ? { updatedSince: Date.parse(filters.since) } : {}),
-		...(filters.createdSince ? { createdSince: Date.parse(filters.createdSince) } : {}),
+		...(updatedSince ? { updatedSince: Date.parse(updatedSince) } : {}),
+		...(createdSince ? { createdSince: Date.parse(createdSince) } : {}),
 		...(filters.sort ? { sort: filters.sort } : {}),
 	};
 	const { items, total } = store.list(query);

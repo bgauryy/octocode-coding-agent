@@ -12,7 +12,7 @@ import path from "node:path";
 import { globalPaths } from "../shared/home.ts";
 import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
-import { codexHomeFor } from "../discovery/hook-files.ts";
+import { codexHomeFor } from "../../core/discovery/vendors/codex.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
 import { applyHookToggles } from "./config/toggles.ts";
@@ -41,16 +41,20 @@ export function hookLabel(hook: HookHandler): string {
  * project.
  */
 export function hookFiles(cwd: string, projectTrusted: boolean, home = os.homedir()): string[] {
-	return hookSourcesFromDiscovery(cwd, projectTrusted, home).map((source) => source.path);
+	return hookSourcesFromDiscovery(cwd, projectTrusted, home).map(({ source }) => source.path);
 }
 
-/** The hook files discovery lists (Octocode's, Claude's, Codex's), in load order, with the dialect each is read as. */
+/**
+ * The hook files discovery lists (Octocode's, Claude's, Codex's), in load order, with the dialect each is read as and
+ * whether its harness is switched off (then only its handlers are read, each answering to its own keys).
+ */
 function hookSourcesFromDiscovery(
 	cwd: string,
 	projectTrusted: boolean,
 	home: string,
 	errors: string[] = [],
-): HookSource[] {
+	toggles?: Settings["toggles"],
+): { source: HookSource; off: boolean }[] {
 	installOctocodeDiscovery();
 	const codex = codexHomeFor(home, process.env);
 	if (codex.error) errors.push(codex.error);
@@ -60,15 +64,24 @@ function hookSourcesFromDiscovery(
 		home,
 		projectTrusted,
 		piRoots: [],
+		toggles,
 	});
-	return configDiscovery
-		.discover("hook", input)
-		.filter((item) => item.loaded && item.provenance.origin !== "plugin")
-		.map((item): HookSource => ({
-			path: item.provenance.path,
-			dialect: item.provenance.origin as HookSource["dialect"],
-			scope: item.provenance.scope === "project" ? "project" : "user",
-		}));
+	return (
+		configDiscovery
+			.discover("hook", input)
+			// A switched-off Claude or Codex file is still read: its handlers answer to narrower keys (`applyHookToggles`).
+			.filter(
+				(item) => (item.loaded || item.provenance.notLoaded === "switched-off") && item.provenance.origin !== "plugin",
+			)
+			.map((item) => ({
+				source: {
+					path: item.provenance.path,
+					dialect: item.provenance.origin as HookSource["dialect"],
+					scope: item.provenance.scope === "project" ? "project" : "user",
+				},
+				off: item.provenance.notLoaded === "switched-off",
+			}))
+	);
 }
 
 export function loadHooks(
@@ -76,7 +89,7 @@ export function loadHooks(
 	projectTrusted: boolean,
 	home = os.homedir(),
 	options: { plugins?: Settings["plugins"]; toggles?: Settings["toggles"] } = {},
-): { config: HookConfig; errors: string[] } {
+): { config: HookConfig; errors: string[]; switchedOff: number } {
 	const config = emptyHooks();
 	const errors: string[] = [];
 	let disabled = false;
@@ -84,7 +97,7 @@ export function loadHooks(
 	const codexLayers = new Map<string, Set<string>>();
 	const httpPolicies: unknown[] = [];
 	const seen = new Set<string>();
-	for (const origin of hookSourcesFromDiscovery(cwd, projectTrusted, home, errors)) {
+	for (const { source: origin, off } of hookSourcesFromDiscovery(cwd, projectTrusted, home, errors, options.toggles)) {
 		const file = origin.path;
 		if (seen.has(file)) continue;
 		seen.add(file);
@@ -100,7 +113,8 @@ export function loadHooks(
 			const value = parseConfigDocument(text, file);
 			if (file.endsWith(".toml") && isRecord(value)) {
 				const features = asRecord(value.features);
-				const enabled = features.hooks ?? features.codex_hooks;
+				// A file whose harness is off contributes handlers only (each answers to its own keys), never file-wide switches.
+				const enabled = off ? undefined : (features.hooks ?? features.codex_hooks);
 				if (typeof enabled === "boolean") codexEnabled = enabled;
 				else if (enabled !== undefined) errors.push(`${file}: features.hooks must be a boolean`);
 				// `[hooks.state.*]` is Codex's own ledger of reviewed hook hashes, not an event.
@@ -128,8 +142,8 @@ export function loadHooks(
 						`${directory}: both hooks.json and inline TOML hooks are loaded; prefer one representation per layer`,
 					);
 			}
-			if (origin.dialect === "claude") httpPolicies.push(value);
-			if (isRecord(value) && value.disableAllHooks === true) {
+			if (origin.dialect === "claude" && !off) httpPolicies.push(value);
+			if (!off && isRecord(value) && value.disableAllHooks === true) {
 				disabled = true;
 				errors.push(`${file}: disableAllHooks disables all loaded hook sources in Octocode`);
 			}
@@ -164,6 +178,6 @@ export function loadHooks(
 				.filter((group) => group.hooks.length > 0);
 		errors.push("Codex hooks disabled by features.hooks in loaded TOML configuration");
 	}
-	if (!disabled) applyHookToggles(config, options.toggles, cwd, home, errors);
-	return { config: disabled ? emptyHooks() : config, errors };
+	const switchedOff = disabled ? 0 : applyHookToggles(config, options.toggles, cwd, home);
+	return { config: disabled ? emptyHooks() : config, errors, switchedOff };
 }

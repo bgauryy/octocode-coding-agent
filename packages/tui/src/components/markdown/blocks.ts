@@ -43,7 +43,7 @@ export function renderToken(
 				stylePrefix: getStylePrefix(headingStyleFn),
 			};
 
-			const headingText = renderInlineTokens(host, token.tokens || [], headingStyleContext);
+			const headingText = renderInlineTokens(host, token.tokens ?? [], headingStyleContext);
 			const styledHeading = headingLevel >= 3 ? headingStyleFn(headingPrefix) + headingText : headingText;
 			lines.push(styledHeading);
 			if (nextTokenType && nextTokenType !== "space") {
@@ -53,7 +53,7 @@ export function renderToken(
 		}
 
 		case "paragraph": {
-			const paragraphText = renderInlineTokens(host, token.tokens || [], styleContext);
+			const paragraphText = renderInlineTokens(host, token.tokens ?? [], styleContext);
 			lines.push(paragraphText);
 			// Don't add spacing if next token is space or list
 			if (nextTokenType && nextTokenType !== "list" && nextTokenType !== "space") {
@@ -148,7 +148,7 @@ export function renderToken(
 				applyText: (text: string) => text,
 				stylePrefix: quoteStylePrefix,
 			};
-			const quoteTokens = token.tokens || [];
+			const quoteTokens = token.tokens ?? [];
 			const renderedQuoteLines: string[] = [];
 			for (let i = 0; i < quoteTokens.length; i++) {
 				const quoteToken = quoteTokens[i];

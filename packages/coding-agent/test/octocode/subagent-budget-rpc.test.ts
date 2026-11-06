@@ -253,7 +253,7 @@ describe("a subagent child over its request budget", () => {
 			"steer You have used 3 of 3 model requests; the run stops at 5. Finish the check in progress.",
 		);
 		expect(log).toContain(
-			"Your parent reads messages only with your report, so it cannot answer during this run. Finish with what is done, and say in your report what is left and how many more requests that needs.",
+			"Your parent waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
 		);
 		expect(log).toContain("abort");
 		expect(log.indexOf(steers[0])).toBeLessThan(log.indexOf("abort"));

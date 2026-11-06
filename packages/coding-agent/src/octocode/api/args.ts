@@ -5,11 +5,12 @@ export const API_COMMAND_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	status: ["to"],
 	send: ["to", "from", "wait", "mode", "key", "session", "timeout", "require-idle"],
 	watch: ["to", "types", "top-level", "since"],
+	events: ["since", "limit", "json"],
 	abort: ["to"],
 	external: ["to"],
 };
 const KNOWN_FLAGS = new Set(Object.values(API_COMMAND_FLAGS).flat());
-const BOOLEAN_FLAGS = new Set(["wait", "top-level", "require-idle"]);
+const BOOLEAN_FLAGS = new Set(["wait", "top-level", "require-idle", "json"]);
 
 /** The `--flag value` pairs and the plain words of a command line. A flag that needs a value and has none is an error: it never falls back to a default. */
 export function parseArgs(args: string[], command?: string): { flags: Map<string, string | true>; words: string[] } {

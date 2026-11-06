@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Tool } from "./client/index.ts";
-import { globalMcpConfigPath, globalMcpConfigPaths, projectMcpConfigPaths, projectMcpConfigPath } from "./paths.ts";
+import { hostVendors } from "./host.ts";
+import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 import type { McpServerEntry } from "./config.ts";
 import { type McpExposure } from "./servers.ts";
 import { isEnabled, type McpServer } from "./server.ts";
@@ -31,24 +32,20 @@ export function formatMcpTool(tool: McpToolListing, schema = false): string {
 export function getMcpConfigLocations(agentDir: string, cwd: string, projectTrusted: boolean) {
 	const globalWrite = globalMcpConfigPath(agentDir);
 	const projectWrite = projectMcpConfigPath(cwd);
+	const vendorEnabled = hostVendors().vendorSwitch({ agentDir, cwd, projectTrusted });
 	return {
 		globalWrite,
 		projectWrite,
 		projectTrusted,
-		files: [
-			...globalMcpConfigPaths(agentDir).map((path) => ({
-				path,
-				scope: "global" as const,
-				ignored: false,
-				exists: existsSync(path),
-			})),
-			...projectMcpConfigPaths(cwd).map((path) => ({
-				path,
-				scope: "project" as const,
-				ignored: !projectTrusted,
-				exists: existsSync(path),
-			})),
-		],
+		files: mcpConfigFiles(agentDir, cwd).map((file) => ({
+			path: file.path,
+			scope: file.scope,
+			vendor: file.vendor,
+			...(file.claudeProject === undefined ? {} : { claudeProject: file.claudeProject }),
+			switchedOff: !vendorEnabled(file.vendor, file.scope),
+			ignored: file.scope === "project" && !projectTrusted,
+			exists: existsSync(file.path),
+		})),
 	};
 }
 
@@ -59,7 +56,7 @@ export function formatMcpConfigLocations(locations: ReturnType<typeof getMcpConf
 		"Read order (later entries override earlier ones):",
 		...locations.files.map(
 			(file) =>
-				`  ${file.scope}: ${file.path} (${file.exists ? "exists" : "not present"}${file.ignored ? "; ignored until trusted" : ""})`,
+				`  ${file.scope}: ${file.path}${file.claudeProject === undefined ? "" : ` projects[${JSON.stringify(file.claudeProject)}]`} (${file.exists ? "exists" : "not present"}${file.switchedOff ? `; ${file.vendor} is off (/harness enable ${file.vendor})` : ""}${file.ignored ? "; ignored until trusted" : ""})`,
 		),
 		"Enable/disable/exposure updates the effective override when one exists; otherwise global changes save to the global file. --local writes a trusted workspace override. Existing project definitions are updated in place.",
 		"Enabled defaults to true; exposure defaults to direct. Use /mcp tools to inspect session tools and /reload after editing files.",

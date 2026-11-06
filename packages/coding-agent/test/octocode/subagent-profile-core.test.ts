@@ -34,11 +34,11 @@ describe("linger front matter", () => {
 		expect(() => profile(`linger: ${value}`)).toThrow(/^linger must be a non-negative integer of seconds/);
 	});
 
-	it("is set for the bundled browser role, which lists MCP browser tools and clasify and no native browser tool", () => {
+	it("is set for the bundled browser role, which lists MCP browser tools and web and no native browser tool", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		expect(browser.linger).toBe(900);
 		const tools = allowed(browser.tools);
-		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "mcp__octocode__clasify"]);
+		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "web"]);
 		expect(tools).not.toContain("browser");
 		// Core tools: commands (still read-only through the permission gate), communication and steps.
 		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "steps", "file"]));
@@ -52,7 +52,7 @@ describe("linger front matter", () => {
 		// The servers explain their own tools; the role says only how to search and judge saved captures.
 		expect(prompt).not.toMatch(/mcp__|clasify|`open`|`cleanup`/);
 		expect(prompt).toContain("with your local search and read tools, including hidden and ignored files");
-		expect(prompt).toContain("use the research server's classifying tool when it is listed, not paging");
+		expect(prompt).toContain("use a classifying MCP tool when one is listed, not paging");
 		expect(prompt).not.toContain("9300");
 	});
 });
@@ -72,6 +72,7 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"steps",
+			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -84,6 +85,7 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"steps",
+			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -97,12 +99,13 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"steps",
+			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
-		expect(CORE_TOOLS).toEqual(["file", "agent", "steps", "archive"]);
+		expect(CORE_TOOLS).toEqual(["file", "agent", "steps", "timer", "archive"]);
 		expect(SHELL_TOOLS).toEqual(["bash"]);
 		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
@@ -114,6 +117,7 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"bash",
 			"steps",
+			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -127,6 +131,7 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"steps",
+			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
@@ -191,6 +196,7 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"steps",
+			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,

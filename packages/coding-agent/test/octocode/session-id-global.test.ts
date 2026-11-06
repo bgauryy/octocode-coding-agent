@@ -16,7 +16,7 @@ let sessionDir: string;
 const args = (overrides: Partial<Args>): Args => ({
 	messages: [],
 	fileArgs: [],
-	unknownFlags: new Map(),
+	unknownFlags: [],
 	diagnostics: [],
 	...overrides,
 });

@@ -35,6 +35,7 @@ it("shares complete native and research-tool declarations before role-specific t
 		"file",
 		"web",
 		"mcp",
+		"timer",
 		...main.tools.filter((tool) => isMcpTool(tool.name)).map((tool) => tool.name),
 	];
 	expect(shared.length).toBeGreaterThan(4);
@@ -104,12 +105,12 @@ describe.each(AGENTS)("$name context", (agent) => {
 		const text = systemText(context());
 		const agentTool = JSON.stringify(context().tools.find((tool) => tool.name === "agent") ?? {});
 		if (agent.kind === "main") {
-			expect(text).toContain("One protocol reaches every agent");
+			expect(text).toContain("only you reach other Octocode processes");
 			expect(agentTool).toContain("Also another Octocode process by its name");
 			expect(agentTool).toContain("a linked worktree's branch");
 			return;
 		}
-		expect(text).not.toContain("One protocol reaches every agent");
+		expect(text).not.toContain("only you reach other Octocode processes");
 		expect(agentTool).not.toContain("Also another Octocode process by its name");
 		expect(agentTool).not.toContain("a linked worktree's branch");
 	});
@@ -141,7 +142,16 @@ describe("the real assembled prefix of a main session", () => {
 	// 70,237, tools 27,092, AGENTS.md 14,079), plus 7.3% for what lands with it. The earlier metric (renderSystem + renderTools
 	// + AGENTS.md, with schemas pretty-printed inside fences) read 121,193 for that same capture, so this count is stricter
 	// by construction: it drops about 9.7 KB of formatting nobody receives and the ceiling is set from the new reading.
-	const REAL_PREFIX_CEILING = 119_541;
+	// 122,191 (2026-11-05, B55): plus 2,650 for the bash description's CLI guide with the probed host (2,569 measured),
+	// requested by the user.
+	// 122,601 (2026-11-05, B59, requested by the user): plus 410 measured in main's capture for the `octocode` CLI: the
+	// research line (318), its place in the fallback (25) and the CLI guide's Scope clause (67).
+	// 125_500 (2026-11-05, measured 124,028: system 24,462, tools 85,079, AGENTS.md 14,487; MCP declared mode, requested by the
+	// user): every MCP tool is declared with the server's own description and full JSON Schema, as Claude Code and Codex send
+	// them, and the system prompt keeps only each server's instructions. The same server text moves from system (68,532 before)
+	// to tools (39,517 before), and the schema as sent is longer than the typed notation it replaced. Server text is not
+	// ours to trim (M14); our own text keeps its cap in `e2e.test.ts` and `prompt-size.test.ts`.
+	const REAL_PREFIX_CEILING = 125_500;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");
@@ -159,7 +169,9 @@ describe("the real assembled prefix of a main session", () => {
 		};
 		const total = parts.system + parts.tools + parts.agents;
 		// Not vacuous: a capture that lost its `mcps` block or its tools would pass any ceiling.
-		expect(parts.system).toBeGreaterThan(30_000);
+		// The MCP tools' descriptions and schemas are in the declarations (`tools`), not the system prompt's `mcps` block.
+		expect(parts.system).toBeGreaterThan(15_000);
+		expect(parts.system + parts.tools).toBeGreaterThan(60_000);
 		expect(parts.tools).toBeGreaterThan(15_000);
 		expect(
 			total,

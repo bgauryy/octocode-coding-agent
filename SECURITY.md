@@ -12,7 +12,7 @@ Extensions and hooks execute local code. Install trusted packages and review pro
 - A process with the same user's filesystem or debugger access can influence this agent. Child nonces and private file modes do not isolate it from that user account.
 - External agents run with their own credentials, tools and permission policies.
 
-Manage AI credentials through `/providers`. The [provider guide](packages/coding-agent/docs/providers.md#authenticate-interactively) explains keychain and plaintext storage, file permissions, credential removal, and explicit Pi imports. GitHub code-search authentication through `/github` is separate from AI provider access.
+Manage AI credentials through `/providers`. The [provider guide](packages/coding-agent/docs/providers.md#authenticate-interactively) explains keychain and plaintext storage, file permissions, credential removal, and explicit Pi imports. GitHub code-search authentication through `/octocode auth login` is separate from AI provider access.
 
 See [configuration](packages/coding-agent/docs/configuration.md), [environment variables](packages/coding-agent/docs/environment-variables.md) and [native features](packages/coding-agent/docs/native-features.md).
 

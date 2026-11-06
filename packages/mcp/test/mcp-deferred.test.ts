@@ -36,6 +36,7 @@ function host(servers: McpServerEntry[], options: Parameters<typeof mcpHost>[0] 
 	const h = mcpHost({
 		servers,
 		prepareLaunch: (server) => ({ ...server, config: { ...server.config, command: process.execPath, args: [echo] } }),
+		presentation: "compact",
 		...options,
 	});
 	h.api.getActiveTools = () =>

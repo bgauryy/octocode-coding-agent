@@ -1,4 +1,5 @@
-import type { ExtensionContext, ToolCallEvent } from "../../../core/features/index.ts";
+import type { ExtensionContext, ToolAnnotations, ToolCallEvent } from "../../../core/features/index.ts";
+import { mcpCallChange } from "../mcp-reads.ts";
 import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
 import { callReason, derivedReason, hasDerivedReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
@@ -49,8 +50,9 @@ export function classify(
 	event: ToolCallEvent,
 	ctx: Pick<ExtensionContext, "cwd">,
 	forceDestructive = false,
+	annotations?: ToolAnnotations,
 ): PermissionRequest | undefined {
-	const request = classOf(event.toolName, event.input, ctx.cwd, forceDestructive);
+	const request = classOf(event.toolName, event.input, ctx.cwd, forceDestructive, annotations);
 	return request ? callRequest(request, event, ctx) : undefined;
 }
 
@@ -59,6 +61,7 @@ function classOf(
 	input: Record<string, unknown>,
 	cwd: string,
 	forceDestructive: boolean,
+	annotations?: ToolAnnotations,
 ): PermissionRequest | undefined {
 	if (SHELL_TOOLS.has(tool)) {
 		const command = optionalString(input.command) ?? "";
@@ -89,6 +92,11 @@ function classOf(
 		};
 	}
 	if (isMcpToolName(tool)) {
+		// The server's own hint only adds an ask; a read needs a trusted entry's `roles`.
+		if (annotations?.destructiveHint === true)
+			return { action: "mcp.destructive", title: "Run this destructive MCP tool?", what: [tool, args(input)] };
+		if (mcpCallChange(tool) === undefined)
+			return { action: "mcp.read", title: "Run this MCP read?", what: [tool, args(input)] };
 		return {
 			action: "mcp.write",
 			title: "Run this MCP tool?",

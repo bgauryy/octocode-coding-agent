@@ -1,6 +1,4 @@
-import { archiveMutation } from "../shared/archive-operation.ts";
 import type { ToolCallEvent, ToolResultEvent } from "../../core/features/index.ts";
-import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
@@ -9,19 +7,15 @@ import { secretProblem } from "../../../../common/src/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { runsLater } from "./file-access.ts";
+import { archiveRead } from "../shared/archive-operation.ts";
 import { KeyTable } from "./key-table.ts";
 import { commandNames, SHELL_TOOLS } from "./shell.ts";
+import { type AllowedSource, type CheckContext, type IgnorableScope, maskIgnorable } from "./provenance/ignorable.ts";
+import { isNetworkCommand, NETWORK } from "./provenance/network.ts";
 import { atoms, capBytes, decoded, normalize, RUN, shingles, tokens, URL_PATTERN } from "./provenance/keys.ts";
 import { outsideShellRead } from "./provenance/shell-reads.ts";
+import { consequential, egress, leaves, str } from "./provenance/arguments.ts";
 
-/**
- * Files that run when invoked: scripts by extension, anything under a `bin/` or `scripts/` folder, files make, just and
- * direnv run, and CI workflows. Untrusted text written there is an action waiting to happen, so it stays a sink; any
- * other workspace file just stores it.
- */
-const EXECUTABLE =
-	/\.(?:sh|bash|zsh|fish|ksh|ps1|psm1|bat|cmd|command)$|(?:^|\/)(?:bin|scripts)\/|(?:^|\/)(?:makefile|gnumakefile|justfile|\.envrc)$|(?:^|\/)\.github\/workflows\//i;
 /** What a hit on a shell command adds: saving quoted material as data is fine, running it is the risk. */
 const SHELL_HINT = "; to save quoted material, write it as data with the `file` tool, not a shell command";
 
@@ -44,33 +38,6 @@ const MAX_SOURCES = 4096;
 const MAX_CURSORS = 1024;
 const CURSOR = /"cursor"\s*:\s*"([^"]+)"/g;
 
-const NETWORK = new Set([
-	"curl",
-	"wget",
-	"nc",
-	"ncat",
-	"netcat",
-	"socat",
-	"telnet",
-	"ftp",
-	"sftp",
-	"scp",
-	"ssh",
-	"rsync",
-	"http",
-	"https",
-	"xh",
-	"aria2c",
-	"lynx",
-	"w3m",
-	"invoke-webrequest",
-	"iwr",
-	"invoke-restmethod",
-	"irm",
-]);
-/** Argument keys that are not an action: the model's own explanation of a call. */
-const NOT_ACTION = new Set(["reason", "reasoning", "oldText"]);
-
 type Kind = "untrusted" | "private";
 interface Source {
 	kind: Kind;
@@ -78,6 +45,8 @@ interface Source {
 	label: string;
 	secret: boolean;
 	at: number;
+	/** The subagent whose report this is, for a source that is one. */
+	agent?: string;
 }
 
 interface ProvenanceOptions {
@@ -91,22 +60,9 @@ interface ProvenanceOptions {
 interface ProvenanceHit {
 	/** The dialog line: `contains text from web https://example.com/install (2m ago)`. */
 	why: string;
+	/** The subagent the text came from, when it came from one: what a session grant of that source names. */
+	agent?: string;
 }
-
-const str = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
-
-/** The string leaves of a tool's arguments, minus keys that explain rather than act. */
-function leaves(value: unknown, out: string[] = []): string[] {
-	if (typeof value === "string") out.push(value);
-	else if (Array.isArray(value)) for (const item of value) leaves(item, out);
-	else if (isRecord(value))
-		for (const [key, item] of Object.entries(value)) if (!NOT_ACTION.has(key)) leaves(item, out);
-	return out;
-}
-
-const isNetworkCommand = (command: string): boolean =>
-	commandNames(command).some((name) => NETWORK.has(name.toLowerCase()));
-
 
 class Provenance {
 	/** Hash → its slot in the ring below. */
@@ -117,8 +73,12 @@ class Provenance {
 	private head = 0;
 	private readonly sources = new Map<number, Source>();
 	/** A local tool's cursor → the origin of the page that returned it (null: trusted), so the next page inherits it. */
-	private readonly cursors = new Map<string, { kind: Kind; label: string } | null>();
+	private readonly cursors = new Map<string, { kind: Kind; label: string; agent?: string } | null>();
 	private nextSource = 1;
+	/** Some source read here is outside what a workspace read trusts: what a parent needs to know of its child. */
+	private exposure = false;
+	/** Children their own run reported as having read nothing untrusted: their reports are indexed as nothing. */
+	private readonly cleanChildren = new Set<string>();
 	private readonly workspaceRoot: (cwd: string) => string | undefined;
 	private readonly maxShingles: number;
 	private readonly maxBytes: number;
@@ -149,13 +109,13 @@ class Provenance {
 			// Echoed arguments were supplied before this result. Exclude only new taint; keep any earlier source.
 			const supplied = capBytes(leaves(event.input).join("\n"), this.maxBytes);
 			const echoed = new Set([...atoms(supplied), ...shingles(normalize(supplied))]);
-			const id = this.addSource(origin.kind, origin.label, false);
+			const id = this.addSource(origin.kind, origin.label, false, origin.agent);
 			for (const key of atoms(text)) if (!echoed.has(key)) this.remember(key, id, false);
 			for (const key of shingles(normalize(text))) if (!echoed.has(key)) this.remember(key, id, true);
 		} else {
 			for (const key of atoms(text)) this.remember(key, 0, false);
 			if (origin) {
-				const id = this.addSource(origin.kind, origin.label, false);
+				const id = this.addSource(origin.kind, origin.label, false, origin.agent);
 				for (const key of shingles(normalize(text))) this.remember(key, id, true);
 			}
 		}
@@ -172,24 +132,26 @@ class Provenance {
 	 * Why `event` should be asked about (untrusted text in a consequential argument, private text in egress), if at all.
 	 * An external prompt is skipped: its arguments lack the content its `refs` add, so `sent` checks it instead.
 	 */
-	check(event: ToolCallEvent, ctx: { cwd: string }): ProvenanceHit | undefined {
+	check(event: ToolCallEvent, ctx: CheckContext, allowed?: AllowedSource): ProvenanceHit | undefined {
 		const input = event.input as Record<string, unknown>;
 		if (event.toolName === "externalAgent" && input.action === "prompt") return undefined;
-		return this.inspect(event.toolName, input, ctx.cwd);
+		return this.inspect(event.toolName, input, ctx, allowed);
 	}
 
 	/**
 	 * The same check for an external prompt as it is sent (`ExternalPolicy.authorize`): `text` already holds the content
 	 * its `refs` expanded to, so both checks see exactly the text that leaves.
 	 */
-	sent(prompt: { id?: string; text?: string }, ctx: { cwd: string }): ProvenanceHit | undefined {
-		return this.inspect("externalAgent", { action: "prompt", id: prompt.id, text: prompt.text }, ctx.cwd);
+	sent(prompt: { id?: string; text?: string }, ctx: CheckContext, allowed?: AllowedSource): ProvenanceHit | undefined {
+		return this.inspect("externalAgent", { action: "prompt", id: prompt.id, text: prompt.text }, ctx, allowed);
 	}
 
 	clear(): void {
 		this.index.clear();
 		this.sources.clear();
 		this.cursors.clear();
+		this.cleanChildren.clear();
+		this.exposure = false;
 		this.keys = undefined;
 		this.ids = undefined;
 		this.head = 0;
@@ -200,20 +162,26 @@ class Provenance {
 		return this.index.size;
 	}
 
-	private inspect(toolName: string, input: Record<string, unknown>, cwd: string): ProvenanceHit | undefined {
+	private inspect(
+		toolName: string,
+		input: Record<string, unknown>,
+		ctx: CheckContext,
+		allowed: AllowedSource | undefined,
+	): ProvenanceHit | undefined {
 		if (this.index.size === 0) return undefined;
-		for (const value of this.consequential(toolName, input, cwd)) {
-			const hit = this.untrustedIn(value);
+		const { cwd } = ctx;
+		for (const value of consequential(toolName, input, cwd, this.workspaceRoot)) {
+			const hit = this.untrustedIn(value, this.scope(ctx), allowed);
 			if (hit) return SHELL_TOOLS.has(toolName) ? { ...hit, why: `${hit.why}${SHELL_HINT}` } : hit;
 		}
-		for (const value of this.egress(toolName, input)) {
+		for (const value of egress(toolName, input)) {
 			const hit = this.privateIn(value);
 			if (hit) return hit;
 		}
 		return undefined;
 	}
 
-	private origin(event: ToolResultEvent, cwd: string): { kind: Kind; label: string } | undefined {
+	private origin(event: ToolResultEvent, cwd: string): { kind: Kind; label: string; agent?: string } | undefined {
 		const { toolName, input } = event;
 		if (toolName === "web")
 			return { kind: "untrusted", label: `web ${str(input.url) ?? `search "${str(input.query) ?? ""}"`}` };
@@ -221,9 +189,15 @@ class Provenance {
 			return { kind: "untrusted", label: `externalAgent ${str(input.id) ?? ""}`.trim() };
 		// A child reads web pages and repositories of its own, and its index dies with its process: what it reports here is
 		// untrusted however it was worded, or text from a page would come back clean through a subagent.
+		// Unless that child reported, on the channel only its own harness writes to, that it read nothing untrusted.
 		if (toolName === "agent") {
 			const child = isRecord(event.details) ? str(event.details.id) : undefined;
-			return { kind: "untrusted", label: `agent ${child ?? str(input.profile) ?? ""}`.trim() };
+			if (child !== undefined && this.cleanChildren.has(child)) return undefined;
+			return {
+				kind: "untrusted",
+				label: `agent ${child ?? str(input.profile) ?? ""}`.trim(),
+				...(child ? { agent: child } : {}),
+			};
 		}
 		// Reader and search roles, classified as `read` and `grep` were: input naming any location outside the workspace is
 		// private; input whose every request names a workspace location is trusted. A cursor page has the origin of the page
@@ -239,6 +213,7 @@ class Provenance {
 			if (outside !== undefined) return { kind: "private", label: `${toolName} ${tildePath(outside)}` };
 			if (named.length > 0 && !unnamed) return undefined;
 		}
+		if (toolName === "archive" && readsSessionText(input)) return { kind: "untrusted", label: "archive" };
 		if (isMcpToolName(toolName)) return { kind: "untrusted", label: toolName };
 		if (SHELL_TOOLS.has(toolName)) {
 			const command = str(input.command) ?? "";
@@ -267,67 +242,59 @@ class Provenance {
 		return root !== undefined && isWithin(canonicalPath(target), canonicalPath(root));
 	}
 
-	/**
-	 * Arguments that act: shell commands, file paths, the content of files that run or configure later sessions (or lie
-	 * outside the workspace), MCP calls, memory notes, a subagent's task. Content written into an ordinary workspace file is data.
-	 */
-	private consequential(toolName: string, input: Record<string, unknown>, cwd: string): string[] {
-		if (SHELL_TOOLS.has(toolName)) return [str(input.command) ?? ""];
-		if (toolName === "externalAgent")
-			return input.action === "connect" || input.action === "prompt" ? leaves(input) : [];
-		// A task is an instruction to an agent with tools of its own.
-		if (toolName === "agent") return leaves(input);
-		if (toolName === "file" || toolName === "edit" || toolName === "write") {
-			if (toolName === "file" && typeof input.patch === "string") return leaves(input);
-			const changes = toolName === "file" ? (Array.isArray(input.queries) ? input.queries : []) : [input];
-			return changes.flatMap((change) => {
-				const target = isRecord(change) ? str(change.path) : undefined;
-				return target && this.storesData(target, cwd) ? [target] : leaves(change);
-			});
-		}
-		if (toolName === "archive" && archiveMutation(input)) return input.op === "set" ? leaves(input) : [];
-		if (toolName === "memory") return input.op === "set" ? leaves(input) : [];
-		if (isMcpToolName(toolName)) return leaves(input);
-		return [];
-	}
-
-	/** `target` is an ordinary workspace file: inside the repository, not run or loaded by later sessions, not executable. */
-	private storesData(target: string, cwd: string): boolean {
-		const workspace = this.workspaceRoot(cwd);
-		if (workspace === undefined) return false;
-		const root = canonicalPath(workspace);
-		const file = canonicalPath(resolveToolPath(cwd, target));
-		return isWithin(file, root) && !runsLater(file, root) && !EXECUTABLE.test(file.slice(root.length));
-	}
-
-	/** Arguments that leave the machine: the web URL or search query, a browser navigation, a network command. */
-	private egress(toolName: string, input: Record<string, unknown>): string[] {
-		const url = str(input.url);
-		if (toolName === "externalAgent" && input.action === "prompt") return [str(input.text) ?? ""];
-		if (toolName === "web") return [url, str(input.query)].filter((value): value is string => value !== undefined);
-		const opened = browserMcpUrls(toolName, input);
-		if (opened.length > 0) return opened;
-		const command = SHELL_TOOLS.has(toolName) ? str(input.command) : undefined;
-		return command && isNetworkCommand(command) ? [command] : [];
-	}
-
-	private untrustedIn(value: string): ProvenanceHit | undefined {
-		for (const key of atoms(value)) {
+	private untrustedIn(value: string, scope: () => IgnorableScope, allowed?: AllowedSource): ProvenanceHit | undefined {
+		// A source the user allowed for the session (a subagent) is skipped; any other source in the same text still hits.
+		const found = (key: number): Source | undefined => {
 			const source = this.sourceOf(key, "untrusted");
+			return source?.agent !== undefined && allowed?.(source.agent) ? undefined : source;
+		};
+		const named = (source: Source): { agent?: string } => (source.agent ? { agent: source.agent } : {});
+		for (const key of atoms(value)) {
+			const source = found(key);
 			if (source)
 				return {
 					why: `contains a URL, host or e-mail first seen in ${source.label} (${formatAgo(this.now() - source.at)})`,
+					...named(source),
 				};
 		}
-		const keys = shingles(normalize(value));
-		let run = 0;
-		for (const key of keys) {
-			const source = this.sourceOf(key, "untrusted");
-			run = source ? run + 1 : 0;
-			if (source && run >= RUN)
-				return { why: `contains text from ${source.label} (${formatAgo(this.now() - source.at)})` };
-		}
-		return undefined;
+		const run = (text: string): ProvenanceHit | undefined => {
+			let length = 0;
+			for (const key of shingles(normalize(text))) {
+				const source = found(key);
+				length = source ? length + 1 : 0;
+				if (source && length >= RUN)
+					return { why: `contains text from ${source.label} (${formatAgo(this.now() - source.at)})`, ...named(source) };
+			}
+			return undefined;
+		};
+		const hit = run(value);
+		if (!hit) return undefined;
+		// Only now, as a hit is rare: text that is only a workspace path, the cwd or a model id is no hit.
+		const masked = maskIgnorable(value, scope());
+		return masked === value ? hit : run(masked);
+	}
+
+	private scope(ctx: CheckContext): () => IgnorableScope {
+		return () => ({
+			cwd: ctx.cwd,
+			root: this.workspaceRoot(ctx.cwd),
+			models: ctx.modelRegistry?.getAll() ?? [],
+		});
+	}
+
+	/** Whether any source read in this session was one a workspace read does not vouch for (web, MCP, a network command, an outside file). */
+	exposed(): boolean {
+		return this.exposure;
+	}
+
+	/**
+	 * What a child's own run reported, through the channel only its harness writes to (`provenance/exposure.ts`): a child that
+	 * read nothing untrusted is clean and its report is indexed as nothing; any other state, and a child never heard from,
+	 * is untrusted.
+	 */
+	childExposure(child: string, exposed: boolean): void {
+		if (exposed) this.cleanChildren.delete(child);
+		else this.cleanChildren.add(child);
 	}
 
 	private privateIn(value: string): ProvenanceHit | undefined {
@@ -354,9 +321,10 @@ class Provenance {
 		return source?.kind === kind ? source : undefined;
 	}
 
-	private addSource(kind: Kind, label: string, secret: boolean): number {
+	private addSource(kind: Kind, label: string, secret: boolean, agent?: string): number {
 		const id = this.nextSource++;
-		this.sources.set(id, { kind, label, secret, at: this.now() });
+		if (!secret) this.exposure = true;
+		this.sources.set(id, { kind, label, secret, at: this.now(), ...(agent ? { agent } : {}) });
 		if (this.sources.size > MAX_SOURCES) this.sources.delete(this.sources.keys().next().value!);
 		return id;
 	}
@@ -384,4 +352,16 @@ class Provenance {
 /** The session's provenance index: `record` from `tool_result`, `check` in the permission gate, `clear` on `session_start`. */
 export function createProvenance(options: ProvenanceOptions = {}): Provenance {
 	return new Provenance(options);
+}
+
+/**
+ * An archive read whose results can hold another session's transcript text (sessions and compactions, which `all` and the
+ * default include): that session read web pages and tool output of its own. Memories, agents and events are this
+ * workspace's records; a memory id is `M<n>`.
+ */
+function readsSessionText(input: Record<string, unknown>): boolean {
+	if (!archiveRead(input)) return false;
+	const source = str(input.source);
+	if (source !== undefined) return source === "all" || source === "sessions" || source === "compactions";
+	return !/^M\d+$/.test(str(input.id) ?? "");
 }

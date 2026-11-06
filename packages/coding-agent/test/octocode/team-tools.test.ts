@@ -1,4 +1,4 @@
-import fs, * as importedModule1 from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
@@ -99,7 +99,10 @@ describe("team tools on a fake Octocode", () => {
 	it("joins, lists, locks, blocks a peer edit, unlocks and leaves", async () => {
 		const { a, b } = await pair();
 		const coordinate = a.tools.get("coordinate");
-		expect(text(await run(coordinate, { action: "list" }, a.ctx))).toMatch(/no other agents|No agents/i);
+		// O6b (design B36): a main session joins at session_start, so before any `join` it lists itself and the other session.
+		const before = text(await run(coordinate, { action: "list" }, a.ctx));
+		expect(before).toContain(`${a.team.id} (you) · main`);
+		expect(before).toContain(`${b.team.id} · main`);
 		const joined = text(await run(coordinate, { action: "join", goal: "refactor auth\nsecond line" }, a.ctx));
 		expect(joined).toContain(a.team.id!);
 		await expect(run(coordinate, { action: "lock" }, a.ctx)).rejects.toThrow("lock needs paths.");
@@ -654,11 +657,19 @@ describe("AgentsView", () => {
 			const agents = new AgentsView(fakeTeam(() => view, "me-0001"));
 			const ctx = fakeCtx({ cwd: tmp() });
 			agents.start(ctx);
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("team retrying: Team database unavailable: database is locked");
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("team retrying");
+			// One locked read is not news: the messages list says nothing until the second failed tick.
+			expect(ctx.ui.notes).toEqual([]);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
+			vi.advanceTimersByTime(1_000);
+			vi.advanceTimersByTime(1_000);
+			expect(ctx.ui.notes).toEqual([
+				{ message: "Team database busy, retrying: Team database unavailable: database is locked", type: "warning" },
+			]);
 			view = { members: [peer("me-0001", "working", null), peer("reviewer-1a2b")], traffic: [] };
 			vi.advanceTimersByTime(1_000);
 			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
+			expect(ctx.ui.notes.at(-1)).toEqual({ message: "Team database reachable again.", type: "info" });
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			agents.stop(ctx);
 			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
@@ -673,7 +684,9 @@ describe("AgentsView", () => {
 			fakeTeam(() => ({ members: [], traffic: [], error: "Team database schema v9 is newer\nupgrade" })),
 		);
 		view.start(ctx);
-		expect(ctx.ui.statuses.get("octocode-team")).toBe("team off: Team database schema v9 is newer");
+		expect(ctx.ui.statuses.get("octocode-team")).toBe("team off");
+		expect(ctx.ui.statusTones.get("octocode-team")).toBe("error");
+		expect(ctx.ui.notes).toEqual([{ message: "Team off: Team database schema v9 is newer", type: "error" }]);
 		view.stop(ctx);
 		expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
 
@@ -702,15 +715,17 @@ describe("Team ticker", () => {
 		try {
 			a.team.start(a.ctx);
 			b.team.start(b.ctx);
+			// O6b (design B36): starting joins, and a joined session runs the one shared clock; leave to test it unjoined.
+			expect(vi.getTimerCount()).toBe(1);
+			a.team.leave();
+			b.team.leave();
 			expect(vi.getTimerCount()).toBe(0);
 			const seen = vi.fn();
 			const unwatch = a.team.watch(seen);
 			expect(vi.getTimerCount()).toBe(1);
 			expect(seen).toHaveBeenCalledTimes(1);
-			// Nobody created the database yet: watching reads nothing.
+			// Nobody is in the team now: watching reads nothing.
 			expect(a.team.view.members).toEqual([]);
-			const { existsSync } = await Promise.resolve(importedModule1);
-			expect(existsSync(db)).toBe(false);
 
 			b.team.join("peer");
 			// The second ticker shares the first one's timer: every ticker runs on the one clock.

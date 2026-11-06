@@ -11,7 +11,13 @@ vi.mock("../src/octocode/shared/session-liveness.ts", async (importOriginal) => 
 
 function context(currentFile = "/tmp/current.jsonl") {
 	return {
-		sessionManager: { getSessionFile: () => currentFile },
+		// After a switch, the resume notice (resume-notice.ts) names the session and counts its messages.
+		sessionManager: {
+			getSessionFile: () => currentFile,
+			getEntries: () => [],
+			getSessionName: () => undefined,
+			getSessionId: () => "01a1other",
+		},
 		runtimeHost: { switchSession: vi.fn(async () => ({ cancelled: false })) },
 		showExtensionConfirm: vi.fn(async () => true),
 		clearStatusIndicator: vi.fn(),

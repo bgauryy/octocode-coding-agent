@@ -219,7 +219,7 @@ export async function executePreparedToolCall(
 	// A listener that fails must cost neither the tool's result nor the process: the promise is held unobserved until
 	// the tool ends, so an unhandled rejection would fire while it runs, and a live view is not worth a tool's work.
 	const reportUpdateFailure = (error: unknown) => {
-		console.error(`Tool update listener error (${prepared.toolCall.name}):`, error);
+		process.stderr.write(`Tool update listener error (${prepared.toolCall.name}): ${String(error)}\n`);
 	};
 
 	try {

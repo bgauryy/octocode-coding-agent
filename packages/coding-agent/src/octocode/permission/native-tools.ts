@@ -20,6 +20,10 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["steps", "Session workspace state only: steps (tasks) of repository items and of this session"],
 	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
+	[
+		"timer",
+		"gate/classify: an until-command is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; otherwise this session's own timers",
+	],
 ]);
 
 /** Whether `name` is a native tool: one with a reviewed permission owner above (MCP and extension tools are not). */

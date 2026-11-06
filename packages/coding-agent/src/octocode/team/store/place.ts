@@ -17,7 +17,7 @@ const readText = (file: string): string | undefined => {
 };
 
 /** The checked-out branch of the repository `cwd` is in (read from `HEAD`, a linked worktree's `.git` file included); undefined outside git or on a detached head. */
-export function currentBranch(cwd: string): string | undefined {
+function currentBranch(cwd: string): string | undefined {
 	for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
 		const dot = path.join(dir, ".git");
 		const link = readText(dot); // a linked worktree's `.git` is a file; a checkout's is a directory (reads as absent)

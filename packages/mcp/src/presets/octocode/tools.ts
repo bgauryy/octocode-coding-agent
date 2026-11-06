@@ -2,7 +2,7 @@ import { type CallToolResult, toLlmContent } from "../../client/index.ts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import { createMcpToolName } from "../../tool-names.ts";
 import { createMcpToolDefinition, type McpToolDefinitionOptions } from "../../tool-definition.ts";
-import { OCTOCODE_SERVER, LOCAL_READ_TOOLS } from "./names.ts";
+import { OCTOCODE_SERVER } from "./names.ts";
 import { hostOutput, hostRender } from "../../host.ts";
 import { sanitizeJson } from "../../sanitize.ts";
 import { jsonText } from "../../tools.ts";
@@ -33,10 +33,11 @@ export function octocodeToolName(tool: string): string {
  */
 export async function toToolResult(
 	tool: string,
-	result: CallToolResult,
+	received: CallToolResult,
 	declaresOutput: boolean,
 	limits?: ImageLimits,
 ): Promise<AgentToolResult<{ tool: string }>> {
+	let result = received;
 	const content: AgentToolResult["content"] = [];
 	let outputTruncated = false;
 	const sent = result.structuredContent;
@@ -103,11 +104,9 @@ function callSummary(args: unknown): { summary: string; queries: string[] } {
  * settings taking precedence.
  */
 export function defineOctocodeTool(options: McpToolDefinitionOptions) {
-	const { tool, name } = options;
-	// Local readers send structured evidence even when their server omits an output schema.
-	const outputSchema = tool.outputSchema ?? (LOCAL_READ_TOOLS.has(name) ? {} : undefined);
+	const { tool } = options;
+	const outputSchema = tool.outputSchema;
 	const declaresOutput = outputSchema !== undefined;
-	const localFetchName = octocodeToolName("localFetch");
 	return hostRender().timedTool(
 		createMcpToolDefinition({
 			...options,
@@ -115,9 +114,6 @@ export function defineOctocodeTool(options: McpToolDefinitionOptions) {
 				label: tool.title?.trim() || tool.name,
 				...(declaresOutput ? { outputSchema } : {}),
 				renderCall(args, theme, context) {
-					// A model reading a loaded skill's SKILL.md is loading that skill: the row says so.
-					const skill = name === localFetchName ? hostRender().skillNameOfRead(args, context.cwd) : undefined;
-					if (skill) return hostRender().skillHeader(theme, context, skill);
 					const { summary, queries } = callSummary(args);
 					const lines = queries.map((query) => `${theme.fg("mdCode", query)}`);
 					return hostRender().toolHeader(theme, context, tool.name, summary, { lines });
@@ -126,15 +122,6 @@ export function defineOctocodeTool(options: McpToolDefinitionOptions) {
 					const text = hostRender().resultText(result);
 					// An error is one message: its first line is the summary, the rest the body.
 					const failed = context.isError;
-					// A skill's instructions are one collapsed line, as the `skill` tool shows them.
-					if (!failed && name === localFetchName && hostRender().skillNameOfRead(context.args, context.cwd))
-						return hostRender().resultBlock(theme, context, {
-							summary: "Loaded skill",
-							summaryColor: "customMessageText",
-							body: text,
-							max: 0,
-							...hostRender().timingOf(result.details),
-						});
 					// The server's JSON envelope reads as one human line; the full payload shows when the row expands.
 					const brief = summarizeResult(text);
 					if (brief)

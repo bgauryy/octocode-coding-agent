@@ -300,7 +300,7 @@ describe("agent tool with a scripted child", () => {
 				"--model",
 				"faux/model:medium",
 				"--tools",
-				"read,bash,file,agent,steps,archive,skill,mcp,mcp__*",
+				"read,bash,file,agent,steps,timer,archive,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser,mcp__browser__*",
 			]),
@@ -777,7 +777,14 @@ describe("agent tool with a scripted child", () => {
 		};
 
 		it("starts anything with no limit configured", async () => {
-			for (let i = 0; i < 3; i++) await expect(s.run({ task: "report" })).resolves.toBeTruthy();
+			const ids: string[] = [];
+			for (let i = 0; i < 3; i++) {
+				const result = await s.run({ task: "report" });
+				expect(result.isError).not.toBe(true);
+				expect(result.details.status).toBe("done");
+				ids.push(result.details.id);
+			}
+			expect(new Set(ids).size).toBe(3);
 		});
 
 		it("refuses past maxChildren with the running total, leaving what runs alone", async () => {

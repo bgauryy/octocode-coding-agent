@@ -58,7 +58,7 @@ export class ApplicationProjection {
 			if (message.role === "toolResult" && message.toolCallId !== undefined && toolIds.has(message.toolCallId))
 				continue;
 			const references = new Set(
-				message.content?.flatMap((block) => (block.type === "toolCall" ? [block.toolCallId] : [])) ?? [],
+				message.content?.flatMap((block) => (block.type === "toolCall" ? [block.toolCallId] : [])),
 			);
 			const tools = relatedTools(availableTools, references);
 			const sources = [snapshot?.sessionId, message, ...tools];

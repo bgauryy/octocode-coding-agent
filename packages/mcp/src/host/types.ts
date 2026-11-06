@@ -100,9 +100,12 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 	parameters: TParams;
 	validationParameters?: TSchema;
 	validationHint?: (failure: { envelope: boolean }) => string | undefined;
+	coerceArguments?: false;
 	renderShell?: "default" | "self";
 	prepareArguments?: (args: unknown) => Static<TParams>;
 	outputSchema?: TSchema;
+	/** The server's `destructiveHint: true`, the only annotation kept: it may add a permission ask, never remove one. */
+	annotations?: { destructiveHint: true };
 	exposure?: McpToolExposure;
 	namespace?: McpToolNamespace;
 	defaultActive?: boolean;

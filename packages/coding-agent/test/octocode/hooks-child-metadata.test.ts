@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { hookPayload } from "../../src/octocode/hooks/profiles.ts";
+import { HOOK_SETTINGS } from "./helpers.ts";
 
 const metadata = {
 	model: "model",
@@ -87,7 +88,7 @@ it.each([false, true])("requires actual child marker (child=%s)", async (child) 
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd });
 	ctx.sessionManager.getSessionId = () => "actual-child";
 	const view = registerHooks(
@@ -149,7 +150,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	let sessionId = "original-child",
 		agentType = "reviewer",
 		permissionMode: "workspace" | "full" = "workspace",
@@ -240,7 +241,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 			),
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd, model: { id: "current-model" } });
 	ctx.sessionManager.getSessionId = () => "child-session";
 	ctx.sessionManager.getSessionFile = () => "/child-transcript.jsonl";

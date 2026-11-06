@@ -152,9 +152,9 @@ describe("a read-only role's git", () => {
 		expect(refused(command)).toMatch(/read-only role/);
 	});
 
-	it("allows the harmless environment and a nested octocode that only prints", () => {
+	it("allows the harmless environment, and refuses any nested octocode run", () => {
 		expect(refused("GIT_PAGER=cat git log")).toBeUndefined();
-		expect(refused("octocode --version")).toBeUndefined();
+		expect(refused("octocode --version")).toMatch(/read-only role/);
 	});
 
 	it("names the commands the role has when it refuses a read that is not listed", () => {

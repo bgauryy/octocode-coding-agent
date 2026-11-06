@@ -17,7 +17,8 @@ import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "./store/workspace.ts";
 import { checkGoal } from "./identity.ts";
-import { describeChanges, describeConflicts, describeMembers, memberGoals, mutatedPaths } from "./routing.ts";
+import { describeMembers } from "./member-list.ts";
+import { describeChanges, describeConflicts, memberGoals, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
 import { type ChildBudgets, grantRequests } from "./tools/grant.ts";
 import { INTERPRETER_HELD, NOT_CHECKED_HELD, POWERSHELL_HELD } from "./tools/held-text.ts";
@@ -125,7 +126,8 @@ export function registerCollab(
 			if (verdict && "refusal" in verdict && named)
 				return { block: true, reason: `${INTERPRETER_HELD(verdict.refusal)} ${named}` };
 			if (verdict && !("refusal" in verdict) && named && isRecord(event.input)) {
-				event.input.command = command = verdict.command;
+				command = verdict.command;
+				event.input.command = command;
 				markConfined(event.toolCallId);
 			}
 		}
@@ -287,7 +289,17 @@ function registerCoordinateTool(
 				const working = members.filter((member) => member.status === "working").length;
 				const asks = childAsks(members, team.id, (child, parent, since) => team.asks(child, parent, since));
 				const standing = (id: string) => budgets?.usage(id);
-				const agents = describeMembers(members, team.id, now, asks, team.openQuestions(), standing, team.stalled());
+				const details = team.audit.details(members);
+				const agents = describeMembers(
+					members,
+					team.id,
+					now,
+					asks,
+					team.openQuestions(),
+					standing,
+					team.stalled(),
+					details,
+				);
 				const others = peers ? `\n\n${await peers.list(ctx.cwd)}` : "";
 				return textResult(`${agents}${others}`, {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",

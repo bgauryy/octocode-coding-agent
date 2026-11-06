@@ -1,4 +1,4 @@
-import { DEFAULT_TOOL_CALL_ID_MAX_LENGTH, sanitizeToolCallId } from "../tool-call-id.ts";
+import { DEFAULT_TOOL_CALL_ID_MAX_LENGTH, fitToolCallId, sanitizeToolCallId } from "../tool-call-id.ts";
 import type {
 	ResponseConfigurationUpdateItemParam,
 	ResponseInput,
@@ -100,8 +100,8 @@ export function convertResponsesMessages<TApi extends Api>(
 	};
 
 	const normalizeToolCallId = (id: string, _targetModel: Model<TApi>, source: AssistantMessage): string => {
-		if (!allowedToolCallProviders.has(model.provider)) return normalizeIdPart(id);
-		if (!id.includes("|")) return normalizeIdPart(id);
+		// A whole foreign id keeps a hash of itself when cut to the limit, so distinct calls keep distinct ids.
+		if (!allowedToolCallProviders.has(model.provider) || !id.includes("|")) return fitToolCallId(id).replace(/_+$/, "");
 		const [callId, itemId] = id.split("|");
 		const normalizedCallId = normalizeIdPart(callId);
 		const isForeignToolCall = source.provider !== model.provider || source.api !== model.api;

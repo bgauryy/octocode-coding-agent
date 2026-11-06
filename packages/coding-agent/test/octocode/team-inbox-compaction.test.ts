@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -29,6 +29,10 @@ function agent(dbFile: string, cwd: string, branch: () => unknown[] = () => []) 
 
 const mail = (sent: Array<{ message: any }>) =>
 	sent.filter((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE && entry.message.details?.messages);
+
+/** Waits until the receiver has been handed `count` mail messages (delivery polls the store). */
+const delivered = (sent: Array<{ message: any }>, count: number) =>
+	vi.waitFor(() => expect(mail(sent)).toHaveLength(count), { timeout: 5_000, interval: 50 });
 
 const entryFor = (id: string, delivered: { message: any }) => ({
 	type: "custom_message",
@@ -60,9 +64,9 @@ describe("inbox after compaction", () => {
 	it("holds newer mail while earlier mail is unseen (the stall compaction must clear)", async () => {
 		const { sender, receiver } = await setup();
 		await sender.team.send(receiver.team.id, "first", { replyRequired: false });
-		await new Promise((resolve) => setTimeout(resolve, 1_500));
-		expect(mail(receiver.sent)).toHaveLength(1);
+		await delivered(receiver.sent, 1);
 		await sender.team.send(receiver.team.id, "second", { replyRequired: false });
+		// Proving that nothing arrives needs a fixed window longer than the delivery poll.
 		await new Promise((resolve) => setTimeout(resolve, 2_200));
 		expect(mail(receiver.sent)).toHaveLength(1);
 	}, 15_000);
@@ -70,16 +74,13 @@ describe("inbox after compaction", () => {
 	it("treats mail summarized away as seen so newer mail flows", async () => {
 		const { sender, receiver, entries, cwd, dbFile } = await setup();
 		const first = (await sender.team.send(receiver.team.id, "first", { replyRequired: false })) as { id: number };
-		await new Promise((resolve) => setTimeout(resolve, 1_500));
-		expect(mail(receiver.sent)).toHaveLength(1);
+		await delivered(receiver.sent, 1);
 		// The mail entered the transcript, then compaction summarized it before any model call reported it.
 		entries.push(entryFor("e1", mail(receiver.sent)[0]), { type: "message", id: "e2" }, { type: "message", id: "e3" });
 		await compact(receiver, "e3");
 		await sender.team.send(receiver.team.id, "second", { replyRequired: false });
-		await new Promise((resolve) => setTimeout(resolve, 2_200));
-		const delivered = mail(receiver.sent);
-		expect(delivered).toHaveLength(2);
-		expect(delivered[1].message.details.messages.map((m: { id: number }) => m.id)).not.toContain(first.id);
+		await delivered(receiver.sent, 2);
+		expect(mail(receiver.sent)[1].message.details.messages.map((m: { id: number }) => m.id)).not.toContain(first.id);
 		const store = TeamStore.open(cwd, dbFile, {});
 		stores.push(store);
 		expect(store.pending(receiver.team.id as string, 0).map((m) => m.id)).not.toContain(first.id);
@@ -88,10 +89,11 @@ describe("inbox after compaction", () => {
 	it("leaves mail in the kept range unseen until a model call reports it", async () => {
 		const { sender, receiver, entries } = await setup();
 		await sender.team.send(receiver.team.id, "first", { replyRequired: false });
-		await new Promise((resolve) => setTimeout(resolve, 1_500));
+		await delivered(receiver.sent, 1);
 		entries.push({ type: "message", id: "e1" }, entryFor("e2", mail(receiver.sent)[0]));
 		await compact(receiver, "e2");
 		await sender.team.send(receiver.team.id, "second", { replyRequired: false });
+		// Proving that nothing arrives needs a fixed window longer than the delivery poll.
 		await new Promise((resolve) => setTimeout(resolve, 2_200));
 		expect(mail(receiver.sent)).toHaveLength(1);
 	}, 15_000);

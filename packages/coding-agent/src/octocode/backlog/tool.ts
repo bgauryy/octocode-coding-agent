@@ -23,7 +23,14 @@ import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-t
 import { styleBacklogLines } from "./tool-style.ts";
 import { clip } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
-import { DEFAULT_LIST_LIMIT, listFields, type ListParams, MAX_LIST_LIMIT, runList } from "./tool-list.ts";
+import {
+	DEFAULT_LIST_LIMIT,
+	legacyListFields,
+	listFields,
+	type ListParams,
+	MAX_LIST_LIMIT,
+	runList,
+} from "./tool-list.ts";
 
 /** The states a subagent may set: claiming and closing items its parent holds. */
 const SUBAGENT_STATES = ["ongoing", "done"] as const;
@@ -34,6 +41,8 @@ export function registerBacklogTool(
 ): void {
 	const subagent = options.isSubagent;
 	const { ops, ...prompt } = backlogPrompt(subagent);
+	// A field without an op prefix is an item field add and update write; a subagent only proposes with them.
+	const write = subagent ? "add: " : "";
 	const parameters = Type.Object(
 		{
 			...entityFields(subagent),
@@ -42,35 +51,25 @@ export function registerBacklogTool(
 				subagent ? (["list", "get", "add", "update"] as const) : (["list", "get", "add", "update", "remove"] as const),
 				{ description: ops },
 			),
-			id: Type.Optional(Type.String({ description: `${subagent ? "get/update" : "get/update/remove"}: item id` })),
-			title: Type.Optional(
+			id: Type.Optional(
 				Type.String({
-					description: `${subagent ? "add" : "add/update"}: one-line summary; list: words in the title`,
+					description: `${subagent ? "get/update" : "get/update/remove"}: item id; list: ids, comma-separated, any state unless states is set`,
 				}),
 			),
+			title: Type.Optional(Type.String({ description: `${write}one-line summary; list: words in the title` })),
 			goal: Type.Optional(
-				Type.String({
-					description: subagent
-						? "add: Definition of Done, checkable"
-						: "add/update: Definition of Done, checkable; add needs it",
-				}),
+				Type.String({ description: `${write}Definition of Done, checkable${subagent ? "" : "; add needs it"}` }),
 			),
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
-					description: `${subagent ? "add" : "add/update"}: files, dirs or components affected; list: any as path prefix`,
+					description: `${write}files, dirs or components affected; list: any as path prefix`,
 				}),
 			),
-			why: Type.Optional(Type.String({ description: `${subagent ? "add" : "add/update"}: why it matters` })),
+			why: Type.Optional(Type.String({ description: `${write}why it matters` })),
 			evidence: Type.Optional(
-				Type.Array(Type.String(), {
-					description: `${subagent ? "add" : "add/update"}: observations with source (path:line, command)`,
-				}),
+				Type.Array(Type.String(), { description: `${write}observations with source (path:line, command)` }),
 			),
-			plan: Type.Optional(
-				Type.String({
-					description: `${subagent ? "add" : "add/update"}: approach and steps; blast radius, before -> after`,
-				}),
-			),
+			plan: Type.Optional(Type.String({ description: `${write}approach and steps; blast radius, before -> after` })),
 			state: Type.Optional(
 				subagent
 					? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
@@ -78,12 +77,12 @@ export function registerBacklogTool(
 			),
 			priority: Type.Optional(
 				StringEnum(PRIORITIES, {
-					description: `${subagent ? "add" : "add/update"}: p0 urgent … p3 someday (default p2); list: this or more urgent`,
+					description: `${write}p0 urgent … p3 someday (default p2); list: this or more urgent`,
 				}),
 			),
 			tags: Type.Optional(
 				Type.Array(Type.String(), {
-					description: `${subagent ? "add" : "add/update"}: short labels; list: any of these`,
+					description: `${write}short labels; list: any of these`,
 				}),
 			),
 			from: Type.Optional(
@@ -109,6 +108,8 @@ export function registerBacklogTool(
 		},
 		{ additionalProperties: false },
 	);
+	// What a call may carry: the declared fields plus the list filters older calls still send (`legacyListFields`).
+	const accepted = Type.Object({ ...parameters.properties, ...legacyListFields }, { additionalProperties: false });
 	api.registerTool(
 		timedTool(
 			{
@@ -121,13 +122,13 @@ export function registerBacklogTool(
 				defaultActive: !subagent || Boolean((options.env ?? process.env)[BACKLOG_ITEM_ENV]),
 				parameters,
 				// One release still takes the old item type `task`: it is mapped in `execute`, which says so.
-				validationParameters: withReason(acceptTargetShorthand(parameters)),
+				validationParameters: withReason(acceptTargetShorthand(accepted)),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
 					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
 					const { reason: _reason, links, ...rest } = params as Params & { reason?: string; links?: LinkArgument[] };
 					const unknown = Object.keys(rest).filter(
-						(key) => !Object.hasOwn(parameters.properties, key) && !Object.hasOwn(EntityFields, key),
+						(key) => !Object.hasOwn(accepted.properties, key) && !Object.hasOwn(EntityFields, key),
 					);
 					if (unknown.length) throw new Error(`Unknown backlog fields: ${unknown.join(", ")}.`);
 					if (rest.type !== undefined && !isItemType(rest.type))

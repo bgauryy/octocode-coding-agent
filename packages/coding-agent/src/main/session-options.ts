@@ -21,12 +21,10 @@ export function buildSessionOptions(
 	settingsManager: SettingsManager,
 ): {
 	options: CliSessionOptions;
-	cliThinkingFromModel: boolean;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
 } {
 	const options: CliSessionOptions = {};
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
-	let cliThinkingFromModel = false;
 
 	// Model from CLI
 	// - supports --provider <name> --model <pattern>
@@ -57,7 +55,6 @@ export function buildSessionOptions(
 			// Explicit --thinking still takes precedence (applied later).
 			if (!parsed.thinking && resolved.thinkingLevel) {
 				options.thinkingLevel = resolved.thinkingLevel;
-				cliThinkingFromModel = true;
 			}
 		}
 	}
@@ -115,7 +112,7 @@ export function buildSessionOptions(
 		options.excludeTools = [...parsed.excludeTools];
 	}
 
-	return { options, cliThinkingFromModel, diagnostics };
+	return { options, diagnostics };
 }
 
 export function resolveCliPaths(cwd: string, paths: string[] | undefined): string[] | undefined {

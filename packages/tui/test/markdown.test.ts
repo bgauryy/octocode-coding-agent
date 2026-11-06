@@ -1642,7 +1642,7 @@ bar`,
 			const joinedPlain = plainLines.join(" ");
 
 			// URL should appear only once
-			const urlCount = (joinedPlain.match(/https:\/\/example\.com/g) || []).length;
+			const urlCount = (joinedPlain.match(/https:\/\/example\.com/g) ?? []).length;
 			assert.strictEqual(urlCount, 1, "URL should appear exactly once");
 		});
 

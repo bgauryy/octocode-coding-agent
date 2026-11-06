@@ -102,7 +102,7 @@ describe("browser MCP preset", () => {
 	});
 
 	it("lists the real server's tools and returns schema evidence the model can read", async () => {
-		const host = mcpHost({ presets: [browserPreset()], cwd: tmp() });
+		const host = mcpHost({ presets: [browserPreset()], cwd: tmp(), presentation: "compact" });
 		hosts.push(host);
 		// The browser subagent's selection names mcp__browser__*, which activates the tools that are off by default.
 		host.api.getActiveTools = () =>

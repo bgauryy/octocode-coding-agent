@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { normalizeSessionName, parseArgs, restoreBooleanFlagWords } from "../src/cli/args.ts";
+import { normalizeSessionName, parseArgs } from "../src/cli/args.ts";
 
 describe("parseArgs", () => {
 	describe("--version flag", () => {
@@ -49,7 +49,7 @@ describe("parseArgs", () => {
 			const result = parseArgs(["-p", prompt]);
 			expect(result.print).toBe(true);
 			expect(result.messages).toEqual([prompt]);
-			expect(result.unknownFlags.size).toBe(0);
+			expect(result.unknownFlags).toEqual([]);
 		});
 
 		test("does not consume options after -p as prompts", () => {
@@ -166,7 +166,7 @@ describe("parseArgs", () => {
 			expect(result.mode).toBeUndefined();
 			expect(result.version).toBe(true);
 			expect(result.messages).toEqual([]);
-			expect(result.unknownFlags.size).toBe(0);
+			expect(result.unknownFlags).toEqual([]);
 			expect(result.diagnostics).toEqual([
 				{ type: "error", message: `Invalid mode "${mode}". Valid values: text, json, rpc, acp` },
 			]);
@@ -175,7 +175,7 @@ describe("parseArgs", () => {
 		test("reports a missing --mode value", () => {
 			const result = parseArgs(["--mode"]);
 			expect(result.mode).toBeUndefined();
-			expect(result.unknownFlags.size).toBe(0);
+			expect(result.unknownFlags).toEqual([]);
 			expect(result.diagnostics).toEqual([{ type: "error", message: "--mode requires text, json, rpc, or acp" }]);
 		});
 
@@ -183,7 +183,7 @@ describe("parseArgs", () => {
 			const result = parseArgs(["--mode", "--version"]);
 			expect(result.mode).toBeUndefined();
 			expect(result.version).toBe(true);
-			expect(result.unknownFlags.size).toBe(0);
+			expect(result.unknownFlags).toEqual([]);
 			expect(result.diagnostics).toEqual([{ type: "error", message: "--mode requires text, json, rpc, or acp" }]);
 		});
 
@@ -252,28 +252,54 @@ describe("parseArgs", () => {
 		});
 	});
 
-	describe("removed extension flags", () => {
-		test.each([
-			[["--extension", "./my-extension.ts"], ["--extension"]],
-			[["-e", "./my-extension.ts"], ["--extension"]],
-			[
-				["--extension", "./ext1.ts", "-e", "./ext2.ts"],
-				["--extension", "--extension"],
-			],
-			[["-ne", "-e", "foo.ts"], ["--extension"]],
-		])("parses %j into removedFlags so the run exits 2", (argv, removed) => {
-			expect(parseArgs(argv).removedFlags).toEqual(removed);
-		});
-
-		test.each([[["--no-extensions"]], [["--no-extensions", "-e", "builtin:mcp"]], [["--no-extensions", "--no-mcp"]]])(
-			"accepts %j, the arguments an earlier parent gives its subagents",
-			(argv) => {
-				expect(parseArgs(argv).removedFlags).toBeUndefined();
+	describe("removed flags", () => {
+		test.each([["-e"], ["-ne"], ["-nt"], ["-nbt"], ["-xt"], ["-ns"], ["-np"], ["-nc"]])(
+			"refuses %s as an unknown option",
+			(flag) => {
+				expect(parseArgs([flag]).diagnostics).toEqual([
+					{ type: "error", message: `Unknown option: ${flag}. Run "octocode --help" to see the options.` },
+				]);
 			},
 		);
 
-		test("takes the extension path as the flag's value, not as a message", () => {
-			expect(parseArgs(["-e", "x.ts", "hello"]).messages).toEqual(["hello"]);
+		test("names --extension and --no-extensions as unknown options and keeps x.ts as a message", () => {
+			const parsed = parseArgs(["--no-extensions", "--extension", "x.ts"]);
+			expect(parsed.unknownFlags).toEqual(["no-extensions", "extension"]);
+			expect(parsed.messages).toEqual(["x.ts"]);
+		});
+	});
+
+	describe("permission start mode", () => {
+		test.each(["manual", "workspace", "full"])("--permission-mode %s starts in that mode", (mode) => {
+			expect(parseArgs(["--permission-mode", mode])).toMatchObject({ permissionMode: mode, diagnostics: [] });
+		});
+
+		test("--dangerously-skip-permissions starts in bypass", () => {
+			expect(parseArgs(["--dangerously-skip-permissions", "-p", "hi"])).toMatchObject({
+				permissionMode: "bypass",
+				print: true,
+				messages: ["hi"],
+				diagnostics: [],
+			});
+		});
+
+		test("refuses bypass through --permission-mode and an unknown mode", () => {
+			expect(parseArgs(["--permission-mode", "bypass"]).diagnostics).toEqual([
+				{
+					type: "error",
+					message: 'Invalid permission mode "bypass". Valid values: manual, workspace, full',
+				},
+			]);
+		});
+
+		test("refuses two different start modes, accepts the same one twice", () => {
+			expect(parseArgs(["--permission-mode", "manual", "--dangerously-skip-permissions"]).diagnostics).toEqual([
+				{
+					type: "error",
+					message: "--dangerously-skip-permissions conflicts with the start mode manual given earlier",
+				},
+			]);
+			expect(parseArgs(["--permission-mode=full", "--permission-mode", "full"]).diagnostics).toEqual([]);
 		});
 	});
 
@@ -281,7 +307,7 @@ describe("parseArgs", () => {
 		test("parses --no-mcp flag", () => {
 			const result = parseArgs(["--no-mcp"]);
 			expect(result.noMcp).toBe(true);
-			expect(result.unknownFlags.size).toBe(0);
+			expect(result.unknownFlags).toEqual([]);
 		});
 	});
 
@@ -361,11 +387,6 @@ describe("parseArgs", () => {
 			const result = parseArgs(["--no-context-files"]);
 			expect(result.noContextFiles).toBe(true);
 		});
-
-		test("parses -nc shorthand", () => {
-			const result = parseArgs(["-nc"]);
-			expect(result.noContextFiles).toBe(true);
-		});
 	});
 
 	describe("folder trust flags", () => {
@@ -377,7 +398,7 @@ describe("parseArgs", () => {
 		test("--approve is an unknown flag, not an alias of --trust", () => {
 			const result = parseArgs(["--approve"]);
 			expect(result.trust).toBeUndefined();
-			expect(result.unknownFlags.has("approve")).toBe(true);
+			expect(result.unknownFlags).toEqual(["approve"]);
 		});
 
 		test("-a, -na and --no-approve do not grant or refuse trust", () => {
@@ -420,7 +441,7 @@ describe("parseArgs", () => {
 		test("does not recognize the old --ui-mode flag", () => {
 			const result = parseArgs(["--ui-mode", "fullscreen"]);
 			expect(result.tuiMode).toBeUndefined();
-			expect(result.unknownFlags.get("ui-mode")).toBe("fullscreen");
+			expect(result.unknownFlags).toEqual(["ui-mode"]);
 		});
 	});
 
@@ -430,18 +451,8 @@ describe("parseArgs", () => {
 			expect(result.noTools).toBe(true);
 		});
 
-		test("parses -nt shorthand", () => {
-			const result = parseArgs(["-nt"]);
-			expect(result.noTools).toBe(true);
-		});
-
 		test("parses --no-builtin-tools flag", () => {
 			const result = parseArgs(["--no-builtin-tools"]);
-			expect(result.noBuiltinTools).toBe(true);
-		});
-
-		test("parses -nbt shorthand", () => {
-			const result = parseArgs(["-nbt"]);
 			expect(result.noBuiltinTools).toBe(true);
 		});
 
@@ -485,11 +496,6 @@ describe("parseArgs", () => {
 			expect(result.excludeTools).toEqual(["read", "bash"]);
 		});
 
-		test("parses -xt shorthand", () => {
-			const result = parseArgs(["-xt", "read,bash"]);
-			expect(result.excludeTools).toEqual(["read", "bash"]);
-		});
-
 		test("parses --no-tools with explicit --tools flags", () => {
 			const result = parseArgs(["--no-tools", "--tools", "read,bash"]);
 			expect(result.noTools).toBe(true);
@@ -520,20 +526,32 @@ describe("parseArgs", () => {
 			expect(result.messages).toEqual(["explain this"]);
 		});
 
-		test("captures unknown long flags with string values", () => {
-			const result = parseArgs(["--unknown-flag", "message"]);
-			expect(result.messages).toEqual([]);
-			expect(result.unknownFlags.get("unknown-flag")).toBe("message");
-		});
-
-		test("captures unknown boolean long flags", () => {
+		test("fails an unknown long flag at parse time, naming it and pointing to --help", () => {
 			const result = parseArgs(["--unknown-flag"]);
-			expect(result.unknownFlags.get("unknown-flag")).toBe(true);
+			expect(result.unknownFlags).toEqual(["unknown-flag"]);
+			expect(result.diagnostics).toEqual([
+				{ type: "error", message: 'Unknown option: --unknown-flag. Run "octocode --help" to see the options.' },
+			]);
 		});
 
-		test("captures unknown long flags with equals syntax", () => {
+		test("does not take the next word as the unknown flag's value", () => {
+			const result = parseArgs(["--unknown-flag", "message"]);
+			expect(result.messages).toEqual(["message"]);
+			expect(result.unknownFlags).toEqual(["unknown-flag"]);
+		});
+
+		test("names the flag, not its value, for the equals syntax", () => {
 			const result = parseArgs(["--unknown-flag=value"]);
-			expect(result.unknownFlags.get("unknown-flag")).toBe("value");
+			expect(result.unknownFlags).toEqual(["unknown-flag"]);
+			expect(result.diagnostics[0].message).toContain("--unknown-flag.");
+		});
+
+		test("--plan is a built-in flag and keeps the next word as a message", () => {
+			const result = parseArgs(["--plan", "fix the bug"]);
+			expect(result.plan).toBe(true);
+			expect(result.unknownFlags).toEqual([]);
+			expect(result.diagnostics).toEqual([]);
+			expect(result.messages).toEqual(["fix the bug"]);
 		});
 	});
 
@@ -581,14 +599,6 @@ describe("parseArgs", () => {
 		});
 		test("treats an invalid thinking level as an error, like other enumerated flags", () => {
 			expect(parseArgs(["--thinking", "huge"]).diagnostics[0]).toMatchObject({ type: "error" });
-		});
-		test("gives a boolean extension flag's word back to the prompt", () => {
-			const result = parseArgs(["--plan", "fix the bug", "--depth", "3", "now"]);
-			expect(result.messages).toEqual(["now"]);
-			restoreBooleanFlagWords(result, (name) => name === "plan");
-			expect(result.messages).toEqual(["fix the bug", "now"]);
-			expect(result.unknownFlags.get("plan")).toBe(true);
-			expect(result.unknownFlags.get("depth")).toBe("3");
 		});
 	});
 });

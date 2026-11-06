@@ -2,7 +2,8 @@
  * Installs a server entry's npm package (`install` in its config) once into `<agentDir>/mcp/servers/<name>/`, and
  * launches its bin with node. The install runs npm with `--ignore-scripts` under a file lock and is skipped when the
  * installed version already matches. A failure leaves the server out for the session with one warning; nothing falls
- * back to `npx`, which could start a package from the project's `node_modules`.
+ * back to `npx`, which could start a package from the project's `node_modules`. With `hostDependency`, the host's own
+ * copy of the package runs instead when it resolves (`host-dependency.ts`), and the install is the fallback.
  */
 
 import fs from "node:fs";
@@ -11,6 +12,8 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { spawnProcess, waitForChildProcess } from "../../common/src/child-process.ts";
 import { withFileWriteLock } from "../../common/src/file-write-lock.ts";
 import type { McpServerEntry } from "./config.ts";
+import { binOf, hostDependencyBin } from "./host-dependency.ts";
+import { readManifest } from "../../common/src/package.ts";
 import { hostIdentity, hostPaths } from "./host.ts";
 import type { McpInstallConfig } from "./servers.ts";
 import { warnOnce } from "./warnings.ts";
@@ -23,6 +26,8 @@ export interface McpInstallOptions {
 	agentDir?: string;
 	/** Default: the `npm` on PATH. */
 	runNpm?: McpNpmRunner;
+	/** Where `hostDependency` packages resolve from. Default: `hostIdentity().packageDir()`. */
+	packageDir?: string;
 	signal?: AbortSignal;
 }
 
@@ -47,32 +52,6 @@ const defaultNpm: McpNpmRunner = async (args, { cwd, signal }) => {
 /** The folder a server's package is installed in. */
 export const mcpInstallDir = (agentDir: string, name: string): string =>
 	path.join(agentDir, "mcp", "servers", name.replace(/[^A-Za-z0-9_-]/g, "_"));
-
-interface Manifest {
-	version?: unknown;
-	bin?: unknown;
-}
-
-function readManifest(file: string): Manifest | undefined {
-	try {
-		return JSON.parse(fs.readFileSync(file, "utf8")) as Manifest;
-	} catch {
-		return undefined;
-	}
-}
-
-/** The bin file the manifest names: `spec.bin`, else its only bin, else the one named like the package. */
-function binOf(manifest: Manifest, spec: McpInstallConfig): string | undefined {
-	const { bin } = manifest;
-	if (typeof bin === "string")
-		return spec.bin === undefined || spec.bin === spec.npm.split("/").pop() ? bin : undefined;
-	if (!bin || typeof bin !== "object") return undefined;
-	const bins = bin as Record<string, unknown>;
-	const names = Object.keys(bins);
-	const name = spec.bin ?? (names.length === 1 ? names[0] : spec.npm.split("/").pop());
-	const file = name === undefined ? undefined : bins[name];
-	return typeof file === "string" ? file : undefined;
-}
 
 /**
  * The absolute path of the installed bin of `spec` for server `name`, installing the package first when the folder
@@ -125,14 +104,34 @@ export async function installMcpServer(
 	}
 }
 
-/** The entry as it launches: with `install`, node running the installed bin, then the configured `args`. */
+/**
+ * The host's own build of `spec` for server `name`, or undefined to install it instead. A package that resolves without
+ * its bin file (an unbuilt linked package) warns, naming the build, before the install fallback.
+ */
+function hostDependencyLaunch(name: string, spec: McpInstallConfig, options: McpInstallOptions): string | undefined {
+	if (!spec.hostDependency) return undefined;
+	const found = hostDependencyBin(spec, options.packageDir ?? hostIdentity().packageDir());
+	if (!found) return undefined;
+	if ("bin" in found) return found.bin;
+	warnOnce(
+		`MCP server "${name}": ${spec.npm} at ${found.dir} is not built (${found.missing} is missing); run \`yarn build\` in ${found.dir}. Installing ${spec.npm}@${spec.version} from npm instead.`,
+	);
+	return undefined;
+}
+
+/**
+ * The entry as it launches: with `install`, node running the host's own copy of the package (`hostDependency`) or else
+ * the installed bin, then the configured `args`.
+ */
 export async function resolveInstalledLaunch(
 	entry: McpServerEntry,
 	options: McpInstallOptions = {},
 ): Promise<McpServerEntry> {
 	const { config } = entry;
 	if ("url" in config || !config.install) return entry;
-	const bin = await installMcpServer(entry.name, config.install, options);
+	const bin =
+		hostDependencyLaunch(entry.name, config.install, options) ??
+		(await installMcpServer(entry.name, config.install, options));
 	// A standalone binary's execPath is the binary itself, not node.
 	const command = hostIdentity().isBunBinary() ? "node" : process.execPath;
 	return { ...entry, config: { ...config, command, args: [bin, ...(config.args ?? [])] } };

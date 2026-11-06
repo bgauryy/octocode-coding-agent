@@ -2,7 +2,7 @@ import type { Content, Part } from "@google/genai";
 import type { ImageContent, Model, TextContent, TranscriptContext } from "../../types.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { collapseSystemMessages, withoutInitialSystemMessage } from "../../utils/transcript.ts";
-import { sanitizeToolCallId } from "../tool-call-id.ts";
+import { fitToolCallId } from "../tool-call-id.ts";
 import { transformMessages } from "../transform-messages.ts";
 import { resolveThoughtSignature } from "./signatures.ts";
 import type { GoogleApiType } from "./thinking.ts";
@@ -42,7 +42,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 	const contents: Content[] = [];
 	const normalizeToolCallId = (id: string): string => {
 		if (!requiresToolCallId(model.id)) return id;
-		return sanitizeToolCallId(id);
+		return fitToolCallId(id);
 	};
 
 	const transformedMessages = transformMessages(conversation, model, normalizeToolCallId);

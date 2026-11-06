@@ -79,11 +79,11 @@ export async function consumeChatStream(
 		output.responseId ||= chunk.id;
 
 		if (chunk.usage) {
-			const promptTokens = chunk.usage.prompt_tokens || 0;
+			const promptTokens = chunk.usage.prompt_tokens ?? 0;
 			const cachedPromptTokens = getMistralCachedPromptTokens(chunk.usage, promptTokens);
 
 			output.usage.input = Math.max(0, promptTokens - cachedPromptTokens);
-			output.usage.output = chunk.usage.completion_tokens || 0;
+			output.usage.output = chunk.usage.completion_tokens ?? 0;
 			output.usage.cacheRead = cachedPromptTokens;
 			output.usage.cacheWrite = 0;
 			output.usage.totalTokens = sumUsageTokens(output.usage, chunk.usage.total_tokens);
@@ -165,7 +165,7 @@ export async function consumeChatStream(
 			}
 		}
 
-		const toolCalls = delta.tool_calls || [];
+		const toolCalls = delta.tool_calls ?? [];
 		for (const toolCall of toolCalls) {
 			if (currentBlock) {
 				finishCurrentBlock(currentBlock);

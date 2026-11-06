@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
-import type { ConfigItem, ConfigKind, ConfigScope, DiscoverInput, Product, Provenance } from "./types.ts";
+import type { ConfigItem, ConfigKind, ConfigScope, DiscoverInput, ItemVendor, Product, Provenance } from "./types.ts";
 
 /** Pi's project folder. */
 export const PI_PROJECT_DIR_NAME = ".pi";
@@ -13,6 +13,8 @@ export interface ConfigRoot {
 	scope: ConfigScope;
 	origin: string;
 	dir: string;
+	/** The harness; default: the product (`octocode` or `pi`). */
+	vendor?: ItemVendor;
 }
 
 /**
@@ -37,7 +39,7 @@ export function configRoots(input: DiscoverInput): ConfigRoot[] {
 export function makeItem(
 	kind: ConfigKind,
 	name: string,
-	root: Pick<ConfigRoot, "product" | "scope" | "origin">,
+	root: Pick<ConfigRoot, "product" | "scope" | "origin" | "vendor">,
 	path: string,
 	input: DiscoverInput,
 	extra: Partial<Provenance> = {},
@@ -49,6 +51,7 @@ export function makeItem(
 		name,
 		provenance: {
 			product: root.product,
+			vendor: root.vendor ?? root.product,
 			scope: root.scope,
 			origin: root.origin,
 			path,

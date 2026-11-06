@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -29,7 +29,7 @@ async function askWithPrompt(answer: string, hook: Record<string, unknown> = {})
 			},
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp() });
 	const model = { provider: "test", id: "judge" };
 	const evaluations: string[] = [];

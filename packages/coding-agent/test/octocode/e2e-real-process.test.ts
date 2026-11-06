@@ -14,6 +14,7 @@ import {
 	startEndpoint,
 	until,
 } from "./e2e-real-process-harness.ts";
+import { enableHarnesses } from "./e2e-helpers/harness-toggles.ts";
 
 /**
  * What only a real process shows: the tool registry the plan gate reads (fakes set `owner: "native"` for it), a signal
@@ -130,8 +131,10 @@ describe("a signal while a headless run holds for background work", () => {
 		const prompt = path.join(root, "prompt-hook.pid");
 		const end = path.join(root, "session-end.pid");
 		// A hook at the prompt's admission keeps the run from returning, which is what removes the signal handlers, and a
-		// SessionEnd hook keeps the shutdown from finishing for as long as its own timeout (60 s).
+		// SessionEnd hook keeps the shutdown from finishing for as long as its own timeout (60 s). Claude Code's hook file
+		// loads only with its harness switched on.
 		const hook = (marker: string) => [{ hooks: [{ type: "command", command: holdCommand(marker), timeout: 60 }] }];
+		enableHarnesses({ home }, "claude");
 		fs.mkdirSync(path.join(home, ".claude"));
 		fs.writeFileSync(
 			path.join(home, ".claude", "settings.json"),

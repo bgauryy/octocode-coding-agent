@@ -11,6 +11,7 @@ import {
 	type McpServerConfigPatch,
 	type McpServerEntry,
 	updateMcpServerConfig,
+	writableSource,
 } from "./config.ts";
 import { exposureOf } from "./exposure.ts";
 import { getMcpConfigLocations } from "./inspection.ts";
@@ -52,7 +53,7 @@ export interface McpExtensionOptions {
 	 * startup, in milliseconds. Their tools become available when they connect. Default: 10000.
 	 */
 	startupWaitMs?: number;
-	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `compact`. */
+	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `declared`. */
 	presentation?: McpPresentationMode;
 	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `direct`. */
 	exposure?: string;
@@ -95,6 +96,8 @@ export class McpExtensionState {
 	unregisterHookCaller: (() => void) | undefined;
 	/** Ends the current session's answer to the host's switch requests (`switch.ts`). */
 	unregisterSwitch: (() => void) | undefined;
+	/** Ends the current session's answer to the host's reload requests (`requestMcpReload`). */
+	unregisterReload: (() => void) | undefined;
 	/**
 	 * Lifetime of the current session: aborted on session_shutdown, and before the first session_start
 	 * (registrations before that are read on session_start). Work captures `session.signal` when it
@@ -258,7 +261,7 @@ export class McpExtensionState {
 			? entry.override
 			: entry.scope === "global" || entry.scope === "default"
 				? (this.globalConfig ?? entry.override ?? entry.source)
-				: (entry.override ?? entry.source);
+				: (entry.override ?? writableSource(entry) ?? this.projectConfig ?? entry.source);
 	}
 
 	configLocations() {

@@ -16,13 +16,11 @@ export class ProgressIndicator {
 		if (active) {
 			// OSC 9;4;3 - indeterminate progress
 			process.stdout.write(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
-			if (!this.interval) {
-				this.interval = setInterval(() => {
-					if (this.allowsKeepalive()) {
-						process.stdout.write(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
-					}
-				}, TERMINAL_PROGRESS_KEEPALIVE_MS);
-			}
+			this.interval ??= setInterval(() => {
+				if (this.allowsKeepalive()) {
+					process.stdout.write(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
+				}
+			}, TERMINAL_PROGRESS_KEEPALIVE_MS);
 		} else {
 			this.stopKeepalive();
 			// OSC 9;4;0 - clear progress

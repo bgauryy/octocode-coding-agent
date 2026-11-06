@@ -24,6 +24,8 @@ You can instead provide an API key through the provider's environment variable. 
 
 When several credential sources are configured, Octocode uses a runtime `--api-key` first, then a stored `auth.json` credential, an `apiKey` from `models.json`, and finally the provider's environment variables or ambient cloud credentials. Provider extensions can define their own authentication behavior.
 
+With the default home, Pi's providers load beside Octocode's. Octocode reads `~/.pi/agent/models.json` and `~/.pi/models.json` after its own `models.json`: a provider Octocode defines wins whole, and a provider only Pi defines is added. A provider with no Octocode `auth.json` credential uses its entry in Pi's `auth.json`, read only; a Pi key held in a secret command (`!cmd`) is skipped. Login, logout and token refresh write Octocode's `auth.json` only, so a refreshed Pi sign-in is saved there and Pi's files never change; logout removes only Octocode's copy, so a Pi credential stays in use until it is removed from Pi. `models-store.json` stays beside Octocode's `models.json`. An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` turns Pi's files off. `/login pi` still copies a Pi credential into Octocode's storage, which is needed only to keep it after Pi changes or to move it into a keychain.
+
 Keep `auth.json` and any credential commands private. Project settings and extensions can execute inside the Octocode process after you trust a project. Review [Security](../../../SECURITY.md) before loading configuration from an untrusted directory.
 
 ## Select a model
@@ -31,6 +33,8 @@ Keep `auth.json` and any credential commands private. Project settings and exten
 Run `/model` to search models grouped by provider. The picker shows models from configured providers; catalog presence does not verify account access. Choose a provider in `/login` first to filter to only its models. Press `Ctrl+S` on a model to save it as the default for new sessions.
 
 Run `/effort` to select the thinking level for the current model. Press `Ctrl+S` there to save the startup level. Octocode limits the choices to levels supported by the selected model.
+
+Switching models (`/model`, `Ctrl+P`) keeps the level you last chose in this session (with `/effort` or `--thinking`), lowered to what the new model supports: a model without reasoning runs with thinking off, and switching back restores your level. A level set for the target model in `modelThinkingLevels`, or in its `--models` pattern, wins over it; before you choose a level, a switch uses `defaultThinkingLevel`.
 
 `Ctrl+P` cycles through available models. Open `/modelsettings` and choose **Model shortcuts** to control that cycle and save the selection, or configure model patterns in `settings.json`.
 

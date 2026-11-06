@@ -57,7 +57,7 @@ describe("createEventBus", () => {
 
 	it("reports a failing handler without stopping the others, sync or async", async () => {
 		const bus = createEventBus();
-		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const error = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const after = vi.fn();
 		bus.on("a", () => {
 			throw new Error("sync");
@@ -69,7 +69,10 @@ describe("createEventBus", () => {
 		bus.emit("a", 1);
 		expect(after).toHaveBeenCalledWith(1);
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(error.mock.calls.map((call) => (call[1] as Error).message).sort()).toEqual(["async", "sync"]);
+		expect(error.mock.calls.map((call) => String(call[0])).sort()).toEqual([
+			"Event handler error (a): Error: async\n",
+			"Event handler error (a): Error: sync\n",
+		]);
 		error.mockRestore();
 	});
 });

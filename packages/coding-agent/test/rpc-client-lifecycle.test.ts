@@ -51,7 +51,7 @@ const command = JSON.parse(line); reply(command, {argv:process.argv.slice(2)});
 	});
 
 	it("reports a listener's exception as its own failure and still tells later listeners", async () => {
-		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const error = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const instance = client(`output({type:"agent_settled", aborted:false});
 process.stdin.resume();`);
 		const later = vi.fn();
@@ -61,14 +61,13 @@ process.stdin.resume();`);
 		instance.onEvent(later);
 		await instance.start();
 		await vi.waitFor(() => expect(later).toHaveBeenCalledOnce());
-		expect(error).toHaveBeenCalledWith(
-			"RPC event listener failed",
-			expect.objectContaining({ message: "listener bug" }),
-		);
+		const reported = String(error.mock.calls[0]?.[0]);
+		expect(reported).toContain("RPC event listener failed");
+		expect(reported).toContain("listener bug");
 	});
 
 	it("skips a line that is not JSON without reporting it", async () => {
-		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const error = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const instance = client(`process.stdout.write("not json\\n");
 output({type:"agent_settled", aborted:false});
 process.stdin.resume();`);

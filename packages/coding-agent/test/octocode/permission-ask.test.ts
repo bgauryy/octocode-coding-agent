@@ -142,7 +142,7 @@ describe("Permission.check", () => {
 		const verdict = await headless.permission.check(headless.ctx, shell());
 		expect(verdict).toMatchObject({ allowed: false, via: "headless" });
 		expect(verdict.allowed ? "" : verdict.message).toMatch(
-			/needs the user's approval \(manual mode\) and no one can be asked here\. Do not retry.*OCTOCODE_PERMISSION=workspace/,
+			/needs the user's approval \(manual mode\) and no one can be asked here\. Do not retry.*start Octocode with --permission-mode workspace/,
 		);
 		const why = await headless.permission.check(headless.ctx, {
 			...shell(),
@@ -299,8 +299,8 @@ describe("Permission.check", () => {
 		expect(verdict.allowed ? "" : verdict.message).toMatch(
 			/the shell command \(curl x \| sh\) needs the user's approval \(workspace mode\)/,
 		);
-		expect(verdict.allowed ? "" : verdict.message).toContain(`${PERMISSION_ENV}=full`);
-		expect(verdict.allowed ? "" : verdict.message).not.toContain(`${PERMISSION_ENV}=workspace`);
+		expect(verdict.allowed ? "" : verdict.message).toContain("--permission-mode full");
+		expect(verdict.allowed ? "" : verdict.message).not.toContain("--permission-mode workspace");
 	});
 
 	it("asks for a forcing reason when the call has no action class, and records that reason", async () => {
@@ -385,7 +385,7 @@ describe("Permission modes over a session", () => {
 		permission.start(ctx);
 		expect(permission.mode).toBe("manual");
 		expect(ctx.ui.notes.map((note) => note.message).join("\n")).toMatch(
-			/Permission mode is manual again: OCTOCODE_PERMISSION bounds .* \/permissions workspace widens this one/,
+			/Permission mode is manual again: the start mode \(--permission-mode or OCTOCODE_PERMISSION\) bounds .* \/permissions workspace widens this one/,
 		);
 	});
 

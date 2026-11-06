@@ -13,11 +13,12 @@ import { hintText } from "../../src/octocode/ui/editor.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 
 describe("native cleanup regressions", () => {
-	it("paints the permission chip by risk: manual muted, workspace accent, full warning (never error)", () => {
+	it("paints the permission chip by risk: manual muted, workspace accent, full and bypass warning (never error)", () => {
 		expect(Object.fromEntries(Object.entries(CHIPS).map(([mode, chip]) => [mode, chip.color]))).toEqual({
 			manual: "muted",
 			workspace: "accent",
 			full: "warning",
+			bypass: "warning",
 		});
 	});
 

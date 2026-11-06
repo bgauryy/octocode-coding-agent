@@ -14,6 +14,14 @@ import {
 import type { FilterMode, FlatNode, ToolCallInfo } from "./types.ts";
 import { type HorizontalViewportRow, renderHorizontalViewport } from "./viewport.ts";
 
+const FILTER_LABELS: Record<FilterMode, string> = {
+	default: "",
+	"no-tools": " [no-tools]",
+	"user-only": " [user]",
+	"labeled-only": " [labeled]",
+	all: " [all]",
+};
+
 /**
  * Tree list component with selection and ASCII art visualization
  */
@@ -152,21 +160,7 @@ export class TreeList implements Component {
 	}
 
 	private getStatusLabels(): string {
-		let labels = "";
-		switch (this.filterMode) {
-			case "no-tools":
-				labels += " [no-tools]";
-				break;
-			case "user-only":
-				labels += " [user]";
-				break;
-			case "labeled-only":
-				labels += " [labeled]";
-				break;
-			case "all":
-				labels += " [all]";
-				break;
-		}
+		let labels = FILTER_LABELS[this.filterMode];
 		if (this.showLabelTimestamps) {
 			labels += " [+label time]";
 		}

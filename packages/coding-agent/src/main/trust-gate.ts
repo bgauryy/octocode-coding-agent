@@ -37,17 +37,7 @@ export type TrustGateResult =
 	{ ok: true; root: string; notice?: string } | { ok: false; exitCode: number; message: string; stdout?: boolean };
 
 /** Project files whose names the prompt may list. Existence only: nothing is opened. */
-const PROJECT_FILE_NAMES = [
-	"AGENTS.md",
-	"CLAUDE.md",
-	".octocode",
-	".pi",
-	".agents",
-	".claude",
-	".mcp.json",
-	".codex",
-	".cursor",
-];
+const PROJECT_FILE_NAMES = ["AGENTS.md", ".octocode", ".pi", ".agents", ".claude", ".mcp.json", ".codex", ".cursor"];
 
 function projectFileNames(folder: string): string[] {
 	return PROJECT_FILE_NAMES.filter((name) => {

@@ -10,6 +10,7 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createReadTool } from "./fixtures/read-tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
+import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 type Capture = {
@@ -70,7 +71,7 @@ async function fixture() {
 		noContextFiles: true,
 		additionalSkillPaths: [skill],
 		additionalPromptTemplatePaths: [template],
-		settingsManager: SettingsManager.inMemory(),
+		settingsManager: SettingsManager.inMemory({ ...HOOK_SETTINGS }),
 		extensionFactories: [
 			(api) => {
 				api.on("session_start", (_event, ctx) => {
@@ -108,7 +109,7 @@ async function fixture() {
 	const harness = await createHarness({
 		resourceLoader: loader,
 		tools: [createReadTool(cwd)],
-		settings: { retry: { enabled: false } },
+		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 	});
 	await harness.session.bindExtensions({});
 	const records = (): Capture[] =>

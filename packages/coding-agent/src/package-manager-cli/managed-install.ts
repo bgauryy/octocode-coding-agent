@@ -21,16 +21,13 @@ export function getActiveManagedInstallRoot(): string | undefined {
 	if (getCwdRelativePath(canonicalizePath(getPackageDir()), releasesDir) === undefined) return undefined;
 
 	const markerPath = join(managedRoot, MANAGED_INSTALL_MARKER);
+	let marker: { kind?: unknown; layout?: unknown; schemaVersion?: unknown } | undefined;
 	try {
-		const marker = readJsonFile(markerPath) as {
-			kind?: unknown;
-			layout?: unknown;
-			schemaVersion?: unknown;
-		};
-		if (marker.kind !== "octocode-managed-install" || marker.schemaVersion !== 1 || marker.layout !== "releases-v1") {
-			throw new Error();
-		}
+		marker = readJsonFile(markerPath) as typeof marker;
 	} catch {
+		marker = undefined;
+	}
+	if (marker?.kind !== "octocode-managed-install" || marker.schemaVersion !== 1 || marker.layout !== "releases-v1") {
 		throw new Error(`Managed install marker is missing or invalid: ${markerPath}`);
 	}
 

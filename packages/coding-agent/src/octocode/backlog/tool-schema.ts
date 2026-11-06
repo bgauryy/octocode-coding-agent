@@ -68,7 +68,11 @@ const completion = Type.Optional(
 				type: "object",
 				required: ["status", "summary"],
 				properties: {
-					status: { type: "string", enum: ["passed", "failed", "not_run", "not_applicable"] },
+					status: {
+						type: "string",
+						enum: ["passed", "failed", "not_run", "not_applicable"],
+						description: "Close only on passed/not_applicable; else stay ongoing with a note.",
+					},
 					summary: { type: "string" },
 				},
 				additionalProperties: false,
@@ -111,7 +115,7 @@ export function entityFields(subagent: boolean) {
 		),
 		dependsOn: Type.Optional(
 			Type.Array(Type.String(), {
-				description: "add/update: prerequisite item IDs; [] clears. list: items needing any",
+				description: "prerequisite item IDs; [] clears. list: items needing any",
 			}),
 		),
 		links: Type.Optional(LinkField),

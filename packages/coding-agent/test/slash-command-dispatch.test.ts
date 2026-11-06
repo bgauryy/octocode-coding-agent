@@ -72,25 +72,19 @@ describe("built-in slash commands", () => {
 		const web = { name: "web", description: "Open the web workspace" };
 		const skills = ["octocode-agentic-prompts", "octocode-research"].map((name) => ({ name, description: "Skill" }));
 		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, web, ...skills];
-		for (const text of ["/octocode", "/octocode backlogs", "/octocode model", "/wbe", "/workspace", "/dog"])
-			await instance.defaultEditor.onSubmit(text);
+		// `/octocode` is a registered command again (B58, the research CLI), so it is no longer a retired name here.
+		for (const text of ["/wbe", "/workspace", "/dog"]) await instance.defaultEditor.onSubmit(text);
 		// Without `/web` registered, a 3-letter word two edits from `/new` is not a typo of it.
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
 		await instance.defaultEditor.onSubmit("/web");
 		expect(effects).toEqual([]);
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
-			"Unknown command /octocode. Did you mean /web?",
-			"Unknown command /octocode. Did you mean /web backlogs?",
-			"Unknown command /octocode. Did you mean /model?",
 			"Unknown command /wbe. Did you mean /web?",
 			"Unknown command /workspace. Did you mean /web?",
 			"Unknown command /dog. Search commands with /help dog.",
 			"Unknown command /web. Search commands with /help web.",
 		]);
 		expect(instance.editor.setText.mock.calls.map(([text]: [string]) => text)).toEqual([
-			"/octocode",
-			"/octocode backlogs",
-			"/octocode model",
 			"/wbe",
 			"/workspace",
 			"/dog",

@@ -26,16 +26,22 @@ export function mergeToggles(global: Toggles | undefined, project: Toggles | und
 
 /**
  * Whether an item is on. `ids` run from the most specific (one hook) to the broadest (its host); the first key set
- * decides, a project key before a global one for an item inside the repository. Unset means on.
+ * decides, a project key before a global one for an item inside the repository. Unset means `fallback` (on unless a
+ * harness is off by default).
  */
-export function isSwitchedOn(ids: readonly string[], toggles: Toggles | undefined, inProject: boolean): boolean {
-	if (!toggles) return true;
+export function isSwitchedOn(
+	ids: readonly string[],
+	toggles: Toggles | undefined,
+	inProject: boolean,
+	fallback = true,
+): boolean {
+	if (!toggles) return fallback;
 	for (const id of ids) {
 		const project = inProject ? toggles[`${PROJECT_TOGGLE_PREFIX}${id}`] : undefined;
 		const value = project ?? toggles[id];
 		if (value !== undefined) return value;
 	}
-	return true;
+	return fallback;
 }
 
 /** Whether `file` lies inside the repository of `cwd`: a project item, which project toggles may switch. */

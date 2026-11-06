@@ -19,4 +19,14 @@ describe("reasonRow", () => {
 	it("shows no row when the call gives no reason", () => {
 		expect(reasonRow("bash", { command: "ls" })).toBeUndefined();
 	});
+
+	it("shows an MCP call's purpose only from its returned data, never from its arguments", () => {
+		const args = { queries: [{ path: "a", mainGoal: "from the input" }], reason: "copied from a native tool" };
+		expect(reasonRow("mcp__octocode__localFetch", args)).toBeUndefined();
+		expect(
+			reasonRow("mcp__octocode__localFetch", args, { content: [], structuredContent: { results: [] } }),
+		).toBeUndefined();
+		const returned = { content: [], structuredContent: { results: [{ data: { mainGoal: "trace the parser" } }] } };
+		expect(reasonRow("mcp__octocode__localFetch", args, returned)?.render(80).join("\n")).toContain("trace the parser");
+	});
 });

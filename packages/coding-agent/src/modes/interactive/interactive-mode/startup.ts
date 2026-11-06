@@ -107,7 +107,7 @@ export async function init(host: StartupHost): Promise<void> {
 		const cycleKeys = host.keybindings.getKeys("app.model.cycleForward");
 		const cycleHint =
 			cycleKeys.length > 0 ? theme.fg("muted", ` (${formatKeyText(cycleKeys.join("/"))} to cycle)`) : "";
-		console.log(theme.fg("dim", `Model scope: ${modelList}${cycleHint}`));
+		process.stdout.write(`${theme.fg("dim", `Model scope: ${modelList}${cycleHint}`)}\n`);
 	}
 
 	// Keep one component tree and remount it when changing renderers.

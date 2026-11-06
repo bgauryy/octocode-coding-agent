@@ -14,7 +14,7 @@ import { shortPath } from "../shared/format.ts";
 import { oneLine, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { textResult } from "../shared/util.ts";
-import { type CatalogSkill, SkillCatalog, closeNames, setActiveSkillCatalog } from "./catalog.ts";
+import { type CatalogSkill, SkillCatalog, closeNames } from "./catalog.ts";
 import { skillHeader, skillInstructions, skillOrigin } from "./render.ts";
 
 /** Names listed when nothing is close to the requested one. */
@@ -69,12 +69,8 @@ function body(entry: CatalogSkill, sessionId: string, cwd: string): string {
  */
 export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 	const catalog = new SkillCatalog(() => api.getSkillResourceSnapshot());
-	setActiveSkillCatalog(catalog);
 	api.on("session_start", async () => {
 		catalog.refresh();
-	});
-	api.on("session_shutdown", async () => {
-		setActiveSkillCatalog(undefined, catalog);
 	});
 	api.registerTool(
 		timedTool({

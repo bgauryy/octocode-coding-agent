@@ -221,7 +221,7 @@ describe("permission modes in a headless run", () => {
 		const [, after] = await run("go", [calls(nativeCall("bash", { command: DESTRUCTIVE })), say("blocked")]);
 		expect(after[0].isError).toBe(true);
 		expect(after[0].text.startsWith(NEEDS_APPROVAL)).toBe(true);
-		expect(after[0].text).toContain("OCTOCODE_PERMISSION=full");
+		expect(after[0].text).toContain("start Octocode with --permission-mode full");
 		expect(fs.existsSync(path.join(cwd, "app.ts"))).toBe(true);
 	}, 60_000);
 
@@ -230,6 +230,6 @@ describe("permission modes in a headless run", () => {
 		const [, after] = await run("run", [calls(nativeCall("bash", { command: "echo hi" })), say("blocked")]);
 		expect(after[0].isError).toBe(true);
 		expect(after[0].text.startsWith(NEEDS_APPROVAL)).toBe(true);
-		expect(after[0].text).toContain("OCTOCODE_PERMISSION=workspace");
+		expect(after[0].text).toContain("start Octocode with --permission-mode workspace");
 	}, 60_000);
 });

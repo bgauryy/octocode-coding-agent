@@ -41,7 +41,10 @@ function validateListPage(
 }
 
 export const isTool = (tool: Record<string, unknown>) => typeof tool.name === "string" && isObject(tool.inputSchema);
-/** Keep only the tool contract; server annotations and UI metadata are not supported. */
+/**
+ * Keep only the tool contract. Of the server's annotations only `destructiveHint: true` stays, which the permission layer
+ * turns into an ask (`mcp.destructive`); hints that would trust a tool more (`readOnlyHint`) and UI metadata are dropped.
+ */
 export function toTool(item: Record<string, unknown>): Tool {
 	return {
 		name: item.name as string,
@@ -50,6 +53,9 @@ export function toTool(item: Record<string, unknown>): Tool {
 		...(typeof item.description === "string" ? { description: item.description } : {}),
 		...(isObject(item.outputSchema) ? { outputSchema: item.outputSchema } : {}),
 		...(isObject(item.execution) ? { execution: item.execution } : {}),
+		...(isObject(item.annotations) && item.annotations.destructiveHint === true
+			? { annotations: { destructiveHint: true as const } }
+			: {}),
 	};
 }
 

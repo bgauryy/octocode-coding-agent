@@ -104,10 +104,13 @@ async function startWithTimeout(start: () => Promise<BacklogWeb>, timeoutMs: num
 				reject(new Error(`Workspace web server did not start within ${timeoutMs}ms`));
 			}
 		}, timeoutMs);
+		const discardLate = (late: BacklogWeb) => {
+			closeWithTimeout(late.close, CLOSE_TIMEOUT_MS).catch(() => undefined);
+		};
 		start().then(
 			(s) => {
 				if (settled) {
-					closeWithTimeout(s.close, CLOSE_TIMEOUT_MS).catch(() => undefined);
+					discardLate(s);
 					return;
 				}
 				server = s;

@@ -87,9 +87,7 @@ describe("Pi global roots through the resource loader", () => {
 		const loader = createLoader(sandbox, false);
 		await loader.reload();
 		expect(paths(loader.getSkills().skills)).toEqual([native, piRootSkill, piSkill].sort(byText));
-		expect(
-			loader.getSkills().diagnostics.some((d) => d.type === "collision" && d.collision?.winnerPath === native),
-		).toBe(true);
+		expect(loader.getSkills().diagnostics.some((d) => d.type === "collision")).toBe(false);
 		expect(paths(loader.getPrompts().prompts)).toEqual([piPrompt]);
 		expect(loader.getThemes().themes.map((theme) => theme.name ?? "")).toEqual(["pi-theme"]);
 	});

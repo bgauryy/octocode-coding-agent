@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
@@ -49,8 +50,8 @@ describe("the background threshold", () => {
 		const plan = (params: Parameters<typeof foregroundPlan>[0], setting = 90) => foregroundPlan(params, setting, {});
 		expect(plan({ command: "./slow-task" })).toMatchObject({ timeout: 90, auto: true, movable: true });
 		expect(plan({ command: "./slow-task", timeout: 3000 })).toMatchObject({ timeout: 90, auto: true });
-		expect(plan({ command: "./slow-task", timeout: 3000, background: false })).toMatchObject({
-			timeout: 3000,
+		expect(plan({ command: "./slow-task", timeout: 300, background: false })).toMatchObject({
+			timeout: 300,
 			auto: false,
 			deliberate: true,
 		});
@@ -97,12 +98,57 @@ describe("the background threshold", () => {
 	it("leaves a known long command alone when the threshold is off, shorter, or the call waits on purpose", () => {
 		expect(foregroundPlan({ command: "yarn test" }, 0, {})).toMatchObject({ timeout: 900, auto: false });
 		expect(foregroundPlan({ command: "yarn test" }, 10, {})).toMatchObject({ timeout: 10, auto: true });
-		expect(foregroundPlan({ command: "yarn test", timeout: 3000, background: false }, 90, {})).toMatchObject({
-			timeout: 3000,
+		expect(foregroundPlan({ command: "yarn test", timeout: 300, background: false }, 90, {})).toMatchObject({
+			timeout: 300,
 			auto: false,
 			deliberate: true,
 		});
 	});
+});
+
+describe("a deliberate foreground wait (background: false with a timeout)", () => {
+	const envs = { "a top-level session": {}, "a subagent": { [SUBAGENT_ENV]: "1" } };
+	it.each(Object.entries(envs))(
+		"in %s, waits at most 10 minutes and then moves; 10 minutes or less is unchanged",
+		(_, env) => {
+			const plan = (timeout: number) => foregroundPlan({ command: "./slow-task", timeout, background: false }, 90, env);
+			expect(plan(3600)).toMatchObject({ timeout: 600, auto: true, deliberate: false, capped: true });
+			expect(plan(600)).toMatchObject({ timeout: 600, auto: false, deliberate: true, capped: false });
+			expect(plan(300)).toMatchObject({ timeout: 300, auto: false, deliberate: true, capped: false });
+			expect(foregroundPlan({ command: "sleep 3000", timeout: 3600, background: false }, 90, env).capped).toBe(false);
+		},
+	);
+
+	it.runIf(posix).each(Object.entries(envs))(
+		"in %s, the real tool moves a 3600 s wait to the background at 10 minutes",
+		async (_, env) => {
+			for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+			const { tool, jobs, ctx } = setup({ backgroundAfterSeconds: 90 });
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			try {
+				const call = tool.execute(
+					"t1",
+					{ command: "echo f; sleep 30", background: false, timeout: 3600 },
+					undefined,
+					undefined,
+					ctx,
+				);
+				const tick = () => new Promise((resolve) => setImmediate(resolve));
+				for (let i = 0; vi.getTimerCount() === 0 && i < 2000; i++) await tick();
+				await vi.advanceTimersByTimeAsync(599_000);
+				expect(jobs.jobs.size).toBe(0);
+				await vi.advanceTimersByTimeAsync(1_000);
+				const result = await call;
+				expect(result.content[0].text).toMatch(/Did not finish within (600s|10m); moved to the background as bash-1/);
+				expect(result.content[0].text).toContain("a foreground wait lasts at most 10 minutes");
+				expect(jobs.running()).toHaveLength(1);
+			} finally {
+				vi.useRealTimers();
+				vi.unstubAllEnvs();
+				await jobs.stopAll("session end");
+			}
+		},
+	);
 });
 
 describe("the sleep hint", () => {

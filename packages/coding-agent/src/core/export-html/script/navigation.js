@@ -38,7 +38,7 @@ function renderEntryToNode(entry) {
 
 function navigateTo(targetId, scrollMode = "target", scrollToEntryId = null) {
 	currentLeafId = targetId;
-	currentTargetId = scrollToEntryId || targetId;
+	currentTargetId = scrollToEntryId ?? targetId;
 	const targetEntry = byId.get(currentTargetId);
 	if (scrollMode === "target" && targetEntry?.type === "custom_message" && targetEntry.display === false) {
 		setHiddenMessagesVisible(true);
@@ -87,9 +87,9 @@ function navigateTo(targetId, scrollMode = "target", scrollToEntryId = null) {
 			// If scrollToEntryId is provided, scroll to that specific entry.
 			// Tool result entries are rendered inside their assistant tool-call block,
 			// so route them to the visible tool-call element instead.
-			const scrollTargetId = scrollToEntryId || targetId;
+			const scrollTargetId = scrollToEntryId ?? targetId;
 			const targetEl =
-				document.getElementById(getScrollTargetElementId(scrollTargetId)) ||
+				document.getElementById(getScrollTargetElementId(scrollTargetId)) ??
 				document.getElementById(`entry-${scrollTargetId}`);
 			if (targetEl) {
 				targetEl.scrollIntoView({ block: "center" });

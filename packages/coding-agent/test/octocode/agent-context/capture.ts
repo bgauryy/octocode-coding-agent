@@ -236,10 +236,15 @@ function normalizer(fx: Fixture) {
 		let result = text;
 		for (const [from, to] of fx.replacements) result = result.split(from).join(to);
 		// The `environment` section: the machine and the day.
-		return result
-			.replace(/^Platform: .*$/gm, "Platform: <platform> <arch>")
-			.replace(/^Shell: .*$/gm, "Shell: <shell>")
-			.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>");
+		return (
+			result
+				.replace(/^Platform: .*$/gm, "Platform: <platform> <arch>")
+				.replace(/^Shell: .*$/gm, "Shell: <shell>")
+				.replace(/^Date: .*$/gm, "Date: <yyyy-mm-dd>")
+				// The bash tool's CLI guide: the probed host and its platform's notes (`octocode/files/bash/cli-guide.ts`).
+				.replace(/^Host: .*$/gm, "Host: <os> <arch>. On PATH: <probed tools>. gh: <status>.")
+				.replace(/^Host notes: .*$/gm, "Host notes: <platform notes>")
+		);
 	};
 }
 

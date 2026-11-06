@@ -16,7 +16,11 @@ export const SDK_ENTRIES = [
 /** Interactive layers a headless session must not load: these packages and the terminal modes folder. */
 export const SDK_FORBIDDEN_PACKAGES = ["tui", "webview"];
 /** Subpaths of a forbidden package that import nothing interactive, so a headless consumer may load them. */
-export const SDK_HEADLESS_SUBPATHS = ["@octocodeai/octocode-tui/ansi", "@octocodeai/octocode-tui/multiplexer"];
+export const SDK_HEADLESS_SUBPATHS = [
+	"@octocodeai/octocode-tui/ansi",
+	"@octocodeai/octocode-tui/text",
+	"@octocodeai/octocode-tui/multiplexer",
+];
 export const SDK_FORBIDDEN_PREFIX = "coding-agent/src/modes/";
 
 const SOURCE_FILE = /\.[cm]?[jt]sx?$/;

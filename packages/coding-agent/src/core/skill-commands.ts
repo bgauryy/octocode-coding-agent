@@ -7,10 +7,10 @@ interface SkillCommand {
 }
 
 export function getSkillCommands(
-	skills: readonly Skill[],
+	allSkills: readonly Skill[],
 	reservedCommands: readonly CommandReservation[] = [],
 ): SkillCommand[] {
-	skills = skills.filter((skill) => skill.userInvocable !== false);
+	const skills = allSkills.filter((skill) => skill.userInvocable !== false);
 	const reserved = reservedCommandNames(reservedCommands);
 	const counts = new Map<string, number>();
 	for (const skill of skills) counts.set(skill.name, (counts.get(skill.name) ?? 0) + 1);

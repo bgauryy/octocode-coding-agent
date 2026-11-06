@@ -1,17 +1,14 @@
 /**
- * View slice of the interactive UI store: tool-output expansion, thinking-block visibility and the transient
- * footer notice. Slices are plain objects replaced immutably so `watchSelection` equality stays cheap.
+ * View slice of the interactive UI store: tool-output expansion, thinking-block visibility and the latest toggle
+ * acknowledgement. Slices are plain objects replaced immutably so `watchSelection` equality stays cheap.
  */
 
 import type { StoreApi } from "zustand/vanilla";
 
-/** How long a toggle acknowledgement stays in the footer. */
-const NOTICE_MS = 2000;
-
+/** A toggle acknowledgement for the messages list; `seq` tells a repeated text apart from the one already said. */
 export interface ViewNotice {
 	text: string;
-	/** Epoch milliseconds after which the notice clears itself. */
-	until: number;
+	seq: number;
 }
 
 export interface ViewSlice {
@@ -24,9 +21,11 @@ export interface ViewActions {
 	setToolsExpanded(expanded: boolean): void;
 	toggleToolsExpanded(): void;
 	setHideThinking(hide: boolean): void;
-	/** Shows `text` in the footer for `ms` milliseconds; a newer notice replaces the current one. */
-	showNotice(text: string, ms?: number): void;
-	clearNotice(): void;
+	/**
+	 * Says `text` once in the messages list, as a display-only status line that is neither recorded in the session nor
+	 * sent to the model; back-to-back notices share one line (`showStatus` coalesces them).
+	 */
+	showNotice(text: string): void;
 }
 
 export interface ViewState {
@@ -52,12 +51,6 @@ function patchView(set: Set, patch: Partial<ViewSlice>): void {
 }
 
 export function createViewActions(set: Set, get: Get): ViewActions {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const clearNotice = () => {
-		clearTimeout(timer);
-		timer = undefined;
-		if (get().view.notice) patchView(set, { notice: undefined });
-	};
 	return {
 		setToolsExpanded(expanded) {
 			if (expanded === get().view.toolsExpanded) return;
@@ -71,12 +64,8 @@ export function createViewActions(set: Set, get: Get): ViewActions {
 			if (hide === get().view.hideThinking) return;
 			patchView(set, { hideThinking: hide });
 		},
-		showNotice(text, ms = NOTICE_MS) {
-			clearTimeout(timer);
-			patchView(set, { notice: { text, until: Date.now() + ms } });
-			timer = setTimeout(clearNotice, ms);
-			timer.unref?.();
+		showNotice(text) {
+			patchView(set, { notice: { text, seq: (get().view.notice?.seq ?? 0) + 1 } });
 		},
-		clearNotice,
 	};
 }

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDefaultEnvironment, McpClient, StdioTransport } from "../../src/client/index.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/stdio-server.mjs", import.meta.url));
@@ -283,8 +283,7 @@ describe("StdioTransport", () => {
 		it("still delivers the answer the server wrote just before it exited", async () => {
 			const { client } = await connect(dyingServer({ answerFirst: true }));
 			expect(await client.callTool("x", {})).toEqual({ content: [{ type: "text", text: "answered" }] });
-			await new Promise((resolve) => setTimeout(resolve, 600));
-			expect(client.connectionState).toBe("closed");
+			await vi.waitFor(() => expect(client.connectionState).toBe("closed"), { timeout: 5_000, interval: 20 });
 			await client.close();
 		});
 

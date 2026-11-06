@@ -97,8 +97,8 @@ export function parseAuthCommand(args: string[]): AuthCommand | undefined {
 export function validateAuthCommandArgs(args: Args, kind: AuthCommandKind): { provider?: string; model?: string } {
 	const provider = args.provider?.trim() || undefined;
 	const model = args.model?.trim() || undefined;
-	if (args.unknownFlags.size > 0) {
-		const option = args.unknownFlags.keys().next().value;
+	if (args.unknownFlags.length > 0) {
+		const option = args.unknownFlags[0];
 		throw new AuthCommandError(`Unknown option --${option} for "${getAuthCommandName(kind)}".`);
 	}
 	if (args.apiKey !== undefined || args.messages.length > 0 || args.fileArgs.length > 0) {

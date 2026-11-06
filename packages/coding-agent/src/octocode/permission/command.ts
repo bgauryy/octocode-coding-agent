@@ -9,10 +9,10 @@ import type { AuditEntry } from "./audit.ts";
 import {
 	ACTION_CLASSES,
 	ASK_REASONS,
+	CHOOSABLE_MODES,
 	decide,
 	PERMISSION_CYCLE,
 	PERMISSION_ID,
-	PERMISSION_MODES,
 	type PermissionMode,
 	reasonAsks,
 } from "./mode.ts";
@@ -20,7 +20,9 @@ import { modeSummary } from "./ask/text.ts";
 
 /** Audit entries `/permissions log` shows, newest last. */
 const LOG_ENTRIES = 50;
-const USAGE = `Usage: /permissions [${PERMISSION_MODES.join("|")}|plan [off]|grants [clear [messages]]|log]`;
+const USAGE = `Usage: /permissions [${CHOOSABLE_MODES.join("|")}|plan [off]|grants [clear [messages]]|log]`;
+const BYPASS_AT_START =
+	"bypass is chosen only at start: run octocode --dangerously-skip-permissions. /permissions full is the widest mode a session can switch to.";
 const NOT_A_SANDBOX =
 	"Modes and reasons decide what Octocode asks about and records; they are not a sandbox (the OS user's rights stay as they are).";
 
@@ -33,7 +35,7 @@ function status(permission: Permission, provenanceSize: number): string {
 		`Session grants: ${grants.length > 0 ? "" : "none"}`,
 		...grants.map((grant) => `  ${grant}`),
 		`Provenance index: ${provenanceSize} shingles`,
-		`${shortcutText("app.permission.cycle")} in the editor cycles ${PERMISSION_CYCLE.join(" → ")}; start mode: ${PERMISSION_ENV}, else full.`,
+		`${shortcutText("app.permission.cycle")} in the editor cycles ${PERMISSION_CYCLE.join(" → ")}; start mode: --permission-mode or ${PERMISSION_ENV}, else full (--dangerously-skip-permissions starts in bypass).`,
 		"Thinking level: /effort.",
 		NOT_A_SANDBOX,
 	].join("\n");
@@ -91,7 +93,7 @@ export function registerPermissionCommand(
 		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log]",
 		complete: (prefix) =>
 			wordCompletions(
-				[...PERMISSION_MODES, "grants", "grants clear", "grants clear messages", "log", "plan", "plan off"],
+				[...CHOOSABLE_MODES, "grants", "grants clear", "grants clear messages", "log", "plan", "plan off"],
 				prefix,
 			),
 		handler: async (args, ctx) => {
@@ -106,8 +108,9 @@ export function registerPermissionCommand(
 				await planning.control({ action: rest === "off" ? "leave" : "enter" }, ctx);
 				return say(ctx, `Planning ${planning.blocked() ? "active" : "off"}; permission mode ${permission.mode}.`);
 			}
-			if ((PERMISSION_MODES as readonly string[]).includes(word) && words.length === 1)
+			if ((CHOOSABLE_MODES as readonly string[]).includes(word) && words.length === 1)
 				return select(word as PermissionMode, ctx);
+			if (word === "bypass" && words.length === 1) return say(ctx, BYPASS_AT_START, "warning");
 			if (word === "grants" && rest === "clear" && words.length === 2) {
 				permission.clearGrants();
 				return say(ctx, "Session grants cleared.");

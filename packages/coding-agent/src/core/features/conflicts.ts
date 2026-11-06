@@ -3,14 +3,14 @@ import type { Extension } from "./types.ts";
 const describe = (extension: Extension) => `${extension.path} (${extension.owner})`;
 
 /**
- * The one duplicate-id check at registration: two features may not register the same tool or flag. Each conflict names
+ * The one duplicate-id check at registration: two features may not register the same tool. Each conflict names
  * both owners, and the first registration keeps the name.
  */
 export function detectFeatureConflicts(features: readonly Extension[]): Array<{ path: string; message: string }> {
 	const conflicts: Array<{ path: string; message: string }> = [];
-	const owners = { tool: new Map<string, Extension>(), flag: new Map<string, Extension>() };
+	const owners = { tool: new Map<string, Extension>() };
 	for (const feature of features) {
-		const claim = (kind: "tool" | "flag", names: Iterable<string>, label: (name: string) => string) => {
+		const claim = (kind: "tool", names: Iterable<string>, label: (name: string) => string) => {
 			for (const name of names) {
 				const first = owners[kind].get(name);
 				if (first && first !== feature) {
@@ -22,7 +22,6 @@ export function detectFeatureConflicts(features: readonly Extension[]): Array<{ 
 			}
 		};
 		claim("tool", feature.tools.keys(), (name) => `Tool "${name}"`);
-		claim("flag", feature.flags.keys(), (name) => `Flag "--${name}"`);
 	}
 	return conflicts;
 }

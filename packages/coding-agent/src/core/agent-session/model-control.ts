@@ -24,21 +24,36 @@ export class SessionModelControl {
 	private budgetSessionId?: string;
 	/** The selected model as given, before its working context was applied: it holds the capacity and the definition. */
 	private selected?: Model<any>;
+	/** The level this session last asked for, before clamping; a model switch carries it over. */
+	private requested?: { sessionId: string; level: ThinkingLevel };
 
 	private readonly host: Pick<SessionInternals, "session" | "emit">;
 
-	constructor(host: Pick<SessionInternals, "session" | "emit">, scopedModels: ScopedModel[]) {
+	constructor(
+		host: Pick<SessionInternals, "session" | "emit">,
+		scopedModels: ScopedModel[],
+		requestedThinkingLevel?: ThinkingLevel,
+	) {
 		this.host = host;
 		this.scopedModels = scopedModels;
+		if (requestedThinkingLevel) this.requested = { sessionId: this.sessionId(), level: requestedThinkingLevel };
 	}
+	private sessionId(): string {
+		return this.host.session.sessionManager.getSessionId();
+	}
+	/** Record a selection unless the branch already implies it (what a resume restores), so a no-op adds nothing. */
 	private recordModel(model: Model<any>): void {
-		const manager = this.host.session.sessionManager;
+		const { session } = this.host;
+		const manager = session.sessionManager;
+		const getModel = (provider: string, modelId: string) => session.modelRuntime.getModel(provider, modelId);
+		const recorded = getBranchSelection(manager.getBranch(), getModel);
+		if (recorded?.provider === model.provider && recorded.modelId === model.id) return;
 		const entry = manager.getEntry(manager.appendModelChange(model.provider, model.id));
 		if (entry) this.host.emit({ type: "entry_appended", entry });
 	}
 
 	private contextKey(model: Model<any>): string {
-		const sessionId = this.host.session.sessionManager.getSessionId();
+		const sessionId = this.sessionId();
 		if (this.budgetSessionId !== sessionId) {
 			this.contextBudgets.clear();
 			this.budgetSessionId = sessionId;
@@ -181,13 +196,25 @@ export class SessionModelControl {
 	}
 
 	async setModel(model: Model<any>, options: ModelMutationOptions): Promise<void> {
-		const { session } = this.host;
-		if (!(await session.modelRuntime.checkAuth(model.provider))) {
+		if (!(await this.host.session.modelRuntime.checkAuth(model.provider))) {
 			throw new Error(`No API key for ${model.provider}/${model.id}`);
 		}
+		await this._switchTo(model, options, "set");
+	}
 
+	/**
+	 * Select `model` and the thinking level for it (see `_getThinkingLevelForModelSwitch`), clamped to the model. The
+	 * switch neither rewrites the global thinking default nor replaces the level the session asked for.
+	 */
+	private async _switchTo(
+		model: Model<any>,
+		options: ModelMutationOptions,
+		source: "set" | "cycle",
+		explicitLevel?: ThinkingLevel,
+	): Promise<Model<any>> {
+		const { session } = this.host;
 		const previousModel = session.model;
-		const thinkingLevel = this._getThinkingLevelForModelSwitch(model);
+		const thinkingLevel = this._getThinkingLevelForModelSwitch(model, explicitLevel);
 		const selectedModel = this.withContextBudget(model);
 		session.agent.state.model = selectedModel;
 		this.recordModel(model);
@@ -195,13 +222,9 @@ export class SessionModelControl {
 			session.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
 			this._addPersistedDefaultToNonEmptyScope(model);
 		}
-
-		// Apply thinking level for the new model.
-		// Per-model thinking level overrides take priority over the global default.
-		// Model persistence does not implicitly rewrite the global thinking default.
-		session.setThinkingLevel(thinkingLevel);
-
-		await this._emitModelSelect(selectedModel, previousModel, "set");
+		this.applyThinkingLevel(thinkingLevel, false);
+		await this._emitModelSelect(selectedModel, previousModel, source);
+		return selectedModel;
 	}
 
 	private _addPersistedDefaultToNonEmptyScope(model: Model<any>): void {
@@ -249,26 +272,7 @@ export class SessionModelControl {
 		const len = scopedModels.length;
 		const nextIndex = direction === "forward" ? (currentIndex + 1) % len : (currentIndex - 1 + len) % len;
 		const next = scopedModels[nextIndex];
-		const thinkingLevel = this._getThinkingLevelForModelSwitch(next.model, next.thinkingLevel);
-
-		// Apply model
-		const selectedModel = this.withContextBudget(next.model);
-		session.agent.state.model = selectedModel;
-		this.recordModel(next.model);
-		if (options.persist) {
-			session.settingsManager.setDefaultModelAndProvider(next.model.provider, next.model.id);
-			this._addPersistedDefaultToNonEmptyScope(next.model);
-		}
-
-		// Apply thinking level for the new model.
-		// - Explicit scoped model thinking level overrides defaults
-		// - Per-model thinking level overrides take priority over the global default
-		// setThinkingLevel clamps to model capabilities.
-		// Model persistence does not implicitly rewrite the global thinking default.
-		session.setThinkingLevel(thinkingLevel);
-
-		await this._emitModelSelect(selectedModel, currentModel, "cycle");
-
+		const selectedModel = await this._switchTo(next.model, options, "cycle", next.thinkingLevel);
 		return {
 			model: selectedModel,
 			thinkingLevel: session.thinkingLevel,
@@ -290,23 +294,7 @@ export class SessionModelControl {
 		if (currentIndex === -1) currentIndex = 0;
 		const len = availableModels.length;
 		const nextIndex = direction === "forward" ? (currentIndex + 1) % len : (currentIndex - 1 + len) % len;
-		const nextModel = availableModels[nextIndex];
-
-		const thinkingLevel = this._getThinkingLevelForModelSwitch(nextModel);
-		const selectedModel = this.withContextBudget(nextModel);
-		session.agent.state.model = selectedModel;
-		this.recordModel(nextModel);
-		if (options.persist) {
-			session.settingsManager.setDefaultModelAndProvider(nextModel.provider, nextModel.id);
-			this._addPersistedDefaultToNonEmptyScope(nextModel);
-		}
-
-		// Apply thinking level for the new model.
-		// Model persistence does not implicitly rewrite the global thinking default.
-		session.setThinkingLevel(thinkingLevel);
-
-		await this._emitModelSelect(selectedModel, currentModel, "cycle");
-
+		const selectedModel = await this._switchTo(availableModels[nextIndex], options, "cycle");
 		return {
 			model: selectedModel,
 			thinkingLevel: session.thinkingLevel,
@@ -314,7 +302,13 @@ export class SessionModelControl {
 		};
 	}
 
+	/** Set the level the session asks for; the effective level is clamped to the model, the requested one kept as is. */
 	setThinkingLevel(level: ThinkingLevel, options: ModelMutationOptions): void {
+		this.requested = { sessionId: this.sessionId(), level };
+		this.applyThinkingLevel(level, options.persist === true);
+	}
+
+	private applyThinkingLevel(level: ThinkingLevel, persist: boolean): void {
 		const { session } = this.host;
 		const availableLevels = session.getAvailableThinkingLevels();
 		const effectiveLevel = availableLevels.includes(level) ? level : this._clampThinkingLevel(level);
@@ -325,7 +319,7 @@ export class SessionModelControl {
 
 		session.agent.state.thinkingLevel = effectiveLevel;
 
-		if (options.persist) {
+		if (persist) {
 			session.settingsManager.setDefaultThinkingLevel(level);
 		}
 
@@ -359,19 +353,21 @@ export class SessionModelControl {
 		return getSupportedThinkingLevels(model);
 	}
 
-	private _getThinkingLevelForModelSwitch(targetModel?: Model<any>, explicitLevel?: ThinkingLevel): ThinkingLevel {
-		if (explicitLevel !== undefined) {
-			return explicitLevel;
-		}
+	/**
+	 * The level for a switch to `targetModel`: an explicit (scoped) level, else the model's `modelThinkingLevels` entry,
+	 * else the level this session last asked for, else the global default, else the current level.
+	 */
+	private _getThinkingLevelForModelSwitch(targetModel: Model<any>, explicitLevel?: ThinkingLevel): ThinkingLevel {
+		if (explicitLevel !== undefined) return explicitLevel;
 		const { session } = this.host;
-		// Per-model default takes priority when switching to a model that has one
-		if (targetModel) {
-			const perModel = session.settingsManager.getModelThinkingLevel(targetModel.provider, targetModel.id);
-			if (perModel !== undefined) {
-				return perModel;
-			}
-		}
-		return session.settingsManager.getDefaultThinkingLevel() ?? session.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+		const requested = this.requested?.sessionId === this.sessionId() ? this.requested.level : undefined;
+		return (
+			session.settingsManager.getModelThinkingLevel(targetModel.provider, targetModel.id) ??
+			requested ??
+			session.settingsManager.getDefaultThinkingLevel() ??
+			session.thinkingLevel ??
+			DEFAULT_THINKING_LEVEL
+		);
 	}
 
 	private _clampThinkingLevel(level: ThinkingLevel): ThinkingLevel {

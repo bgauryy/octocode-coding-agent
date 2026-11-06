@@ -15,9 +15,10 @@ import { getAnthropicCompat, getLayeredCacheControl, shouldUseServerSideFallback
 import { addHistoryLookbackBreakpoint, countCacheBreakpoints } from "./cache-breakpoints.ts";
 import { buildCacheDiagnosticsParam } from "./cache-diagnostics.ts";
 import { convertMessages, insertThinkingLevelMessages } from "./convert.ts";
-import { sanitizeToolCallId } from "../tool-call-id.ts";
+import { fitToolCallId } from "../tool-call-id.ts";
 import { convertTools, DEFERRED_TOOL_PLACEHOLDER } from "./tools.ts";
 import type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from "./types.ts";
+import { nonZeroOr } from "../../utils/non-zero.ts";
 
 const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14";
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
@@ -89,7 +90,7 @@ export function buildParams(
 	const compat = getAnthropicCompat(model);
 	const initialSystemMessage = getInitialSystemMessage(context.messages);
 	const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
-	const transformedMessages = transformMessages(context.messages, model, (id) => sanitizeToolCallId(id));
+	const transformedMessages = transformMessages(context.messages, model, (id) => fitToolCallId(id));
 	const conversationMessages = initialSystemMessage ? transformedMessages.slice(1) : transformedMessages;
 	// Native tool changes keep the request-level tool list fixed and define every later tool
 	// by value in a `tool_addition` block, which also expresses same-name redefinitions.
@@ -231,7 +232,7 @@ export function buildParams(
 			// Budget-based thinking for older models
 			params.thinking = {
 				type: "enabled",
-				budget_tokens: options?.thinkingBudgetTokens || 1024,
+				budget_tokens: nonZeroOr(1024, options?.thinkingBudgetTokens),
 				display,
 			};
 		}

@@ -275,7 +275,7 @@ export function recalculateVisualStructure(
 		flatNode.isVirtualRootChild = isVirtualRootChild;
 
 		// Get visible children of this node
-		const children = visibleChildren.get(nodeId) || [];
+		const children = visibleChildren.get(nodeId) ?? [];
 		const multipleChildren = children.length > 1;
 
 		// Child indent follows flattenTree(): branch points (and first generation after a branch) shift +1

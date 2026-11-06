@@ -4,6 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { scriptedArgs } from "./e2e-calls.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -135,7 +136,7 @@ export async function startEndpoint(): Promise<Endpoint> {
 				);
 			if ("tool" in current) {
 				const id = `call_${requests.length}`;
-				const args = JSON.stringify({ reason: "scripted step", ...current.args });
+				const args = JSON.stringify(scriptedArgs(current.tool, current.args));
 				const call = { index: 0, id, type: "function", function: { name: current.tool, arguments: args } };
 				chunk({ delta: { role: "assistant", tool_calls: [call] } });
 				chunk({ delta: {}, finish_reason: "tool_calls" }, { usage });

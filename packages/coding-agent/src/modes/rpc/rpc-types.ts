@@ -17,7 +17,7 @@ import type {
 } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
-import type { ExtensionUIPermissionRequest } from "../../core/features/types.ts";
+import type { ExtensionUIAskView, ExtensionUIPermissionRequest } from "../../core/features/types.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
@@ -265,6 +265,8 @@ export type RpcExtensionUIRequest =
 			permission?: ExtensionUIPermissionRequest;
 			/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
 			approval?: boolean;
+			/** The structured view a terminal may draw (`ExtensionUIDialogOptions.ask`); its labels are `options`. Clients may ignore it. */
+			ask?: ExtensionUIAskView;
 	  }
 	| {
 			type: "extension_ui_request";

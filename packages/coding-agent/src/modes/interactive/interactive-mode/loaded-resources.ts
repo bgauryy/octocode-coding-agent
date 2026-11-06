@@ -3,39 +3,25 @@
  * a count; ctrl+o lists the items), followed by resource diagnostics.
  */
 
-import {
-	type Component,
-	type Container,
-	ELLIPSIS,
-	GLYPH,
-	SEPARATOR,
-	Spacer,
-	type StateSource,
-	type UiState,
-} from "@octocodeai/octocode-tui";
+import { type Component, type Container, GLYPH, SEPARATOR, Spacer } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
-import type { EventBus } from "@octocodeai/octocode-agent-core";
-import { getAgentDir, getLegacyConfigDirs } from "../../../config.ts";
+import { getAgentDir } from "../../../config.ts";
 import { collectContextView } from "../../../core/discovery/context-snapshot.ts";
-import {
-	type ContextView,
-	type LoadedRef,
-	buildContextView,
-	sourceInfoLabel,
-	sourceSummary,
-} from "../../../core/discovery/context-view.ts";
+import { type ContextView, type LoadedRef, sourceInfoLabel } from "../../../core/discovery/context-view.ts";
 import { takePiNotice } from "../../../core/discovery/pi-notice.ts";
+import { keybindingProblems } from "../../../core/keybindings.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import { warningsBesideListing } from "../../../core/resource-loader/feature-loading.ts";
 import type { Skill } from "../../../core/skills.ts";
+import { skillListingBudgetWarning, skillListingOf } from "../../../core/skills/listing-budget.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { STATE_COLOR } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { viewRows } from "./discovery-rows.ts";
+import { harnessRow, startupWarnings, viewRows } from "./discovery-rows.ts";
+import { sessionHarnesses } from "../../../core/discovery/vendors/prompt.ts";
+import { mcpRow } from "./loaded-mcp.ts";
 import { LoadedRow, type LoadedRowSpec, expandHint, loadedColumns } from "./loaded-row.ts";
 import type { SourcedPath } from "./types.ts";
 
@@ -78,6 +64,7 @@ export function showLoadedResources(
 	host.loadedResourcesContainer.clear();
 
 	let piNotice: string | undefined;
+	let view: ContextView | undefined;
 	const showListing = options?.force || host.shouldShowStartupDetails();
 	const showDiagnostics = showListing || options?.showDiagnosticsWhenQuiet === true;
 	if (!showListing && !showDiagnostics) {
@@ -130,47 +117,29 @@ export function showLoadedResources(
 	if (showListing) {
 		// Context, skills, prompts and the other file-based kinds come from the loaded-context view (one row per kind, with
 		// where each item came from); MCP follows live server status, and loaded extension code keeps its own labels.
-		const view = loadedContextView(host, skillsResult.skills);
+		// Collapsed, the listing shows what the agent includes now; agents, prompts, themes and code that does not run are
+		// listed only expanded.
+		view = loadedContextView(host, skillsResult.skills);
 		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path));
 		const viewRow = (id: string) => viewSpecs.filter((row) => row.id === id).map((row) => row.spec);
-		const rows: LoadedRowSpec[] = [
-			...viewRow("context"),
-			...viewRow("skill"),
-			...viewRow("agent"),
-			...viewRow("model"),
-		];
+		const rows: LoadedRowSpec[] = [...viewRow("context"), ...viewRow("skill")];
 		piNotice = takePiNotice(view, getAgentDir());
 
 		const events = host.session.resourceLoader.getEventBus?.();
 		if (events) {
-			// Servers start after the listing: this row follows their status and repaints alone.
-			const mcp = mcpStatusSource(events);
-			rows.push({
-				label: "MCP",
-				count: () => mcp.getState().length,
-				source: mcp,
-				summary: () => mcp.getState().map(mcpListed).join(theme.fg("dim", SEPARATOR)),
-				cells: () => ({
-					sources: mcp.getState().map(mcpListed).join(theme.fg("dim", SEPARATOR)),
-					tail: theme.fg("dim", sanitizeTerminalText(mcpSources(mcp.getState()))),
-				}),
-				expandedSummary: () => {
-					const connected = mcp.getState().filter((server) => server.enabled && server.state === "connected").length;
-					return theme.fg("dim", `${connected} connected`);
-				},
-				details: () =>
-					mcp
-						.getState()
-						.map(
-							(server) =>
-								`  ${mcpSummary(server)}${theme.fg("dim", sanitizeTerminalText(`${SEPARATOR}${server.exposure}${SEPARATOR}${server.source}`))}`,
-						)
-						.join("\n"),
-			});
+			rows.push(mcpRow(events));
 		}
 
-		for (const id of ["hook", "plugin", "prompt", "theme", "keybinding", "setting"]) rows.push(...viewRow(id));
-
+		for (const [id, label] of [
+			["hook", "Hooks"],
+			["plugin", "Plugins"],
+		] as const)
+			rows.push(
+				...(viewRow(id).length > 0 ? viewRow(id) : [zeroRow(label)]).map((spec) => ({ ...spec, showZero: true })),
+			);
+		rows.push(...viewRow("model"));
+		rows.push(...viewRow("keybinding").map((spec) => withCommand({ ...spec, label: "Keys" }, "/keys")));
+		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/settings")));
 		if (extensions.length > 0) {
 			const groups = host.buildScopeGroups(extensions);
 			const extList = () =>
@@ -187,8 +156,12 @@ export function showLoadedResources(
 				details: extList,
 			});
 		}
+		// The Harness line closes what the agent includes now; the expanded-only rows follow it.
+		rows.push(harnessRow(sessionHarnesses({ cwd: host.sessionManager.getCwd(), settings: host.settingsManager })));
+		for (const id of ["agent", "prompt", "theme"])
+			rows.push(...viewRow(id).map((spec) => ({ ...spec, expandedOnly: true })));
 		// Code Octocode does not run (`pi` extensions and hooks) is listed, with the way to move it to a supported place.
-		rows.push(...viewRow("extension"), ...viewRow("warning"));
+		rows.push(...viewRow("extension").map((spec) => ({ ...spec, expandedOnly: true })));
 
 		if (rows.length > 0) {
 			const columns = () => loadedColumns(rows);
@@ -236,7 +209,43 @@ export function showLoadedResources(
 			section.setHangingIndent(true);
 			addBlock(section);
 		};
-		addDiagnostics(warningTitle("Skill conflicts"), "skill", skillsResult.diagnostics);
+		// One line per warning (what is wrong, what to do); expanded, each lists its items and the notes follow.
+		const addWarningLines = ({ warnings, notes }: ReturnType<typeof startupWarnings>) => {
+			if (warnings.length === 0 && notes.length === 0) return;
+			const text = (line: string) => sanitizeTerminalText(line);
+			const compact = () => warnings.map((w) => theme.fg("warning", warningTitle(text(w.text)))).join("\n");
+			const full = () =>
+				[
+					...warnings.flatMap((w) => [
+						theme.fg("warning", warningTitle(text(w.text))),
+						...w.details.map((d) => theme.fg("dim", `    ${text(d)}`)),
+					]),
+					...notes.flatMap((n) => [
+						theme.fg("muted", text(n.text)),
+						...n.details.map((d) => theme.fg("dim", `    ${text(d)}`)),
+					]),
+				].join("\n");
+			const section = new ExpandableText(compact, full, host.getStartupExpansionState(), 0, 0);
+			section.setHangingIndent(true);
+			addBlock(section);
+		};
+		const startup = startupWarnings(
+			view ?? loadedContextView(host, skillsResult.skills),
+			skillsResult.diagnostics,
+			keybindingProblems(),
+		);
+		// Measured on the listing the model receives; it is never shortened, so the user is told instead.
+		const listing = skillListingOf(host.session.systemPrompt);
+		const overBudget = listing
+			? skillListingBudgetWarning({
+					skills: skillsResult.skills,
+					listing,
+					contextWindow: host.session.model?.contextWindow,
+				})
+			: undefined;
+		addWarningLines(
+			overBudget ? { ...startup, warnings: [...startup.warnings, { text: overBudget.message, details: [] }] } : startup,
+		);
 		addDiagnostics(warningTitle("Prompt conflicts"), "prompt", promptsResult.diagnostics);
 
 		const extensionDiagnostics: ResourceDiagnostic[] = [];
@@ -311,81 +320,19 @@ function loadedContextView(host: LoadedResourcesHost, skills: readonly Skill[]):
 	});
 }
 
-/** `builtin 1 · octocode global 2 · pi project 1`: where the MCP servers are defined (their names are in the row). */
-function mcpSources(servers: readonly McpStatus[]): string {
-	const view = buildContextView({ discovery: new Map(), mcp: servers, piRoots: getLegacyConfigDirs(getAgentDir()) });
-	return view.groups.map((group) => sourceSummary(group, { counted: true })).join(SEPARATOR);
+/** A kind with nothing loaded still gets its row (`Hooks  0`), so the listing says it was checked. */
+const zeroRow = (label: string): LoadedRowSpec => ({ label, count: () => 0, summary: () => "" });
+
+/** Appends the command that changes a row's files (`· /settings`) to its collapsed text. */
+function withCommand(spec: LoadedRowSpec, command: string): LoadedRowSpec {
+	const hint = theme.fg("dim", `${SEPARATOR}${command}`);
+	const cells = spec.cells;
+	return {
+		...spec,
+		summary: () => spec.summary() + hint,
+		...(cells ? { cells: () => ({ ...cells(), sources: cells().sources + hint }) } : {}),
+	};
 }
 
 /** Diagnostic headings share the warning mark with the rest of the TUI. */
 const warningTitle = (name: string) => `${GLYPH.warning} ${name}`;
-
-type McpStatus = ReturnType<typeof getMcpSessionStatus>[number];
-
-/** A server that failed or dropped is news and stays in the collapsed row; connecting and connected are routine. */
-const mcpFailed = (server: McpStatus): boolean =>
-	server.enabled && (server.state === "failed" || server.state === "disconnected");
-
-/** What the collapsed row draws: which servers exist, which apply and which failed, never routine connection state. */
-const mcpListing = (servers: readonly McpStatus[]): string =>
-	servers
-		.map((server) => `${server.name}:${server.enabled}:${server.state === "unselected"}:${mcpFailed(server)}`)
-		.join("\n");
-
-/**
- * The session's MCP statuses as a state source. `getState` is live, so ctrl+o details show current states, but only a
- * change to the listing (a server appearing, or a selection) repaints the row: a connection state that moves on after
- * the row scrolled above the viewport would make the renderer clear and redraw the whole scrollback, banner included.
- */
-function mcpStatusSource(events: EventBus): StateSource<readonly McpStatus[]> {
-	return {
-		getState: () => getMcpSessionStatus(events),
-		subscribe: (listener) => {
-			let listed = mcpListing(getMcpSessionStatus(events));
-			return events.on(MCP_STATUS_EVENT, (servers) => {
-				const next = mcpListing(servers as readonly McpStatus[]);
-				if (next === listed) return;
-				listed = next;
-				listener();
-			});
-		},
-	};
-}
-
-/** Server states as the design language's states; a connected server shows the presence mark instead. */
-const MCP_STATE: Readonly<Record<string, UiState>> = {
-	starting: "pending",
-	connecting: "pending",
-	"needs-auth": "waiting",
-	failed: "failed",
-	disconnected: "failed",
-	stopped: "stopped",
-	closed: "stopped",
-};
-
-/** Wording as `/mcp` uses it (`describeState`). */
-const MCP_LABEL: Readonly<Record<string, string>> = {
-	unselected: "not selected",
-	starting: `starting${ELLIPSIS}`,
-	connecting: `connecting${ELLIPSIS}`,
-	"needs-auth": "needs sign-in",
-};
-
-/** The collapsed row's entry: `name`, or `○ name disabled` / `✗ name failed` for a server that does not apply or failed. Connection state is in the details. */
-function mcpListed(server: McpStatus): string {
-	if (server.enabled && server.state !== "unselected" && !mcpFailed(server))
-		return theme.fg("muted", sanitizeTerminalText(server.name));
-	return mcpSummary(server);
-}
-
-/** `● name state`: the shared mark and colour for the server's state, then a connected server's tool count. */
-function mcpSummary(server: McpStatus): string {
-	const state = server.enabled ? server.state : "disabled";
-	const ui = MCP_STATE[state] ?? "pending";
-	const mark = state === "connected" ? theme.fg(STATE_COLOR.done, GLYPH.live) : theme.fg(STATE_COLOR[ui], GLYPH[ui]);
-	const label =
-		state === "connected" && server.toolCount > 0
-			? `connected (${server.toolCount} tool${server.toolCount === 1 ? "" : "s"})`
-			: (MCP_LABEL[state] ?? state);
-	return `${mark} ${theme.fg("muted", sanitizeTerminalText(server.name))} ${theme.fg("dim", sanitizeTerminalText(label))}`;
-}

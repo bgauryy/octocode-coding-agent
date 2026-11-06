@@ -25,7 +25,7 @@ import { type ApplicationOperations, type ApplicationSession, invokeOperation } 
 import { commandImages, dispatchCommand, invokeCommand } from "./service/commands.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
-import { lifecycleEvent } from "./service/lifecycle.ts";
+import { publishLifecycle } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
 import { readOnlyApplicationState } from "./service/state-source.ts";
@@ -203,13 +203,14 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		});
 	}
 	/** False once publishing closed the service. */
-	private publish(event: ApplicationEvent, hint?: StreamHint): boolean {
+	private publish(received: ApplicationEvent, hint?: StreamHint): boolean {
 		if (this.disposed) return false;
 		this.checkSession();
-		acceptApplicationEvent(this.state, event);
-		if (event.type === "tool.started" || event.type === "tool.progress" || event.type === "tool.completed") {
-			event = this.transcript.acceptTool(event);
-		}
+		acceptApplicationEvent(this.state, received);
+		const event =
+			received.type === "tool.started" || received.type === "tool.progress" || received.type === "tool.completed"
+				? this.transcript.acceptTool(received)
+				: received;
 		this.emit(event, hint);
 		this.delivery.notify(event);
 		return !this.disposed;
@@ -373,8 +374,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 				this.publish(this.transcript.tool(event));
 				break;
 			default:
-				const lifecycle = lifecycleEvent(event, this.state.getState().runId);
-				if (lifecycle) this.publish(lifecycle);
+				publishLifecycle(event, this.state.getState().runId, (lifecycle) => this.publish(lifecycle));
 		}
 		if (this.disposed) return;
 		const activity = this.activities.project(event);

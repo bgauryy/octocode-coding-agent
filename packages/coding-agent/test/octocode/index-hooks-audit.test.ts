@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Team } from "../../src/octocode/team/session.ts";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
@@ -33,7 +33,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
@@ -65,7 +65,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
@@ -104,7 +104,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });

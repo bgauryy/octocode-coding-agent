@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildInventory, type InventoryItem, renderInventory } from "../../src/core/extensibility/inventory.ts";
 import { switchItem } from "../../src/core/extensibility/switch.ts";
 import { effectivePlugins, isSwitchedOn, pluginToggleId } from "../../src/core/extensibility/toggles.ts";
@@ -20,6 +20,13 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { writeHookFiles } from "./fixtures/hook-formats.ts";
 import { tmp } from "./helpers.ts";
+import { installMcpCorePorts } from "../../src/octocode/mcp-host/core.ts";
+import { installOctocodeDiscovery } from "../../src/octocode/discovery/index.ts";
+
+beforeAll(() => {
+	installMcpCorePorts();
+	installOctocodeDiscovery();
+});
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -60,9 +67,12 @@ describe("toggles", () => {
 
 	it("switch hooks off by host and back on one by one", () => {
 		const f = fixture();
-		const all = loadedTags(f, {});
+		expect(loadedTags(f, {})).toEqual(["native-project", "native-user"]);
+		const on = { "harness:claude": true, "harness:codex": true };
+		const all = loadedTags(f, on);
 		expect(all).toHaveLength(9);
-		const withoutClaude = loadedTags(f, { "hooks:claude": false });
+		expect(loadedTags(f, { "hooks:claude": true, "hooks:codex": true })).toEqual(all);
+		const withoutClaude = loadedTags(f, { ...on, "hooks:claude": false });
 		expect(withoutClaude).toEqual(all.filter((tag) => !tag.startsWith("claude-")));
 		const { config } = loadHooks(f.cwd, true, f.home);
 		const group = config.PreToolUse.find((candidate) =>
@@ -71,14 +81,20 @@ describe("toggles", () => {
 			),
 		)!;
 		const [hookId] = hookToggleIds("PreToolUse", group.matcher, group.hooks[0], f.home);
-		expect(loadedTags(f, { "hooks:claude": false, [hookId]: true })).toEqual([...withoutClaude, "claude-user"].sort());
-		const { errors } = loadHooks(f.cwd, true, f.home, { toggles: { "hooks:claude": false } });
-		expect(errors.join("\n")).toMatch(/hooks? switched off in \/harness/);
+		expect(loadedTags(f, { ...on, "hooks:claude": false, [hookId]: true })).toEqual(
+			[...withoutClaude, "claude-user"].sort(),
+		);
+		const { errors, switchedOff } = loadHooks(f.cwd, true, f.home, { toggles: { ...on, "hooks:claude": false } });
+		expect(errors.join("\n")).not.toMatch(/switched off/);
+		expect(switchedOff).toBeGreaterThanOrEqual(all.filter((tag) => tag.startsWith("claude-")).length);
 	});
 
 	it("let a project switch only the repository's own hooks", () => {
 		const f = fixture();
-		const toggles = mergeScopedSettings({}, { toggles: { "hooks:claude": false, "hooks:codex": false } }).toggles!;
+		const toggles = mergeScopedSettings(
+			{ toggles: { "harness:claude": true, "harness:codex": true } },
+			{ toggles: { "hooks:claude": false, "hooks:codex": false } },
+		).toggles!;
 		const tags = loadedTags(f, toggles);
 		expect(tags).toContain("claude-user");
 		expect(tags).toContain("codex-user-json");
@@ -192,15 +208,24 @@ describe("/harness", () => {
 		await command.handler("", ctx);
 		const listing = ctx.ui.notes.at(-1)!.message;
 		for (const title of ["Claude Code", "Codex", "Octocode"]) expect(listing).toContain(title);
-		expect(listing).toContain("[x] Hooks from Claude Code");
+		// Claude Code is off by default, so its hooks list as off.
+		expect(listing).toContain("[ ] Hooks from Claude Code");
+		const on = { toggles: { "harness:claude": true } };
+		fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify(on));
+		Object.assign(api, { getSettings: () => on });
+		await command.handler("", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("[x] Hooks from Claude Code");
 		await command.handler("disable hooks:claude", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/switched off globally\.\nRun \/reload to apply\.$/);
 		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles).toEqual({
+			"harness:claude": true,
 			"hooks:claude": false,
 		});
 		// Switched on again before a reload: the saved switch is reverted, not skipped because the session still has it on.
 		await command.handler("enable hooks:claude", ctx);
-		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles ?? {}).toEqual({});
+		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles).toEqual({
+			"harness:claude": true,
+		});
 		await command.handler("disable nothing:here", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
 		expect(ctx.ui.notes.at(-1)!.message).toContain("/harness list shows the IDs");
@@ -297,6 +322,9 @@ describe("/harness", () => {
 describe("/harness terminal list", () => {
 	it("toggles with Space or Enter, guards gates, explains blocked rows, filters, and offers a reload", async () => {
 		const f = fixture();
+		// Claude Code switched on, so its hook rows can be switched one by one.
+		const on = { toggles: { "harness:claude": true } };
+		fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify(on));
 		// A required gate in the native user file.
 		fs.writeFileSync(
 			path.join(f.home, ".octocode/octocodecode/hooks.json"),
@@ -317,12 +345,16 @@ describe("/harness terminal list", () => {
 		initTheme("dark", false);
 		const reload = vi.fn(async () => {});
 		const { api } = fakeHost();
+		Object.assign(api, { getSettings: () => on });
 		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { custom, confirms: [true] } }), { reload });
 		const run = harness(api).handler("", ctx);
 		await vi.waitFor(() => expect(component).toBeDefined());
 		const press = (...keys: string[]) => keys.forEach((key) => component!.handleInput(key));
 		const screen = () => component!.render(200).join("\n");
 		expect(screen()).toContain("Harness · Global");
+		expect(screen()).toMatch(/Harnesses\n> +\[-\] Octocode/);
+		expect(screen()).toMatch(/\[x\] Claude Code  default off\n +\[ \] Claude Code auto memory  default off/);
+		for (let index = 0; index < 8; index++) press("tui.select.down");
 		expect(screen()).toMatch(/Claude Code\n> +\[x\] Hooks from Claude Code/);
 		// Hook files start collapsed: one row per file, not per hook.
 		expect(screen()).toContain("▸ [x] ~/.claude/settings.json");
@@ -340,11 +372,9 @@ describe("/harness terminal list", () => {
 		press("tui.input.tab");
 
 		// → opens the native user file; a gate hook needs a second press; Enter works like Space.
+		const selected = () => component!.render(200).find((line) => line.startsWith(">") && /\[[x -]\]/.test(line));
 		const moveTo = (text: string) => {
-			const rows = component!.render(200).filter((line) => /\[[x -]\]/.test(line));
-			const from = rows.findIndex((line) => line.startsWith(">"));
-			const to = rows.findIndex((line) => line.includes(text));
-			for (let index = from; index < to; index++) press("tui.select.down");
+			for (let step = 0; step < 60 && !selected()?.includes(text); step++) press("tui.select.down");
 		};
 		moveTo("octocode/octocodecode/hooks.json");
 		press("\x1b[C");
@@ -529,7 +559,7 @@ describe("plugin rows", () => {
 		);
 	});
 
-	it("list the skills Claude and Codex folders supply, symlinked ones included, as read-only rows", async () => {
+	it("list Claude and Codex skills through their harness rows, with no read-only skill-folder rows", async () => {
 		const f = fixture();
 		const store = path.join(f.home, "store");
 		const skill = (dir: string, name: string) => {
@@ -545,16 +575,8 @@ describe("plugin rows", () => {
 		skill(path.join(f.home, ".codex/skills/plain"), "plain");
 
 		const { inventory } = await rows(f, {});
-		const folders = inventory.items.filter((item) => item.id.startsWith("skills-folder:"));
-		expect(folders.map((item) => item.label)).toEqual([
-			"~/.claude/skills (1 skill, read-only)",
-			"~/.codex/skills (2 skills, read-only)",
-		]);
-		expect(folders[1].detail).toContain("observation-platform, plain");
-		expect(folders.every((item) => item.locked && item.host === "skills")).toBe(true);
-		const { api } = fakeHost();
-		const ctx = fakeCtx({ cwd: f.cwd, mode: "rpc" });
-		await harness(api).handler("list skills", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("observation-platform");
+		expect(inventory.items.filter((item) => item.id.startsWith("skills-folder:"))).toEqual([]);
+		const ids = inventory.items.map((item) => item.id);
+		expect(ids).toEqual(expect.arrayContaining(["harness:claude", "harness:codex"]));
 	});
 });

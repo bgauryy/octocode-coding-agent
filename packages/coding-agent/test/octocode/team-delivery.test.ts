@@ -583,10 +583,13 @@ describe("headless subagent exit", () => {
 			throw Object.assign(new Error("no such process"), { code: "ESRCH" });
 		});
 		try {
-			// No agent id: the child does not join, and the team database is never opened.
+			// O6b (design B36): a session joins at start, best-effort. Here the database cannot be opened (its folder is a
+			// file), so the child stays unjoined, and the parent check still stops it.
+			const blocker = path.join(tmp(), "not-a-folder");
+			fs.writeFileSync(blocker, "");
 			const fake = fakeHost();
 			const team = new Team(fake.api, {
-				OCTOCODE_AGENT_DB: path.join(tmp(), "missing", "team.sqlite"),
+				OCTOCODE_AGENT_DB: path.join(blocker, "team.sqlite"),
 				OCTOCODE_PARENT_PID: String(2 ** 22 + 12345),
 			});
 			const ctx = fakeCtx({ cwd: repo(), hasUI: false });

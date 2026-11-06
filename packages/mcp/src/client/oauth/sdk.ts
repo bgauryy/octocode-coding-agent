@@ -32,7 +32,11 @@ export function oauthFetch(fetch: McpFetch = globalThis.fetch, signal?: AbortSig
 		let onAbort: (() => void) | undefined;
 		const pending = fetch(input, { ...init, credentials: "omit", signal: combined }).then(async (response) => {
 			if (combined?.aborted) {
-				await response.body?.cancel().catch(() => {});
+				try {
+					await response.body?.cancel();
+				} catch {
+					// The response is abandoned either way; the abort below is the error that matters.
+				}
 				combined.throwIfAborted();
 			}
 			const wrapped =

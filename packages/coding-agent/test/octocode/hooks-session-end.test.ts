@@ -6,7 +6,7 @@ import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 
 describe("source SessionEnd hooks", () => {
 	it.each([
@@ -38,7 +38,7 @@ describe("source SessionEnd hooks", () => {
 				},
 			}),
 		);
-		const f = fakeHost();
+		const f = fakeHost(HOOK_SETTINGS);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		registerHooks(f.api, { OCTOCODE_SUBAGENT: subagent ? "1" : "0" }, home);
 		await f.fire("session_start", { reason: "startup" }, ctx);
@@ -86,7 +86,7 @@ describe("source SessionEnd hooks", () => {
 				},
 			}),
 		);
-		const f = fakeHost();
+		const f = fakeHost(HOOK_SETTINGS);
 		f.api.getSettings = () => ({ plugins: [{ path: plugin, protocol: "claude" }] });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		registerHooks(f.api, {}, home);

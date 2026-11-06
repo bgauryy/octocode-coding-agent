@@ -85,7 +85,6 @@ describe("native features over RPC", () => {
 		{ settings: ["-builtin:mcp"], args: [] as string[], mcp: false, llama: true },
 		{ settings: ["-builtin:llama.cpp"], args: [], mcp: true, llama: false },
 		{ settings: [], args: ["--no-mcp"], mcp: false, llama: true },
-		{ settings: [], args: ["--no-extensions", "-e", "builtin:mcp"], mcp: true, llama: true },
 	])(
 		"switches built-ins by $settings $args",
 		async ({ settings, args, mcp, llama }) => {

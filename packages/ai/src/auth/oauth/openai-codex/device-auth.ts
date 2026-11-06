@@ -109,7 +109,9 @@ async function pollOpenAICodexDeviceAuth(device: DeviceAuthInfo, signal: AbortSi
 				const json = JSON.parse(responseBody) as { error?: string | { code?: string } } | null;
 				const error = json?.error;
 				errorCode = typeof error === "object" ? error?.code : error;
-			} catch {}
+			} catch {
+				// A body that is not JSON has no error code; the checks below handle it as unknown.
+			}
 
 			if (errorCode === "deviceauth_authorization_pending") {
 				return { status: "pending" };

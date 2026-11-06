@@ -202,5 +202,11 @@ export function reduceAgentState(state: MutableAgentState, event: AgentEvent): v
 		case "agent_end":
 			state.streamingMessage = undefined;
 			break;
+
+		// These events change no runtime-owned state.
+		case "agent_start":
+		case "turn_start":
+		case "tool_execution_update":
+			break;
 	}
 }

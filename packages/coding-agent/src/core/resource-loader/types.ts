@@ -53,7 +53,7 @@ export interface DefaultResourceLoaderOptions {
 	noPromptTemplates?: boolean;
 	noThemes?: boolean;
 	noContextFiles?: boolean;
-	/** The folder a trust grant is on: AGENTS.md and CLAUDE.md load from it down to the working folder, none above it. */
+	/** The folder a trust grant is on: AGENTS.override.md and AGENTS.md load from it down to the working folder, none above it. */
 	contextRoot?: string;
 	systemPrompt?: string;
 	appendSystemPrompt?: string[];

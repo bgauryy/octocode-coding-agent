@@ -39,7 +39,11 @@ function applySgr(style: SpaceStyle, params: string): void {
 			continue;
 		}
 		if (code === 0) {
-			style.background = style.reverse = style.underline = style.strike = style.overline = false;
+			style.background = false;
+			style.reverse = false;
+			style.underline = false;
+			style.strike = false;
+			style.overline = false;
 		} else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) style.background = true;
 		else if (code === 49) style.background = false;
 		else if (code === 7) style.reverse = true;

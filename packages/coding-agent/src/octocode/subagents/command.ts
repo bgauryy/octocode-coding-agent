@@ -6,7 +6,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_STOP } from "./process/outcome.ts";
 import { type Ask, UserQuestions } from "../team/asks.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { describeMembers } from "../team/routing.ts";
+import { describeMembers } from "../team/member-list.ts";
 import type { Team } from "../team/session.ts";
 import { sessionChildren } from "../shared/session-children.ts";
 import { describeChild } from "./children.ts";

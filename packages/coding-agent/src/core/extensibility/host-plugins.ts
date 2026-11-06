@@ -101,6 +101,28 @@ function codexPlugins(home: string, env: NodeJS.ProcessEnv): HostPlugin[] {
 	});
 }
 
+const under = (file: string, dir: string): boolean => {
+	const relative = path.relative(dir, path.resolve(file));
+	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+/** The host whose plugin store (`<config>/plugins`, or Claude's `CLAUDE_CODE_PLUGIN_CACHE_DIR`) holds `pluginPath`, if any. */
+export function hostPluginStore(
+	pluginPath: string,
+	home = homedir(),
+	env: NodeJS.ProcessEnv = process.env,
+): HostPlugin["host"] | undefined {
+	const claude = [path.join(claudeConfigDir(home, env), "plugins")];
+	if (env.CLAUDE_CODE_PLUGIN_CACHE_DIR) claude.push(path.resolve(env.CLAUDE_CODE_PLUGIN_CACHE_DIR));
+	if (claude.some((dir) => under(pluginPath, dir))) return "claude";
+	try {
+		if (under(pluginPath, path.join(codexConfigDir(home, env), "plugins"))) return "codex";
+	} catch {
+		// No Codex home to compare with: the plugin is not in its store.
+	}
+	return undefined;
+}
+
 /** Plugins Claude Code and Codex installed on this machine. Reading them runs nothing. */
 export function hostInstalledPlugins(home = homedir(), env: NodeJS.ProcessEnv = process.env): HostPlugin[] {
 	return [...claudePlugins(home, env), ...codexPlugins(home, env)];

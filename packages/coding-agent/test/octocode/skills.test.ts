@@ -1,73 +1,72 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getAgentDir } from "../../src/config.ts";
+import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
 import { loadSkills } from "../../src/core/skills.ts";
-import { extraSkillDirs, extraSkillsEnabled } from "../../src/octocode/skills.ts";
-import { tmp } from "./helpers.ts";
+import { externalSkillsEnabled as extraSkillsEnabled } from "../../src/core/discovery/sources.ts";
+import { tmp, vendorSkillFiles } from "./helpers.ts";
+
+const skill = (dir: string, name: string) => {
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: ${name} skill\n---\nBody\n`);
+	return path.join(dir, "SKILL.md");
+};
+
+/** Octocode's global skill files outside the agent directory, as discovery lists them. */
+const octocodeHomeSkills = (home: string, env: NodeJS.ProcessEnv) =>
+	configDiscovery
+		.discover("skill", discoveryInput({ cwd: tmp(), agentDir: tmp(), home, projectTrusted: true, env, piRoots: [] }))
+		.filter((item) => item.provenance.vendor === "octocode")
+		.map((item) => item.provenance.path);
 
 describe("skills", () => {
-	it("discovers only existing skill directories", () => {
+	it("lists the skills other agents' folders hold, and nothing for an empty folder", () => {
 		const home = tmp();
 		fs.mkdirSync(path.join(home, ".claude", "skills"), { recursive: true });
-		expect(extraSkillDirs(tmp(), home)).toEqual([path.join(home, ".claude", "skills")]);
+		expect(vendorSkillFiles(tmp(), home)).toEqual([]);
+		const file = skill(path.join(home, ".claude", "skills", "one"), "one");
+		expect(vendorSkillFiles(tmp(), home)).toEqual([file]);
 	});
 
 	it("reads Octocode skills from OCTOCODE_HOME when set, else ~/.octocode/octocodecode", () => {
 		const home = tmp();
 		const custom = tmp();
-		fs.mkdirSync(path.join(home, ".octocode", "octocodecode", "skills"), { recursive: true });
-		fs.mkdirSync(path.join(custom, "skills"), { recursive: true });
-		expect(extraSkillDirs(tmp(), home, true, {})).toEqual([path.join(home, ".octocode", "octocodecode", "skills")]);
-		expect(extraSkillDirs(tmp(), home, true, { OCTOCODE_HOME: custom })).toEqual([path.join(custom, "skills")]);
+		const defaultSkill = skill(path.join(home, ".octocode", "octocodecode", "skills", "a"), "a");
+		const customSkill = skill(path.join(custom, "skills", "b"), "b");
+		expect(octocodeHomeSkills(home, {})).toEqual([defaultSkill]);
+		expect(octocodeHomeSkills(home, { OCTOCODE_HOME: custom })).toEqual([customSkill]);
 	});
 
 	it("loads extra skill directories only in the root session, unless turned off", () => {
 		expect(extraSkillsEnabled({})).toBe(true);
 		expect(extraSkillsEnabled({ OCTOCODE_SUBAGENT: "1" })).toBe(false);
 		expect(extraSkillsEnabled({ OCTOCODE_EXTRA_SKILLS: "0" })).toBe(false);
+		const home = tmp();
+		skill(path.join(home, ".claude", "skills", "one"), "one");
+		expect(vendorSkillFiles(tmp(), home, true, { OCTOCODE_EXTRA_SKILLS: "0" })).toEqual([]);
 	});
 
-	it("adds project skill directories only for trusted projects", () => {
+	it("adds project skills only for trusted projects", () => {
 		const cwd = tmp();
-		fs.mkdirSync(path.join(cwd, ".claude", "skills"), { recursive: true });
-		expect(extraSkillDirs(cwd, tmp(), false)).toEqual([]);
-		expect(extraSkillDirs(cwd, tmp(), true)).toEqual([path.join(cwd, ".claude", "skills")]);
+		const file = skill(path.join(cwd, ".claude", "skills", "p"), "p");
+		expect(vendorSkillFiles(cwd, tmp(), false)).toEqual([]);
+		expect(vendorSkillFiles(cwd, tmp(), true)).toEqual([file]);
 	});
 
-	it("finds project skills from a subdirectory up to the repository root", () => {
-		const repo = tmp();
-		fs.mkdirSync(path.join(repo, ".git"));
-		fs.mkdirSync(path.join(repo, ".claude", "skills"), { recursive: true });
+	it("finds project skills from a subdirectory up to the repository root, and none above it", () => {
+		const outer = tmp();
+		skill(path.join(outer, ".claude", "skills", "outside"), "outside");
+		const repo = path.join(outer, "repo");
+		fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+		const root = skill(path.join(repo, ".claude", "skills", "r"), "r");
 		const sub = path.join(repo, "packages", "a");
-		fs.mkdirSync(path.join(sub, ".claude", "skills"), { recursive: true });
-		expect(extraSkillDirs(sub, tmp(), true)).toEqual([
-			path.join(sub, ".claude", "skills"),
-			path.join(repo, ".claude", "skills"),
-		]);
+		const nested = skill(path.join(sub, ".claude", "skills", "s"), "s");
+		expect(vendorSkillFiles(sub, tmp(), true)).toEqual([nested, root]);
 	});
 
-	it("leaves the repository's .octocode/skills and the agent directory's skills to core discovery", () => {
-		const repo = tmp();
-		fs.mkdirSync(path.join(repo, ".git"));
-		fs.mkdirSync(path.join(repo, ".octocode", "skills"), { recursive: true });
-		fs.mkdirSync(path.join(repo, ".claude", "skills"), { recursive: true });
-		const sub = path.join(repo, "packages", "a");
-		fs.mkdirSync(sub, { recursive: true });
-		// Loaded again here, their skills would escape the `skills` patterns and lose to user skills.
-		expect(extraSkillDirs(sub, tmp(), true)).toEqual([path.join(repo, ".claude", "skills")]);
-		const agentSkills = path.join(getAgentDir(), "skills");
-		fs.mkdirSync(agentSkills, { recursive: true });
-		expect(extraSkillDirs(tmp(), tmp(), true, { OCTOCODE_HOME: path.dirname(agentSkills) })).toEqual([]);
-	});
-
-	it("leaves out claude.ai's synced skills under ~/.claude/skills/synced, as Octocode loads the result", async () => {
+	it("leaves out claude.ai's synced skills under ~/.claude/skills/synced, as Octocode loads the result", () => {
 		const home = tmp();
 		const root = path.join(home, ".claude", "skills");
-		const skill = (dir: string, name: string) => {
-			fs.mkdirSync(dir, { recursive: true });
-			fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: ${name} skill\n---\nBody\n`);
-		};
 		skill(path.join(root, "local-one"), "local-one");
 		skill(path.join(root, "group", "nested"), "nested");
 		skill(path.join(root, "synced", "docx"), "docx");
@@ -81,24 +80,20 @@ describe("skills", () => {
 		fs.writeFileSync(path.join(root, ".ignore"), "ignored/\n");
 		fs.writeFileSync(path.join(root, "notes.txt"), "not a skill");
 		fs.mkdirSync(path.join(root, ".hidden"));
-		const dirs = extraSkillDirs(tmp(), home);
-		expect(dirs.sort()).toEqual([
+		const files = vendorSkillFiles(tmp(), home);
+		expect([...files].sort()).toEqual([
 			path.join(root, "group", "nested", "SKILL.md"),
 			path.join(root, "local-one", "SKILL.md"),
 			path.join(root, "loose.md"),
 		]);
-		// Octocode's own loader over these paths finds the local skills and none of the synced ones.
-		const names = loadSkills({ cwd: tmp(), agentDir: tmp(), skillPaths: dirs, includeDefaults: false })
+		const names = loadSkills({ cwd: tmp(), agentDir: tmp(), skillPaths: files, includeDefaults: false })
 			.skills.map((s) => s.name)
 			.sort();
 		expect(names).toEqual(["local-one", "loose", "nested"]);
-		// Without a synced folder, the skills folder is passed whole.
-		fs.rmSync(path.join(root, "synced"), { recursive: true });
-		expect(extraSkillDirs(tmp(), home)).toEqual([root]);
 	});
 });
 
-it("keeps Claude parsing semantics through extra-directory and filtered-file discovery", () => {
+it("keeps Claude parsing semantics for discovered Claude skill files", () => {
 	const home = tmp();
 	const cwd = tmp();
 	const root = path.join(home, ".claude", "skills");
@@ -112,7 +107,7 @@ it("keeps Claude parsing semantics through extra-directory and filtered-file dis
 		cwd,
 		agentDir: tmp(),
 		includeDefaults: false,
-		skillPaths: extraSkillDirs(cwd, home, false),
+		skillPaths: vendorSkillFiles(cwd, home, false),
 	});
 	expect(loaded.skills).toHaveLength(1);
 	expect(loaded.skills[0]).toMatchObject({

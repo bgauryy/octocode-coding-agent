@@ -16,7 +16,8 @@ function scope(parent, functionScope = false) {
 	return { parent, functionScope, bindings: new Map() };
 }
 
-function nearestFunctionScope(current) {
+function nearestFunctionScope(start) {
+	let current = start;
 	while (current.parent && !current.functionScope) current = current.parent;
 	return current;
 }

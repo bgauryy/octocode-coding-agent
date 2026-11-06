@@ -16,6 +16,11 @@
 			"types": "./dist/utils/ansi-codes.d.ts",
 			"import": "./dist/utils/ansi-codes.js"
 		},
+		"./text": {
+			"source": "./src/utils/text.ts",
+			"types": "./dist/utils/text.d.ts",
+			"import": "./dist/utils/text.js"
+		},
 		"./multiplexer": {
 			"source": "./src/multiplexer.ts",
 			"types": "./dist/multiplexer.d.ts",

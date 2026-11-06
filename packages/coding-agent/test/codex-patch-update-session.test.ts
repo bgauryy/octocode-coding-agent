@@ -10,6 +10,8 @@ import { registerFileTool } from "../src/octocode/files/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
 import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
+import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import "../src/octocode/mcp-host/core-install.ts";
 import { FileGuard } from "../src/octocode/files/tool/guard.ts";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -83,7 +85,7 @@ async function fixture(patch: string, mode = "full", once = false, claudeGate: b
 	checkpoints.beginTurn();
 	const harness = await createHarness({
 		tools: [],
-		settings: { retry: { enabled: false } },
+		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		extensionFactories: [
 			(api) => {
 				const permission = new Permission({

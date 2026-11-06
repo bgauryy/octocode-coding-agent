@@ -17,7 +17,8 @@ interface GenericToolDisplay {
 	toolName: string;
 	toolCallId: string;
 	args: unknown;
-	content: ToolExecutionResult["content"];
+	/** The result so far: its content, and its structured data, where an MCP result may state its call's purpose. */
+	result: Pick<ToolExecutionResult, "content" | "structuredContent"> | undefined;
 	expanded: boolean;
 	showImages: boolean;
 	imageWidthCells: number;
@@ -54,7 +55,7 @@ export class GenericToolContent extends Container {
 				display.background,
 			),
 		);
-		const reason = reasonRow(display.toolName, display.args);
+		const reason = reasonRow(display.toolName, display.args, display.result?.structuredContent);
 		if (reason) {
 			const row = new Box(display.outputPad, 0, display.background);
 			row.addChild(reason);
@@ -62,7 +63,7 @@ export class GenericToolContent extends Container {
 		}
 		let content: ApplicationContentBlock[];
 		try {
-			content = normalizeApplicationContent(display.content, display.toolCallId, this.assets);
+			content = normalizeApplicationContent(display.result?.content ?? [], display.toolCallId, this.assets);
 		} catch (error) {
 			content = [
 				{

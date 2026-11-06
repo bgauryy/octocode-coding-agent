@@ -18,6 +18,7 @@ import {
 	writeSegment,
 } from "../../src/octocode/shared/archive.ts";
 import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -76,7 +77,8 @@ function tool(cwd: string) {
 	const ctx = fakeCtx({ cwd });
 	return async (params: Record<string, unknown>) => {
 		const result = await archive.execute("t1", params, undefined, undefined, ctx);
-		return { text: result.content[0].text as string, details: result.details };
+		// Op-less calls are session history (source sessions); its own details sit under `history`.
+		return { text: result.content[0].text as string, details: result.details.history ?? result.details };
 	};
 }
 
@@ -117,15 +119,40 @@ describe("the archive tool", () => {
 		expect(archive.parameters.properties.query.description).toMatch(/With errors: filters by tool name or error text/);
 	});
 
+	it("declares one op-based shape and reads a recorded op-less call as session history", () => {
+		const fake = fakeHost();
+		registerArchiveTool(fake.api);
+		const archive = fake.tools.get("archive");
+		expect(archive.parameters.required).toContain("op");
+		expect(archive.description).not.toMatch(/without them/);
+		const prepare = (args: Record<string, unknown>) => {
+			const prepared = archive.prepareArguments(args);
+			validateToolArguments(archive, { type: "toolCall", id: "c", name: "archive", arguments: prepared } as never);
+			return prepared;
+		};
+		expect(prepare(why)).toEqual({ ...why, op: "list", source: "sessions" });
+		expect(prepare({ ...why, keywords: "login" })).toMatchObject({ op: "search", source: "sessions" });
+		expect(prepare({ ...why, errors: true })).toMatchObject({ op: "search", source: "sessions" });
+		expect(prepare({ ...why, file: "1-e-me.md", line: 4 })).toMatchObject({ op: "get", source: "sessions" });
+		// A call that named a source keeps it; one with an op is left as it is.
+		expect(prepare({ ...why, source: "memories", query: "x" })).toEqual({
+			...why,
+			source: "memories",
+			query: "x",
+			op: "search",
+		});
+		expect(prepare({ ...why, op: "list" })).toEqual({ ...why, op: "list" });
+	});
+
 	it("needs only a reason, records it with the result, and ignores the former goal field of old calls", async () => {
 		const call = tool(repo());
 		await expect(call({ reason: " " })).rejects.toThrow(/needs reason/);
 		await expect(call({ goal: "x" })).rejects.toThrow(/needs reason/);
 		const empty = await call(why);
-		expect(empty.text).toMatch(/^No history yet/);
+		expect(empty.text).toMatch(/^No history yet/m);
 		expect(empty.details).toMatchObject({ ...why, mode: "list" });
 		const replayed = await call({ ...why, goal: "recorded by an older version" });
-		expect(replayed.text).toMatch(/^No history yet/);
+		expect(replayed.text).toMatch(/^No history yet/m);
 		expect(replayed.details).not.toHaveProperty("goal");
 	});
 
@@ -141,11 +168,11 @@ describe("the archive tool", () => {
 		fileFor("sib", "login also failed here", cwd);
 		const call = tool(cwd);
 		const listed = await call(why);
-		expect(listed.text).toMatch(/^2 sessions with history, nearest first/);
+		expect(listed.text).toMatch(/^2 sessions with history, nearest first/m);
 		expect(listed.text).toContain("## me (this session)");
 		expect(listed.text).toContain("## sib (same repository)");
 		const found = await call({ ...why, query: "LOGIN" });
-		expect(found.text).toMatch(/^2 matching lines in 2 of 4 files \(2 sessions\)/);
+		expect(found.text).toMatch(/^2 matching lines in 2 of 4 files \(2 sessions\)/m);
 		expect(found.details).toMatchObject({ mode: "search", hits: 2, files: 2, page: 1, pages: 1 });
 		const line = Number(/^>\s*(\d+)│ the login fix/m.exec(found.text)![1]);
 		// A bare file name is a file of this session's archive, as the pointer names them.
@@ -162,8 +189,8 @@ describe("the archive tool", () => {
 		const call = tool(cwd);
 		const first = await call({ ...why, query: "match" });
 		expect(first.text).toMatch(/Page 1 of \d+; next: page 2 with the same query and file\.$/);
-		expect(first.text).toMatch(/^3000 matching lines in 1 of 2 files \(1 session\)/);
-		expect((await call(why)).text).toMatch(/^1 session with history/);
+		expect(first.text).toMatch(/^3000 matching lines in 1 of 2 files \(1 session\)/m);
+		expect((await call(why)).text).toMatch(/^1 session with history/m);
 		expect((await call({ ...why, query: "nothing-like-this" })).text).toContain("in 2 files of 1 session.");
 		const last = await call({ ...why, query: "match", page: first.details.pages });
 		expect(last.text).toMatch(/Page \d+ of \d+, the last\.$/);
@@ -178,7 +205,7 @@ describe("the archive tool", () => {
 		);
 		await expect(call({ ...why, query: "a(" })).rejects.toThrow(/invalid .*escape/);
 		const missed = await call({ ...why, query: "nothing-like-this" });
-		expect(missed.text).toMatch(/^No line matches .* Try another term or spelling/);
+		expect(missed.text).toMatch(/^No line matches .* Try another term or spelling/m);
 	});
 });
 

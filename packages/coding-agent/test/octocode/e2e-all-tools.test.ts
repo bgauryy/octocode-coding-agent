@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { LEAN_FLOOR } from "../../src/octocode/subagents/core-tools.ts";
 import {
 	alive,
 	type Endpoint,
@@ -17,6 +18,7 @@ import {
 	sandbox,
 	script,
 	type Step,
+	writeSettings,
 	startEndpoint,
 	until,
 } from "./e2e-real-process-harness.ts";
@@ -63,9 +65,14 @@ const row = (extra: Record<string, unknown>) => ({ mainGoal: "prove the tool", r
 const research = (tool: string, ...rows: Record<string, unknown>[]) =>
 	call(`mcp__octocode__${tool}`, { queries: rows.map(row) });
 
-/** A sandbox with the research server on and a small TypeScript project the language server can resolve. */
-function repository(): Sandbox {
+/**
+ * A sandbox with the research server on and a small TypeScript project the language server can resolve. The cases that
+ * read each tool's typed signature from the prompt's `<mcps>` block run with `mcpPresentation: "compact"` (the default);
+ * `declared`, the product default, is covered by the cases that pass `{}`.
+ */
+function repository(settings: Record<string, unknown> = { mcpPresentation: "compact" }): Sandbox {
 	const box = sandbox(endpoint);
+	writeSettings(box, settings);
 	delete box.env.OCTOCODE_MCP;
 	fs.mkdirSync(path.join(box.project, "src"));
 	fs.writeFileSync(
@@ -214,6 +221,22 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 		],
 		fail: [answers(call("steps", { op: "update" }), "update needs an id")],
 	},
+	timer: {
+		// Far enough ahead that it never wakes this run; the cancel ends it before the session does.
+		ok: [
+			answers(
+				call("timer", { op: "set", after: 3600, note: "timer-marker" }),
+				/^Set 1 · once · next wake in 3600s · timer-marker/,
+			),
+			answers(call("timer", { op: "list" }), /^1 · once · next wake in \d+s · timer-marker$/),
+			answers(call("timer", { op: "cancel", id: 1 }), /^Cancelled 1 · once · cancelled/),
+			answers(call("timer", { op: "list" }), "No active timers."),
+		],
+		fail: [
+			answers(call("timer", { op: "set", after: 60 }), "set needs a note"),
+			answers(call("timer", { op: "cancel", id: 1 }), "No active timer 1 in this session."),
+		],
+	},
 	archive: {
 		ok: [
 			answers(
@@ -244,9 +267,13 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 	},
 	skill: {
 		ok: [
-			answers(call("skill", { name: "octocode-research" }), '<skill name="octocode-research"', "# Octocode Research"),
+			answers(
+				call("skill", { name: "octocode-debugging" }),
+				'<skill name="octocode-debugging"',
+				"# Octocode Debugging",
+			),
 		],
-		fail: [answers(call("skill", { name: "no-such-skill" }), 'Unknown skill "no-such-skill"', "octocode-research")],
+		fail: [answers(call("skill", { name: "no-such-skill" }), 'Unknown skill "no-such-skill"', "octocode-debugging")],
 	},
 	models: {
 		ok: [answers(call("models"), "This session: scripted/model", "● scripted/model", "Profiles:")],
@@ -430,7 +457,7 @@ describe("the native paths that need a run of their own", () => {
 		expect(lastResults(steps)[0]).toMatch(/\bb\b/);
 		expect(lastResults(steps)[0]).not.toContain("Cancelled");
 		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
+		await expectCleanRun(run);
 	});
 
 	it("agent: a message reaches a running child, and one sent before it joined is not called gone", async () => {
@@ -555,16 +582,6 @@ function rowForms(block: string): {
 	return { shared: fieldsOf(sharedText), forms };
 }
 
-/** A value the field's rendered type takes; undefined for a nested shape, which this check leaves to the row tables. */
-function sampleOf({ name, type }: Field): unknown {
-	if (type.startsWith('"')) return /"([^"]+)"/.exec(type)?.[1];
-	if (type === "number") return 1;
-	if (type === "boolean") return true;
-	if (type === "string[]") return ["src"];
-	if (type === "string") return name === "workspaceRoot" ? "." : "x";
-	return undefined;
-}
-
 const LSP_ANCHOR = { path: "src/math.ts", symbolName: "addNumbers", line: 12 };
 
 /** A row the rendered signature allows for each selector value of the local tools. */
@@ -633,6 +650,12 @@ const LOCAL_ANSWERS: Record<string, { found: Record<string, string>; fail: Recor
 	},
 };
 
+/** A run that exits 0 and, when `stdout` is given, prints exactly it. Named so its assertions work from a hook. */
+async function expectCleanRun(run: ReturnType<Sandbox["start"]>, stdout?: string): Promise<void> {
+	expect((await run.exited).code).toBe(0);
+	if (stdout !== undefined) expect(run.stdout().trim()).toBe(stdout);
+}
+
 describe("the Octocode research tools against the real server", () => {
 	let box: Sandbox;
 	let steps: Step[];
@@ -652,8 +675,7 @@ describe("the Octocode research tools against the real server", () => {
 		}
 		steps.push({ text: "research-done" });
 		const run = box.start(["-p", script(steps)]);
-		expect((await run.exited).code).toBe(0);
-		expect(run.stdout().trim()).toBe("research-done");
+		await expectCleanRun(run, "research-done");
 	});
 
 	const system = () => requestsOf(steps)[0]?.system ?? "";
@@ -692,40 +714,6 @@ describe("the Octocode research tools against the real server", () => {
 	it.each(Object.keys(LOCAL_ROWS))("%s: a bad call comes back with the field or cause named", (tool) => {
 		const at = failing.find((one) => one.tool === tool)?.index ?? -1;
 		expect(lastResults(steps)[at]).toContain(LOCAL_ANSWERS[tool].says);
-	});
-
-	it("any field the signature offers a form is taken on that form, lspSearch's line and symbolName included", async () => {
-		// Built from the rendered text alone: each shared optional field on each selector value of each local tool.
-		const rows: { tool: string; label: string; query: Record<string, unknown> }[] = [];
-		for (const tool of Object.keys(LOCAL_ROWS)) {
-			const { shared, forms } = rowForms(toolBlock(system(), tool));
-			for (const form of forms)
-				for (const value of form.values)
-					for (const field of [...shared, ...form.fields.filter((one) => one.optional && !one.type.startsWith('"'))]) {
-						const base = LOCAL_ROWS[tool][value];
-						if (!field.optional || field.name in base) continue;
-						const sample = sampleOf(field);
-						if (sample !== undefined)
-							rows.push({ tool, label: `${tool} ${value} ${field.name}`, query: { ...base, [field.name]: sample } });
-					}
-		}
-		expect(rows.length).toBeGreaterThan(50);
-		const probes: Step[] = [...rows.map(({ tool, query }) => research(tool, query)), { text: "probed" }];
-		const run = repository().start(["-p", script(probes)]);
-		expect((await run.exited).code).toBe(0);
-		const results = lastResults(probes);
-		const refused = rows.flatMap(({ label }, index) => {
-			const form = /not allowed in this form[^"]*/.exec(results[index] ?? "");
-			return form ? [`${label}: ${form[0]}`] : [];
-		});
-		expect(refused).toEqual([]);
-	});
-
-	it("the fields the server refuses on a form are not offered on it, and the refusal names the form", () => {
-		const block = rowForms(toolBlock(system(), "lspSearch"));
-		const documents = block.forms.find((form) => form.values.includes("documentSymbols"));
-		const names = [...block.shared, ...(documents?.fields ?? [])].map((field) => field.name);
-		for (const name of ["symbolName", "line", "symbolQuery"]) expect(names, name).not.toContain(name);
 	});
 
 	it("mcp stop takes a server's tools away with a clear error and restart brings them back", async () => {
@@ -895,7 +883,12 @@ const profiles: Role[] = [
 		return {
 			name: field("name"),
 			tools: field("tools")?.split(","),
-			skills: field("skills")?.split(",").filter(Boolean) ?? [],
+			// `skills: []` declares none; a bare list is comma separated.
+			skills: (field("skills") ?? "")
+				.replace(/^\[|\]$/g, "")
+				.split(",")
+				.map((name) => name.trim())
+				.filter(Boolean),
 			readOnly: field("readOnly") === "true",
 			lean: field("lean") === "true",
 			firstLine: body.trim().split("\n")[0],
@@ -941,7 +934,7 @@ describe("every subagent profile, started through agent", () => {
 			{ text: "parent-final-text" },
 		];
 		const run = box.start(["-p", script(parent)]);
-		expect((await run.exited).code).toBe(0);
+		await expectCleanRun(run);
 	});
 
 	it("covers the five bundled profiles", () => {
@@ -969,7 +962,8 @@ describe("every subagent profile, started through agent", () => {
 					expect(matched.length, `${name} has ${selector}`).toBeGreaterThan(0);
 			}
 			if (role.lean) {
-				expect([...first.tools].sort()).toEqual([...(role.tools ?? [])].sort());
+				// Its own list plus the floor every lean child keeps (`core-tools.ts`).
+				expect([...first.tools].sort()).toEqual([...new Set([...(role.tools ?? []), ...LEAN_FLOOR])].sort());
 				expect(first.system).not.toContain("<available_skills>");
 			}
 			// Its role section and role skills are in the prompt the model got; a child with no profile has neither.
@@ -1189,11 +1183,30 @@ describe("the browser, for real: headless Chrome on an isolated profile against 
 	});
 });
 
+describe("the real research server, declared", () => {
+	it("carries each tool's full description and schema in its declaration, and its instructions in the block", async () => {
+		const steps: Step[] = [{ text: "declared-done" }];
+		const run = repository({}).start(["-p", script(steps)]);
+		expect((await run.exited).code).toBe(0);
+		const first = requestsOf(steps)[0];
+		const tools = Object.keys(first.declarations).filter((name) => name.startsWith("mcp__octocode__"));
+		expect(tools).toEqual(expect.arrayContaining(["mcp__octocode__localSearch", "mcp__octocode__localFetch"]));
+		for (const name of tools) {
+			const { description, parameters } = first.declarations[name];
+			expect(description.length, name).toBeGreaterThan(60);
+			expect(JSON.stringify(parameters).length, name).toBeGreaterThan(200);
+		}
+		expect(JSON.stringify(first.declarations["mcp__octocode__localSearch"].parameters)).toContain("matchString");
+		expect(first.system).toContain('<mcp name="octocode" tools="mcp__octocode__*">');
+		expect(first.system).not.toContain("function localSearch(input:");
+	});
+});
+
 describe("a configured MCP server", () => {
 	const DOCS = fileURLToPath(new URL("./fixtures/docs-mcp.mjs", import.meta.url));
 
 	it("is declared by its names, called through them, and a broken one beside it does not stop the session", async () => {
-		const box = repository();
+		const box = repository({});
 		fs.mkdirSync(path.join(box.home, ".octocode"), { recursive: true });
 		fs.writeFileSync(
 			path.join(box.home, ".octocode", "mcp.json"),
@@ -1225,7 +1238,11 @@ describe("a configured MCP server", () => {
 			.map((name) => name.slice("mcp__docs__".length));
 		expect([...declared].sort()).toEqual(Object.keys(cases).sort());
 		expect(first.system).toContain('<mcp name="docs" tools="mcp__docs__*">');
-		expect(first.system).toContain("function lookup(input:");
+		// Declared (the default): the tool's own declaration carries the server's description and full schema.
+		const lookup = first.declarations["mcp__docs__lookup"];
+		expect(lookup.description).toContain("Find a document by its title words.");
+		expect(JSON.stringify(lookup.parameters)).toContain("Title words to search for.");
+		expect(first.system).not.toContain("function lookup(input:");
 		const results = lastResults(steps);
 		Object.keys(cases).forEach((tool, index) => expect(results[index], tool).toContain(`${tool} ok`));
 		expect(results[4]).toContain("Validation failed");

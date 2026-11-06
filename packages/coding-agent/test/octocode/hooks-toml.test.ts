@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -26,7 +26,7 @@ it("loads user and trusted project inline TOML and merges JSON with a diagnostic
 		path.join(f.home, ".codex/hooks.json"),
 		JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "json" }] }] } }),
 	);
-	const user = loadHooks(f.cwd, false, f.home);
+	const user = loadHooks(f.cwd, false, f.home, HOOK_SETTINGS);
 	expect(commandsFor(user.config, "PreToolUse", ["Bash"])).toEqual(
 		expect.arrayContaining([
 			expect.objectContaining({ command: "user", commandWindows: "windows-user", protocol: "codex" }),
@@ -34,7 +34,7 @@ it("loads user and trusted project inline TOML and merges JSON with a diagnostic
 	);
 	expect(user.errors.join()).toContain("both hooks.json and inline TOML");
 	expect(commandsFor(user.config, "PreToolUse", ["Bash"])).toHaveLength(2);
-	expect(commandsFor(loadHooks(f.cwd, true, f.home).config, "PreToolUse", ["Bash"])).toHaveLength(3);
+	expect(commandsFor(loadHooks(f.cwd, true, f.home, HOOK_SETTINGS).config, "PreToolUse", ["Bash"])).toHaveLength(3);
 	expect(hookFiles(f.cwd, true, f.home)).toContain(path.join(f.cwd, ".codex/config.toml"));
 });
 
@@ -45,7 +45,7 @@ it("honors Codex feature disablement without disabling native hooks and lets the
 		path.join(process.env.OCTOCODE_HOME!, "hooks.json"),
 		JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "native" }] }] } }),
 	);
-	const selected = () => commandsFor(loadHooks(f.cwd, true, f.home).config, "PreToolUse", ["Bash"]);
+	const selected = () => commandsFor(loadHooks(f.cwd, true, f.home, HOOK_SETTINGS).config, "PreToolUse", ["Bash"]);
 	expect(selected().map((hook) => "command" in hook && hook.command)).toEqual(["native"]);
 	fs.writeFileSync(path.join(f.cwd, ".codex/config.toml"), "[features]\nhooks = true\n");
 	expect(selected()).toHaveLength(2);
@@ -54,7 +54,7 @@ it("honors Codex feature disablement without disabling native hooks and lets the
 it("reports invalid TOML without exposing adjacent settings values", () => {
 	const f = fixture();
 	fs.writeFileSync(path.join(f.home, ".codex/config.toml"), 'secret = "never-print-this"\n[hooks\n');
-	const result = loadHooks(f.cwd, false, f.home);
+	const result = loadHooks(f.cwd, false, f.home, HOOK_SETTINGS);
 	expect(result.errors.join()).toContain("Invalid TOML");
 	expect(result.errors.join()).not.toContain("never-print-this");
 });
@@ -66,7 +66,7 @@ it("uses CODEX_HOME for user sources without changing project locations", () => 
 	fs.writeFileSync(path.join(custom, "config.toml"), definition("custom-home"));
 	fs.writeFileSync(path.join(f.home, ".codex/config.toml"), definition("default-home"));
 	fs.writeFileSync(path.join(f.cwd, ".codex/config.toml"), definition("project"));
-	const preview = loadHooks(f.cwd, true, f.home);
+	const preview = loadHooks(f.cwd, true, f.home, HOOK_SETTINGS);
 	expect(preview.errors).toEqual([]);
 	expect(commandsFor(preview.config, "PreToolUse", ["Bash"]).map((hook) => "command" in hook && hook.command)).toEqual([
 		"custom-home",
@@ -83,7 +83,7 @@ it("diagnoses an invalid CODEX_HOME without silently loading the default user ho
 		path.join(f.home, ".codex/hooks.json"),
 		JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "unexpected" }] }] } }),
 	);
-	const result = loadHooks(f.cwd, false, f.home);
+	const result = loadHooks(f.cwd, false, f.home, HOOK_SETTINGS);
 	expect(result.errors.join()).toContain("CODEX_HOME");
 	expect(commandsFor(result.config, "PreToolUse", ["Bash"])).toEqual([]);
 });

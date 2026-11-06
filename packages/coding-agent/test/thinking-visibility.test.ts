@@ -57,9 +57,7 @@ describe("thinking visibility has one owner: the host setting", () => {
 		expect(context.settingsManager.setHideThinkingBlock).toHaveBeenLastCalledWith(false);
 		expect(plain(top)).toContain("Top thought.");
 		expect(plain(nested)).toContain("Nested thought.");
-		expect(context.footerDataProvider.setExtensionStatus).toHaveBeenLastCalledWith(
-			"notice",
-			"Thinking blocks: visible",
-		);
+		expect(context.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(context.chatContainer.render(80).join("\n")).toContain("Thinking blocks: visible");
 	});
 });

@@ -5,7 +5,7 @@ import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 it.each(["claude", "codex", "octocode"] as const)("preserves %s fork source semantics", async (protocol) => {
 	const home = tmp();
@@ -23,7 +23,7 @@ it.each(["claude", "codex", "octocode"] as const)("preserves %s fork source sema
 			hooks: { SessionStart: [{ matcher: source, hooks: [{ type: "command", command: "echo source-matched" }] }] },
 		}),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "fork" }, ctx);
@@ -39,7 +39,7 @@ it("delivers compact and clear MCP context once through the registered owner", a
 		path.join(home, ".claude/settings.json"),
 		JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "mcp_tool", server: "policy", tool: "context" }] }] } }),
 	);
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	fake.api.events = createEventBus();
 	const call = vi.fn(async () => ({ content: [{ type: "text" as const, text: "MCP session guidance" }] }));
 	const unregister = registerMcpHookCaller(fake.api.events, call);
@@ -75,7 +75,7 @@ it.each(["claude", "codex"] as const)(
 				},
 			}),
 		);
-		const fake = fakeHost();
+		const fake = fakeHost(HOOK_SETTINGS);
 		fake.api.events = createEventBus();
 		const call = vi.fn(async () => ({ content: [] }));
 		const unregister = registerMcpHookCaller(fake.api.events, call);

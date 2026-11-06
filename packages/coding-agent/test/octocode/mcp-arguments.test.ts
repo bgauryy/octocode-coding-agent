@@ -50,24 +50,34 @@ function setup(schema = inputSchema) {
 	return { run, call, beforeToolCall };
 }
 
+// The server owns its input (user decision, 2026-11-05): gates and the server see the arguments as the model sent
+// them, and a shape the schema rejects (a JSON-string `queries`, a number as text) fails instead of being repaired.
 describe("Octocode argument preflight", () => {
-	it.each([1, 2])(
-		"decodes a query envelope encoded %i time(s) and coerces typed scalars before gates",
-		async (depth) => {
-			const f = setup();
-			let queries = JSON.stringify([{ path: "file.ts", length: "300", fullContent: "true" }]);
-			if (depth === 2) queries = JSON.stringify(queries);
-			const args = { queries };
-			expect((await f.run(args)).isError).toBe(false);
-			const expected = { queries: [{ path: "file.ts", length: 300, fullContent: true }] };
-			expect(f.beforeToolCall.mock.calls[0][0].args).toEqual(expected);
-			expect(f.call).toHaveBeenCalledOnce();
-			expect(f.call.mock.calls[0][1]).toEqual(expected);
-			expect(args).toEqual({ queries });
-		},
-	);
+	it("passes valid arguments to the gates and the server exactly as sent", async () => {
+		const f = setup();
+		const args = { queries: [{ path: "file.ts", length: 300, fullContent: true }] };
+		expect((await f.run(args)).isError).toBe(false);
+		expect(f.beforeToolCall.mock.calls[0][0].args).toEqual(args);
+		expect(f.call).toHaveBeenCalledOnce();
+		expect(f.call.mock.calls[0][1]).toEqual(args);
+	});
 
-	it("decodes queries chosen through a spec-valid root anyOf (queries or cursor) before gates", async () => {
+	it.each([1, 2])("rejects a query envelope encoded %i time(s) as a JSON string, before gates", async (depth) => {
+		const f = setup();
+		let queries = JSON.stringify([{ path: "file.ts", length: 300 }]);
+		if (depth === 2) queries = JSON.stringify(queries);
+		expect((await f.run({ queries })).isError).toBe(true);
+		expect(f.beforeToolCall).not.toHaveBeenCalled();
+		expect(f.call).not.toHaveBeenCalled();
+	});
+
+	it("rejects typed scalars sent as text instead of converting them", async () => {
+		const f = setup();
+		expect((await f.run({ queries: [{ path: "file.ts", length: "300", fullContent: "true" }] })).isError).toBe(true);
+		expect(f.call).not.toHaveBeenCalled();
+	});
+
+	it("accepts either form of a spec-valid root anyOf (queries or cursor) unchanged", async () => {
 		const rootAnyOf = {
 			type: "object" as const,
 			anyOf: [
@@ -76,7 +86,7 @@ describe("Octocode argument preflight", () => {
 			],
 		};
 		const f = setup(rootAnyOf as never);
-		expect((await f.run({ queries: JSON.stringify([{ path: "file.ts", length: "5" }]) })).isError).toBe(false);
+		expect((await f.run({ queries: [{ path: "file.ts", length: 5 }] })).isError).toBe(false);
 		expect(f.call.mock.calls[0][1]).toEqual({ queries: [{ path: "file.ts", length: 5 }] });
 		expect((await f.run({ cursor: "next" })).isError).toBe(false);
 		expect(f.call.mock.calls[1][1]).toEqual({ cursor: "next" });
@@ -98,7 +108,7 @@ describe("Octocode argument preflight", () => {
 		expect(f.beforeToolCall).not.toHaveBeenCalled();
 	});
 
-	it("validates every decoded field and the batch cap before reaching the server", async () => {
+	it("validates every field and the batch cap before reaching the server", async () => {
 		for (const queries of [
 			[{ length: "not a number" }],
 			[{ unknownField: true }],
@@ -106,14 +116,14 @@ describe("Octocode argument preflight", () => {
 			Array.from({ length: 6 }, () => ({})),
 		]) {
 			const f = setup();
-			expect((await f.run({ queries: JSON.stringify(queries) })).isError).toBe(true);
+			expect((await f.run({ queries })).isError).toBe(true);
 			expect(f.call).not.toHaveBeenCalled();
 		}
 	});
 
-	it("rejects unknown envelope fields after repairing queries", async () => {
+	it("rejects unknown envelope fields", async () => {
 		const f = setup();
-		expect((await f.run({ queries: "[{}]", unknownField: true })).isError).toBe(true);
+		expect((await f.run({ queries: [{}], unknownField: true })).isError).toBe(true);
 		expect(f.call).not.toHaveBeenCalled();
 	});
 });

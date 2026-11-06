@@ -10,6 +10,9 @@ import { interactive } from "./shared/interactive.ts";
 import { MINUTE_MS, settleWithin } from "./shared/util.ts";
 import { holdFailedRun } from "./held-failure.ts";
 import { registerWakeRetry } from "./wake-retry.ts";
+import { registerTimers } from "./timer/register.ts";
+import { CHILD_JOB_HOLD_MS, holdForOwnJobs, JOB_HOLD_TYPE } from "./files/bash/child-hold.ts";
+import type { BashJob } from "./files/bash-jobs/types.ts";
 
 export function registerNativeSessionLifecycle(
 	api: ExtensionAPI,
@@ -21,10 +24,19 @@ export function registerNativeSessionLifecycle(
 		agents?: AgentControl;
 		external?: ExternalAgents;
 		api?: ReturnType<typeof registerApi>;
+		/** How long a subagent's run holds after its answer for its own running jobs (`child-hold.ts`). */
+		jobHoldMs?: number;
 	},
 ): void {
 	const { isSubagent, team, permission, jobs, agents, external, api: externalApi } = options;
+	/** A subagent's jobs it was already told outlasted the hold: answering again leaves them to be stopped. */
+	const warnedJobs = new WeakSet<BashJob>();
 	registerWakeRetry(api, isSubagent);
+	// Every session, children included, owns its timers; a headless run's hold below waits for the next wake.
+	const timers = registerTimers(api, {
+		reservation: (absolute, display) => team.reservation(absolute, display),
+		agent: () => team.id,
+	});
 	/** Whether this run already held for a report after a failure (`held-failure.ts`). */
 	const held = { value: false };
 	api.on("before_agent_start", async () => {
@@ -49,12 +61,25 @@ export function registerNativeSessionLifecycle(
 			}
 		}
 		held.value = false;
+		// A subagent that answers while its own job runs is waiting for it: the job's completion goes to it in one more turn
+		// instead of the job being stopped below with the run (B82).
+		if (isSubagent) {
+			const holding = setInterval(() => undefined, MINUTE_MS);
+			try {
+				const notify = (text: string) =>
+					void api.sendMessage({ customType: JOB_HOLD_TYPE, content: text, display: true }, { triggerTurn: false });
+				if (await holdForOwnJobs(jobs, warnedJobs, notify, stop, options.jobHoldMs ?? CHILD_JOB_HOLD_MS))
+					return { continue: true };
+			} finally {
+				clearInterval(holding);
+			}
+		}
 		// No time cap of its own: jobs without a timeout are stopped, timed jobs end at their timeout, and a subagent's
 		// watchdog bounds it by its calls' deadlines; an interrupt ends the wait. Job and child handles are unref'd, so a
 		// ref'd timer keeps the process alive until their reports arrive.
 		const keepAlive = setInterval(() => undefined, MINUTE_MS);
 		try {
-			await settleWithin(Promise.all([jobs.settle(), agents?.settle()]), undefined, stop);
+			await settleWithin(Promise.all([jobs.settle(), agents?.settle(), timers.settle()]), undefined, stop);
 		} finally {
 			clearInterval(keepAlive);
 		}

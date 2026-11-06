@@ -61,23 +61,14 @@ it("loads one native command per canonical name through the real SDK", async () 
 			"status",
 			"trust",
 			"web",
+			"octocode",
 		])
 			expect(commands.filter((command) => command.name === name)).toHaveLength(1);
 		for (const name of ["permission", "sessions", "info", "session"]) {
 			expect(commands.some((command) => command.name === name)).toBe(false);
 			expect(runner.getCommand(name)).toBeUndefined();
 		}
-		for (const removed of [
-			"continue",
-			"usage",
-			"cost",
-			"stats",
-			"allowed-tools",
-			"list-agents",
-			"peers",
-			"octocode",
-			"hooks",
-		])
+		for (const removed of ["continue", "usage", "cost", "stats", "allowed-tools", "list-agents", "peers", "hooks"])
 			expect(runner.getCommand(removed)).toBeUndefined();
 		await session.controlPlan({ action: "enter" });
 		for (const toolName of ["file", "bash", "agent", "execute", "browser", "debug", "mcp__unknown__read"]) {

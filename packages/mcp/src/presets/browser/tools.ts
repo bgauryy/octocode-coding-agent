@@ -9,7 +9,6 @@ import { hostRender } from "../../host.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { engineDetail } from "./failure.ts";
 import { presentBrowserResult } from "./presentation.ts";
-import { normalizeBrowserArguments } from "./presentation-options.ts";
 import { guardBrowserCall } from "./proxy.ts";
 
 /**
@@ -39,8 +38,8 @@ export function withStructuredText(result: CallToolResult): CallToolResult {
 /**
  * The Octocode tool for one browser server tool. Results share the Octocode preset's bounds: untrusted page text has its
  * control characters made visible, oversized text is saved whole to the session's output folder, and images fit the
- * active model. A saved screenshot reaches the model as an image beside its file paths, `options` values the engine
- * would ignore are normalized before the call, and a HAR without bodies is flagged.
+ * active model. A saved screenshot reaches the model as an image beside its file paths, and a HAR without bodies is
+ * flagged. Arguments reach the server as sent, except `open`, which the network filter starts behind its proxy.
  */
 export function defineBrowserTool(options: McpToolDefinitionOptions) {
 	const { tool } = options;
@@ -53,10 +52,7 @@ export function defineBrowserTool(options: McpToolDefinitionOptions) {
 			presentation: {
 				label,
 				...createMcpToolRenderers(label),
-				prepareCall: (args, ctx) => {
-					const normalized = normalizeBrowserArguments(tool.name, args);
-					return launcherArgs ? guardBrowserCall(tool.name, normalized, ctx.cwd, ctx.signal) : { args: normalized };
-				},
+				prepareCall: (args, ctx) => (launcherArgs ? guardBrowserCall(tool.name, args, ctx.cwd, ctx.signal) : { args }),
 				async convertResult(result, ctx) {
 					const limits = imageLimits(ctx.model);
 					const detail = await engineDetail(result, ctx.cwd);

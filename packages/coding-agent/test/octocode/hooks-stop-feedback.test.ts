@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 it("continues Claude Stop feedback under the existing cap and lets termination win", async () => {
@@ -27,7 +27,7 @@ it("continues Claude Stop feedback under the existing cap and lets termination w
 			}),
 		);
 	write();
-	const fake = fakeHost();
+	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	registerHooks(fake.api, {}, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);

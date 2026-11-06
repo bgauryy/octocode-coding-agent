@@ -9,7 +9,7 @@ import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/render.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { validateFileInput } from "../../src/octocode/shared/file-input.ts";
-import { BASH_READER, FileGuard, LOCAL_FETCH_READER, returnedContent } from "../../src/octocode/files/tool/guard.ts";
+import { BASH_READER, FileGuard, mcpReader, returnedContent } from "../../src/octocode/files/tool/guard.ts";
 import { formatOutcomes } from "../../src/octocode/files/tool/queries.ts";
 import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
 import { sha256 } from "../../../common/src/atomic-file.ts";
@@ -17,7 +17,12 @@ import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { capChars } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
+import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";
+
+useResearchRoles();
+/** A guard whose refusals name the fake research server's reader, as a session with it connected does. */
+const researchGuard = () => Object.assign(new FileGuard(), { reader: mcpReader(RESEARCH.reader) });
 
 describe("file input shape", () => {
 	it("teaches the queries and patch forms when a call has neither, or both", () => {
@@ -46,7 +51,7 @@ describe("file tool one-of input", () => {
 				},
 				on: () => undefined,
 			} as never,
-			new FileGuard(),
+			researchGuard(),
 			fakePermission(),
 		);
 		expect(tool!.description).toMatch(/queries .* or a Codex-style patch string, not both/);
@@ -65,7 +70,7 @@ describe("file tool", () => {
 	it("allows writing new files, requires existing files for edit/delete, and a read before changing an existing one", () => {
 		const dir = tmp();
 		const file = path.join(dir, "a.txt");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toMatch(/does not exist/);
 		fs.writeFileSync(file, "one");
@@ -73,7 +78,7 @@ describe("file tool", () => {
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
 		for (const mode of ["write", "delete"] as const)
 			expect(guard.check(file, mode, "a.txt")).toMatch(
-				/already exists and was not read in this session\. Read it first: localFetch \{queries:\[\{path:"a\.txt"\}\]\}\. A plain `cat` or `sed -n` print in bash also counts\./,
+				/already exists and was not read in this session\. Read it first with `mcp__research__read_file`\. A plain `cat` or `sed -n` print in bash also counts\./,
 			);
 		guard.record(file);
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
@@ -84,7 +89,7 @@ describe("file tool", () => {
 		const dir = tmp();
 		const file = path.join(dir, "a.txt");
 		fs.writeFileSync(file, "one\ntwo\nthree\nfour");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.reader = BASH_READER;
 		expect(guard.check(file, "write", "a.txt")).toMatch(
 			/was not read in this session\. Read it first: bash `sed -n '1,200p' a\.txt`/,
@@ -93,14 +98,15 @@ describe("file tool", () => {
 		expect(guard.check(file, "write", "a.txt")).toMatch(/Read the rest with `bash` \(sed -n '3,4p' <file>\)/);
 		fs.writeFileSync(file, "changed");
 		expect(guard.check(file, "delete", "a.txt")).toMatch(/Read it again with `bash`/);
-		expect(new FileGuard().reader).toBe(LOCAL_FETCH_READER);
+		// Bash is the default until the session connects an MCP reader (`mcpReader`).
+		expect(new FileGuard().reader).toBe(BASH_READER);
 	});
 
 	it("detects files changed on disk after the last read and resets after compaction", () => {
 		const dir = tmp();
 		const file = path.join(dir, "a.txt");
 		fs.writeFileSync(file, "one");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(file);
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
 		fs.writeFileSync(file, "changed by someone else");
@@ -122,7 +128,7 @@ describe("file tool", () => {
 		for (const file of [kept, changed, gone]) fs.writeFileSync(file, "one");
 		const readAt = fs.statSync(kept).mtimeMs + 1000;
 		fs.utimesSync(changed, (readAt + 5000) / 1000, (readAt + 5000) / 1000);
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(gone);
 		guard.restore([
 			{ file: kept, at: readAt },
@@ -201,7 +207,7 @@ describe("file tool", () => {
 		const other = path.join(dir, "b.txt");
 		fs.writeFileSync(file, "one");
 		fs.writeFileSync(other, "two");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(file);
 		guard.forget(file);
 		expect(guard.check(file, "write", "a.txt")).toMatch(
@@ -222,7 +228,7 @@ describe("file tool", () => {
 		fs.writeFileSync(file, "aaaa");
 		const pinned = new Date(1_700_000_000_000);
 		fs.utimesSync(file, pinned, pinned);
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		const reads = vi.spyOn(fs, "readFileSync");
 		try {
 			guard.record(file);
@@ -240,7 +246,7 @@ describe("file tool", () => {
 		const dir = tmp();
 		const file = path.join(dir, "a.txt");
 		fs.writeFileSync(file, "aaaa");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(file, { sha256: sha256("aaaa"), size: 4 });
 		fs.utimesSync(file, new Date(), new Date(Date.now() + 5_000));
 		expect(guard.inspect(file, "edit", "a.txt")).toMatchObject({ expected: sha256("aaaa") });
@@ -257,7 +263,7 @@ describe("file tool", () => {
 		const file = path.join(dir, "Real.txt");
 		fs.writeFileSync(file, "one");
 		fs.symlinkSync(file, path.join(dir, "link.txt"));
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(path.join(dir, "link.txt"));
 		expect(guard.check(file, "write", "Real.txt")).toBeUndefined();
 		const insensitive = fs.existsSync(path.join(dir, "real.txt"));
@@ -305,7 +311,7 @@ describe("file tool", () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "new!");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
 			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
@@ -324,7 +330,7 @@ describe("file tool", () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "one");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
 			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
@@ -333,7 +339,7 @@ describe("file tool", () => {
 		);
 		await handlers.get("tool_result")!(
 			{
-				toolName: "mcp__octocode__localFetch",
+				toolName: RESEARCH.reader,
 				input: { queries: [{ path: file, fullContent: true }] },
 				content: [{ type: "text", text: "one" }],
 				structuredContent: {
@@ -358,7 +364,7 @@ describe("file tool", () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "one");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
 			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
@@ -366,7 +372,7 @@ describe("file tool", () => {
 			fakePermission(),
 		);
 		const localFetch = (extra: Record<string, unknown>) => ({
-			toolName: "mcp__octocode__localFetch",
+			toolName: RESEARCH.reader,
 			input: { queries: [{ path: file, fullContent: true }] },
 			content: [{ type: "text", text: "read, content withheld" }],
 			details: { localReads: [{ file: fs.realpathSync(file), sha256: sha256("one"), size: 3, whole: true }] },
@@ -383,7 +389,7 @@ describe("file tool", () => {
 		const cwd = tmp();
 		fs.writeFileSync(path.join(cwd, "b.txt"), "keep");
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		registerFileTool(
 			{
 				registerTool: (t: typeof tool) => {
@@ -432,7 +438,7 @@ describe("file tool", () => {
 				},
 				on: () => undefined,
 			} as never,
-			new FileGuard(),
+			researchGuard(),
 			fakePermission(),
 		);
 		// The schema does not cap or floor the list (a validation refusal echoes every argument): the tool itself decides.
@@ -456,7 +462,7 @@ describe("file tool", () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "one");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(file);
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
@@ -506,7 +512,7 @@ describe("file tool", () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "one\ntwo\n");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(file);
 		let tool:
 			| { execute: (...args: unknown[]) => Promise<{ details: { outcomes: Array<{ diff?: string }> } }> }
@@ -547,7 +553,7 @@ describe("file tool", () => {
 		vi.stubEnv("HOME", home);
 		const file = path.join(home, "notes.txt");
 		fs.writeFileSync(file, "one");
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.record(file);
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		const permission = fakePermission();
@@ -594,7 +600,7 @@ describe("file tool", () => {
 			const cwd = tmp();
 			const file = path.join(cwd, "a.ts");
 			fs.writeFileSync(file, content);
-			const guard = new FileGuard();
+			const guard = researchGuard();
 			guard.record(file, { sha256: sha256(content), size: Buffer.byteLength(content) });
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
@@ -640,7 +646,9 @@ describe("file tool", () => {
 					{ oldText: "const a=1;", newText: "x" },
 					{ oldText: "const b=2;", newText: "y" },
 				]),
-			).rejects.toThrow(/edits\[1\] \(oldText "const b=2;"\) is no longer in it[\s\S]*Read it again with `localFetch`/);
+			).rejects.toThrow(
+				/edits\[1\] \(oldText "const b=2;"\) is no longer in it[\s\S]*Read it again with `mcp__research__read_file`/,
+			);
 			expect(fs.readFileSync(file, "utf8")).toBe("const a=1;\nconst b = 2;\n");
 		});
 
@@ -676,7 +684,7 @@ describe("file tool", () => {
 		const file = path.join(cwd, "a.txt");
 		const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
 		fs.writeFileSync(file, lines);
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
@@ -700,7 +708,7 @@ describe("file tool", () => {
 			},
 			{ cwd },
 		);
-		const refusal = /you have seen lines 11–15 of its 30 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/;
+		const refusal = /you have seen lines 11–15 of its 30 lines[\s\S]*lines 1-[0-9]+\)/;
 		expect(guard.check(file, "write", "a.txt")).toMatch(refusal);
 		// A delete needs only proof that the read was of the current file; an edit its exact match.
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
@@ -745,10 +753,10 @@ describe("file tool", () => {
 				}),
 			},
 		};
-		const reloaded = new FileGuard();
+		const reloaded = researchGuard();
 		reloaded.restore(contextReads(session as never));
 		expect(reloaded.check(file, "write", "a.txt")).toMatch(
-			/you have seen lines 1–5 of its 30 lines[\s\S]*ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/,
+			/you have seen lines 1–5 of its 30 lines[\s\S]*lines 6-[0-9]+\)/,
 		);
 		expect(reloaded.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(reloaded.check(file, "edit", "a.txt")).toBeUndefined();
@@ -817,10 +825,10 @@ describe("file tool", () => {
 			},
 		};
 		expect(seenFiles([restored], dir).get(file)?.partial).toBe(true);
-		const guard = new FileGuard();
+		const guard = researchGuard();
 		guard.restore([{ file, at: Date.now() + 1000, partial: true }]);
 		expect(guard.check(file, "write", "a.txt")).toMatch(
-			/you have seen only part of its 1 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/,
+			/you have seen only part of its 1 lines[\s\S]*lines 1-[0-9]+\)/,
 		);
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
@@ -837,7 +845,7 @@ describe("file tool", () => {
 			const cwd = tmp();
 			const file = path.join(cwd, "big.txt");
 			fs.writeFileSync(file, content);
-			const guard = new FileGuard();
+			const guard = researchGuard();
 			const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
@@ -884,7 +892,7 @@ describe("file tool", () => {
 			await read({}, text(1, 2000), { details: cut });
 			const refusal = await run("write").catch((error: Error) => error.message);
 			expect(refusal).toMatch(
-				/a write replaces the whole file, but you have seen lines 1–2000 of its 3000 lines\. Read the rest with `localFetch` \(ranges:\[\{startLine:2001,endLine:[0-9]+\}\]\)/,
+				/a write replaces the whole file, but you have seen lines 1–2000 of its 3000 lines\. Read the rest with `mcp__research__read_file` \(lines 2001-[0-9]+\)/,
 			);
 			// Never asks for what a big file cannot give.
 			expect(refusal).not.toMatch(/whole file \(no offset|read the whole file/);
@@ -913,7 +921,7 @@ describe("file tool", () => {
 				details: { truncation: { truncated: true, outputLines: 500 } },
 			});
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1501–2000 of its 3001 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/,
+				/you have seen lines 1501–2000 of its 3001 lines[\s\S]*lines 1-[0-9]+\)/,
 			);
 		});
 
@@ -992,13 +1000,13 @@ describe("file tool", () => {
 			// Same line count: the lines the agent saw are where it saw them.
 			await edit([{ oldText: "line 2\n", newText: "LINE 2\n" }]);
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/,
+				/you have seen lines 1–5 of its 3000 lines[\s\S]*lines 6-[0-9]+\)/,
 			);
-			await expect(run("write")).rejects.toThrow(/ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/);
+			await expect(run("write")).rejects.toThrow(/lines 6-[0-9]+\)/);
 			// A different line count moved what lies below, so the ranges start over.
 			await edit([{ oldText: "LINE 2\n", newText: "LINE 2\nextra\n" }]);
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen only part of its 3001 lines[\s\S]*ranges:\[\{startLine:1,endLine:[0-9]+\}\]\)/,
+				/you have seen only part of its 3001 lines[\s\S]*lines 1-[0-9]+\)/,
 			);
 			// An edit keeps the digest it wrote, so the next edit and a delete still pass; reading the rest lifts the write refusal.
 			await edit([{ oldText: "LINE 2\nextra\n", newText: "LINE 2\n" }]);
@@ -1020,8 +1028,8 @@ describe("file tool", () => {
 		it("counts the tool's own write as a whole view", async () => {
 			const { file, guard, read, run } = setup();
 			await read({ offset: 1, limit: 5 }, text(1, 5));
-			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/);
-			await expect(run("write")).rejects.toThrow(/ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/);
+			expect(guard.check(file, "write", "big.txt")).toMatch(/lines 6-[0-9]+\)/);
+			await expect(run("write")).rejects.toThrow(/lines 6-[0-9]+\)/);
 			guard.restore([]);
 			guard.record(file);
 			await run("write");
@@ -1037,9 +1045,9 @@ describe("file tool", () => {
 			await read({ offset: 1, limit: 3 }, "one\n2\nthree");
 			// Only what the new read showed counts: the outside line (and the rest) are unseen.
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–3 of its 7 lines[\s\S]*ranges:\[\{startLine:4,endLine:[0-9]+\}\]\)/,
+				/you have seen lines 1–3 of its 7 lines[\s\S]*lines 4-[0-9]+\)/,
 			);
-			await expect(run("write")).rejects.toThrow(/ranges:\[\{startLine:4,endLine:[0-9]+\}\]\)/);
+			await expect(run("write")).rejects.toThrow(/lines 4-[0-9]+\)/);
 			await read({ offset: 4 }, "four\nfive\nsix\noutside");
 			await run("write");
 			expect(fs.readFileSync(file, "utf8")).toBe("new\n");
@@ -1107,7 +1115,7 @@ describe("file tool", () => {
 			).toEqual([{ file, at: later + 20 }]);
 			guard.restore(reads(edit(0)));
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges:\[\{startLine:6,endLine:[0-9]+\}\]\)/,
+				/you have seen lines 1–5 of its 3000 lines[\s\S]*lines 6-[0-9]+\)/,
 			);
 			guard.restore(reads(whole));
 			expect(guard.check(file, "write", "big.txt")).toBeUndefined();
@@ -1165,7 +1173,7 @@ describe("file tool", () => {
 					},
 				} as never),
 			);
-			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges:\[\{startLine:2001,/);
+			expect(guard.check(file, "write", "big.txt")).toMatch(/lines 2001-/);
 		});
 	});
 
@@ -1173,9 +1181,7 @@ describe("file tool", () => {
 		expect(readPaths("read", { path: "@src/x.ts" }, "/r")).toEqual(["/r/src/x.ts"]);
 		// Any range of Octocode's read counts (Octocode's own guard semantics).
 		expect(readPaths("read", { path: "src/x.ts", offset: 5, limit: 2 }, "/r")).toEqual(["/r/src/x.ts"]);
-		expect(
-			readPaths("mcp__octocode__localFetch", { queries: [{ path: "/r/whole.ts", fullContent: true }] }, "/r"),
-		).toEqual([]);
+		expect(readPaths(RESEARCH.reader, { queries: [{ path: "/r/whole.ts", fullContent: true }] }, "/r")).toEqual([]);
 		expect(resolveToolPath("/repo", "@src/x.ts")).toBe("/repo/src/x.ts");
 	});
 
@@ -1203,7 +1209,7 @@ describe("file tool", () => {
 		try {
 			const file = path.join(home, ".bashrc");
 			fs.writeFileSync(file, "one");
-			const guard = new FileGuard();
+			const guard = researchGuard();
 			const checkpoints = new Checkpoints();
 			const store = tmp();
 			checkpoints.open(store);
@@ -1282,7 +1288,7 @@ describe("file tool", () => {
 				},
 				on: () => undefined,
 			} as never,
-			new FileGuard(),
+			researchGuard(),
 			fakePermission(),
 		);
 		const write = (target: string, ctx: unknown) =>
@@ -1316,7 +1322,7 @@ describe("file tool", () => {
 				},
 				on: () => undefined,
 			} as never,
-			new FileGuard(),
+			researchGuard(),
 			fakePermission("full"),
 		);
 		await expect(
@@ -1346,7 +1352,7 @@ describe("file tool", () => {
 				},
 				on: () => undefined,
 			} as never,
-			new FileGuard(),
+			researchGuard(),
 			fakePermission(),
 			checkpoints,
 		);
@@ -1426,7 +1432,7 @@ describe("file change rendering", () => {
 				},
 				on: () => undefined,
 			} as never,
-			new FileGuard(),
+			researchGuard(),
 			fakePermission(),
 		);
 		const args = {

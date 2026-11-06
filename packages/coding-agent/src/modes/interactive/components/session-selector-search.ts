@@ -144,9 +144,7 @@ function matchSession(
 
 	for (const token of parsed.tokens) {
 		if (token.kind === "phrase") {
-			if (normalizedText === null) {
-				normalizedText = normalizeWhitespaceLower(text);
-			}
+			normalizedText ??= normalizeWhitespaceLower(text);
 			const phrase = normalizeWhitespaceLower(token.value);
 			if (!phrase) continue;
 			const idx = normalizedText.indexOf(phrase);

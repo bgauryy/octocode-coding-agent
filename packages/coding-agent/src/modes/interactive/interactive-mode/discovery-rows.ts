@@ -4,15 +4,22 @@
  */
 
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import type { ResourceDiagnostic } from "../../../core/diagnostics.ts";
 import {
 	type ContextEntry,
 	type ContextGroup,
 	type ContextView,
+	type ContextWarning,
 	PI_CODE_HINT,
 	activeEntries,
 	problemSummary,
 	sourceSummary,
 } from "../../../core/discovery/context-view.ts";
+import { homePath, skillFolder } from "../../../core/discovery/display-paths.ts";
+import type { KeybindingProblem } from "../../../core/keybindings.ts";
+import { foundSummary } from "../../../core/discovery/vendors/prompt.ts";
+import type { HarnessStatus } from "../../../core/discovery/vendors/types.ts";
+import { visibleWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import type { LoadedRowSpec } from "./loaded-row.ts";
 
@@ -61,27 +68,105 @@ function groupRow(group: ContextGroup, formatPath: (path: string) => string): Vi
 	};
 }
 
-/** Every kind with something to show, in the view's order, then one Warnings row for shadowed copies and untrusted items. */
+/** Every kind with something to show, in the view's order; the view's warnings are lines of their own ({@link startupWarnings}). */
 export function viewRows(view: ContextView, formatPath: (path: string) => string): ViewRow[] {
-	const rows = view.groups.map((group) => groupRow(group, formatPath));
-	if (view.warnings.length > 0) {
-		const text = () => clean(view.warnings.map((warning) => warning.short).join(" \u00b7 "));
-		rows.push({
-			id: "warning",
-			spec: {
-				label: "Warnings",
-				count: () => view.warnings.reduce((sum, warning) => sum + warning.details.length, 0),
-				summary: () => theme.fg("warning", text()),
-				cells: () => ({ sources: theme.fg("warning", text()) }),
-				details: () =>
-					view.warnings
-						.flatMap((warning) => [
-							`  ${theme.fg("warning", clean(warning.text))}`,
-							...warning.details.map((detail) => theme.fg("dim", `    ${clean(detail)}`)),
-						])
-						.join("\n"),
-			},
+	return view.groups.map((group) => groupRow(group, formatPath));
+}
+
+/**
+ * `Harness  .agents ● · Pi ● · Claude Code ○ 1 skill, 1 hook · /harness`: every switchable harness, on (●) or off (○,
+ * with what switching it on would add); the count is how many are on. Octocode itself has no switch and is left out.
+ * When the line does not fit, the off counts go first, then the harnesses wrap; `/harness` always ends it.
+ */
+export function harnessRow(statuses: readonly HarnessStatus[]): LoadedRowSpec {
+	const shown = statuses.filter((status) => status.switchable);
+	const parts = (counts: boolean) => [
+		...shown.map((status) => {
+			if (status.on)
+				return `${theme.fg("muted", status.label)} ${theme.fg("success", "●")}${status.projectOnly ? theme.fg("dim", " project") : ""}`;
+			const found = counts ? foundSummary(status) : "";
+			return `${theme.fg("muted", status.label)} ${theme.fg("dim", `○${found ? ` ${found}` : ""}`)}`;
+		}),
+		theme.fg("dim", "/harness"),
+	];
+	const separator = theme.fg("dim", " \u00b7 ");
+	return {
+		label: "Harness",
+		count: () => shown.filter((status) => status.on).length,
+		showZero: true,
+		summary: () => parts(true).join(separator),
+		fitSummary: (room) => {
+			const full = parts(true).join(separator);
+			if (visibleWidth(full) <= room) return [full];
+			// Whole harnesses per line; a wrapped line ends with ` ·`, so all but the last part keep two cells for it.
+			const short = parts(false);
+			const lines: string[] = [];
+			for (const [index, part] of short.entries()) {
+				const reserve = index === short.length - 1 ? 0 : 2;
+				const last = lines.length - 1;
+				if (last < 0) lines.push(part);
+				else if (visibleWidth(lines[last] + separator + part) + reserve <= room) lines[last] += separator + part;
+				else {
+					lines[last] += theme.fg("dim", " \u00b7");
+					lines.push(part);
+				}
+			}
+			return lines;
+		},
+	};
+}
+
+/** A Codex `agents/openai.yaml` note: metadata this host reads but does not act on, information rather than a problem. */
+const isCodexNote = (diagnostic: ResourceDiagnostic): boolean =>
+	/[\\/]agents[\\/]openai\.yaml$/.test(diagnostic.path ?? "");
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/**
+ * The startup warnings, one line each saying what is wrong and what to do (`details` are listed by ctrl+o), and the
+ * notes shown only expanded: skipped duplicates (discovery's shadowed copies, then loader collisions of other names),
+ * skill files with problems, and keybinding entries the loader ignores. Codex metadata notes are information.
+ */
+export function startupWarnings(
+	view: ContextView,
+	skillDiagnostics: readonly ResourceDiagnostic[],
+	keybindings: readonly KeybindingProblem[],
+): { warnings: ContextWarning[]; notes: ContextWarning[] } {
+	const shadowedSkills = new Set(
+		view.groups
+			.filter((group) => group.id === "skill")
+			.flatMap((group) => group.entries.filter((entry) => entry.state === "shadowed").map((entry) => entry.name)),
+	);
+	const collisions = skillDiagnostics.filter(
+		(d) => d.type === "collision" && d.collision && !shadowedSkills.has(d.collision.name),
+	);
+	const notes = skillDiagnostics.filter(isCodexNote);
+	const problems = skillDiagnostics.filter((d) => d.type !== "collision" && !isCodexNote(d));
+	const line = (d: ResourceDiagnostic) => `${d.path ? `${homePath(d.path)}: ` : ""}${d.message}`;
+	const warnings: ContextWarning[] = [...view.warnings];
+	const winner = collisions[0]?.collision?.winnerPath;
+	if (collisions.length > 0 && winner)
+		warnings.push({
+			text: `${plural(collisions.length, "duplicate skill", "duplicate skills")} skipped: a skill with the same name loads from ${skillFolder(winner)} (ctrl+o lists them)`,
+			details: collisions.map((d) => `${d.collision?.name}: ${homePath(d.collision?.loserPath ?? "")}`),
 		});
-	}
-	return rows;
+	const problemFiles = new Set(problems.map((d) => d.path ?? d.message));
+	if (problems.length > 0)
+		warnings.push({
+			text: `${plural(problemFiles.size, "skill file", "skill files")} with problems: invalid SKILL.md or folder; fix or remove them (ctrl+o lists them)`,
+			details: problems.map(line),
+		});
+	for (const { path, problem } of keybindings) warnings.push({ text: `${homePath(path)}: ${problem}`, details: [] });
+	return {
+		warnings,
+		notes:
+			notes.length > 0
+				? [
+						{
+							text: `${plural(notes.length, "Codex agents/openai.yaml file", "Codex agents/openai.yaml files")}: read and validated; this host does not use their metadata`,
+							details: notes.map(line),
+						},
+					]
+				: [],
+	};
 }

@@ -11,8 +11,8 @@ export function parseResponsesUsage(usage: OpenAI.Responses.ResponseUsage): Usag
 				cache_write_tokens_details?: { ttl_12h_tokens?: number };
 		  }
 		| undefined;
-	const cachedTokens = inputDetails?.cached_tokens || 0;
-	const cacheWriteTokens = inputDetails?.cache_write_tokens || 0;
+	const cachedTokens = inputDetails?.cached_tokens ?? 0;
+	const cacheWriteTokens = inputDetails?.cache_write_tokens ?? 0;
 	const result = createUsage({
 		// OpenAI includes cached and cache-write tokens in input_tokens, so subtract both.
 		input: Math.max(0, (usage.input_tokens || 0) - cachedTokens - cacheWriteTokens),

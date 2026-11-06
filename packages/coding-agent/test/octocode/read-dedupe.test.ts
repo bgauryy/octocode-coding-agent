@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { registerReadDedupe } from "../../src/octocode/files/dedupe.ts";
 import { CLEARED_RESULTS_TYPE, seenFiles } from "../../src/octocode/files/reads.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
+
+useResearchRoles();
 
 const CONTENT = "line of text\n".repeat(500);
 let counter = 0;
@@ -145,16 +148,18 @@ describe("a repeated read of an unchanged file", () => {
 		).toBeUndefined();
 	});
 
-	it("also answers an identical localFetch of the same arguments, and no other tool", async () => {
+	it("also answers an identical MCP reader-role call of the same arguments, and no other tool", async () => {
 		const args = { queries: [{ path: "a.ts", startLine: 1 }] };
-		const first = exchange("mcp__octocode__localFetch", args, CONTENT);
+		const first = exchange(RESEARCH.reader, args, CONTENT);
 		const bash = exchange("bash", { command: "cat a.ts" }, CONTENT);
 		const s = setup([first, bash]);
-		const result = await s.run(event("mcp__octocode__localFetch", args, CONTENT));
+		const result = await s.run(event(RESEARCH.reader, args, CONTENT));
 		expect(result?.content?.[0]?.text).toMatch(
-			/^\[Unchanged since your earlier localFetch of the same arguments[^\n]*above[^\n]*\]$/,
+			new RegExp(`^\\[Unchanged since your earlier ${RESEARCH.reader} of the same arguments[^\\n]*above[^\\n]*\\]$`),
 		);
 		expect(await s.run(event("bash", { command: "cat a.ts" }, CONTENT))).toBeUndefined();
+		const search = exchange(RESEARCH.search, args, CONTENT);
+		expect(await setup([search]).run(event(RESEARCH.search, args, CONTENT))).toBeUndefined();
 	});
 
 	it("does not stay silent about partial content: the stub keeps the read's own details, so the guard still sees a whole or a partial read", () => {

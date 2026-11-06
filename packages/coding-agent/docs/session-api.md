@@ -1,6 +1,6 @@
 # Local session API
 
-Use `octocode-api` to send messages to a running Octocode host, read its status, watch events and request cancellation. Every top-level session (terminal, print, RPC, ACP worker) serves this API on an owner-only Unix socket, so other processes of the same user can reach it with no setup; subagents do not. It is separate from [Agent Client Protocol](acp.md): an ACP client launches an agent process; this API attaches to an already running host.
+Use `octocode-api` to send messages to a running Octocode host, read its status, watch events, request cancellation and read which agents started and ended (`events`). Every top-level session (terminal, print, RPC, ACP worker) serves this API on an owner-only Unix socket, so other processes of the same user can reach it with no setup; subagents do not. It is separate from [Agent Client Protocol](acp.md): an ACP client launches an agent process; this API attaches to an already running host.
 
 ## Start and discover
 
@@ -41,7 +41,7 @@ Without `--wait`, stdout contains the accepted receipt, for example `{"id":"x1",
 
 With `--wait`, stdout contains the final assistant text when the logical run settles, after queued continuations and retries. This is the run's result; concurrent senders do not receive isolated per-message conversations. The wire response also includes the receipt and, when available, `stopReason` and `errorMessage`. When the run did not succeed (`stopReason` is anything but `stop` or `toolUse`, so `error`, `aborted` or `length`), `--wait` exits `1`, leaves stdout empty and writes that JSON result to stderr. `--timeout` is in milliseconds: 1,000–3,600,000, default 600,000. The CLI allows an additional ten seconds for the server response.
 
-A message is subject to the receiving session's [permission mode](permissions.md#external-messages). A message that **starts a turn** on an idle session is judged as in `workspace` at most, even when the session is in `full`: its user decides first, as [What the sender gets](#what-the-sender-gets) describes, and the turn's tools run under `workspace` until the session settles. A message to a session that is already working (steering, or a queued follow-up) follows the session's own mode. The `sessionApiTurnPermission` setting (`session`) restores the session's own mode for turns too; see [Turns an API client starts](#turns-an-api-client-starts).
+A message is subject to the receiving session's [permission mode](permissions.md#external-messages). By default (`sessionApiTurnPermission: "session"`) a session in `full` takes it unasked, whether idle or working, and the turn runs in `full`, audited, so a remote agent never waits on a prompt; `workspace` and `manual` sessions ask as usual. Setting `sessionApiTurnPermission` to `"workspace"` holds API-started turns and steering messages to `workspace` even in a `full` session; see [Turns an API client starts](#turns-an-api-client-starts).
 
 Messages carry an external sender label and are fenced as untrusted input. The label is not authentication. Reserved user/team identities and live agent IDs cannot be claimed as the sender. Native message hooks and [tool permission policy](permissions.md) still apply.
 
@@ -55,14 +55,14 @@ The terminal draws each one as `✉ external`, with the claimed caller, and the 
 
 ## Turns an API client starts
 
-Any process of this OS user can reach the socket, and the caller's name is a claim, so a turn started through the API does not get a session's `full` mode by default. When a message arrives while the session is idle:
+Any process of this OS user can reach the socket, and the caller's name is a claim. By default an API-started turn follows the session's own mode, so a session in `full` runs it in `full` (audited). With `sessionApiTurnPermission: "workspace"`, a turn started through the API does not get a session's `full` mode. Then, when a message arrives while the session is idle:
 
 - Admission (the `message.external` class) is judged in the stricter of the session's mode and `workspace`. A session in `full` asks its user, or, with nobody to ask (print mode, an RPC or ACP worker without a dialog), refuses with `execution: "not-sent"` and a message naming the setting below.
 - The turn's tool calls are judged in the same mode until the session settles (`agent_settled`, so retries and queued continuations stay held): calls `workspace` asks about, such as a file change outside the repository or a destructive shell command, ask the user and are refused when nobody can answer, like any other ask. Subagents started during the turn inherit that mode.
 - A session already in `manual` stays in `manual`; the ceiling only tightens, and neither the footer chip nor the user's mode choice changes. The audit log records the calls under the mode that judged them.
-- A message to a session that is working (`steer`, `followUp`) is not held: it joins a turn whose mode is settled. When that turn is one an API client started, the steer is judged like any `workspace` message, so it asks.
+- A message to a session that is working (`steer`, `followUp`) is held too: its admission is judged as above, and once admitted the running turn, a user turn in `full` included, runs under the ceiling until the session settles. Timing a message to a running turn never yields more than `workspace`.
 
-The global setting `sessionApiTurnPermission` chooses: `"workspace"` (default) holds API-started turns as above; `"session"` restores the earlier behavior, where a session in `full` takes the message unasked and runs the turn in `full`. Any other value holds the turn. A project settings file cannot change it. It is read for each message, so a change applies to the next one. Prefer `OCTOCODE_PERMISSION=manual` or `workspace` over `"session"` where other programs run as the same user.
+The global setting `sessionApiTurnPermission` chooses: `"session"` (default) follows the session's mode, where a session in `full` takes the message unasked and runs the turn in `full`; `"workspace"` holds API-started turns as above. Any other value follows the session's mode. A project settings file cannot change it. It is read for each message, so a change applies to the next one. Prefer `OCTOCODE_PERMISSION=manual` or `workspace` over `"session"` where other programs run as the same user.
 
 Tool permissions otherwise do not change. An external message reaches the model; it is not a reply to a dialog. A pending permission dialog or `askUser` question waits for the terminal or RPC client that owns it, and a session in `manual` mode stays manual. A message is not a slash command either: `/permissions full` in one is just text. See [the security notes](#who-can-reach-a-session) for what this does and does not protect.
 
@@ -70,7 +70,7 @@ Tool permissions otherwise do not change. An external message reaches the model;
 
 | The receiving session                                                                  | `send` without `--wait`                                                                                                                 | `send --wait`                                          | `agent` type `message`                                             |
 | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| Takes it (a working `full` session, a grant, or `sessionApiTurnPermission: "session"`) | `queued`: `turn`, `steer` or `followUp`                                                                                                 | The run's result                                       | "Sent to `<name>`"                                                 |
+| Takes it (a `full` session unless `sessionApiTurnPermission` is `"workspace"`, or a grant) | `queued`: `turn`, `steer` or `followUp`                                                                                                 | The run's result                                       | "Sent to `<name>`"                                                 |
 | Asks its user                                                                          | At once, `queued: "waiting-for-user"` and a `key` (yours, or one given now); repeating the send with that `--key` waits for the outcome | Waits within `--timeout`, which also closes the dialog | At once, "Waiting for `<name>`'s user"; told later only if refused |
 | Its user denies                                                                        | The retry fails with the refusal                                                                                                        | Exit `1`, the refusal on stderr                        | A notice in the sender's session, which starts a turn              |
 | Has nobody to ask                                                                      | Exit `1`, the refusal on stderr                                                                                                         | The same                                               | The tool call fails with the refusal                               |
@@ -115,6 +115,30 @@ octocode-api abort --to <instance-id>
 ```
 
 This acknowledges the abort request, not completed cleanup. Observe `agent.settled` and status afterward. CLI `abort` targets the host's current turn and has no session/key guard. Programmatic callers can pass `expectedSessionId` and the owning message `key` to `turn.abort` to avoid cancelling unrelated work. Cancelling a client wait or closing its connection does not itself abort the host's turn.
+
+## Watch agents come and go
+
+`events` reads the agent lifecycle of this directory's workspace from the agent database, so it needs no running session and no `--to`. Each agent that joins is an `on`, a change to its record is a `state`, and the end of its row is an `off` with the reason (`completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed` or `left`) and its final numbers.
+
+```sh
+octocode-api events --since 0
+octocode-api events --since <last-seq> --json
+```
+
+Options: `--since <seq>` (default 0) shows events after that sequence; `--limit <n>` (1-1000, default 200) caps one page, oldest first; `--json` prints one object, `{"since", "last", "events": [...]}`. Text output has one tab-separated line per event, then `last seq: <n>`:
+
+```text
+4	2026-11-04T23:13:54.297Z	on   	glowing-turtle	general	parent=spry-coral
+7	2026-11-04T23:13:54.437Z	off  	glowing-turtle	general	parent=spry-coral	reason=completed	toolCalls=0 input=100 cacheRead=0 output=5 cost=0.000105
+8	2026-11-04T23:13:54.622Z	off  	spry-coral	main	reason=left	toolCalls=1 input=100 cacheRead=0 output=5 cost=0.000105
+last seq: 8
+```
+
+Poll by passing the last sequence back as `--since`; a call with nothing new prints no events and the same `last`. Sequences have gaps (other event kinds and workspaces share the counter), and `last` stays at `--since` when a page is empty. A `--limit` page that is full means more may follow: call again with its `last`. Each event has `seq`, `time`, `event`, `agent`, and when known `role`, `parent`, `session`, `state`, `changes`, `reason`, `detail`, `outcome`, `backlogItem` and, on `off`, `stats`. A directory Octocode never ran in, or a missing database, has no events: the command says so on stderr, exits 0 and creates nothing. `events` only reads, so it is not subject to the permission rules above.
+
+## Use from Claude Code or Codex
+
+A Claude Code or Codex session reaches Octocode through its shell. [`skill-templates/octocode-api/SKILL.md`](skill-templates/octocode-api/SKILL.md) is a ready-to-copy [Agent Skill](https://agentskills.io) that teaches that host to find sessions (`list`), send (`send`, with the idle-session permission behavior) and watch agents with `events --since`. Copy the folder into that host's skills directory yourself (for example `.claude/skills/` or `.codex/skills/` of a project); Octocode does not install it.
 
 ## Use alongside ACP
 
@@ -161,7 +185,7 @@ Discovery records and Unix sockets are owner-only on POSIX systems. Clients must
 ## Who can reach a session
 
 - **Who:** any process running as the same OS user, including ones you did not start: a build script, a dependency's install step, a tool an agent runs. Another OS user cannot: the socket is mode 0600 in a mode 0700 folder. Root can. A sandbox that denies the socket's path also stops it; one that does not (a same-user process with filesystem access) reaches it.
-- **What it can do:** read status, history and the event stream (assistant text, tool names and hints); start or steer a turn, which spends model budget (it asks the session's user, unless the session is already working in `full`, or `sessionApiTurnPermission` is `"session"` and the session is in `full`); abort a turn; call `external.call`, which can start an ACP agent subject to the session's permission mode. A turn the API starts runs under `workspace` by default, which still runs shell commands and file changes in the repository without asking; in `full` (a turn that was already running, or `sessionApiTurnPermission: "session"`), tools run without asking. Either way a message the model acts on runs tools with this user's rights. The marker and the fence tell the model not to treat the message as authority, which lowers that risk and does not remove it. Use `manual` or `workspace` where it matters.
+- **What it can do:** read status, history and the event stream (assistant text, tool names and hints); start or steer a turn, which spends model budget (it asks the session's user, unless the session is in `full` and `sessionApiTurnPermission` is not `"workspace"`); abort a turn; call `external.call`, which can start an ACP agent subject to the session's permission mode. A turn the API starts runs under the session's mode by default, so in `full` its tools run without asking (audited); `sessionApiTurnPermission: "workspace"` holds it to `workspace`, which still runs shell commands and file changes in the repository without asking. Either way a message the model acts on runs tools with this user's rights. The marker and the fence tell the model not to treat the message as authority, which lowers that risk and does not remove it. Use `manual` or `workspace` where it matters.
 - **What it cannot do:** answer a dialog, approve a [worktree merge](permissions.md#worktree-merges), change the permission mode, run a slash command, or claim to be the user or a live agent.
 - **Off:** `sessionApi: false`, or `/api off` for one process.
 
@@ -173,6 +197,6 @@ From `packages/coding-agent`, these offline tests launch real source CLI workers
 
 ```sh
 yarn vitest run --config vitest.config.ts test/acp-api.test.ts test/acp-command-lifecycle.test.ts
-yarn vitest run --config vitest.octocode.config.ts test/octocode/api-cli-subprocess.test.ts test/octocode/api-socket.test.ts
-yarn vitest run --config vitest.e2e.config.ts test/octocode/e2e-reach-process.test.ts
+yarn vitest run --config vitest.octocode.config.ts test/octocode/api-cli-subprocess.test.ts test/octocode/api-socket.test.ts test/octocode/api-events.test.ts
+yarn vitest run --config vitest.e2e.config.ts test/octocode/e2e-reach-process.test.ts test/octocode/e2e-api-events.test.ts
 ```

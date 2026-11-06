@@ -1,5 +1,4 @@
 import "../mcp-host.ts";
-import { octocodeToolDefinition } from "../../../mcp/test/mcp-preset-tool-fixture.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,8 +6,9 @@ import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@oc
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { formatSkillsForPrompt, loadSkillsFromDir } from "../../src/core/skills.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
+import { FAKE_RESEARCH } from "./fake-research.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
-import { SkillCatalog, closeNames, editDistance, setActiveSkillCatalog } from "../../src/octocode/skill/catalog.ts";
+import { closeNames, editDistance } from "../../src/octocode/skill/catalog.ts";
 import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
 import { createHarness, getToolResult, type Harness } from "../suite/harness.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
@@ -63,8 +63,6 @@ const context = (overrides: Record<string, unknown> = {}) => ({
 	args: {},
 	...overrides,
 });
-
-afterEach(() => setActiveSkillCatalog(undefined));
 
 describe("skill tool", () => {
 	it("returns a loaded skill's instructions and directory, without its front matter", async () => {
@@ -237,84 +235,6 @@ describe("skill tool", () => {
 	});
 });
 
-describe("localFetch of a loaded skill's SKILL.md", () => {
-	const definition = () =>
-		octocodeToolDefinition(
-			{ name: "localFetch", description: "Read files", inputSchema: { type: "object" } },
-			{ namespace: { name: "mcp__octocode" }, call: async () => ({ content: [{ type: "text", text: "ok" }] }) },
-		);
-	const call = (args: unknown, cwd = "/") => rendered(definition().renderCall!(args, theme, context({ cwd }) as never));
-
-	it("renders the call as `Skill: <name>` only when the path is a loaded skill's file", () => {
-		const f = fixtures();
-		setActiveSkillCatalog(new SkillCatalog(f.snapshot));
-		const file = path.join(f.alpha, "SKILL.md");
-		expect(call({ queries: [{ path: file, fullContent: true }] })).toBe("✓ Skill: alpha");
-		// A relative path resolves against the session's directory.
-		expect(call({ queries: [{ path: "alpha/SKILL.md" }] }, f.root)).toBe("✓ Skill: alpha");
-		// A disabled-for-models skill read by a model is still a skill load.
-		expect(call({ queries: [{ path: path.join(f.root, "hidden", "SKILL.md") }] })).toBe("✓ Skill: hidden");
-		// Anything else keeps the generic row: another file, a reference of the skill, a batch, no path.
-		expect(call({ queries: [{ path: f.secret }] })).toContain("localFetch(");
-		expect(call({ queries: [{ path: path.join(f.alpha, "reference.md") }] })).toContain("localFetch(");
-		expect(call({ queries: [{ path: file }, { path: f.secret }] })).toContain("2 queries");
-		expect(call({ queries: [{ matchString: "x" }] })).toBe("✓ localFetch");
-		expect(call({})).toBe("✓ localFetch");
-	});
-
-	it("keeps the generic row when no skill is loaded, and for other Octocode tools", () => {
-		const f = fixtures();
-		const file = path.join(f.alpha, "SKILL.md");
-		expect(call({ queries: [{ path: file }] })).toContain("localFetch(");
-		setActiveSkillCatalog(new SkillCatalog(f.snapshot));
-		const search = octocodeToolDefinition(
-			{ name: "localSearch", description: "Search", inputSchema: { type: "object" } },
-			{ namespace: { name: "mcp__octocode" }, call: async () => ({ content: [] }) },
-		);
-		expect(rendered(search.renderCall!({ queries: [{ path: file }] }, theme, context() as never))).toContain(
-			"localSearch(",
-		);
-	});
-
-	it("shows the loaded skill's result as one expandable line", () => {
-		const f = fixtures();
-		setActiveSkillCatalog(new SkillCatalog(f.snapshot));
-		const args = { queries: [{ path: path.join(f.alpha, "SKILL.md") }] };
-		const result = {
-			content: [{ type: "text" as const, text: "line1\nline2\nline3" }],
-			details: { server: "octocode", tool: "localFetch" },
-		};
-		const draw = (a: unknown, error = false) =>
-			rendered(
-				definition().renderResult!(
-					result,
-					{ expanded: false } as never,
-					theme,
-					context({ args: a, isError: error }) as never,
-				),
-			);
-		expect(draw(args)).toContain("Loaded skill");
-		expect(draw(args)).not.toContain("line1");
-		expect(draw({ queries: [{ path: f.secret }] })).toContain("line1");
-		expect(draw(args, true)).not.toContain("Loaded skill");
-	});
-
-	it("re-reads the session's skills once when an unknown SKILL.md is read, then keeps the answer cached", () => {
-		const f = fixtures();
-		const snapshot = vi.fn(f.snapshot);
-		const catalog = new SkillCatalog(snapshot);
-		const file = path.join(f.alpha, "SKILL.md");
-		expect(catalog.byFile(file, "/")?.skill.name).toBe("alpha");
-		expect(snapshot).toHaveBeenCalledTimes(1);
-		expect(catalog.byFile(path.join(f.root, "missing", "SKILL.md"), "/")).toBeUndefined();
-		expect(catalog.byFile(path.join(f.root, "missing", "SKILL.md"), "/")).toBeUndefined();
-		expect(snapshot).toHaveBeenCalledTimes(1);
-		// Not a SKILL.md: never a reason to refresh.
-		expect(catalog.byFile(f.secret, "/")).toBeUndefined();
-		expect(snapshot).toHaveBeenCalledTimes(1);
-	});
-});
-
 describe("close names", () => {
 	it("matches containing, contained and near names, closest first, at most five", () => {
 		const names = ["octocode-research", "research", "octocode-roast", "zzz", "r1", "r2", "r3", "r4", "r5", "r6"];
@@ -331,7 +251,7 @@ describe("close names", () => {
 });
 
 describe("skill policy", () => {
-	const base = { octocode: true, profiles: [], canDelegate: true };
+	const base = { research: FAKE_RESEARCH, profiles: [], canDelegate: true };
 
 	it("is stated once, by the skills section, so neither the policy nor the tool's listing restates the trigger", () => {
 		const trigger = "whose description matches the task";

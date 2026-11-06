@@ -128,7 +128,8 @@ export function createDispatcher(
 	 * config order. Most tool calls match no hook, so the input (which may join a large tool result) is built only when
 	 * one does.
 	 */
-	const dispatchImpl: Dispatch = async (ctx, event, names, input, signal = ctx.signal, protocol) => {
+	const dispatchImpl: Dispatch = async (ctx, event, names, input, requested, protocol) => {
+		const signal = requested ?? ctx.signal;
 		const hooks = commandsFor(session.config, event, names).filter(
 			(hook) =>
 				!protocol ||
@@ -342,7 +343,8 @@ export function createDispatcher(
 		}
 	};
 
-	const dispatch: Dispatch = async (ctx, event, names, input, signal = ctx.signal, protocol) => {
+	const dispatch: Dispatch = async (ctx, event, names, input, requested, protocol) => {
+		const signal = requested ?? ctx.signal;
 		if (paused?.()) return {};
 		const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
 		const work = dispatchImpl(ctx, event, names, input, combined, protocol);

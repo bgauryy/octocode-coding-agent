@@ -53,19 +53,17 @@ for (const [name, language] of Object.entries(eagerLanguages)) {
 let allLanguagesPromise: Promise<void> | undefined;
 
 export function loadAllHighlightLanguages(): Promise<void> {
-	if (!allLanguagesPromise) {
-		allLanguagesPromise = new Promise((resolve) => {
-			setImmediate(() => {
-				void import("highlight.js/lib/index.js").then(
-					() => resolve(),
-					() => {
-						// Eager languages and plaintext fallback remain available.
-						resolve();
-					},
-				);
-			});
+	allLanguagesPromise ??= new Promise((resolve) => {
+		setImmediate(() => {
+			void import("highlight.js/lib/index.js").then(
+				() => resolve(),
+				() => {
+					// Eager languages and plaintext fallback remain available.
+					resolve();
+				},
+			);
 		});
-	}
+	});
 	return allLanguagesPromise;
 }
 
