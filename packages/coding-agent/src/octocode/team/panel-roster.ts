@@ -1,5 +1,5 @@
-import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { memberWorktree } from "../shared/member-worktree.ts";
 import { FINISHED_MS, type Finished } from "./panel-compact.ts";
 import { type Need, type PanelEntry, panelState } from "./panel-state.ts";
 
@@ -87,18 +87,6 @@ export function liveMembers(members: Member[], now: number): Member[] {
 	return members.filter((member) => now - member.updatedAt <= UNRESPONSIVE_MS);
 }
 
-/**
- * The folder of the worktree `member` works in when it is a checkout other than `home`, this session's, else undefined: its
- * recorded checkout differs, or (an isolated child stays on its coordinator's team, so its checkout can be the coordinator's)
- * the folder it works in is outside `home`.
- */
-function worktreeOf(member: Member, home: string): string | undefined {
-	if (member.checkout && member.checkout !== home) return member.checkout;
-	if (!member.cwd) return undefined;
-	const relative = path.relative(home, member.cwd);
-	return relative.startsWith("..") || path.isAbsolute(relative) ? member.cwd : undefined;
-}
-
 /** The agents of this session the panel shows at `now`: `others` in team order, and `tree` with depth and finish time. */
 export function roster(
 	members: Member[],
@@ -120,7 +108,7 @@ export function roster(
 		const at = doneAt.get(member.id);
 		const end = ends.get(member.id);
 		const need = needs.get(member.id);
-		const folder = home ? worktreeOf(member, home) : undefined;
+		const folder = home ? memberWorktree(member, home) : undefined;
 		return {
 			...(at === undefined ? {} : { doneAt: at }),
 			...(at !== undefined && end ? { end } : {}),

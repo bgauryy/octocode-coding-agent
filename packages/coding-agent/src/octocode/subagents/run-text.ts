@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { AgentRun, ResolvedAgent } from "../../../../db/src/api.ts";
 import { formatDuration } from "../shared/format.ts";
 
@@ -23,7 +24,12 @@ export function agentDetailText(agent: ResolvedAgent, now = Date.now()): string 
 		["agent", `${agent.agentId} (${agent.role ?? "unknown"}) · ${agent.live ? (agent.status ?? "live") : "ended"}`],
 		["goal", agent.goal],
 		["parent", agent.parentAgentId],
-		["cwd", agent.cwd],
+		[
+			"cwd",
+			agent.cwd && !fs.existsSync(agent.cwd)
+				? `${agent.cwd} (gone: an isolated child's worktree is removed when it ends; its result stays on refs/octocode/${agent.agentId} until merged)`
+				: agent.cwd,
+		],
 		["branch", agent.branch],
 		[
 			"process",

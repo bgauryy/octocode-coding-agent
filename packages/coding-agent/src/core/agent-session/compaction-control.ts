@@ -96,6 +96,8 @@ export interface CompactionControlHost extends Pick<
 	readonly cacheWarmer: Pick<CacheWarmer, "cancel"> | undefined;
 	/** The session's default summary (`_runDefaultCompaction`). */
 	summarize: CompactionHost["summarize"];
+	/** Starts the delivery of input held during a manual compaction; never throws or waits (`releaseHeldInput`). */
+	releaseHeldInput(): void;
 }
 
 export class SessionCompaction {
@@ -241,6 +243,7 @@ export class SessionCompaction {
 				willRetry: false,
 				fromExtension: outcome.fromExtension,
 			});
+			this.host.releaseHeldInput();
 			throw error;
 		} finally {
 			this._clearManualCompactionState();
@@ -254,6 +257,7 @@ export class SessionCompaction {
 			aborted: false,
 			willRetry: false,
 		});
+		this.host.releaseHeldInput();
 		return compactionResult;
 	}
 

@@ -134,9 +134,13 @@ export class ChildLeases {
 		for (const id of this.rows.keys()) db.renew(id, now);
 	}
 
-	/** The session ends: whatever is still closing holds nothing, and a child that never joined leaves no row behind. */
+	/**
+	 * The session ends (also `/new`): a child still closing may write its paths until its process exits, so its
+	 * reservations stay and `release` (its run's end) drops them. The process's own end bounds them: its held rows lapse
+	 * with it, and the exit hook kills the child's group.
+	 */
 	stop(): void {
-		for (const id of this.rows.keys()) this.release(id);
+		// Nothing to release here by design.
 	}
 }
 

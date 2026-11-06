@@ -22,6 +22,11 @@ export interface Member {
 	cwd?: string;
 	branch?: string;
 	processTitle?: string;
+	/**
+	 * Derived, never stored: the folder of the worktree it works in when that is not its viewer's checkout (a linked worktree,
+	 * or an isolated child's private one, whose `checkout` stays its coordinator's). Absent in the main checkout and in older snapshots.
+	 */
+	worktree?: string;
 	/** The session manager ID of this agent's conversation. The team address can be reused independently of the session ID. */
 	sessionId?: string;
 	joinedAt: number;

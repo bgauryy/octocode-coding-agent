@@ -31,6 +31,7 @@ import { error } from "./rpc-mode/responses.ts";
 import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./session-identity.ts";
 import { ACP_WORKER_ENV } from "../../../../common/src/env.ts";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
+import { armShutdownDeadline } from "./shutdown-deadline.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -132,6 +133,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			process.exit(exitCode);
 		}
 		shuttingDown = true;
+		// A hung dispose (git, an MCP close, a bash job drain) must not outlive a coordinator that is gone.
+		armShutdownDeadline(exitCode);
 		initialized.reject(new Error("RPC session closed during startup."));
 		for (const [id, request] of pendingExtensionRequests)
 			request.resolve({ type: "extension_ui_response", id, cancelled: true });

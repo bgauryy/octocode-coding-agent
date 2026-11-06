@@ -1,5 +1,5 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PromptDisposition } from "../../../src/core/agent-session.ts";
 import { createHarness, getMessageText, getUserTexts, type Harness } from "../harness.ts";
 
@@ -12,7 +12,7 @@ describe("issue #7150: RPC prompt during manual compaction", () => {
 		}
 	});
 
-	it("rejects an RPC prompt while manual compaction is in progress", async () => {
+	it("queues an RPC prompt while manual compaction is in progress", async () => {
 		let markCompactionStarted = () => {};
 		const compactionStarted = new Promise<void>((resolve) => {
 			markCompactionStarted = resolve;
@@ -74,19 +74,18 @@ describe("issue #7150: RPC prompt during manual compaction", () => {
 			await compactPromise;
 		}
 
+		// Contract change (B220): the RPC prompt is accepted as queued while the compaction runs, writes nothing and starts
+		// no turn then, and runs once when the compaction has ended.
+		expect(promptError).toBeUndefined();
+		expect(preflightResult).toBe("queued");
+		expect(harness.eventsOfType("agent_start")).toHaveLength(0);
+		expect(getUserTexts(harness)).not.toContain("PROBE-7150");
+		await vi.waitFor(() => expect(harness.eventsOfType("agent_settled")).toHaveLength(1), { timeout: 10_000 });
 		const persistedUserTexts = harness.sessionManager
 			.getEntries()
 			.flatMap((entry) =>
 				entry.type === "message" && entry.message.role === "user" ? [getMessageText(entry.message)] : [],
 			);
-
-		expect(preflightResult).toBeUndefined();
-		expect(promptError).toEqual(
-			expect.objectContaining({ message: expect.stringContaining("compaction is in progress") }),
-		);
-		expect(getUserTexts(harness)).not.toContain("PROBE-7150");
-		expect(persistedUserTexts).not.toContain("PROBE-7150");
-		expect(harness.eventsOfType("agent_start")).toHaveLength(0);
-		expect(harness.eventsOfType("agent_settled")).toHaveLength(0);
+		expect(persistedUserTexts.filter((text) => text === "PROBE-7150")).toHaveLength(1);
 	});
 });

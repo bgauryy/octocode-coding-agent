@@ -1,6 +1,6 @@
 # octocode-code documentation
 
-Start with the [agent guide](../README.md) and [repository setup](../../../README.md).
+Start with the [user guide](../../../README.md); to work on Octocode itself, see [DEVELOPMENT.md](../../../DEVELOPMENT.md).
 
 ## Native agent
 
@@ -63,7 +63,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 | Package        | Reference                                                              |
 | -------------- | ---------------------------------------------------------------------- |
-| coding-agent   | [CLI, sessions and native features](../README.md)                      |
+| coding-agent   | [npm package page](../README.md)                                       |
 | agent          | [Agent loop, events and tool execution](../../agent/README.md)         |
 | ai             | [Provider APIs, authentication and model catalog](../../ai/README.md)  |
 | tui            | [Terminal components and rendering](../../tui/README.md)               |

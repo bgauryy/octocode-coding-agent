@@ -43,11 +43,11 @@ describe("issue #11227 recovery omits tool results with their tool call", () => 
 			provider: model.provider,
 			model: model.id,
 			usage: {
-				input: 100,
+				input: 99_500,
 				output: 16,
 				cacheRead: 0,
 				cacheWrite: 0,
-				totalTokens: 116,
+				totalTokens: 99_516,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
 		};

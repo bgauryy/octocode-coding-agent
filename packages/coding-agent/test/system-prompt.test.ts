@@ -1,7 +1,15 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import type { Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
-import { buildSystemPrompt, buildSystemPromptSections, currentEnvironment } from "../src/core/system-prompt.ts";
+import {
+	buildSystemPrompt,
+	buildSystemPromptSections,
+	currentEnvironment,
+	linkedWorktreeFact,
+} from "../src/core/system-prompt.ts";
 import { RESEARCH, useResearchRoles } from "./octocode/fake-research-roles.ts";
 
 const testSkill: Skill = {
@@ -393,6 +401,26 @@ describe("environment section", () => {
 	test("names the platform, the shell and the local date", () => {
 		const text = currentEnvironment(new Date(2026, 9, 28, 23, 30), { SHELL: "/bin/zsh" });
 		expect(text).toBe(`Platform: ${process.platform} ${process.arch}\nShell: zsh\nDate: 2026-10-28`);
+	});
+
+	test("names a linked worktree with its main checkout and branch, and says nothing in a main checkout", () => {
+		const root = mkdtempSync(join(tmpdir(), "env-worktree-"));
+		try {
+			const linked = join(root, "main", ".octocode", "worktrees", "feat");
+			const gitdir = join(root, "main", ".git", "worktrees", "feat");
+			mkdirSync(linked, { recursive: true });
+			mkdirSync(gitdir, { recursive: true });
+			writeFileSync(join(linked, ".git"), `gitdir: ${gitdir}\n`);
+			writeFileSync(join(gitdir, "HEAD"), "ref: refs/heads/feat/x\n");
+			const fact = linkedWorktreeFact(linked);
+			expect(fact).toBe(`linked worktree of ${join(root, "main")}, branch feat/x`);
+			expect(currentEnvironment(new Date(2026, 9, 28), { SHELL: "sh" }, fact)).toContain(`\nCheckout: ${fact}`);
+			mkdirSync(join(root, "main", ".git"), { recursive: true });
+			expect(linkedWorktreeFact(join(root, "main"))).toBeUndefined();
+			expect(currentEnvironment(new Date(2026, 9, 28), { SHELL: "sh" })).not.toContain("Checkout");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	test("is the last default section when given, and absent otherwise", () => {

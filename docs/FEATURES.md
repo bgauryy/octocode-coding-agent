@@ -120,7 +120,7 @@ For findings and proposed improvements across context, compaction, Archive, memo
 | Instruction check | `understand.mjs` asks a small model how each agent would work and grades the answer | `scripts/agent-eval/understand.mjs` | [Do agents understand](../scripts/agent-eval/README.md#do-agents-understand-their-instructions)                   |
 | Self-audit        | Questions Octocode answers about itself                                             |                                     | [Agent self-audit](AGENT_SELF_AUDIT.md)                                                                           |
 | Telemetry         | Install and attribution contracts; hosts decide collection                          | `packages/telemetry`                | [Package](../packages/telemetry/README.md), [environment](../packages/coding-agent/docs/environment-variables.md) |
-| Build and release | One bundle, one published package, repository scripts                               | `scripts/`                          | [README](../README.md), [scripts](../scripts/README.md), [development guide](../AGENTS.md)                        |
+| Build and release | One bundle, one published package, repository scripts                               | `scripts/`                          | [DEVELOPMENT.md](../DEVELOPMENT.md), [scripts](../scripts/README.md), [development guide](../AGENTS.md)           |
 
 ## What tests do and do not show
 

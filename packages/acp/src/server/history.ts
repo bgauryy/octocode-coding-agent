@@ -21,13 +21,8 @@ export async function findHistory(
 	const directory = await canonicalDirectory(cwd);
 	const sessions = await host.listSessions(directory, sessionDir(host, directory, configuredDir));
 	const info = sessions.find((item) => item.id === id && item.cwd && isAbsolute(item.cwd));
-	if (!info || (await realpath(info.cwd).catch(() => undefined)) !== directory) throw sessionNotFound(id);
+	if (!info || (await realpath(info.cwd).catch(() => undefined)) !== directory) throw RequestError.sessionNotFound(id);
 	return info;
-}
-
-/** ACP's error for a session that does not exist or is not active on this connection, which names it in `data.sessionId`. */
-export function sessionNotFound(id: string): RequestError {
-	return new RequestError(-32002, `Resource not found: ${id}`, { sessionId: id });
 }
 
 export async function canonicalDirectory(cwd: string): Promise<string> {
@@ -50,7 +45,7 @@ export function prepareHistoryReplay(
 	client: AgentContext,
 ): () => Promise<void> {
 	const transcript = host.openTranscript(path);
-	if (transcript.sessionId !== id) throw sessionNotFound(id);
+	if (transcript.sessionId !== id) throw RequestError.sessionNotFound(id);
 	const branch = transcript.branch;
 	return async () => {
 		const tools = new Set<string>();

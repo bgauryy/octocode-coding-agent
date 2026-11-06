@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { type InteractiveHarness, type Outcome, startInteractive } from "./e2e-commands-harness.ts";
@@ -34,7 +35,9 @@ interface Case {
 	args?: string;
 	/** Model requests the command makes; omitted means none. */
 	requests?: number;
-	check(run: Run, t: InteractiveHarness): void | Promise<void>;
+	/** Runs just before the command and hands what it saw to `check`. */
+	before?(t: InteractiveHarness): unknown;
+	check(run: Run, t: InteractiveHarness, before?: unknown): void | Promise<void>;
 }
 
 const says = (pattern: RegExp) => (run: Run) => expect(run.text).toMatch(pattern);
@@ -59,6 +62,17 @@ const startsOver = (run: Run, t: InteractiveHarness) => {
 
 /** Commands that replace or end the session run last, in this order. */
 const LAST = ["resume", "tree", "fork", "clone", "import", "new", "clear", "reset", "reload", "quit"];
+/** The session file's entries (not the header) without ids and timestamps, which a copy renews. */
+function entriesOf(file: string | undefined): unknown[] {
+	if (!file || !fs.existsSync(file)) return [];
+	return fs
+		.readFileSync(file, "utf8")
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => JSON.parse(line) as Record<string, unknown>)
+		.filter((entry) => entry.type !== "session")
+		.map(({ id: _id, parentId: _parent, timestamp: _time, ...rest }) => rest);
+}
 const shutdown = vi.fn(async () => {});
 
 const CASES: Record<string, Case> = {
@@ -79,7 +93,8 @@ const CASES: Record<string, Case> = {
 	diff: { check: says(/Repository diff[\s\S]*No staged changes/) },
 	status: { check: says(/Session Info[\s\S]*File:/) },
 	llama: { check: says(/Configure llama\.cpp with \/login llama\.cpp/) },
-	mcp: { check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/octocode/) },
+	// The dialog lists each configured server with its state: the Octocode server is connected with its tools.
+	mcp: { check: asks(/MCP servers[\s\S]*› browser\s+not selected[\s\S]*octocode\s+connected · \d+ tools/) },
 	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
 	api: { check: says(/Octocode API oc-[0-9a-f]+\s+socket: \S+\.sock\s+Discovery:[\s\S]*\/home\/\.octocode\/api/) },
 	archive: { check: says(/segment|archive|compact/i) },
@@ -89,7 +104,7 @@ const CASES: Record<string, Case> = {
 			/\[ \] Claude Code {2}default off[\s\S]*\[ \] Codex {2}default off[\s\S]*\[ \] Cursor {2}default off[\s\S]*Octocode/,
 		),
 	},
-	jobs: { check: says(/job/i) },
+	jobs: { check: says(/No background bash jobs are running\./) },
 	memory: { check: asks(/memor/i) },
 	// Bare `/optimize` shows the state and offers the toggle; the terminal dismisses the dialog, which changes nothing.
 	optimize: { check: asks(/Prompt optimization is off/) },
@@ -156,7 +171,29 @@ const CASES: Record<string, Case> = {
 	resume: { check: (run) => expect(run.dialogs.length).toBeGreaterThan(0) },
 	tree: { check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/\S/) },
 	fork: { check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/\S/) },
-	clone: { check: (run) => expect(run.text).toMatch(/\S/) },
+	// A new session file with the original's entries, and the original file left as it was.
+	clone: {
+		before: (t) => {
+			const file = t.host.sessionManager.getSessionFile();
+			return { file, id: t.host.sessionManager.getSessionId(), entries: entriesOf(file) };
+		},
+		check: (run, t, before) => {
+			const was = before as { file: string | undefined; id: string; entries: unknown[] };
+			expect(run.text).toMatch(/Cloned to new session/);
+			const file = t.host.sessionManager.getSessionFile();
+			expect(file, "a new session file").toBeTruthy();
+			expect(file).not.toBe(was.file);
+			expect(t.host.sessionManager.getSessionId()).not.toBe(was.id);
+			expect(was.entries.length, "the original has entries to copy").toBeGreaterThan(0);
+			const copied = entriesOf(file);
+			expect(copied.slice(0, was.entries.length), "every original entry, in order").toEqual(was.entries);
+			// The new session joins its team on start: that is the only entry the copy adds.
+			expect(copied.slice(was.entries.length)).toEqual([
+				expect.objectContaining({ type: "custom", customType: "octocode-team" }),
+			]);
+			expect(entriesOf(was.file), "the original is unchanged").toEqual(was.entries);
+		},
+	},
 	import: { check: says(/Usage: \/import <path\.jsonl>/) },
 	new: { check: startsOver },
 	clear: { check: startsOver },
@@ -210,6 +247,7 @@ describe("every slash command through the terminal editor", () => {
 		];
 		const failures: string[] = [];
 		for (const name of order) {
+			const seen = CASES[name]?.before?.(t);
 			const result = await run(name, CASES[name]?.args);
 			try {
 				expect(result.settled, "finishes within its timeout").toBe(true);
@@ -222,7 +260,7 @@ describe("every slash command through the terminal editor", () => {
 				} else {
 					if (CASES[name].requests === undefined) noModel(result);
 					else expect(result.requests).toBe(CASES[name].requests);
-					await CASES[name].check(result, t);
+					await CASES[name].check(result, t, seen);
 				}
 			} catch (error) {
 				const seen = `${result.text}\n--- dialogs ---\n${result.dialogs.join("\n---\n")}`.slice(0, 1500);

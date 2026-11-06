@@ -255,7 +255,11 @@ const BACKLOG_ENTITIES_CEILING = 2_250;
 // reverted, main measures 42_304, so the surface costs +953: the `until` schema's `file`, `item`, `agent` and `port`
 // objects with short field descriptions, `check` as one question string beside a trigger, the description's close
 // sentence and the snippet's longer clause. The slack over the measurement stays 26, as before.
-const MAIN_CEILING = 43_283;
+// 43_607 (2026-11-07, measured 43_581, 43_278 before; B218/B219, user-requested): the agent tool's `tasks` and the
+// backlog's `items` arrays (+153 and +150). Their entries are declared as plain objects and checked against the single
+// call's schema in code, which cut them from about 700 when every entry field was spelled out; the steps array was
+// dropped (3 calls saved in 283 transcripts). The slack stays 26.
+const MAIN_CEILING = 43_607;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.

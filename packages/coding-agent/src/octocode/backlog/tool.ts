@@ -18,8 +18,17 @@ import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
 import { withOperationKey, type CompletionArgument } from "./completion-key.ts";
-import { acceptTargetShorthand, entityFields, type LinkArgument, linkInput, updatesField } from "./tool-schema.ts";
-import { batchGet, batchUpdate } from "./tool-batch.ts";
+import {
+	acceptTargetShorthand,
+	addEntry,
+	entityFields,
+	ITEM_ENTRY_KEYS,
+	type LinkArgument,
+	itemsField,
+	linkInput,
+	updatesField,
+} from "./tool-schema.ts";
+import { batchAdd, batchGet, batchUpdate } from "./tool-batch.ts";
 import { AUDIT_SHOWN, auditText } from "./audit-text.ts";
 import { withReason } from "../shared/reason.ts";
 import { type Item, PRIORITIES } from "./store.ts";
@@ -59,6 +68,7 @@ export function registerBacklogTool(
 				}),
 			),
 			updates: updatesField(subagent ? StringEnum(SUBAGENT_STATES) : StringEnum(STATES)),
+			...(subagent ? {} : { items: itemsField() }),
 			title: Type.Optional(Type.String({ description: `${write}one-line summary; list: words in the title` })),
 			goal: Type.Optional(
 				Type.String({ description: `${write}Definition of Done, checkable${subagent ? "" : "; add needs it"}` }),
@@ -116,6 +126,7 @@ export function registerBacklogTool(
 	);
 	// What a call may carry: the declared fields plus the list filters older calls still send (`legacyListFields`).
 	const accepted = Type.Object({ ...parameters.properties, ...legacyListFields }, { additionalProperties: false });
+	const validationParameters = withReason(acceptTargetShorthand(accepted));
 	api.registerTool(
 		timedTool(
 			{
@@ -128,7 +139,7 @@ export function registerBacklogTool(
 				defaultActive: !subagent || Boolean((options.env ?? process.env)[BACKLOG_ITEM_ENV]),
 				parameters,
 				// One release still takes the old item type `task`: it is mapped in `execute`, which says so.
-				validationParameters: withReason(acceptTargetShorthand(accepted)),
+				validationParameters,
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
 					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
@@ -184,11 +195,18 @@ export function registerBacklogTool(
 	);
 
 	/**
-	 * A `get` of several ids (`ids`, or older calls' comma-separated `id`) or an `update` with `updates`: each runs as
+	 * A `get` of several ids (`ids`, or older calls' comma-separated `id`), an `add` with `items` or an `update` with `updates`: each runs as
 	 * the single form, a refusal stays on its row.
 	 */
 	function batched(backlog: Backlog, args: Omit<Params, "completion"> & { completion?: CompletionArgument }) {
-		const { updates, ...single } = args;
+		const { updates, items, ...single } = args;
+		if (items !== undefined) {
+			if (args.op !== "add" || args.title !== undefined)
+				throw new Error("items goes with op add and no title: each entry carries its own title.");
+			return batchAdd(items, ITEM_ENTRY_KEYS, "items", (entry) =>
+				run(backlog, { ...single, ...(addEntry(validationParameters, entry) as Params) }),
+			);
+		}
 		if (updates !== undefined) {
 			if (args.op !== "update" || args.id !== undefined)
 				throw new Error("updates goes with op update and no id: each entry carries its own id.");
@@ -206,6 +224,7 @@ export function registerBacklogTool(
 			op: "list" | "get" | "add" | "update";
 			id?: string;
 			updates?: Array<Record<string, unknown>>;
+			items?: Array<Record<string, unknown>>;
 			close?: CloseInput;
 			goal?: string;
 			why?: string;

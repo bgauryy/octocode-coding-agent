@@ -130,7 +130,8 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 			// first, then attempts terminal restore. A genuinely dead terminal
 			// surfaces as an EIO on the restore writes, which the stdout/stderr
 			// error handler converts into emergencyTerminalExit (see #4144, #5080).
-			killTrackedDetachedChildren();
+			// Subagents are left to the graceful stop (report, worktree save); the exit hook kills any still running.
+			killTrackedDetachedChildren({ sparingGraceful: true });
 			void host.shutdown({ fromSignal: true });
 		};
 		process.prependListener(signal, handler);

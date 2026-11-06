@@ -144,6 +144,11 @@ const AgentCard = memo(function AgentCard({
 					<span className="muted">Now:</span> <code>{agent.activity}</code>
 				</p>
 			)}
+			{agent.worktree && (
+				<p className="agent-worktree muted" title={agent.worktree}>
+					Worktree: <code>{agent.worktree.split(/[\\/]/).filter(Boolean).pop()}</code>
+				</p>
+			)}
 			{last && <p className="agent-last muted">{describeLast(agent.id, last)}</p>}
 			{agent.locks?.length ? (
 				<p className="agent-locks muted">

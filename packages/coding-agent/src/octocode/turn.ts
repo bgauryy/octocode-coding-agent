@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../core/features/index.ts";
 import type { Skill } from "../core/skills.ts";
-import { currentEnvironment } from "../core/system-prompt.ts";
+import { currentEnvironment, linkedWorktreeFact } from "../core/system-prompt.ts";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections, type ResearchContext } from "./instructions/policy.ts";
@@ -101,7 +101,12 @@ export function registerTurnSetup(
 		Object.assign(event.systemPromptOptions.sections, prompt);
 		if (role !== undefined) event.systemPromptOptions.sections.role = role;
 		// Checked at every prompt: a new day changes only this section.
-		event.systemPromptOptions.environment = currentEnvironment();
+		// An isolated child's prompt names the main checkout (below), so it carries no worktree fact.
+		event.systemPromptOptions.environment = currentEnvironment(
+			undefined,
+			undefined,
+			promptRoots || !event.systemPromptOptions.cwd ? undefined : linkedWorktreeFact(event.systemPromptOptions.cwd),
+		);
 		if (promptRoots) {
 			// An isolated child's prompt names the main checkout, so siblings share the cached prefix. Tools and
 			// permissions keep the real worktree cwd; the task text names it.

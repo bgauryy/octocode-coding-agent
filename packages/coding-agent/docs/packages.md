@@ -22,11 +22,7 @@ Personal installs are written to `~/.octocode/octocodecode/settings.json`. Add `
 
 Project packages are installed and loaded only after project trust is resolved. Packages can include skills that instruct the model to run programs. Review third-party package source before installing it. Review project package declarations before granting project trust.
 
-User code extensions are not supported, so a package's extension code is ignored with a warning; its skills, prompts and themes still load. `-e` accepts only `builtin:<id>` (for one invocation, switch a built-in feature):
-
-```bash
-octocode -e builtin:mcp
-```
+User code extensions are not supported, so a package's extension code is ignored with a warning; its skills, prompts and themes still load. Built-in features are switched in the `extensions` setting or with `octocode config`, never by a CLI flag: `-e` and `--extension` are unknown options. See [built-in features](configuration.md#built-in-features).
 
 ## Choose a source
 

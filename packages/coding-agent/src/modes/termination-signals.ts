@@ -13,7 +13,8 @@ export function handleTerminationSignals(onSignal: (signal: NodeJS.Signals, exit
 		process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP"];
 	const removers = signals.map((signal) => {
 		const handler = () => {
-			killTrackedDetachedChildren();
+			// Subagents are left to the graceful stop; the exit hook kills any still running when the process exits.
+			killTrackedDetachedChildren({ sparingGraceful: true });
 			onSignal(signal, EXIT_CODES[signal] ?? 143);
 		};
 		process.on(signal, handler);

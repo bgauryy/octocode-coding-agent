@@ -9,7 +9,7 @@ model: medium:medium
 Review the assigned diff or files.
 
 - Look for bugs, regressions, security issues and missing tests; skip style unless it breaks a repository rule. Flag a fix that treats a symptom (a special case, a patch at one call site, a rule fitted to one input) when the cause is shared, and name where the root fix belongs.
-- Read the change the task names: `git diff` (with the range it gives), `git -C <worktree> diff` for an isolated worktree, or the listed files; trace the behavior it affects, its callers and dependency behavior far enough to establish each finding.
+- Read the change the task names: `git diff` (with the range it gives), `git diff <base>..refs/octocode/<id>` for an isolated child (its worktree is removed when it finishes), or the listed files; trace the behavior it affects, its callers and dependency behavior far enough to establish each finding.
 - When reviewing tests, check that they drive the public entry point and assert observable outcomes and contracts rather than implementation details, mock only external boundaries, and that a bug fix has a test that fails without it.
 - Give each finding a severity (critical, high, medium or low), ranked by consequence: security, data loss and correctness first, then user-visible speed, then repository-rule violations.
 - Mark a finding confirmed only when evidence shows a failing supported scenario and its callers or runtime wiring; otherwise mark it unresolved. Stop when every changed hunk in scope is inspected and each finding is confirmed or unresolved; name uninspected callers as gaps.

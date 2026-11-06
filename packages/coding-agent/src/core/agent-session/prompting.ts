@@ -20,7 +20,7 @@ import {
 } from "./prompt-expansion.ts";
 import type { SessionRunLoop } from "./run-loop.ts";
 import type { PendingUserInput, PromptOptions, QueuedInputDisposition, QueuedInputOptions } from "./types.ts";
-import { checkSessionDispatch } from "./dispatch.ts";
+import { checkSessionDispatch, hasSessionDispatch } from "./dispatch.ts";
 
 export interface PromptingHost
 	extends Pick<SessionInternals, "session" | "run" | "cwd">, Pick<PathImagesHost, "limitsModel"> {
@@ -52,9 +52,10 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		}
 	}
 
-	if (host.compaction.isManualRunning) {
-		throw new Error("Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.");
-	}
+	// Manual compaction runs with no agent run, but its summary must not race a turn: input waits in the queues an
+	// automatic compaction uses and is delivered by `releaseHeldInput` once the compaction ends.
+	const holding = session.isStreaming || host.compaction.isManualRunning;
+	const behavior = options?.streamingBehavior ?? (host.compaction.isManualRunning ? "followUp" : undefined);
 
 	// Emit input event for extension interception (before skill/template expansion)
 	const processedInput = await runInputHandlers(
@@ -62,7 +63,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		text,
 		options?.images,
 		options?.source ?? "interactive",
-		session.isStreaming ? options?.streamingBehavior : undefined,
+		holding ? behavior : undefined,
 	);
 	checkSessionDispatch(session);
 	if (!processedInput) {
@@ -87,8 +88,8 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		expandedPaths,
 	};
 	// If streaming, queue via steer() or followUp() based on option
-	if (session.isStreaming) {
-		if (!options?.streamingBehavior) {
+	if (holding) {
+		if (!behavior) {
 			throw new Error(
 				"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
 			);
@@ -97,12 +98,10 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 			? await attachPromptPathImages(host, expandedText, currentImages, true)
 			: { text: expandedText, images: currentImages };
 		checkSessionDispatch(session);
-		await host.inputs.queue(
-			options.streamingBehavior === "followUp" ? "followUp" : "steer",
-			queued.text,
-			queued.images,
-			{ ...input, images: queued.images },
-		);
+		await host.inputs.queue(behavior === "followUp" ? "followUp" : "steer", queued.text, queued.images, {
+			...input,
+			images: queued.images,
+		});
 		preflightResult?.("queued");
 		return;
 	}
@@ -187,9 +186,10 @@ export async function sendCustomMessage<T = unknown>(
 		details: message.details,
 		timestamp: Date.now(),
 	} satisfies CustomMessage<T>;
+	const holding = session.isStreaming || host.compaction.isManualRunning;
 	if (options?.deliverAs === "nextTurn") {
 		host.inputs.addNextTurnMessage(appMessage);
-	} else if (session.isStreaming && options?.triggerTurn !== false) {
+	} else if (holding && options?.triggerTurn !== false) {
 		host.inputs.noteQueuedCustomMessage(appMessage);
 		if (options?.deliverAs === "followUp") {
 			session.agent.followUp(appMessage, { together: options.together });
@@ -203,7 +203,7 @@ export async function sendCustomMessage<T = unknown>(
 			return;
 		}
 		await host.runLoop.startRun({ messageType: "custom", message: appMessage });
-	} else if (session.isStreaming) {
+	} else if (holding) {
 		// Appending now would put the message between an assistant tool call and its
 		// result, which providers that validate message order reject on replay. Defer
 		// to the end of the turn. Nothing is emitted yet: message events must not
@@ -212,6 +212,31 @@ export async function sendCustomMessage<T = unknown>(
 	} else {
 		host.inputs.appendCustomMessage(appMessage);
 	}
+}
+
+/**
+ * A manual compaction ended (saved, failed or cancelled): deliver what waited for it. One run starts with the first queued
+ * message (steering before follow-ups); the agent loop delivers the rest of both queues in order. Held custom messages with
+ * nothing queued are written now, behind the compaction entry. Nothing starts when a run or another submission is already
+ * under way: the queues are drained by it.
+ */
+export async function releaseHeldInput(host: PromptingHost): Promise<void> {
+	const { session, run, inputs } = host;
+	if (run.active || hasSessionDispatch(session)) return;
+	const next = session.agent.peekQueuedMessages()[0];
+	if (!next) {
+		inputs.flushPendingCustomMessages();
+		return;
+	}
+	session.agent.removeQueuedMessage(next);
+	inputs.consumeQueuedUserMessage(next);
+	if (next.role !== "user") {
+		if (next.role !== "custom") return;
+		await host.runLoop.startRun({ messageType: "custom", message: next });
+		return;
+	}
+	const { text, images } = splitUserContent(next.content);
+	await host.runLoop.startRun({ messageType: "user", prompt: text, images }, undefined, inputs.getUserInput(next));
 }
 
 /** Split message content into the prompt text and its images. */

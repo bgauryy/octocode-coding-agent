@@ -1,6 +1,7 @@
 import { type TSchema, Type } from "typebox";
-import { StringEnum } from "@octocodeai/octocode-ai";
+import { StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
 import { CloseInputSchema, type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { BacklogError, parseRef } from "./item.ts";
 import type { CompletionArgument } from "./completion-key.ts";
 
@@ -124,6 +125,58 @@ export function updatesField(state: TSchema) {
 			},
 		),
 	);
+}
+
+/** The fields one `items` entry may carry: an add's descriptive fields; the rest (type, parent, links) go beside `items`. */
+export const ITEM_ENTRY_KEYS: readonly string[] = [
+	"title",
+	"goal",
+	"why",
+	"paths",
+	"evidence",
+	"plan",
+	"state",
+	"priority",
+	"tags",
+];
+
+/**
+ * `items`: several adds in one call; fields given beside `items` are defaults for every entry. Entries are plain objects
+ * here, so the declaration stays small on every request: `addEntry` checks each against the single add's own schema.
+ */
+export function itemsField() {
+	return Type.Optional(
+		Type.Unsafe<Array<Record<string, unknown>>>({
+			type: "array",
+			items: { type: "object" },
+			description: "add: several items, each with title and add's fields; fields beside items are defaults",
+		}),
+	);
+}
+
+/** One `items` entry checked like a single add's arguments (names, types, enums), so a bad entry is refused on its own row. */
+export function addEntry(parameters: TSchema, entry: Record<string, unknown>): Record<string, unknown> {
+	let checked: Record<string, unknown>;
+	try {
+		checked = validateToolArguments(
+			{ name: "backlog", description: "", parameters },
+			{
+				type: "toolCall",
+				id: "items",
+				name: "backlog",
+				arguments: { ...entry, op: "add", reason: "items" },
+			},
+		);
+	} catch (error) {
+		// One row per entry: the failing fields ("  - priority: expected one of …"), not the arguments echoed back.
+		const issues = errorMessage(error)
+			.split("\n")
+			.filter((line) => line.startsWith("  - "))
+			.map((line) => line.slice(4));
+		throw new Error(issues.length > 0 ? issues.join("; ") : errorMessage(error), { cause: error });
+	}
+	const { reason: _reason, ...rest } = checked;
+	return rest;
 }
 
 /**

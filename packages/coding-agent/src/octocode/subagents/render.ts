@@ -23,6 +23,7 @@ import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { modelLabel, withoutProvider } from "./model.ts";
 import { noticeText } from "./notices.ts";
 import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../shared/row-mark.ts";
+import { shareWorktree, sharedWorktree } from "./render-worktree.ts";
 import { agentState, headerOverride } from "./render-state.ts";
 
 /**
@@ -204,11 +205,11 @@ const GOAL_ROW_CHARS = 60;
  * `audit auth token refresh · claude-haiku-5-5:low · isolated`: what the row says about the run, never the prompt or the
  * profile. The model is the one the run resolved to, with its level, once the run reports it; until then the call's own.
  */
-function runLabel(args: AgentArgs, resolved?: string): string {
+function runLabel(args: AgentArgs, resolved?: string, worktree?: string): string {
 	return [
 		args.goal ? clip(args.goal, GOAL_ROW_CHARS) : "",
 		resolved ? clip(resolved, 40) : args.model ? clip(args.model, 40) : "",
-		args.isolate ? "isolated" : "",
+		args.isolate ? (worktree ? `isolated · worktree ${worktree}` : "isolated") : "",
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -221,7 +222,7 @@ export function renderAgentCall(args: AgentArgs, theme: Theme, context: RenderCo
 	// The result's renderer says when the run needs the user (`◇`) or its report is a failure (`✗`).
 	const state = sharedRowState(context);
 	const mark = state ? { state } : {};
-	const label = runLabel(args, sharedRowModel(context));
+	const label = runLabel(args, sharedRowModel(context), sharedWorktree(context));
 	if (!args.background) return toolHeader(theme, context, "Agent", label, mark);
 	const quick = context.durationMs !== undefined && context.durationMs < LAUNCH_SHOWN_MS;
 	return toolHeader(theme, quick ? { ...context, durationMs: undefined } : context, "Agent", label, {
@@ -264,6 +265,7 @@ export function renderAgentResult(
 		});
 	shareRowState(context, headerOverride(agentState(details)));
 	shareRowModel(context, withoutProvider(details.model));
+	if (argsOf(context).isolate) shareWorktree(context, details.id);
 	if (isPartial) {
 		// Live progress: counts, then the latest steps (the header carries the running clock).
 		const lines = [

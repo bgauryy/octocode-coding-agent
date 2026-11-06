@@ -11,6 +11,7 @@ import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
 import type { Team } from "../team/session.ts";
 import { HEARTBEAT_MS } from "../team/session/activity.ts";
+import { memberWorktree } from "../shared/member-worktree.ts";
 import { descendants } from "../team/panel-roster.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
@@ -40,7 +41,14 @@ interface Operations {
  */
 export function teamView(team: Team): Pick<Operations, "members" | "traffic" | "expiry"> {
 	return {
-		members: () => descendants(team.members(), team.id),
+		members: () => {
+			const all = team.members();
+			const home = all.find((member) => member.id === team.id)?.checkout;
+			return descendants(all, team.id).map((member) => {
+				const worktree = memberWorktree(member, home);
+				return worktree ? { ...member, worktree } : member;
+			});
+		},
 		traffic: () => {
 			const { members, traffic } = team.snapshot();
 			const mine = new Set(descendants(members, team.id).map((member) => member.id));

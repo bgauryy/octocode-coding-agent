@@ -3,6 +3,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
 import { clip } from "../shared/render/text.ts";
+import { worktreeName } from "../shared/member-worktree.ts";
 import { type AgentEnd, type PanelEntry, panelColor, panelMark, panelState } from "./panel-state.ts";
 
 export { type PanelEntry, shownWorking } from "./panel-state.ts";
@@ -49,7 +50,7 @@ export function collapsedRows(tree: PanelEntry[], now: number, theme: Theme, wid
 		const prefix = depth > 0 ? `${"  ".repeat(depth - 1)} └ ` : "";
 		const flag = member.pending ? `${GLYPH.message} ${member.pending}` : "";
 		const tail = flag ? `${SEPARATOR}${flag}` : "";
-		const worktree = entry.isolated ? `${SEPARATOR}worktree` : "";
+		const worktree = entry.isolated ? `${SEPARATOR}worktree ${clip(worktreeName(entry.isolated.folder), 24)}` : "";
 		const name = fitName(
 			`${prefix}${clip(member.id, 64)}`,
 			Math.max(NAME_MIN, width - state.label.length - worktree.length - tail.length - 7),

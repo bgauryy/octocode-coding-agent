@@ -59,6 +59,7 @@ describe("registerWorktreeFooter", () => {
 		const ctxAt = (cwd: string) =>
 			({
 				cwd,
+				hasUI: true,
 				ui: { setStatus: (_key: string, value?: string) => void statuses.push(value) },
 			}) as unknown as ExtensionContext;
 		let listener: (() => void) | undefined;
@@ -118,6 +119,19 @@ describe("registerWorktreeFooter", () => {
 		expect(h.stops()).toBe(1);
 		await h.shutdown();
 		expect(h.stops()).toBe(2);
+	});
+
+	it("stops watching, without throwing, when its session was replaced without session_shutdown", async () => {
+		const other = path.join(repo.root, ".octocode", "worktrees", "stale");
+		sh(repo.root, "worktree", "add", "-q", "-b", "worktree-stale", other);
+		const h = harness();
+		await h.start(repo.root);
+		h.statuses.push = () => {
+			throw new Error("This extension ctx is stale after session replacement or reload.");
+		};
+		h.team.view.members = [member("x", other)];
+		expect(() => h.tick()).not.toThrow();
+		expect(h.stops()).toBe(1);
 	});
 
 	it("shows nothing outside a repository", async () => {

@@ -30,7 +30,7 @@ import type { SessionInternals } from "./host.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { SessionModelControl } from "./model-control.ts";
 import { expandMentionSkills } from "./prompt-expansion.ts";
-import type { PromptingHost } from "./prompting.ts";
+import { type PromptingHost, releaseHeldInput } from "./prompting.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import { SessionRetry } from "./retry.ts";
 import { SessionRunLoop } from "./run-loop.ts";
@@ -116,7 +116,24 @@ export function createSessionCollaborators(
 		pendingToolNames: tools.pendingMcpToolNames,
 	});
 	const bash = new SessionBash({ ...base, recordBashResult: seams.recordBashResult });
-	const compaction = new SessionCompaction({ ...base, cacheWarmer, summarize: seams.runDefaultCompaction });
+	// The prompting host is built below, from this compaction: input held for a manual compaction is released through it.
+	const held: { prompting?: PromptingHost } = {};
+	const compaction = new SessionCompaction({
+		...base,
+		cacheWarmer,
+		summarize: seams.runDefaultCompaction,
+		// Not awaited: the compaction's caller gets its answer now; a failing run is reported as any hook's run would be.
+		releaseHeldInput: () => {
+			if (!held.prompting) return;
+			releaseHeldInput(held.prompting).catch((error: unknown) => {
+				base.session.extensionRunner.emitError({
+					extensionPath: "<compaction>",
+					event: "compaction_end",
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+		},
+	});
 	const tree = new SessionTreeNavigation({
 		...base,
 		getSummarizationRequestAuth: seams.getSummarizationRequestAuth,
@@ -160,6 +177,8 @@ export function createSessionCollaborators(
 			session.agent.followUpMode = session.settingsManager.getFollowUpMode();
 		},
 	};
+	const prompting: PromptingHost = { ...base, inputs, compaction, runLoop, limitsModel: () => models.limitsModel() };
+	held.prompting = prompting;
 	return {
 		models,
 		tools,
@@ -173,7 +192,7 @@ export function createSessionCollaborators(
 		runLoop,
 		bindings,
 		runtime,
-		prompting: { ...base, inputs, compaction, runLoop, limitsModel: () => models.limitsModel() },
+		prompting,
 		hooks: {
 			...base,
 			inputs,

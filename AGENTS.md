@@ -34,7 +34,7 @@ Paths are under `packages/`. Docs: [CONFIGURATIONS.md](CONFIGURATIONS.md), the [
 
 ## Verify
 
-Node 24.15+ (Node 24 line); setup and model-data hydration per the root README. Yarn runs everything and owns the only lockfile; npm only packs, publishes or installs as a consumer.
+Node 24.15+ (Node 24 line); setup and model-data hydration per [DEVELOPMENT.md](DEVELOPMENT.md). Yarn runs everything and owns the only lockfile; npm only packs, publishes or installs as a consumer.
 
 | Command | Does |
 | --- | --- |

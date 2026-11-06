@@ -375,16 +375,22 @@ describe("releasing when the run ends", () => {
 		await reservedThen(s, () => s.emit("session_shutdown", {}, s.ctx));
 	});
 
-	it("when the session ends with a child still closing", () => {
+	it("when the run ends after the session ended with the child still closing", () => {
 		const s = setup();
 		expect(s.team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
 			ok: true,
 		});
 		expect(s.leases()).toHaveLength(1);
 		s.team.stop();
+		// B209: a child still closing may write its paths until its process exits, so the session's end keeps them
+		// (the parent's own end still takes them along: see "goes with the parent's process" below).
+		expect(s.leases()).toEqual([{ path: "a.ts", kind: "file", owner: "kid-one" }]);
+		// The run's end releases them, also after the session restarted (/new).
+		s.team.start(s.ctx);
+		s.team.join();
+		s.team.childLeases.release("kid-one");
 		expect(s.leases()).toEqual([]);
 		expect(s.store.names()).not.toContain("kid-one");
-		// A release that arrives after that has nothing left to do.
 		expect(() => s.team.childLeases.release("kid-one")).not.toThrow();
 	});
 

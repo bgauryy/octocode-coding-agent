@@ -7,6 +7,7 @@ import { shortPath } from "../../shared/format.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { stopTree } from "../../shared/process.ts";
 import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
+import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../../../utils/shell.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { settleWithin } from "../../shared/util.ts";
 import {
@@ -44,7 +45,6 @@ import { startGate } from "../rate-gate.ts";
 import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
 import { ChildWatchdog } from "./watchdog.ts";
-import { leadsProcessGroup } from "../../../utils/shell.ts";
 
 /** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
 const INTERRUPT_FOLLOW_UP_MS = 1_500;
@@ -102,6 +102,9 @@ export async function runChild(
 				detached: leadsProcessGroup(),
 			});
 			adoptTree(child.pid);
+			// The group dies with this process on a crash or an emergency exit (`killTrackedDetachedChildren`), until it exits.
+			const trackedPid = child.pid;
+			if (trackedPid) trackDetachedChildPid(trackedPid, { graceful: true });
 			const state = newChildState();
 			const outputDir = identity.scratch ?? reportDir(identity.id);
 			const report = new ReportTracker(outputDir, identity.resultContract);
@@ -292,6 +295,8 @@ export async function runChild(
 				else conclude(code, exitSignal);
 			};
 			const conclude = (code: number | null, exitSignal: NodeJS.Signals | null) => {
+				// Until here the exit hook also reaches what the child left in its group.
+				if (trackedPid) untrackDetachedChildPid(trackedPid);
 				for (const stream of [child.stdout, child.stderr]) stream.destroy();
 				if (buffer.trim()) handleLine(buffer);
 				relay.end();

@@ -9,7 +9,10 @@ import {
 	getCurrentTools,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
+import { execFileSync } from "node:child_process";
 import { afterEach, expect, it } from "vitest";
+import { liveStdioServerPids } from "../../../mcp/src/client/transports/stdio.ts";
+import { AgentSessionRuntime, type CreateAgentSessionRuntimeFactory } from "../../src/core/agent-session-runtime.ts";
 import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -26,10 +29,35 @@ import { trustFolder } from "./helpers.ts";
 const SERVER = path.join(import.meta.dirname, "fixtures", "echo-secret-mcp.mjs");
 const TOKEN = "EXT-MCP-OK-7731";
 
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-	for (const cleanup of cleanups.splice(0)) cleanup();
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+	for (const cleanup of cleanups.splice(0)) await cleanup();
 });
+
+/**
+ * The real teardown: `AgentSessionRuntime.dispose()` emits `session_shutdown` (which closes the session's MCP
+ * connections) before disposing the session. `AgentSession.dispose()` alone does not.
+ */
+async function disposeThroughRuntime(
+	agent: Awaited<ReturnType<typeof createTestSession>>["session"],
+	cwd: string,
+	agentDir: string,
+	settingsManager: SettingsManager,
+	resourceLoader: DefaultResourceLoader,
+): Promise<void> {
+	const unused: CreateAgentSessionRuntimeFactory = async () => {
+		throw new Error("not used");
+	};
+	const services = {
+		cwd,
+		agentDir,
+		modelRuntime: agent.modelRuntime,
+		settingsManager,
+		resourceLoader,
+		diagnostics: [],
+	};
+	await new AgentSessionRuntime(agent, services, unused).dispose();
+}
 
 it("exposes an external workspace MCP server by default, runs a call and returns the result to the model", async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-e2e-extmcp-"));
@@ -94,8 +122,9 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 		settingsManager,
 		sessionManager: SessionManager.inMemory(cwd),
 	});
-	cleanups.push(() => {
-		agent.dispose?.();
+	const dispose = () => disposeThroughRuntime(agent, cwd, agentDir, settingsManager, resourceLoader);
+	cleanups.push(async () => {
+		await dispose();
 		process.env.HOME = saved.HOME;
 		if (saved.agentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
 		else process.env.OCTOCODE_CODING_AGENT_DIR = saved.agentDir;
@@ -172,7 +201,7 @@ const TOOLS = {
 } as const;
 const ENUM_VALUES = ["standard", "express", "overnight"];
 
-async function startMultiToolSession(serverConfig: Record<string, unknown>) {
+async function startMultiToolSession(serverConfig: Record<string, unknown>, script = MULTI, name = "inventory") {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-e2e-multimcp-"));
 	const cwd = path.join(root, "project");
 	const agentDir = path.join(root, "agent");
@@ -184,7 +213,7 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>) {
 		JSON.stringify({
 			mcpServers: {
 				octocode: { command: "false", enabled: false },
-				inventory: { command: process.execPath, args: [MULTI], ...serverConfig },
+				[name]: { command: process.execPath, args: [script], ...serverConfig },
 			},
 		}),
 	);
@@ -234,8 +263,9 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>) {
 		settingsManager,
 		sessionManager: SessionManager.inMemory(cwd),
 	});
-	cleanups.push(() => {
-		agent.dispose?.();
+	const dispose = () => disposeThroughRuntime(agent, cwd, agentDir, settingsManager, resourceLoader);
+	cleanups.push(async () => {
+		await dispose();
 		process.env.HOME = saved.HOME;
 		if (saved.agentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
 		else process.env.OCTOCODE_CODING_AGENT_DIR = saved.agentDir;
@@ -257,7 +287,7 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>) {
 		const start = sections.mcps.indexOf('<mcp name="inventory"');
 		return sections.mcps.slice(start, sections.mcps.indexOf("</mcp>", start) + "</mcp>".length);
 	};
-	return { agent, faux, requests, step, toolCall, mcpBlock };
+	return { agent, faux, requests, step, toolCall, mcpBlock, dispose };
 }
 
 it("tells the agent a default-exposed server's instructions and every tool, description and field", async () => {
@@ -328,4 +358,91 @@ it("indexes a deferred server's tools and loads one tool's full description and 
 	expect(text).toContain(TOOLS.reserve_item.description);
 	for (const description of Object.values(TOOLS.reserve_item.fields)) expect(text).toContain(description);
 	for (const value of ENUM_VALUES) expect(text).toContain(value);
+});
+
+/** Child processes of this test process whose command line runs `script`. */
+function childrenRunning(script: string): number[] {
+	return execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
+		.split("\n")
+		.flatMap((line) => {
+			const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+			return match && Number(match[2]) === process.pid && match[3].includes(script) ? [Number(match[1])] : [];
+		});
+}
+
+it("reports a server whose process was killed mid-session as down, and calls work again after a restart", async () => {
+	// Servers other tests in this file left running are not this session's.
+	const others = new Set(childrenRunning(path.basename(SERVER)));
+	const { agent, faux, step } = await startMultiToolSession({}, SERVER, "secretecho");
+	const mine = () => childrenRunning(path.basename(SERVER)).filter((pid) => !others.has(pid));
+	const echo = () => fauxToolCall("mcp__secretecho__echo_secret", {});
+	const list = () => fauxToolCall("mcp", { intent: "list", server: "secretecho", reason: "check" });
+	const restart = () => fauxToolCall("mcp", { intent: "restart", server: "secretecho", reason: "recover" });
+	const calls = (...blocks: ReturnType<typeof fauxToolCall>[]) =>
+		step(fauxAssistantMessage(blocks, { stopReason: "toolUse" }));
+	const killed: number[] = [];
+	faux.setResponses([
+		calls(echo()),
+		async () => {
+			// Mid-session: the server process dies between two requests.
+			killed.push(...mine());
+			for (const pid of killed) process.kill(pid, "SIGKILL");
+			await new Promise((resolve) => setTimeout(resolve, 1_000));
+			return fauxAssistantMessage([list()], { stopReason: "toolUse" });
+		},
+		calls(echo()),
+		calls(restart()),
+		calls(echo()),
+		step(fauxAssistantMessage("done")),
+	]);
+	await agent.prompt("Use the echo service, then again.");
+	expect(killed, "one server process was running and is now killed").toHaveLength(1);
+	const results = agent.messages.filter((message) => message.role === "toolResult");
+	const text = results.map((result) => JSON.stringify(result.content));
+	expect(results).toHaveLength(5);
+	// Before the drop the call works.
+	expect(results[0]).toMatchObject({ toolName: "mcp__secretecho__echo_secret", isError: false });
+	expect(text[0]).toContain(TOKEN);
+	// After it, the server is listed as disconnected, and a call says so and names the way back instead of hanging.
+	expect(results[1]).toMatchObject({ toolName: "mcp", isError: false });
+	expect(text[1]).toMatch(/secretecho: disconnected/);
+	expect(results[2]).toMatchObject({ toolName: "mcp__secretecho__echo_secret", isError: true });
+	expect(text[2]).toMatch(/disconnected[\s\S]*reconnecting[\s\S]*intent \\"restart\\"/);
+	expect(text[2]).not.toContain(TOKEN);
+	// `restart` brings it back (a new process), and the next call returns the token again.
+	expect(results[3]).toMatchObject({ toolName: "mcp", isError: false });
+	expect(text[3]).toMatch(/Restarted\. secretecho: connected/);
+	expect(results[4]).toMatchObject({ toolName: "mcp__secretecho__echo_secret", isError: false });
+	expect(text[4]).toContain(TOKEN);
+	expect(mine()).toHaveLength(1);
+	expect(mine()).not.toContain(killed[0]);
+});
+
+/** True while a process with this pid exists. */
+function alive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
+it("stops the stdio server process when the session is torn down through the runtime", async () => {
+	const before = new Set(liveStdioServerPids());
+	const { agent, faux, step, dispose } = await startMultiToolSession({}, SERVER, "secretecho");
+	faux.setResponses([
+		step(fauxAssistantMessage([fauxToolCall("mcp__secretecho__echo_secret", {})], { stopReason: "toolUse" })),
+		step(fauxAssistantMessage("done")),
+	]);
+	await agent.prompt("Use the echo service.");
+	const mine = liveStdioServerPids().filter((pid) => !before.has(pid));
+	expect(mine, "the session started one stdio server").toHaveLength(1);
+	expect(mine.every(alive)).toBe(true);
+
+	await dispose();
+
+	const deadline = Date.now() + 5_000;
+	while (mine.some(alive) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+	expect(mine.filter(alive), "server pids still running after teardown").toEqual([]);
 });

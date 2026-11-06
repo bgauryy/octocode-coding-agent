@@ -1,6 +1,6 @@
 # @octocodeai/octocode-acp (private workspace)
 
-This workspace owns Octocode's inbound and outbound Agent Client Protocol v1 integration. It uses the official `@agentclientprotocol/sdk` **2.0.2** stable v1 API; it does not implement a second wire protocol or agent loop.
+This workspace owns Octocode's inbound and outbound Agent Client Protocol v1 integration. It uses the official `@agentclientprotocol/sdk` **2.4.0** stable v1 API; it does not implement a second wire protocol or agent loop.
 
 | Owner                   | Responsibility                                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |

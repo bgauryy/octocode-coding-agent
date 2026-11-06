@@ -1,5 +1,7 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import { VirtualTerminal } from "../../../tui/test/virtual-terminal.ts";
+import { startInteractive } from "./e2e-commands-harness.ts";
 import { hang, KEY, startUi, type UiHarness } from "./e2e-ui-flows/ui.ts";
 
 /** The `✻ Worked …` line: one per settled run, however many segments (follow-ups, retries) the run took. */
@@ -81,5 +83,78 @@ describe("turn summary line", () => {
 		expect(await lines()).toEqual([
 			expect.stringMatching(/^✻ Worked \d+s · 1 tool · ≈\$0\.50(?: \+ n\/a)? · cache \d+%/),
 		]);
+	});
+
+	describe("persistent footer", () => {
+		/** The footer's two rows: model, permission and context fill on the first, total tokens on the second. */
+		const footer = async () => {
+			const rows = (await t!.grid()).map((row) => row.trimEnd());
+			const top = rows.findIndex((row) => /\bctx \S/.test(row));
+			return top < 0 ? "" : rows.slice(top, top + 2).join("\n");
+		};
+		/** A wide terminal: the temp working directory is long, and the narrow footer drops the token total first. */
+		const startWide = async () => {
+			const terminal = new VirtualTerminal(200, 40);
+			const wide = (await startInteractive({ terminal })) as UiHarness;
+			wide.text = async () => (await wide.grid()).join("\n").trimEnd();
+			wide.type = async (text) => {
+				for (const ch of text) wide.press(ch);
+				await new Promise((resolve) => setTimeout(resolve, 150));
+			};
+			await wide.until(async () => (await wide.text()).length > 0, "first paint");
+			return wide;
+		};
+		const turn = async (prompt: string) => {
+			await t!.type(prompt);
+			const before = t!.requests.length;
+			t!.press(KEY.enter);
+			await t!.until(() => t!.requests.length > before, "the request to reach the model");
+			await idle();
+		};
+
+		it("shows context %, tokens and (in the turn line) cache % after turns with usage", async () => {
+			t = await startWide();
+			// A run with a tool call writes a summary line; a plain reply does not.
+			t.script(toolTurn("echo one"), "first answer", toolTurn("echo two"), "second answer");
+			await t.until(async () => /ctx [▰▱]+ \d+% of \d+k/.test(await footer()), "a context gauge");
+			expect(await footer()).not.toMatch(/\d+ tokens/);
+			await turn("hello there");
+			await turn("and again");
+			const replies = t.host.session.sessionManager
+				.getBranch()
+				.flatMap((entry) =>
+					entry.type === "message" && entry.message.role === "assistant" ? [entry.message.usage] : [],
+				);
+			expect(replies).toHaveLength(4);
+			expect(replies[3].cacheRead, "the second request re-reads the first prompt").toBeGreaterThan(0);
+			await t.until(async () => /\dk? tokens/.test(await footer()), "the footer to count tokens");
+			const rows = await footer();
+			// Context fill is known (a percentage over the auto-compact window), never `?`.
+			expect(rows).toMatch(/ctx [▰▱]+ \d+% of \d+k/);
+			expect(rows).not.toMatch(/ctx \? of/);
+			// Tokens: new prompt plus output, with the breakdown including cache reads.
+			expect(rows).toMatch(/[1-9]\d*(?:\.\d)?k? tokens \(↑\d[^)]*cached ↓\d+/);
+			// Cache % is on each run's summary line, not in the footer.
+			await t.until(async () => (await lines()).length === 2, "both summary lines");
+			expect(await lines()).toEqual([expect.stringMatching(/cache \d+%/), expect.stringMatching(/cache [1-9]\d*%/)]);
+		});
+
+		it("shows ? for the context fill when usage is unknown after a compaction", async () => {
+			t = await startWide();
+			t.script("an answer", "summary of the earlier turns");
+			await turn("hello");
+			await t.until(async () => /ctx [▰▱]+ \d+% of/.test(await footer()), "a known context fill");
+			// A real compaction: until the next reply, how full the context is cannot be known.
+			// Compaction keeps the last 20k tokens of history: seed enough older history for it to have something to summarize.
+			const manager = t.host.session.sessionManager;
+			for (let i = 0; i < 3; i++) {
+				manager.appendMessage({ role: "user", content: "x".repeat(100_000), timestamp: Date.now() });
+				manager.appendMessage(fauxAssistantMessage("y".repeat(100_000)));
+			}
+			await t.host.session.compact();
+			await t.until(async () => /ctx \? of \d+k/.test(await footer()), "the footer to show ? after compaction");
+			expect(await footer()).not.toMatch(/ctx [▰▱]+ \d+%/);
+			expect(await footer()).toMatch(/1 compaction/);
+		});
 	});
 });

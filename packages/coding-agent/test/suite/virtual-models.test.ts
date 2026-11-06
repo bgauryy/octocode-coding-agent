@@ -137,7 +137,8 @@ describe("AgentSession virtual models", () => {
 			fauxAssistantMessage("done"),
 		]);
 
-		await harness.session.prompt("x".repeat(5000));
+		// Near the large model's 50_000-token window, so the length stop reads as overflow.
+		await harness.session.prompt("x".repeat(190_000));
 
 		expect(harness.eventsOfType("compaction_start").map((event) => event.reason)).toEqual(["overflow"]);
 		// Compaction may fold the prompt into the summary, so the retry is not a new user turn.

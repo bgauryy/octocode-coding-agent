@@ -272,22 +272,35 @@ export function sanitizeBinaryOutput(str: string): string {
 }
 
 /**
- * Detached child processes must be tracked so they can be killed on parent
- * shutdown signals (SIGHUP/SIGTERM).
+ * Detached child processes (bash trees, subagents) must be tracked so they can be killed on parent shutdown signals
+ * (SIGHUP/SIGTERM), an emergency or uncaught-exception exit, and any `process.exit` that comes before they stopped:
+ * their process groups survive the death of this process. A normal stop untracks them first. A `graceful` child (a
+ * subagent) is stopped by the graceful shutdown itself, so it can report and save its work: a signal handler spares it
+ * (`sparingGraceful`), and only an exit, crash or emergency exit kills it.
  */
 const trackedDetachedChildPids = new Set<number>();
+const gracefulDetachedChildPids = new Set<number>();
+let exitHookInstalled = false;
 
-export function trackDetachedChildPid(pid: number): void {
+export function trackDetachedChildPid(pid: number, options?: { graceful?: boolean }): void {
 	trackedDetachedChildPids.add(pid);
+	if (options?.graceful) gracefulDetachedChildPids.add(pid);
+	if (!exitHookInstalled) {
+		exitHookInstalled = true;
+		// Synchronous, so it runs on every `process.exit`, where a pending SIGKILL timer would be lost.
+		process.on("exit", () => killTrackedDetachedChildren());
+	}
 }
 
 export function untrackDetachedChildPid(pid: number): void {
 	trackedDetachedChildPids.delete(pid);
+	gracefulDetachedChildPids.delete(pid);
 }
 
-export function killTrackedDetachedChildren(): void {
+export function killTrackedDetachedChildren(options?: { sparingGraceful?: boolean }): void {
 	for (const pid of trackedDetachedChildPids) {
+		if (options?.sparingGraceful && gracefulDetachedChildPids.has(pid)) continue;
 		signalTree(pid, "SIGKILL");
+		untrackDetachedChildPid(pid);
 	}
-	trackedDetachedChildPids.clear();
 }

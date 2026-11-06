@@ -7,6 +7,7 @@ import { tildePath } from "../shared/home.ts";
 import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { BudgetStanding, OpenQuestion } from "./model.ts";
+import { memberWorktree, worktreeLabel } from "../shared/member-worktree.ts";
 import type { MemberDetails } from "./store/details.ts";
 import { STALLED_LISTED_MS } from "./store/limits.ts";
 
@@ -83,7 +84,8 @@ export function describeMembers(
 					member.lastOutputAt === undefined ? "" : ` · last output ${formatAgo(now - member.lastOutputAt)}`;
 				// Another worktree of the repository: its folder name says where, and its locks are paths in that checkout.
 				const elsewhere = here && member.checkout && member.checkout !== here;
-				const worktree = elsewhere ? ` · worktree ${path.basename(member.checkout!)}` : "";
+				const folder = memberWorktree(member, here);
+				const worktree = folder ? ` · ${worktreeLabel(folder)}` : "";
 				const budget = standing?.(member.id);
 				const requests = budget ? ` · ${budget.used} of ${budget.soft} requests, stops at ${budget.hard}` : "";
 				return [

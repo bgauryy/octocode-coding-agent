@@ -763,7 +763,7 @@ describe("durable length recovery", () => {
 			execute: async () => ({ content: [{ type: "text", text: "done" }], details: {} }),
 		};
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
+			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 900 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			tools: [tool],
 			builtinCompactionFactories: [
@@ -808,7 +808,7 @@ describe("durable length recovery", () => {
 		const harness = await createHarness({
 			// Keep the fixed prompt below the tiny test window; this case tests recovery, not an oversized tool catalog.
 			tools: [],
-			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
+			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 900 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {

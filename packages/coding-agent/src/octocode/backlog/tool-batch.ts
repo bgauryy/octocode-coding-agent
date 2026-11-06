@@ -41,3 +41,26 @@ export function batchUpdate(
 	const head = `Updated ${applied} of ${rows.length}${applied < rows.length ? `; ${rows.length - applied} refused` : ""}.`;
 	return textResult([head, ...rows.map((row) => row.text)].join("\n"));
 }
+
+/**
+ * `add` with `items`: each entry is a full single add (`one`), applied in order with every store check. A refused entry
+ * is reported on its own line, labelled by its title, and the rest still apply.
+ */
+export function batchAdd(
+	entries: readonly Record<string, unknown>[],
+	allowed: readonly string[],
+	name: string,
+	one: (entry: Record<string, unknown>) => Result,
+): Batch {
+	const rows = entries.map((entry, index) => {
+		const named = [entry.title, entry.goal].find((v): v is string => typeof v === "string" && v.trim() !== "");
+		return attempt(named ? `"${named.trim().slice(0, 60)}"` : `${name}[${index}]`, () => {
+			const unknown = Object.keys(entry).filter((key) => !allowed.includes(key));
+			if (unknown.length) throw new Error(`Unknown ${name} fields: ${unknown.join(", ")}.`);
+			return one(entry);
+		});
+	});
+	const applied = rows.filter((row) => row.ok).length;
+	const head = `Added ${applied} of ${rows.length}${applied < rows.length ? `; ${rows.length - applied} refused` : ""}.`;
+	return textResult([head, ...rows.map((row) => row.text)].join("\n"));
+}

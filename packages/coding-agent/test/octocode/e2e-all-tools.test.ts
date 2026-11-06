@@ -207,6 +207,17 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 				"Updated B2",
 				"closed",
 			),
+			// One call, both items: each row is the full single `get`, separated by a rule.
+			answers(
+				call("backlog", { op: "get", ids: ["B1", "B2"] }),
+				"Prove it",
+				"Goal: It is proven",
+				"Close me",
+				"Goal: gone",
+				"\n\n---\n",
+			),
+			// A missing id is reported on its own row and does not hide the others.
+			answers(call("backlog", { op: "get", ids: ["B1", "B999"] }), "Goal: It is proven", "No backlog item B999"),
 		],
 		fail: [
 			answers(call("backlog", { op: "get", id: "B999" }), "No backlog item B999"),

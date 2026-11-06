@@ -12,7 +12,7 @@ import {
 import { redactSecrets } from "../../../common/src/sanitize.ts";
 import type { AcpBrokerHost } from "../host.ts";
 import { AcpSession, type AcpWorker } from "./session.ts";
-import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay, sessionNotFound } from "./history.ts";
+import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay } from "./history.ts";
 import { reportToStderr } from "../../../common/src/stderr.ts";
 
 export type { AcpWorker } from "./session.ts";
@@ -145,7 +145,7 @@ export class AcpBroker {
 		this.ready();
 		if (this.restoring.has(id)) throw RequestError.invalidRequest(undefined, "Session is restoring.");
 		const session = this.sessions.get(id);
-		if (!session) throw sessionNotFound(id);
+		if (!session) throw RequestError.sessionNotFound(id);
 		return session;
 	}
 	private async restoreSession(

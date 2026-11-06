@@ -6,9 +6,11 @@ import { isMcpToolName } from "../../../mcp/src/servers.ts";
  */
 
 import { getSystemMessageText } from "@octocodeai/octocode-ai";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { getReadmePath } from "../config.ts";
 import { renderInstruction } from "./prompt-template.ts";
+import { checkoutLabel, octocodeWorktreeAt } from "./worktree-path.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 import { formatHarnessesForPrompt } from "./discovery/vendors/prompt.ts";
 import type { HarnessStatus } from "./discovery/vendors/types.ts";
@@ -103,7 +105,7 @@ export type SystemPromptSections = Record<string, string>;
  * for a session other processes can reach, its process name. The last default section (custom sections follow it); a
  * new day changes only this section
  */
-export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = process.env): string {
+export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = process.env, worktree?: string): string {
 	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	const shell = env.SHELL?.split(/[\\/]/).pop() || (process.platform === "win32" ? "cmd" : "sh");
 	return renderInstruction("system/environment.md", {
@@ -111,7 +113,26 @@ export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = pr
 		arch: process.arch,
 		shell,
 		date,
+		worktree,
 	});
+}
+
+/**
+ * The `Checkout:` fact for a session that runs in a linked git worktree (`worktree <name>`, with the main checkout and
+ * branch when they are cheap to read); undefined in a main checkout or a plain folder. Two small file reads, no git process.
+ */
+export function linkedWorktreeFact(folder: string): string | undefined {
+	if (!checkoutLabel(folder)?.startsWith("worktree ")) return undefined;
+	const main = octocodeWorktreeAt(folder)?.main;
+	let branch: string | undefined;
+	try {
+		const pointer = /^gitdir:\s*(.+?)\s*$/mu.exec(readFileSync(join(folder, ".git"), "utf8"))?.[1];
+		const head = pointer ? readFileSync(join(resolve(folder, pointer), "HEAD"), "utf8") : "";
+		branch = /^ref: refs\/heads\/(.+)$/mu.exec(head)?.[1]?.trim();
+	} catch {
+		// Branch is optional: a detached or unreadable HEAD leaves it out.
+	}
+	return `linked worktree${main ? ` of ${main}` : ""}${branch ? `, branch ${branch}` : ""}`;
 }
 /** Normalize prompt input into the mutable, collection-complete shape exposed to extensions. */
 export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOptions): NormalizedBuildSystemPromptOptions {

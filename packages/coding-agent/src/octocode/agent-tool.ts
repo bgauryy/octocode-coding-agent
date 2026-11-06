@@ -4,6 +4,7 @@ import { Text } from "@octocodeai/octocode-tui";
 import { type TSchema, Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { TASKS_FIELD, batchCallText, batchOf, runBatch, tasksSchema } from "./agent-batch.ts";
 import { AGENT_FIELD_RENAMES, agentCall } from "./shared/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";
 import { maxSubagents } from "./subagents/claim.ts";
@@ -67,6 +68,10 @@ function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean) {
 			properties[field] = { ...rest, description: `${before}${marked}` };
 		}
 	}
+	if (entries.some(([type]) => type === "task")) {
+		owners.set(TASKS_FIELD, ["task"]);
+		properties[TASKS_FIELD] = tasksSchema();
+	}
 	return { owners, properties };
 }
 
@@ -123,6 +128,8 @@ export function agentModes() {
 						);
 						throw new Error(`agent type ${type} does not take ${named.join(", ")}.`);
 					}
+					if (type === "task" && fields[TASKS_FIELD] !== undefined)
+						return runBatch(tool, id, fields, reason, { signal, onUpdate, ctx });
 					const { input: own } = agentCall({ type, ...fields });
 					if (reason !== undefined && declaresReason(tool.parameters)) own.reason = reason;
 					// The same validation a directly registered tool gets: optional nulls dropped, values coerced, the failing field named.
@@ -145,6 +152,7 @@ export function agentModes() {
 				},
 				// Mode renderers read their own arguments from `context.args`, so they get the mode's arguments, flat or from an old envelope.
 				renderCall(args, theme, context) {
+					if (batchOf(args)) return new Text(batchCallText(args), 0, 0);
 					const call = agentCall(args);
 					return (
 						modes.get(call.type as Mode)?.renderCall?.(call.input, theme, { ...context, args: call.input }) ??
@@ -153,10 +161,13 @@ export function agentModes() {
 				},
 				renderResult(result, options, theme, context) {
 					const call = agentCall(context?.args);
+					const batch = isRecord(result.details) && Array.isArray(result.details.batch);
 					// A thrown error has no agentType in its details; the call's own type still names the mode.
 					const type = (isRecord(result.details) ? result.details.agentType : undefined) ?? call.type;
 					return (
-						modes.get(type as Mode)?.renderResult?.(result, options, theme, { ...context, args: call.input }) ??
+						(batch
+							? undefined
+							: modes.get(type as Mode)?.renderResult?.(result, options, theme, { ...context, args: call.input })) ??
 						new Text(
 							result.content
 								.filter((part) => part.type === "text")

@@ -262,8 +262,10 @@ describe("with Octocode MCP (default)", () => {
 		// tool's `mcp` field +302 (+2,726 in all).
 		// 49_723 (2026-11-06, measured 49,690; B170): the timer tool's closed `until` list, +953 in main (see
 		// `prompt-size.test.ts`); the other +70 since 48,667 came from concurrent edits. Slack over the measurement is 33.
+		// 50_047 (2026-11-07, measured 50,014; B218/B219, user-requested): the agent tool's `tasks` and the backlog's `items`
+		// arrays, +303 in main (see `prompt-size.test.ts`); the other +21 since 49,690 came from concurrent edits.
 		expect(ownChars, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
-			49_723,
+			50_047,
 		);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");

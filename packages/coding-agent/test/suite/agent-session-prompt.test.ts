@@ -15,7 +15,7 @@ import type { BeforeAgentStartEvent, ExtensionAPI, InputEvent } from "../../src/
 import type { PromptTemplate } from "../../src/core/prompt-templates.ts";
 import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
 import { createTestResourceLoader } from "../utilities.ts";
-import { createHarness, getMessageText, type Harness } from "./harness.ts";
+import { createHarness, getMessageText, getUserTexts, type Harness } from "./harness.ts";
 
 const processImage = vi.hoisted(() =>
 	vi.fn(async (_bytes: Uint8Array, mimeType: string) => ({
@@ -497,7 +497,7 @@ describe("AgentSession prompt characterization", () => {
 		await promptPromise;
 	});
 
-	it("throws when prompted during manual compaction", async () => {
+	it("holds a prompt during manual compaction and runs it afterwards", async () => {
 		let markCompactionStarted = () => {};
 		const compactionStarted = new Promise<void>((resolve) => {
 			markCompactionStarted = resolve;
@@ -534,13 +534,16 @@ describe("AgentSession prompt characterization", () => {
 		await compactionStarted;
 
 		try {
-			await expect(harness.session.prompt("third")).rejects.toThrow(
-				"Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
-			);
+			// Contract change (B220): a prompt during manual compaction waits and runs once the compaction ends.
+			harness.appendResponses([fauxAssistantMessage("three")]);
+			await expect(harness.session.prompt("third")).resolves.toBeUndefined();
+			expect(getUserTexts(harness)).not.toContain("third");
 		} finally {
 			releaseCompaction();
 			await compactPromise;
 		}
+		await harness.session.waitForIdle();
+		expect(getUserTexts(harness).filter((text) => text === "third")).toHaveLength(1);
 	});
 
 	it("throws when prompting without a model", async () => {

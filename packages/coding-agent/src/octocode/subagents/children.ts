@@ -4,6 +4,7 @@ import path from "node:path";
 import { tildePath } from "../shared/home.ts";
 import { type ChildFiles, type SessionChild, sessionChildren } from "../shared/session-children.ts";
 import { type ChildSession, childSessionFile } from "./process/session.ts";
+import { REF_PREFIX } from "./worktree-base.ts";
 import { GENERAL_PROFILE } from "./profiles.ts";
 
 /** `, transcript ~/…` (or `, transcript folder ~/…` before the file is known) `, report ~/…`; empty when none is recorded. */
@@ -57,10 +58,20 @@ export function resumeNote(
 	return renderInstruction("notices/subagents/children-ended.md", { children: gone.map(describeChild).join("; ") });
 }
 
+/**
+ * `isolated, worktree <id>` while the child runs; once it ended its worktree is removed and the result lives on
+ * `refs/octocode/<id>`. The worktree folder is named by the agent id.
+ */
+function isolatedNote(child: SessionChild): string {
+	return child.status === "background"
+		? `isolated, worktree ${child.id}`
+		: `isolated, worktree ${child.id} (gone), result on ${REF_PREFIX}${child.id}`;
+}
+
 /** `general-bg (general, goal "…", stopped, transcript ~/…, report ~/…)`. */
 export function describeChild(child: SessionChild): string {
 	const status = child.outcome && child.outcome !== child.status ? `${child.status}: ${child.outcome}` : child.status;
-	return `${child.id} (${child.profile}, goal "${child.goal}", ${status}${describeFiles(child)}${child.isolated ? ", isolated" : ""})`;
+	return `${child.id} (${child.profile}, goal "${child.goal}", ${status}${describeFiles(child)}${child.isolated ? `, ${isolatedNote(child)}` : ""})`;
 }
 
 /**

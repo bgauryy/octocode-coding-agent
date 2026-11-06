@@ -305,6 +305,7 @@ describe("the timer tool in a session", () => {
 				session: { isStreaming, agent: { steer, followUp } },
 				run: { isEmittingAgentSettled: false, deferredSettledActions: [] },
 				inputs: { noteQueuedCustomMessage: vi.fn(), noteSteeredCustomMessage: vi.fn() },
+				compaction: { isManualRunning: false },
 				runLoop: { startRun },
 			}) as never;
 		await sendCustomMessage(session(true), message, options);

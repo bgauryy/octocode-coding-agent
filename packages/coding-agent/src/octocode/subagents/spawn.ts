@@ -20,6 +20,8 @@ import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import { awaitSiblings, planReservation, type ReservationPlan, takeReservation, waitingText } from "./reservation.ts";
 import { pendingRefs, recordWorktreePid } from "./worktree.ts";
+import { REF_PREFIX } from "./worktree-base.ts";
+import { worktreeName } from "../shared/member-worktree.ts";
 import type { agentToolSpec } from "./agent-tool.ts";
 import { resumableChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
@@ -295,7 +297,7 @@ export async function spawnAgent(
 		handedOff = true;
 		details.status = "background";
 		return textResult(
-			`Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${warning}`,
+			`Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${isolation.worktree ? ` Works in its own worktree ${worktreeName(isolation.worktree.path)}, removed when it ends; its result lands on ${REF_PREFIX}${run.identity.id}.` : ""}${warning}`,
 			details,
 		);
 	} finally {
