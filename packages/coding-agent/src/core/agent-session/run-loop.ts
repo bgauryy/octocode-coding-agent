@@ -74,6 +74,9 @@ export class SessionRunLoop {
 	 */
 	async startRun(trigger: BeforeAgentStartTrigger, onStarted?: () => void, input?: PendingUserInput): Promise<void> {
 		const { session, run, inputs, bash } = this.host;
+		// A second run would reset the active run's state and, on failing, settle the session while that run still streams.
+		if (run.active)
+			throw new Error("A run is already active in this session. Queue the message with steer or followUp.");
 		if (
 			planConstraintActive(session.sessionManager) &&
 			!session.extensionRunner

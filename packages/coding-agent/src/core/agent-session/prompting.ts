@@ -87,6 +87,14 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		source: options?.source ?? "interactive",
 		expandedPaths,
 	};
+	const queueInput = async (mode: "steer" | "followUp"): Promise<void> => {
+		const queued = attachImagePaths
+			? await attachPromptPathImages(host, expandedText, currentImages, true)
+			: { text: expandedText, images: currentImages };
+		checkSessionDispatch(session);
+		await host.inputs.queue(mode, queued.text, queued.images, { ...input, images: queued.images });
+		preflightResult?.("queued");
+	};
 	// If streaming, queue via steer() or followUp() based on option
 	if (holding) {
 		if (!behavior) {
@@ -94,15 +102,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 				"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
 			);
 		}
-		const queued = attachImagePaths
-			? await attachPromptPathImages(host, expandedText, currentImages, true)
-			: { text: expandedText, images: currentImages };
-		checkSessionDispatch(session);
-		await host.inputs.queue(behavior === "followUp" ? "followUp" : "steer", queued.text, queued.images, {
-			...input,
-			images: queued.images,
-		});
-		preflightResult?.("queued");
+		await queueInput(behavior === "followUp" ? "followUp" : "steer");
 		return;
 	}
 
@@ -127,6 +127,12 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		? await attachPromptPathImages(host, expandedText, currentImages, false)
 		: { text: expandedText, images: currentImages };
 	checkSessionDispatch(session);
+	// Input handlers, the auth check and image reads await, so another submission (a second prompt, a triggered custom
+	// message, released held input) may have started a run meanwhile. Deliver after that run instead of starting a second.
+	if (session.isStreaming || host.compaction.isManualRunning) {
+		await queueInput(options?.streamingBehavior ?? "followUp");
+		return;
+	}
 	await host.runLoop.startRun(
 		{ messageType: "user", prompt: started.text, images: started.images },
 		() => preflightResult?.("started"),

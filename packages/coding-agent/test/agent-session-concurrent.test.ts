@@ -146,6 +146,20 @@ describe("AgentSession concurrent prompt guard", () => {
 		await firstPrompt.catch(() => {}); // Ignore abort error
 	});
 
+	it("queues a prompt sent while another prompt was still in preflight instead of starting a second run", async () => {
+		await createSession();
+
+		// Both pass the idle check before either starts its run: the second must not reach Agent.prompt().
+		const firstPrompt = session.prompt("First message");
+		await expect(session.prompt("Second message")).resolves.toBeUndefined();
+
+		expect(session.isStreaming).toBe(true);
+		expect(session.getFollowUpMessages()).toEqual(["Second message"]);
+
+		await session.abort();
+		await firstPrompt.catch(() => {});
+	});
+
 	it("should allow steer() while streaming", async () => {
 		await createSession();
 
