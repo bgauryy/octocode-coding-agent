@@ -7,6 +7,7 @@ import type {
 	ToolExecutionMode,
 } from "@octocodeai/octocode-agent-core";
 import type { ConstrainedSamplingConfig } from "@octocodeai/octocode-ai";
+import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../../theme/theme.ts";
@@ -24,6 +25,20 @@ export interface ToolRenderResultOptions {
 	/** Whether this is a partial/streaming result */
 	isPartial: boolean;
 }
+
+/** What a tool's `display()` sees: the call's arguments and, once there is one, its partial or final result. */
+export interface ToolDisplayInput<TArgs = any, TDetails = any> {
+	toolName: string;
+	args: TArgs;
+	/** Absent before the first result; a partial result while `status` is `running`. */
+	result?: AgentToolResult<TDetails>;
+	status: "running" | "completed" | "failed";
+}
+
+/** Builds how every surface draws a call. Pure: no theme, terminal, session or clock, so a saved result replays the same. */
+export type ToolDisplayFunction<TArgs = any, TDetails = any> = (
+	input: ToolDisplayInput<TArgs, TDetails>,
+) => ToolDisplay;
 
 /** Context passed to tool renderers. */
 export interface ToolRenderContext<TState = any, TArgs = any> {
@@ -221,6 +236,9 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 		ctx: ExtensionToolContext,
 	): Promise<AgentToolResult<TDetails>>;
 
+	/** How every surface (terminal, web, export, ACP) draws calls to this tool; see {@link ToolDisplayFunction}. */
+	display?(input: ToolDisplayInput<Static<TParams>, TDetails>): ToolDisplay;
+
 	/** Custom rendering for tool call display */
 	renderCall?: (args: Static<TParams>, theme: Theme, context: ToolRenderContext<TState, Static<TParams>>) => Component;
 
@@ -235,7 +253,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 
 type AnyToolDefinition = ToolDefinition<any, any>;
 
-export type ToolRenderers = Pick<AnyToolDefinition, "renderShell" | "renderCall" | "renderResult">;
+export type ToolRenderers = Pick<AnyToolDefinition, "renderShell" | "renderCall" | "renderResult" | "display">;
 
 /**
  * Chooses how calls to a tool are drawn, including tools that are not registered. `next()` returns

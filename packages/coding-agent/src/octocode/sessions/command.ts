@@ -1,3 +1,4 @@
+import { builtinDescription } from "../../core/slash-commands.ts";
 import path from "node:path";
 import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
@@ -206,7 +207,7 @@ export function registerSessionsCommand(
 	options: SessionsCommandOptions,
 ): void {
 	commands.add("resume", {
-		description: "Resume a recent session of this directory",
+		description: builtinDescription("resume"),
 		argumentHint: "[all] [<query>|B<n>]",
 		complete: (prefix) => wordCompletions(["all"], prefix),
 		handler: async (args, ctx) => {

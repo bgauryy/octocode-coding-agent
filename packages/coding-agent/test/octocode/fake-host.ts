@@ -54,6 +54,8 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 		registerCommand: (name: string, command: unknown) => commands.set(name, command),
 		registerMessageRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
 		registerEntryRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
+		// The tool display resolver (octocode/ui/tool-display.ts) registers here; the fake draws nothing.
+		registerToolRenderer: () => {},
 		registerShortcut: (key: string, options: { description?: string; handler: (ctx: unknown) => unknown }) =>
 			shortcuts.set(key, options),
 		on: (event: string, handler: Handler) => {

@@ -21,6 +21,7 @@ import {
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { modelLabel, withoutProvider } from "./model.ts";
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { noticeText } from "./notices.ts";
 import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../shared/row-mark.ts";
 import { shareWorktree, sharedWorktree } from "./render-worktree.ts";
@@ -78,7 +79,8 @@ export function compactionNote(details: Pick<RunDetails, "compactions">): string
 export function noticeLines(details: Pick<RunDetails, "compactions" | "notices">): string[] {
 	const { more = 0, file } = details.notices ?? {};
 	const kept = details.notices?.kept ?? [];
-	const failure = details.compactions?.error;
+	// The compaction error is the child's provider text, kept as it came; it may quote a credential.
+	const failure = details.compactions?.error === undefined ? undefined : redactSecrets(details.compactions.error);
 	const rest = file
 		? `+${more} more notices; every notice, whole, is in ${shortPath(file)} (read it, or search it)`
 		: `+${more} more notices, not saved`;
@@ -121,7 +123,7 @@ type Progress = Pick<
 >;
 
 /** `inky-kraken · 4 tool calls · ↑12k +48k cached ↓2k · ≈$0.12 · model` while a run works (no tool calls yet: none named). */
-function runStats(details: Progress): string {
+export function runStats(details: Progress): string {
 	return [
 		details.id,
 		details.toolCalls > 0 ? toolCallCount(details.toolCalls) : "",
@@ -136,7 +138,7 @@ function runStats(details: Progress): string {
 }
 
 /** What the expanded summary adds to a finished run's row: compactions, tokens, cost and model. */
-function finishedStats(
+export function finishedStats(
 	totals: Parameters<typeof formatTokenUsage>[0] & Parameters<typeof formatCost>[0],
 	details: Pick<RunDetails, "model" | "fallback" | "refusedBy" | "compactions" | "cache">,
 ): string {

@@ -347,14 +347,3 @@ export interface FileDiff {
 	type: string;
 	diff: string;
 }
-/** Unified diffs from the file tool's per-query outcomes. */
-export function fileDiffs(details: unknown): FileDiff[] {
-	const outcomes = record(details).outcomes;
-	if (!Array.isArray(outcomes)) return [];
-	return outcomes.flatMap((outcome) => {
-		const entry = record(outcome);
-		return entry.ok === true && typeof entry.diff === "string" && entry.diff
-			? [{ path: scalarText(entry.path) ?? "", type: scalarText(entry.type) ?? "edit", diff: entry.diff }]
-			: [];
-	});
-}

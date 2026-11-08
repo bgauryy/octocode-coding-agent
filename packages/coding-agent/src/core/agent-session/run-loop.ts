@@ -306,6 +306,8 @@ export class SessionRunLoop {
 		const { session, run } = this.host;
 		if (!run.active || !run.logicalTurnId || this._abortReason) return;
 		this._abortReason = reason;
+		if (reason === "interrupted" || reason === "replacement")
+			session.sessionManager.appendCustomEntry("octocode-interrupt", { reason, at: new Date().toISOString() });
 		if (reason === "interrupted")
 			this._pendingInterruption = {
 				type: "agent_interrupted",

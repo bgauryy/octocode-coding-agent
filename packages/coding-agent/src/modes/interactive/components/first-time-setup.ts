@@ -3,7 +3,8 @@ import { APP_NAME } from "../../../config.ts";
 import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { hintLine, keyText } from "./keybinding-hints.ts";
+import { HintBar } from "./hint-bar.ts";
+import { keyText } from "./keybinding-hints.ts";
 
 export interface FirstTimeSetupResult {
 	theme: string;
@@ -87,15 +88,10 @@ export class FirstTimeSetupComponent extends Container {
 
 		this.addChild(new Spacer(1));
 		this.addChild(
-			new Text(
-				hintLine([
-					["↑↓", "navigate"],
-					[keyText("tui.select.confirm"), this.step === "theme" ? "continue" : "finish"],
-					[keyText("tui.select.cancel"), "skip setup"],
-				]),
-				1,
-				0,
-			),
+			new HintBar([
+				[keyText("tui.select.confirm"), this.step === "theme" ? "continue" : "finish", 0],
+				[keyText("tui.select.cancel"), "skip setup", 1],
+			]),
 		);
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());

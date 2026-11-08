@@ -716,6 +716,27 @@
       },
       "description": "Model patterns for cycling, in the same format as the --models CLI flag."
     },
+    "disabledProviders": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Provider ids turned off in /providers. Their models leave the model selector, cycling and subagent routing; saved credentials stay. Global only."
+    },
+    "providerSources": {
+      "type": "object",
+      "properties": {
+        "pi": {
+          "type": "boolean",
+          "description": "Use Pi's auth.json (read-only fallback) and models.json. On by default; false leaves them out of availability without changing Pi's files."
+        },
+        "copilot-env": {
+          "type": "boolean",
+          "description": "Use the COPILOT_GITHUB_TOKEN environment variable as the github-copilot credential. Off by default."
+        }
+      },
+      "description": "Provider sources you changed from their defaults (Octocode and Pi on, COPILOT_GITHUB_TOKEN off), managed in /providers. Global only."
+    },
     "defaultTools": {
       "type": "array",
       "items": {

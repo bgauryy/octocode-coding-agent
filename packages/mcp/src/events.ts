@@ -161,7 +161,12 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			callSignal.throwIfAborted();
 			// Through the connection's request path like the model's calls: expired-session retry, sign-in marking and
 			// retiring-client accounting.
-			return connection.callTool(request.tool, request.input, { signal: callSignal, timeoutMs: connection.timeoutMs });
+			// A progress handler sends a progress token, so a server's progress keeps the idle timeout from expiring.
+			return connection.callTool(request.tool, request.input, {
+				signal: callSignal,
+				timeoutMs: connection.timeoutMs,
+				onProgress: () => undefined,
+			});
 		});
 		state.configuredEntries = loaded.servers;
 		const registered = state.registeredServers();

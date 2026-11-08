@@ -1,6 +1,12 @@
 import { GITHUB_COPILOT_MODELS } from "../../../providers/github-copilot.models.ts";
+import { MAX_AUTH_ERROR_BODY_CHARS, summarizeErrorBody } from "../../../utils/error-body.ts";
 import { sleep } from "../../../utils/sleep.ts";
 import { COPILOT_API_VERSION, COPILOT_HEADERS, getGitHubCopilotBaseUrl } from "./endpoints.ts";
+
+/** The response body for an error message: credentials removed and cut short. */
+async function errorBodyText(response: Response): Promise<string> {
+	return summarizeErrorBody(await response.text().catch(() => ""), MAX_AUTH_ERROR_BODY_CHARS);
+}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
 	return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
@@ -105,7 +111,7 @@ export async function fetchGitHubCopilotModels(
 		retryPolicy,
 	);
 	if (!response.ok) {
-		throw new Error(`${response.status} ${response.statusText}: ${await response.text()}`);
+		throw new Error(`${response.status} ${response.statusText}: ${await errorBodyText(response)}`);
 	}
 	return parseGitHubCopilotModelCatalog(await response.json(), allowPolicyFallback);
 }
@@ -146,7 +152,7 @@ async function enableGitHubCopilotModel(
 		return false;
 	}
 	if (response.status === 429) {
-		throw new Error(`${response.status} ${response.statusText}: ${await response.text()}`);
+		throw new Error(`${response.status} ${response.statusText}: ${await errorBodyText(response)}`);
 	}
 	return response.ok;
 }

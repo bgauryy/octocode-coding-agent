@@ -17,7 +17,7 @@ import type {
 } from "../features/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
-import type { SessionEntry, SessionManager, SessionNameSource } from "../session-manager.ts";
+import type { InputOrigin, SessionEntry, SessionManager, SessionNameSource } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { SourceInfo } from "../source-info.ts";
 import type { RunOutcome } from "./run-outcome.ts";
@@ -213,4 +213,6 @@ export interface PendingUserInput {
 	images?: ImageContent[];
 	source: InputSource;
 	expandedPaths?: Set<string>;
+	/** Set when the input is not what its source implies: a held message released after a compaction is "queued". */
+	origin?: InputOrigin;
 }

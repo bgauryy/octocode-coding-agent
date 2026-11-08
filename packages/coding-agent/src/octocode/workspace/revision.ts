@@ -1,3 +1,4 @@
+import type { ProfilerPort } from "../profiler/service.ts";
 import type { WorkspaceConnection } from "@octocodeai/octocode-contracts/workspace";
 
 /** A workspace connection that can say cheaply whether its snapshot may have changed. */
@@ -7,6 +8,8 @@ export interface RevisedWorkspace extends WorkspaceConnection {
 	 * input cannot be stamped: the caller then compares serialized snapshots.
 	 */
 	revision?(): string | undefined;
+	/** The cache profiler over this session's transcripts; absent where the host cannot read them. */
+	profiler?: ProfilerPort;
 }
 
 /**

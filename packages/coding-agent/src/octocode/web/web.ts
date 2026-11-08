@@ -1,3 +1,4 @@
+import { displayText, textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
@@ -159,6 +160,21 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 					}),
 				),
 			}),
+			display(input) {
+				const { args } = input;
+				const details = input.result?.details as WebDetails | undefined;
+				const file = details?.kind === "fetch" || details?.kind === "image" ? details.file : undefined;
+				return textResultDisplay(
+					{
+						title: "Web",
+						...(args.url ? { summary: args.url } : args.query ? { summary: `search "${args.query}"` } : {}),
+						kind: args.url ? "fetch" : "search",
+						blocks: [],
+					},
+					input,
+					{ summary: webSummary(details), keepBody: true, spill: file ?? spillPath(displayText(input.result)) },
+				);
+			},
 			renderCall(args, theme, context) {
 				return toolHeader(theme, context, "Web", args.url ? args.url : args.query ? `search "${args.query}"` : "");
 			},

@@ -126,7 +126,7 @@ export class NoticeTracker {
 					kind: "failed",
 					title: event.type === "agent.result" ? "Agent failed" : "Something failed",
 					body: brief(event.text) || "See the activity view.",
-					hash: event.type.startsWith("agent.") ? "#agents" : "#activity",
+					hash: event.type.startsWith("agent.") ? "#profiler?panel=overview" : "#activity",
 				});
 			else if (event.type === "agent.result")
 				notices.push({
@@ -134,7 +134,7 @@ export class NoticeTracker {
 					kind: "finished",
 					title: "Agent finished",
 					body: brief(event.text) || "A subagent or task completed.",
-					hash: "#agents",
+					hash: "#profiler?panel=overview",
 				});
 		}
 		return notices;

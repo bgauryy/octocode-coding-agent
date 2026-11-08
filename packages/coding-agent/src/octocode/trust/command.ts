@@ -1,6 +1,8 @@
 import path from "node:path";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { keyText, type RankedHint } from "../../theme/theme-tui-helpers.ts";
+import { confirmAction, type PageSection, showCommandPage, successNotice } from "../shared/page.ts";
 import type { FolderGrantView, GrantTarget } from "./grants.ts";
 import {
 	addTrust,
@@ -62,11 +64,19 @@ async function add(ctx: ExtensionCommandContext, parsed: Parsed, options: TrustO
 				"Trusting a folder needs your confirmation: run octocode trust add --yes, or /trust in a terminal.",
 				"warning",
 			);
-		const yes = await ctx.ui.confirm(`Trust ${shown(target)}?`, `${WHAT_TRUST_ALLOWS} Trusts ${reach}.`);
-		if (!yes) return say(ctx, "Nothing was changed.");
+		const question = `Trust ${shown(target)}?\n${WHAT_TRUST_ALLOWS} Trusts ${reach}.`;
+		if (!(await confirmAction((title, options) => ctx.ui.select(title, options), question, ["Trust"])))
+			return say(ctx, "Nothing was changed.");
 	}
 	const granted = addTrust(folder, parsed.scope, surfaceOf(ctx), options);
-	say(ctx, `Trusted ${shown(granted.path)}${granted.scope === "subtree" ? " and everything under it" : ""}.`);
+	say(
+		ctx,
+		successNotice(
+			"Trusted",
+			`${shown(granted.path)}${granted.scope === "subtree" ? " and everything under it" : ""}`,
+			"Other decisions are unchanged.",
+		),
+	);
 }
 
 /** Asks, then removes. Removing the decision that lets this session run closes the session: the next open asks again. */
@@ -84,20 +94,97 @@ async function remove(
 				"Removing trust needs your confirmation: run octocode trust remove --yes, or /trust in a terminal.",
 				"warning",
 			);
-		const ok = await ctx.ui.confirm(
-			`Remove ${row.decision === "refused" ? "the refusal for" : "trust for"} ${shown(row.path)}?`,
+		const question = `Remove ${row.decision === "refused" ? "the refusal for" : "trust for"} ${shown(row.path)}?\n${
 			closes
 				? "This is the decision that lets this session run. Octocode will close, and ask again the next time you open the folder."
-				: "Octocode will ask again the next time you open that folder.",
-		);
-		if (!ok) return say(ctx, "Nothing was changed.");
+				: "Octocode will ask again the next time you open that folder."
+		}`;
+		if (!(await confirmAction((title, options) => ctx.ui.select(title, options), question, ["Remove"])))
+			return say(ctx, "Nothing was changed.");
 	}
 	removeTrust(row, options);
 	say(
 		ctx,
-		`Removed ${describeGrant(row)}.${closes ? " Closing: Octocode will ask again the next time you open this folder." : ""}`,
+		successNotice(
+			"Removed",
+			describeGrant(row),
+			closes
+				? "Closing: Octocode will ask again the next time you open this folder."
+				: "Other decisions are unchanged.",
+		),
 	);
 	if (closes) ctx.shutdown();
+}
+
+const TRUST_HINTS: RankedHint[] = [
+	[keyText("tui.select.confirm"), "open", 0],
+	[keyText("tui.select.cancel"), "close", 1],
+];
+
+/** The terminal page: decisions (each opens a detail page with Remove), then the wider folders one step from trusting. */
+async function page(
+	ctx: ExtensionCommandContext,
+	widen: Array<{ label: string; which: GrantTarget }>,
+	options: TrustOptions,
+): Promise<void> {
+	let initialId: string | undefined;
+	for (;;) {
+		const live = liveGrants(options);
+		const sections: PageSection[] = [
+			{
+				heading: "Decisions",
+				rows: live.map((row) => ({
+					id: `grant:${row.id}`,
+					name: shown(row.path),
+					detail: row.ignored ? "ignored" : row.scope === "subtree" ? "folder and below" : "this folder",
+					badge: row.ignored ? "ignored" : row.decision === "refused" ? "refused" : "trusted",
+					tone: row.decision === "refused" || row.ignored ? ("warning" as const) : ("success" as const),
+				})),
+				empty: "none yet — run /trust add to trust this folder",
+			},
+			{
+				heading: "Trust a wider folder",
+				rows: widen.map((entry) => ({
+					id: `wide:${entry.which}`,
+					name: entry.label.replace(/^Trust /, ""),
+					detail: "trust it",
+				})),
+			},
+		];
+		const choice = await showCommandPage(ctx.ui, {
+			title: "Folder trust — which folders Octocode may work in",
+			notes: [describeFolder(ctx.cwd, resolveFolderTrust(ctx.cwd, options))],
+			sections,
+			initialId,
+			hints: TRUST_HINTS,
+		});
+		if (!choice) return;
+		initialId = choice.id;
+		const [kind, key] = choice.id.split(":");
+		if (kind === "wide") await add(ctx, { scope: key as GrantTarget, yes: false, rest: "" }, options);
+		else {
+			const row = live.find((entry) => String(entry.id) === key);
+			if (row && (await detail(ctx, row, options))) return;
+		}
+	}
+}
+
+/** One decision: facts and its single action. Returns true when removing it closed the session. */
+async function detail(ctx: ExtensionCommandContext, row: FolderGrantView, options: TrustOptions): Promise<boolean> {
+	const choice = await showCommandPage(ctx.ui, {
+		title: `${shown(row.path)} — ${row.decision === "refused" ? "refused" : "trusted"}`,
+		facts: [{ label: "Decision", value: describeGrant(row) }],
+		sections: [
+			{ heading: "Actions", rows: [{ id: "remove", name: "Remove decision", detail: "Octocode asks again" }] },
+		],
+		hints: [
+			[keyText("tui.select.confirm"), "run", 0],
+			[keyText("tui.select.cancel"), "back", 1],
+		],
+	});
+	if (!choice) return false;
+	await remove(ctx, row, false, options);
+	return appliesTo(row, ctx.cwd, options) && !liveGrants(options).some((entry) => entry.id === row.id);
 }
 
 /** `/trust` with no arguments in a terminal: the decisions, and the next things a user would do with them. */
@@ -113,6 +200,7 @@ async function menu(ctx: ExtensionCommandContext, options: TrustOptions): Promis
 			// Not offered: the home folder or a filesystem root.
 		}
 	}
+	if (ctx.mode === "tui") return page(ctx, widen, options);
 	const entries = new Map(rows.map((row) => [describeGrant(row), row]));
 	const close = "Close";
 	const choice = await ctx.ui.select(

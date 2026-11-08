@@ -1,11 +1,14 @@
+import { builtinDescription } from "../core/slash-commands.ts";
 import type { ExtensionAPI } from "../core/features/index.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
+import { computeSessionStats } from "../core/session-stats.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
+import { formatSessionReport } from "./shared/session-report.ts";
 
-/** `/status`: one message with the session summary, the loaded skills and each MCP server's connection status. */
+/** `/status`: one message with the session summary, the loaded skills, each MCP server's connection status and the session's token, cache and cost totals. */
 export function statusCommand(api: ExtensionAPI, summary: () => string): Subcommand {
 	return {
-		description: "Session, skills and MCP status",
+		description: builtinDescription("status"),
 		dialog: "interaction",
 		handler: async (args, ctx) => {
 			if (args.trim()) return say(ctx, "Usage: /status", "warning");
@@ -14,6 +17,18 @@ export function statusCommand(api: ExtensionAPI, summary: () => string): Subcomm
 				.filter((command) => command.source === "skill")
 				.sort((a, b) => a.name.localeCompare(b.name));
 			const servers = getMcpSessionStatus(api.events);
+			const model = ctx.model;
+			const report = formatSessionReport({
+				stats: computeSessionStats(ctx.sessionManager, {
+					sessionFile: ctx.sessionManager.getSessionFile(),
+					sessionId: ctx.sessionManager.getSessionId(),
+					contextUsage: ctx.getContextUsage(),
+				}),
+				entries: ctx.sessionManager.getEntries(),
+				prices: { getModel: (provider, id) => ctx.modelRegistry.find(provider, id) },
+				selectedModelKey: `${model?.provider}/${model?.id}`,
+				name: ctx.sessionManager.getSessionName(),
+			});
 			say(
 				ctx,
 				[
@@ -28,6 +43,9 @@ export function statusCommand(api: ExtensionAPI, summary: () => string): Subcomm
 									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.source}`,
 							)
 						: ["  none"]),
+					"",
+					report,
+					"",
 					"Configure servers with /mcp.",
 				].join("\n"),
 			);

@@ -15,7 +15,8 @@ import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { hintLine, keyHint, keyText } from "./keybinding-hints.ts";
+import { HintBar } from "./hint-bar.ts";
+import { keyHint, keyText } from "./keybinding-hints.ts";
 import {
 	type DefaultModelReference,
 	isDefaultModel,
@@ -102,7 +103,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.scopeHintText = new Text(this.getScopeHintText(), 0, 0);
 			this.addChild(this.scopeHintText);
 		} else {
-			const hintText = "Models from configured providers. /login manages access; /modelsettings configures shortcuts.";
+			const hintText = "Models from configured providers. /providers manages access; /modelsettings sets shortcuts.";
 			this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
 		}
 		this.addChild(new Spacer(1));
@@ -129,16 +130,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 		if (this.onSelectAsDefaultCallback) {
 			this.addChild(
-				new Text(
-					"  " +
-						hintLine([
-							[keyText("tui.select.confirm"), "select"],
-							[keyText("app.models.save"), "set as default"],
-							[keyText("tui.select.cancel"), "cancel"],
-						]),
-					0,
-					0,
-				),
+				new HintBar([
+					[keyText("tui.select.confirm"), "select", 1],
+					[keyText("app.models.save"), "set as default", 2],
+					[keyText("tui.select.cancel"), "cancel", 0],
+				]),
 			);
 		}
 

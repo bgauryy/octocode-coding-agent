@@ -1,4 +1,4 @@
-import type { Api, Model } from "@octocodeai/octocode-ai";
+import { type Api, type Model, resolveModelCapabilities } from "@octocodeai/octocode-ai";
 import type {
 	CacheWarmingDecisionEvent,
 	CacheWarmingDecisionEventResult,
@@ -66,13 +66,13 @@ const keyOf = (model: Pick<Model<Api>, "provider" | "id">) => `${model.provider}
  *
  * - idle-warming decisions use its inferred lifetime (`of`);
  * - an `anthropic-messages` model also gets those lifetimes in Octocode's model registry through `api.registerProvider`, so Octocode's
- *   cache warmer, which skips a model without `promptCache`, keeps its cache warm. The registration lists every model of
+ *   cache warmer, which plans with the resolved tiers, uses a learned 5-minute long tier too. The registration lists every model of
  *   the provider as the registry has it (models.json definitions, auth and headers config stay Octocode's, and a models.json
  *   `modelOverrides.promptCache` still wins, since Octocode applies overrides last); only models seen caching gain lifetimes.
  *   A provider whose models carry resolved headers (a built-in one) is left alone, and a refused registration is not retried.
  *
- * The 1-hour tier is learned, not assumed: a long-retention reply that wrote cache with `cacheWrite1h: 0` shows the
- * provider granted 5 minutes, and the supplied long tier drops to 300 s.
+ * Until a reply shows otherwise, the resolved tiers apply (1 hour where the adapter sends it). A long-retention reply that
+ * wrote cache with `cacheWrite1h: 0` shows the provider granted 5 minutes, and the supplied long tier drops to 300 s.
  */
 export class PromptCacheLifetimes {
 	private readonly caching = new Set<string>();
@@ -80,12 +80,17 @@ export class PromptCacheLifetimes {
 	private readonly supplied = new Set<string>();
 	private readonly refused = new Set<string>();
 
-	/** The model's lifetimes: its declared `promptCache`, else the inferred ones once it was seen caching. */
+	/**
+	 * The model's lifetimes: the inferred ones once an undeclared model was seen caching, else its resolved cache tiers
+	 * (`resolveModelCapabilities`, which read a declared `promptCache` first), the tiers the cache warmer plans with.
+	 */
 	of(model: CacheModel | undefined): PromptCache | undefined {
 		if (!model) return undefined;
 		const key = keyOf(model);
-		if (model.promptCache && !this.supplied.has(key)) return model.promptCache;
-		return this.caching.has(key) ? inferredPromptCache(model, !this.shortOnly.has(key)) : model.promptCache;
+		if (this.caching.has(key) && (!model.promptCache || this.supplied.has(key)))
+			return inferredPromptCache(model, !this.shortOnly.has(key));
+		const { lifetimes } = resolveModelCapabilities(model as Model<Api>).cache;
+		return Object.keys(lifetimes).length > 0 ? lifetimes : undefined;
 	}
 
 	/** Notes a turn's assistant reply; supplies lifetimes to Octocode's registry when it shows an undeclared model caching. */

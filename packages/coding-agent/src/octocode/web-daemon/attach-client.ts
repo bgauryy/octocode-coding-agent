@@ -20,6 +20,14 @@ import type {
 	ApplicationPort,
 	ApplicationReceipt,
 } from "@octocodeai/octocode-contracts";
+import type { ChromeTrace } from "../profiler/trace.ts";
+import type {
+	ProfileAgents,
+	ProfileInsights,
+	ProfileRequests,
+	ProfileTimeline,
+	ProfileUpdate,
+} from "@octocodeai/octocode-contracts/profiler";
 import type { WorkspaceCommand, WorkspaceReceipt, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { LineReader } from "./lines.ts";
 
@@ -130,6 +138,7 @@ export class AttachClient {
 	private readonly pending = new Map<string, Pending>();
 	private readonly streams = new Map<string, FrameStream>();
 	private readonly changeListeners = new Set<() => void>();
+	private readonly profilerListeners = new Set<(update: ProfileUpdate) => void>();
 	private readonly closeListeners = new Set<(sessionEnded: boolean) => void>();
 	private ended = false;
 	private sessionEnded = false;
@@ -251,6 +260,9 @@ export class AttachClient {
 			case "workspace.changed":
 				for (const listener of this.changeListeners) listener();
 				return;
+			case "profiler.update":
+				for (const listener of this.profilerListeners) listener(event.data as ProfileUpdate);
+				return;
 			case "session.closed":
 				this.sessionEnded = true;
 		}
@@ -309,6 +321,28 @@ export class AttachClient {
 	private execute(command: ApplicationCommand): Promise<ApplicationReceipt> {
 		return this.request<ApplicationReceipt>("application.execute", { command });
 	}
+
+	/** The session's cache profiler; `onUpdate` receives live frames once `subscribe` was asked (the session sends them only then). */
+	readonly profiler = {
+		agents: () => this.request<ProfileAgents>("profiler.agents"),
+		requests: (agentId: string, after?: number, detail?: boolean) =>
+			this.request<ProfileRequests | null>("profiler.requests", {
+				agentId,
+				...(after === undefined ? {} : { after }),
+				...(detail ? { detail } : {}),
+			}).then((found) => found ?? undefined),
+		timeline: (since?: number) =>
+			this.request<ProfileTimeline>("profiler.timeline", since === undefined ? {} : { since }),
+		insights: () => this.request<ProfileInsights>("profiler.insights"),
+		trace: () => this.request<ChromeTrace>("profiler.trace"),
+		subscribe: () => this.request("profiler.subscribe"),
+		/** Stops the session's frames and its transcript poll; the daemon asks once the last tab of the session is gone. */
+		unsubscribe: () => this.request("profiler.unsubscribe"),
+		onUpdate: (listener: (update: ProfileUpdate) => void) => {
+			this.profilerListeners.add(listener);
+			return () => this.profilerListeners.delete(listener);
+		},
+	};
 
 	readonly workspace = {
 		snapshot: () => this.request<WorkspaceSnapshot>("workspace.snapshot"),

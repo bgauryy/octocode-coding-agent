@@ -24,20 +24,20 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "permissions",
 		requiresNative: true,
-		description: "Inspect or change permissions",
-		argumentHint: "[mode|grants|log|plan]",
+		description: "What Octocode asks before it acts",
+		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log]",
 	},
 	{
 		name: "agents",
 		requiresNative: true,
-		description: "List or control agents",
-		argumentHint: "[operation]",
+		description: "List, message, stop or connect agents",
+		argumentHint: "[tell|interrupt|kill|merge|stats|history|external]",
 	},
 	{
 		name: "plan",
 		requiresNative: true,
-		description: "Plan a task before making changes",
-		argumentHint: "[description|--show|--off|--approve revision]",
+		description: "Research under a planning constraint",
+		argumentHint: "[description|--off|--approve <revision>]",
 	},
 	{
 		name: "btw",
@@ -71,7 +71,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{
 		name: "modelsettings",
-		description: "Model shortcuts, prices and routing",
+		description: "Models, prices and subagent routing",
 		argumentHint: "[check]",
 	},
 	{
@@ -96,7 +96,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "rename", description: "Rename this session", argumentHint: "<name>" },
 	{
 		name: "status",
-		description: "Show session stats, skills and MCP",
+		description: "Session usage, skills and MCP status",
 	},
 	{ name: "changelog", description: "Show the changelog" },
 	{ name: "keys", description: "Show keyboard shortcuts" },
@@ -109,8 +109,8 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "clone", description: "Duplicate this session" },
 	{ name: "queue", description: "Edit queued messages" },
 	{
-		name: "login",
-		description: "Connect AI providers",
+		name: "providers",
+		description: "Connect, enable or disable AI providers",
 		argumentHint: "[provider|pi]",
 	},
 	{ name: "logout", description: "Remove a provider credential" },
@@ -131,7 +131,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "[name-for-current-session]",
 	},
 	{ name: "compact", description: "Compact the session context", argumentHint: "[instructions]" },
-	{ name: "resume", description: "Browse and resume sessions", argumentHint: "[search]" },
+	{ name: "resume", description: "Resume a recent session of this directory", argumentHint: "[all] [<query>|B<n>]" },
 	{ name: "debug", description: "Save a diagnostics file (secrets redacted)" },
 	{ name: "reload", description: "Reload config, skills and themes" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },
@@ -151,6 +151,13 @@ export function reservedCommandNames(reservedCommands: readonly CommandReservati
 		if (command.invocationName) reserved.add(command.invocationName);
 	}
 	return reserved;
+}
+
+/** The one description of a built-in command; a native registration of the same name reuses it rather than repeating it. */
+export function builtinDescription(name: string): string {
+	const command = getBuiltinCommand(name);
+	if (!command) throw new Error(`/${name} is not a built-in command.`);
+	return command.description;
 }
 
 export function getBuiltinCommand(name: string): BuiltinSlashCommand | undefined {

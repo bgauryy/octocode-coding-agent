@@ -67,12 +67,12 @@ select { min-height: 34px; padding: 4px 28px 4px 10px; font-size: var(--fs-sm); 
 .callout { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--tone) 8%, var(--surface)); color: var(--text); font-size: var(--fs-sm); }
 .callout p + p { margin-top: 4px; }
 
-/* Shell and header: one 48px row, so the work starts near the top of the window. */
+/* Shell and header: one 48px row (tabs wrap to more rows rather than clip), so the work starts near the top of the window. */
 .shell { min-height: 100vh; }
 .skip-link { position: absolute; left: 8px; top: -48px; z-index: 20; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .skip-link:focus { top: 8px; text-decoration: none; }
 header.top { position: sticky; top: 0; z-index: 5; padding: 0 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--border); }
-.header-row { display: flex; align-items: center; gap: 12px; height: 48px; }
+.header-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; min-height: 48px; }
 .brand { display: flex; align-items: center; flex-shrink: 0; gap: 8px; font-size: var(--fs-sm); font-weight: 600; }
 .brand h1 { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--text-2); }
 .brand-mark { width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg, var(--accent), var(--teal)); }
@@ -107,8 +107,8 @@ header.top { position: sticky; top: 0; z-index: 5; padding: 0 16px; background: 
 .progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; }
 .progress::-moz-progress-bar { background: var(--accent); }
 h1 { font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -.02em; overflow-wrap: anywhere; }
-nav.tabs { display: flex; align-self: stretch; flex: 1 1 auto; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-.tab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; white-space: nowrap; border-radius: var(--radius-sm); }
+nav.tabs { display: flex; flex-wrap: wrap; align-self: stretch; flex: 1 1 520px; min-width: 0; gap: 0 2px; }
+.tab { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 10px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; white-space: nowrap; border-radius: var(--radius-sm); }
 .tab:hover { color: var(--text); background: var(--surface-3); text-decoration: none; }
 .tab.active { color: var(--text); }
 .tab.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }

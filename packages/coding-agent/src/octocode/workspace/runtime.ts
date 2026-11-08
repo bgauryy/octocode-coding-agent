@@ -3,6 +3,8 @@ import { appendWorkspaceEvent, createWorkspaceRuntimeState } from "../../core/ap
 import { ApplicationCommands } from "./application-commands.ts";
 import { presentAgentReport } from "../subagents/presentation.ts";
 import { dbStamp, type AgentDb } from "../../../../db/src/api.ts";
+import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
+import { workingContextTokens } from "../../core/agent-session/model-control.ts";
 import { sharedAgentDb } from "../../config/database.ts";
 import type { RevisedWorkspace } from "./revision.ts";
 import { WorkspaceCommands } from "./commands.ts";
@@ -18,12 +20,15 @@ import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-cont
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { contentText, toolHint } from "../shared/util.ts";
+import { agentBase, createProfiler, endedRuns, memberTranscript } from "../profiler/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface Operations {
 	application?: (ctx: ExtensionContext) => ApplicationService | undefined;
 	database?: () => AgentDb;
 	members(): Member[];
+	/** The coordinator's own team row (the session's agent, which `members()` leaves out). */
+	self?(): Member | undefined;
 	traffic(): Traffic[];
 	tell(to: string, text: string, signal?: AbortSignal): Promise<unknown>;
 	stop(to: string): string | undefined;
@@ -39,8 +44,9 @@ interface Operations {
  * The team database is shared by every session in the workspace, so, like the terminal panel, the web view lists only
  * this session's descendants (`descendants`) and the messages that involve this session or them.
  */
-export function teamView(team: Team): Pick<Operations, "members" | "traffic" | "expiry"> {
+export function teamView(team: Team, withSelf = false): Pick<Operations, "members" | "traffic" | "expiry" | "self"> {
 	return {
+		...(withSelf ? { self: () => team.members().find((member) => member.id === team.id) } : {}),
 		members: () => {
 			const all = team.members();
 			const home = all.find((member) => member.id === team.id)?.checkout;
@@ -218,8 +224,39 @@ export class WorkspaceRuntime {
 			)
 				throw new Error("This session changed. Reopen /octocode.");
 		};
+		const database = () => (this.operations.database ?? sharedAgentDb)();
+		// Agents that finished leave the team but stay in the profiler, read from their stored runs.
+		const ended = endedRuns(database, sessionId);
+		const profiler = createProfiler({
+			sessionId,
+			self: () => {
+				const self = this.operations.self?.();
+				return self ? { ...agentBase(self), role: "main" } : undefined;
+			},
+			coordinatorFile: () => ctx.sessionManager.getSessionFile(),
+			members: () => {
+				const live = this.operations.members();
+				const skip = new Set(live.map((member) => member.id));
+				const selfId = this.operations.self?.()?.id;
+				if (selfId) skip.add(selfId);
+				return [...live.map(agentBase), ...ended.members(skip)];
+			},
+			traffic: () => this.operations.traffic(),
+			transcript: (id) => {
+				const member = this.operations.members().find((each) => each.id === id);
+				return member ? memberTranscript(database().db, member) : ended.transcript(id);
+			},
+			// Agents compact against their working budget, not the catalog capacity (core/agent-session/model-control.ts).
+			contextWindowOf: (provider, model) => {
+				const own = ctx.model;
+				if (own?.provider === provider && own.id === model) return own.contextWindow;
+				const capacity = ctx.modelRegistry.find(provider, model)?.contextWindow;
+				return capacity ? workingContextTokens(capacity, SETTINGS_DEFAULTS.contextBudget) : undefined;
+			},
+		});
 		return {
 			application,
+			profiler,
 			/**
 			 * Stamps every input of `snapshot`: the events (counted here), receipts, members and traffic (the shared
 			 * database file; every writer moves it), and expiry by time. Undefined when `operations.expiry` is missing.
@@ -261,6 +298,7 @@ export class WorkspaceRuntime {
 			},
 			close: () => {
 				closed = true;
+				profiler.close();
 				for (const unsubscribe of subscribed) unsubscribe();
 			},
 			execute: async (command) => {

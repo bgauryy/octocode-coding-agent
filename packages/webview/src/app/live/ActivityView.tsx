@@ -153,7 +153,7 @@ function Overview({ ongoing }: { ongoing: number }) {
 	);
 	return (
 		<section className="overview" aria-label="Session overview">
-			<a href="#agents" className="metric">
+			<a href="#profiler?panel=overview" className="metric">
 				<strong>{working}</strong>
 				<span>Agents working</span>
 			</a>

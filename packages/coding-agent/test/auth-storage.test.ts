@@ -154,15 +154,18 @@ describe("AuthStorage", () => {
 		expect(statSync(authJsonPath).mode & 0o777).toBe(0o600);
 	});
 
-	test.skipIf(process.platform === "win32")("preserves the mode of an existing auth file", async () => {
-		writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
-		chmodSync(authJsonPath, 0o660);
-		const storage = AuthStorage.create(authJsonPath);
+	test.skipIf(process.platform === "win32")(
+		"tightens an existing group- or world-readable auth file to 0600",
+		async () => {
+			writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
+			chmodSync(authJsonPath, 0o644);
+			const storage = AuthStorage.create(authJsonPath);
 
-		await storage.modify("anthropic", async () => ({ type: "api_key", key: "new" }));
+			await storage.modify("anthropic", async () => ({ type: "api_key", key: "new" }));
 
-		expect(statSync(authJsonPath).mode & 0o777).toBe(0o660);
-	});
+			expect(statSync(authJsonPath).mode & 0o777).toBe(0o600);
+		},
+	);
 
 	test("modify persists a credential while preserving unrelated external edits", async () => {
 		writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
@@ -272,7 +275,7 @@ describe("AuthStorage", () => {
 	describe("atomic auth.json writes", () => {
 		const leftovers = () => readdirSync(tempDir).filter((name) => name.endsWith(".tmp"));
 
-		test("replaces the file by rename and keeps its mode (sync and async)", async () => {
+		test("replaces the file by rename and leaves it 0600 (sync and async)", async () => {
 			writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
 			chmodSync(authJsonPath, 0o640);
 			const backend = new FileAuthStorageBackend(authJsonPath);
@@ -282,9 +285,7 @@ describe("AuthStorage", () => {
 			backend.withLock(() => ({ result: undefined, next: JSON.stringify({ a: 1 }) }));
 			expect(inode()).not.toBe(before);
 			expect(JSON.parse(readFileSync(authJsonPath, "utf-8"))).toEqual({ a: 1 });
-			expect(statSync(authJsonPath).mode & 0o777).toBe(
-				process.platform === "win32" ? statSync(authJsonPath).mode & 0o777 : 0o640,
-			);
+			if (process.platform !== "win32") expect(statSync(authJsonPath).mode & 0o777).toBe(0o600);
 
 			before = inode();
 			await backend.withLockAsync(async () => ({ result: undefined, next: JSON.stringify({ a: 2 }) }));

@@ -14,6 +14,7 @@ import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { resumeBrief } from "../../src/octocode/sessions/brief.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
 const KEY = { enter: "\r", escape: "\x1b", up: "\x1b[A", down: "\x1b[B", right: "\x1b[C", left: "\x1b[D" };
@@ -25,6 +26,7 @@ let savedDb: string | undefined;
 let cwd: string;
 
 beforeEach(() => {
+	initTheme("dark");
 	tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "octo-board-")));
 	savedDb = process.env.OCTOCODE_AGENT_DB;
 	process.env.OCTOCODE_AGENT_DB = path.join(tmp, "home", "octocode.db");
@@ -200,13 +202,27 @@ describe("task actions on the board (the user acts as the human)", () => {
 
 	it("adds a task to the selected item and a session task from the item's actions", async () => {
 		const s = seed(store());
-		await command([[KEY.down, KEY.enter]], { selects: ["Add a task"], inputs: ["review the docs"] }).run();
+		// The item's actions are a page in the terminal: Enter opens it, then Down x4 reaches "Add a task".
+		const down = (count: number) => Array.from({ length: count }, () => KEY.down);
+		await command(
+			[
+				[KEY.down, KEY.enter],
+				[...down(4), KEY.enter],
+			],
+			{ inputs: ["review the docs"] },
+		).run();
 		expect(s.tasks.list({ item: "B2" }).map((task) => task.goal)).toEqual([
 			"write the parser",
 			"cover edge cases",
 			"review the docs",
 		]);
-		await command([[KEY.down, KEY.enter]], { selects: ["Add a session task"], inputs: ["try the board"] }).run();
+		await command(
+			[
+				[KEY.down, KEY.enter],
+				[...down(5), KEY.enter],
+			],
+			{ inputs: ["try the board"] },
+		).run();
 		expect(s.tasks.list({ session: SESSION }).map((task) => task.goal)).toEqual(["check the footer", "try the board"]);
 	});
 

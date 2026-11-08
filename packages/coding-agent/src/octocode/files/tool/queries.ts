@@ -3,7 +3,7 @@ import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { reasonSchema } from "../../shared/reason.ts";
 import { elisionMarkers, escapeRegExp } from "../../shared/util.ts";
-import type { QueryOutcome } from "../render.ts";
+import type { QueryOutcome } from "../outcome.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 

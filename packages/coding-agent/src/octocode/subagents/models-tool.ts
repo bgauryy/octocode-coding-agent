@@ -13,8 +13,9 @@ type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRe
 
 /**
  * The `models` tool: this session's model and thinking level, the configured providers with their credential status,
- * and the models a task can run on, as `/modelsettings` shows them to the user. It is a call, not prompt text: the list
- * changes with configuration and credentials, and the cached prompt must not.
+ * and the models a task can run on, as `/modelsettings` shows them to the user. The full list is a call, not prompt
+ * text: it changes with configuration and credentials, and the cached prompt must not. The prompt states only the short
+ * routing facts, frozen per session (`routing-watch.ts`).
  */
 export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<string, AgentProfile>): void {
 	api.registerTool({
@@ -97,7 +98,7 @@ function sessionHeader(ctx: ModelsContext): string {
  */
 function providerRows(registry: ModelsContext["modelRegistry"], available: readonly ModelRef[]): string {
 	const providers = [...new Set(available.map((model) => model.provider))].sort();
-	if (providers.length === 0) return "Providers: none configured; the user connects one with /login.";
+	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	return [
 		"Providers (credential source; last result):",
 		...providers.map((provider) => {
@@ -121,7 +122,7 @@ function catalogRows(models: readonly ModelRef[]): string[] {
 	if (models.length === 0) return [];
 	return [
 		[
-			"Not connected (not runnable; the user connects a provider with /login):",
+			"Not connected (not runnable; the user connects a provider with /providers):",
 			...models.map(
 				(model) =>
 					`  ${model.provider}/${model.id}${model.contextWindow ? ` · ${formatTokens(model.contextWindow)} context` : ""}`,

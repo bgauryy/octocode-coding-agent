@@ -5,7 +5,6 @@ import {
 	type KeybindingsManager,
 	matchesKey,
 	truncateToWidth,
-	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
@@ -14,6 +13,7 @@ import { blockedReason, type SwitchScope } from "../../core/extensibility/switch
 import type { Theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { shortcutText } from "../shared/keys.ts";
+import { type RankedHint, renderHintLine } from "../../theme/theme-tui-helpers.ts";
 
 type Row = { type: "host"; title: string } | { type: "item"; item: InventoryItem };
 
@@ -172,18 +172,15 @@ export class HarnessPicker implements Component, Focusable {
 		const w = Math.max(20, width);
 		const lines: string[] = [];
 		const push = (text: string) => lines.push(truncateToWidth(text, w, "…"));
-		const sep = t.fg("muted", " · ");
-		// The key in dim, its action in muted: the same hint style as `octocode config` and the backlog board.
-		const hint = (key: string, action: string) => `${t.fg("dim", key)}${t.fg("muted", ` ${action}`)}`;
-		const title = t.bold(this.scope === "project" ? "Harness · Project" : "Harness · Global");
-		const hints = [
-			hint(shortcutText("tui.input.tab", this.keys), "scope"),
-			hint("space/enter", "toggle"),
-			hint("→/←", "hooks"),
-			hint(shortcutText("tui.select.cancel", this.keys), "close"),
-		].join(sep);
-		push(t.fg("accent", "─".repeat(w)));
-		push(`${title}${" ".repeat(Math.max(1, w - visibleWidth(title) - visibleWidth(hints)))}${hints}`);
+		const hints: RankedHint[] = [
+			[shortcutText("tui.input.tab", this.keys), "scope", 1],
+			["space/enter", "toggle", 0],
+			["→/←", "hooks", 2],
+			[shortcutText("tui.select.cancel", this.keys), "close", 0],
+		];
+		const title = `Harness — switch what extends the session (${this.scope === "project" ? "project" : "global"})`;
+		push(t.fg("border", "─".repeat(w)));
+		push(` ${t.fg("accent", t.bold(title))}`);
 		push(
 			t.fg(
 				"muted",
@@ -230,7 +227,8 @@ export class HarnessPicker implements Component, Focusable {
 		}
 		if (this.flash) push(` ${t.fg(this.flash.level, sanitizeTerminalText(this.flash.text))}`);
 		if (this.options.summary) push(` ${t.fg("muted", `${this.options.summary}: /harness list shows them`)}`);
-		push(t.fg("accent", "─".repeat(w)));
+		push(renderHintLine(hints, w));
+		push(t.fg("border", "─".repeat(w)));
 		return lines;
 	}
 }

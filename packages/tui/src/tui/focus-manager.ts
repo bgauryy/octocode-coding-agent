@@ -275,7 +275,8 @@ export class FocusManager {
 
 	/** Remember a focused component that is mounted, so its later removal is noticed. */
 	rememberMountedFocus(): void {
-		if (this.focused) this.isDetachedFocusOwner(this.focused);
+		// Called on every render request: once a component is remembered, another tree walk adds nothing.
+		if (this.focused && !this.mountedFocusOwners.has(this.focused)) this.isDetachedFocusOwner(this.focused);
 	}
 
 	/**

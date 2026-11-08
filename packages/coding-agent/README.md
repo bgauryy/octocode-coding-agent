@@ -14,7 +14,7 @@ cd your-project
 octocode
 ```
 
-Trust the folder when asked, then `/login` to connect an AI provider, `/model` to pick a model, and type your task. `/octocode auth login` connects GitHub for code search. `/help` lists every command.
+Trust the folder when asked, then `/providers` to connect an AI provider, `/model` to pick a model, and type your task. `/octocode auth login` connects GitHub for code search. `/help` lists every command.
 
 The package installs `octocode` and `octocode-api`. If the separate `octocode` research package is installed globally, npm reports `EEXIST` for the shared command name: remove that package first, or install with `--force`.
 

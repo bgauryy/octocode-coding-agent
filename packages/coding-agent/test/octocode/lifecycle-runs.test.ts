@@ -71,6 +71,8 @@ describe("the agent_runs table", () => {
 		old.db.exec("ALTER TABLE backlog DROP COLUMN closed");
 		// Step 7 adds `backlog.rank`.
 		old.db.exec("ALTER TABLE backlog DROP COLUMN rank");
+		// Step 8 adds `cache_write` to `agents`.
+		old.db.exec("ALTER TABLE agents DROP COLUMN cache_write");
 		old.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		old.close();
 		open().close();

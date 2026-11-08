@@ -4,6 +4,7 @@ import {
 	type ApplicationContentBlock,
 	type ApplicationMessage,
 	type ApplicationTool,
+	type ApplicationToolProgress,
 	type ContentAnnotation,
 } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
@@ -201,12 +202,20 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 	applyMessageFields(source, message);
 	const serialized = JSON.stringify(message);
 	if (serialized.length > 60000) {
+		// The slim form keeps the small identity fields views place and label the message by (a tool result's
+		// `toolCallId` attaches it to its tool row); the large ones live in the asset.
+		const { provider, model, responseId, stopReason, toolCallId, customType, timestamp, durationMs } = message;
+		const identity = { provider, model, responseId, stopReason, toolCallId, customType, timestamp, durationMs };
 		return {
 			id,
 			role: message.role,
 			complete,
 			status: message.status,
 			display: message.display,
+			...Object.fromEntries(Object.entries(identity).filter(([, value]) => value !== undefined)),
+			...(message.errorMessage !== undefined && message.errorMessage.length <= 1000
+				? { errorMessage: message.errorMessage }
+				: {}),
 			text: "[Full message available]",
 			content: [
 				{ id: `${id}:full`, type: "unsupported", providerType: "large-message", text: "Full message available" },
@@ -264,6 +273,19 @@ export function applyMessageFields(source: Record<string, unknown>, message: App
 }
 
 /** Keep structured output readable without putting unbounded JSON in every streamed frame. */
+/** A tool's reported progress in its displayed form; undefined unless `progress` is a finite, non-negative number. */
+function toolProgress(value: unknown): ApplicationToolProgress | undefined {
+	const source = asRecord(value);
+	const valid = (number: unknown): number is number =>
+		typeof number === "number" && Number.isFinite(number) && number >= 0;
+	if (!valid(source.progress)) return undefined;
+	return {
+		progress: source.progress,
+		...(valid(source.total) ? { total: source.total } : {}),
+		...(typeof source.message === "string" && source.message ? { message: source.message.slice(0, 1000) } : {}),
+	};
+}
+
 export function normalizeToolData(
 	value: unknown,
 	id: string,
@@ -278,6 +300,8 @@ export function normalizeToolData(
 		if (source[key] !== undefined) data[key] = cloneDisplay(source[key]);
 	if (source.usage && typeof source.usage === "object") data.usage = cloneDisplay(asRecord(source.usage));
 	if (typeof source.durationMs === "number") data.durationMs = source.durationMs;
+	const progress = toolProgress(source.progress);
+	if (progress) data.progress = progress;
 	if (JSON.stringify({ structuredContent: data.structuredContent, details: data.details }).length > 8000) {
 		data.full = assets.put(
 			JSON.stringify({ structuredContent: data.structuredContent, details: data.details }),

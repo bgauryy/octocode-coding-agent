@@ -1,6 +1,6 @@
 import { CacheTTL } from "@aws-sdk/client-bedrock-runtime";
 import type { CacheRetention, Model, SimpleStreamOptions } from "../../types.ts";
-import { getModelMatchCandidates, isAnthropicClaudeModel } from "./model-match.ts";
+import { bedrockSupportsLongCacheRetention, getModelMatchCandidates, isAnthropicClaudeModel } from "./model-match.ts";
 
 function supportsNativeXhighEffort(model: Model<"bedrock-converse-stream">): boolean {
 	const candidates = getModelMatchCandidates(model.id, model.name);
@@ -54,18 +54,12 @@ export function mapThinkingLevelToEffort(
 	}
 }
 
-/**
- * Resolve cache retention preference.
- * Defaults to "short" and uses OCTOCODE_CACHE_RETENTION for backward compatibility.
- */
-/** One-hour cache points for long retention, unless the model's compat settings rule them out. */
+/** One-hour cache points for long retention on models that accept them ({@link bedrockSupportsLongCacheRetention}). */
 export function longCacheTtl(
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
 ): { ttl?: CacheTTL } {
-	return cacheRetention === "long" && model.compat?.supportsLongCacheRetention !== false
-		? { ttl: CacheTTL.ONE_HOUR }
-		: {};
+	return cacheRetention === "long" && bedrockSupportsLongCacheRetention(model) ? { ttl: CacheTTL.ONE_HOUR } : {};
 }
 
 /**

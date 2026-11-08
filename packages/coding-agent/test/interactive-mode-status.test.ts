@@ -639,7 +639,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 		]);
 	});
 
-	test.each(["login"])("matches /%s arguments by provider id, name and Pi configuration", async (command) => {
+	test.each(["providers"])("matches /%s arguments by provider id, name and Pi configuration", async (command) => {
 		type FakeInteractiveMode = {
 			session: {
 				scopedModels: [];

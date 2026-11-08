@@ -5,7 +5,6 @@ import {
 	activityCard,
 	ApplicationProjection,
 	EventInterner,
-	fileDiffs,
 	groupFeed,
 	latestProgress,
 	mergeEvents,
@@ -245,26 +244,5 @@ describe("feed shaping", () => {
 			event(id, "agent.progress", `${agent}${id}`, { details: { id: agent } });
 		const kept = latestProgress([progress(1, "x"), progress(2, "y"), progress(3, "x"), event(4, "message")]);
 		expect(kept.map((item) => item.id)).toEqual([2, 3, 4]);
-	});
-
-	it("fileDiffs keeps only successful outcomes with a non-empty diff and defaults the type to edit", () => {
-		expect(
-			fileDiffs({
-				outcomes: [
-					{ ok: true, path: "a.ts", diff: "@@ a" },
-					{ ok: true, path: "b.ts", type: "create", diff: "@@ b" },
-					{ ok: false, path: "c.ts", diff: "@@ c" },
-					{ ok: true, path: "d.ts", diff: "" },
-					{ ok: true, path: { bad: true }, diff: "@@ e" },
-					"junk",
-				],
-			}),
-		).toEqual([
-			{ path: "a.ts", type: "edit", diff: "@@ a" },
-			{ path: "b.ts", type: "create", diff: "@@ b" },
-			{ path: "", type: "edit", diff: "@@ e" },
-		]);
-		expect(fileDiffs({ outcomes: "nope" })).toEqual([]);
-		expect(fileDiffs(null)).toEqual([]);
 	});
 });

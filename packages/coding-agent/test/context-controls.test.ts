@@ -126,6 +126,16 @@ describe("session context controls", () => {
 		expect(session.model?.contextWindow).toBe(200_000);
 		expect(status).toHaveBeenCalledTimes(3);
 	});
+	it("warns about a bad value instead of throwing, and leaves the context size alone", async () => {
+		const { session } = await harness();
+		const warning = vi.fn();
+		const status = vi.fn();
+		const host = createFakeHost({ session, showWarning: warning, showStatus: status, ui: { requestRender: vi.fn() } });
+		await expect(handleContextSize(host, "banana")).resolves.toBe(true);
+		expect(warning).toHaveBeenCalledWith(expect.stringContaining("Usage: /context [all|size|reset|full|tokens]"));
+		expect(status).not.toHaveBeenCalled();
+		expect(session.model?.contextWindow).toBe(200_000);
+	});
 	it.each(["model", "session", "host"] as const)("refuses a stale picker after the %s changes", async (change) => {
 		const { session, getModel } = await harness();
 		const replacement = change === "host" ? await harness() : undefined;

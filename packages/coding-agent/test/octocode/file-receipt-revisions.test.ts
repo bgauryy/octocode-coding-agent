@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import type { ExtensionToolContext } from "../../src/core/features/index.ts";
 import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
-import type { MutationReceipt } from "../../src/octocode/files/render.ts";
+import type { MutationReceipt } from "../../src/octocode/files/outcome.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";

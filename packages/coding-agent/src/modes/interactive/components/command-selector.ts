@@ -11,7 +11,8 @@ import {
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint } from "./keybinding-hints.ts";
+import { HintBar } from "./hint-bar.ts";
+import { keyText } from "./keybinding-hints.ts";
 
 export class CommandSelectorComponent extends Container implements Focusable {
 	private readonly input = new Input();
@@ -47,7 +48,10 @@ export class CommandSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 		this.addChild(this.listContainer);
 		this.addChild(
-			new Text(`${keyHint("tui.select.confirm", "insert command")} · ${keyHint("tui.select.cancel", "close")}`, 1, 0),
+			new HintBar([
+				[keyText("tui.select.confirm"), "insert command", 1],
+				[keyText("tui.select.cancel"), "close", 0],
+			]),
 		);
 		this.addChild(new DynamicBorder());
 		this.filter();

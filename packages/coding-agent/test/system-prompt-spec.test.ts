@@ -29,6 +29,7 @@ describe("system prompt section spec", () => {
 			"skills:session:keep",
 			"hooks:session:keep",
 			"role:session:keep",
+			"harnesses:session:keep",
 			"environment:volatile:keep",
 			"planning:volatile:keep",
 			"mcp_status:volatile:keep",

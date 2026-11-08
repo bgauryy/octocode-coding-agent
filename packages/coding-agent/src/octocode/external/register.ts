@@ -1,3 +1,4 @@
+import { builtinDescription } from "../../core/slash-commands.ts";
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
@@ -100,7 +101,7 @@ export function registerExternal(
 	const local = commands.get("agents");
 	commands.add("agents", {
 		dialog: "interaction",
-		description: "List, message, stop or connect agents",
+		description: builtinDescription("agents"),
 		argumentHint: "[tell|interrupt|kill|merge|stats|history|external]",
 		complete: (prefix) =>
 			prefix.startsWith("external ")

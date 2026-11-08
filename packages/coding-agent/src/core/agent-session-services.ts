@@ -6,6 +6,7 @@ import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type Resource
 import { SettingsManager } from "./settings-manager.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { checkAuthFileSafety } from "./auth-storage/file-safety.ts";
+import { providerSourceGate } from "./provider-sources/gate.ts";
 
 /**
  * Non-fatal issues collected while creating services or sessions.
@@ -60,6 +61,9 @@ export async function createAgentSessionServices(
 ): Promise<AgentSessionServices> {
 	const cwd = resolvePath(options.cwd);
 	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getAgentDir();
+	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
+	// Before the runtime loads credentials and models.json, so the first availability pass already honours the sources.
+	providerSourceGate.set(settingsManager.getProviderSources());
 	const modelRuntime =
 		options.modelRuntime ??
 		(await ModelRuntime.create({
@@ -67,7 +71,7 @@ export async function createAgentSessionServices(
 			modelsPath: join(agentDir, "models.json"),
 			signal: options.modelRuntimeSignal,
 		}));
-	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
+	modelRuntime.setDisabledProviders(settingsManager.getDisabledProviders());
 	const resourceLoader = new DefaultResourceLoader({
 		...options.resourceLoaderOptions,
 		cwd,

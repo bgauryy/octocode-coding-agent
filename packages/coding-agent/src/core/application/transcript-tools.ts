@@ -57,5 +57,10 @@ export function spillTool(tool: ApplicationTool, assets: ApplicationAssets, comp
 		},
 	];
 	tool.text = "[Full tool data available]";
+	// The header and outcome stay; the blocks are in the asset with everything else.
+	if (tool.display) {
+		const { preface: _preface, ...display } = tool.display;
+		tool.display = { ...display, blocks: [{ type: "text", text: "[Full tool data available]" }] };
+	}
 	return tool;
 }

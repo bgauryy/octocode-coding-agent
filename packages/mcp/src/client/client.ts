@@ -35,6 +35,8 @@ const extensionResult: StandardSchemaV1<unknown, unknown> = {
 };
 // The SDK always arms an idle timer; its longest non-overflowing platform delay preserves disabled/very long settings.
 const MAX_IDLE_TIMEOUT_MS = 2_147_483_647;
+/** The SDK's reports of a response or progress notification for a request it no longer tracks. */
+const LATE_REPLY = /^Received a (?:response for an unknown message ID|progress notification for an unknown token):/;
 
 /** Long absolute deadlines are armed in platform-sized chunks instead of overflowing into a 1 ms timer. */
 function absoluteDeadline(timeout: number) {
@@ -283,6 +285,9 @@ export class McpClient {
 		}
 	}
 	private emitError(error: unknown): void {
+		// A server may still answer or report progress on a request this client cancelled or timed out (MCP
+		// cancellation: the sender ignores later responses). Nothing waits for them, so they are not errors.
+		if (error instanceof Error && LATE_REPLY.test(error.message)) return;
 		for (const listener of this.errorListeners) {
 			try {
 				listener(toError(error));

@@ -5,7 +5,7 @@
  * or `runAcpMode`. Everything below is a narrow structural type: the host's richer RPC and session types satisfy it.
  */
 import type { ImageContent, Message, TextContent } from "@octocodeai/octocode-ai";
-import type { Question, Reply } from "@octocodeai/octocode-contracts";
+import type { Question, Reply, ToolDisplay } from "@octocodeai/octocode-contracts";
 
 /** Where a saved copy of captured output goes: the host's private session output folder. Undefined when it could not be written. */
 export type AcpSaveOutput = (data: string | Uint8Array, label: string, extension: string) => string | undefined;
@@ -65,9 +65,24 @@ export type AcpWorkerEvent =
 			aborted: boolean;
 			errorMessage?: string;
 	  }
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
-	| { type: "tool_execution_update"; toolCallId: string; toolName: string; args: unknown; partialResult: unknown }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: unknown; isError: boolean };
+	// `display`: how the host draws the call (see `ToolDisplay`); absent from hosts that do not send it.
+	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown; display?: ToolDisplay }
+	| {
+			type: "tool_execution_update";
+			toolCallId: string;
+			toolName: string;
+			args: unknown;
+			partialResult: unknown;
+			display?: ToolDisplay;
+	  }
+	| {
+			type: "tool_execution_end";
+			toolCallId: string;
+			toolName: string;
+			result: unknown;
+			isError: boolean;
+			display?: ToolDisplay;
+	  };
 
 /** A dialog the worker's extensions raise that a client can answer; the host drops every other UI request. */
 export type AcpUiRequest =

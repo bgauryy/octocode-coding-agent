@@ -61,7 +61,7 @@ describe("research routing in the policy", () => {
 		const root = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: true });
 		expect(root).toContain("give coupled work one owner");
 		expect(root).toContain(
-			"A report is a claim: read its `Noticed` line first and check what your next step depends on.",
+			"A report is a claim: read its `Noticed` line first and check what your next step depends on against the diff, tests or state, not the report alone.",
 		);
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");

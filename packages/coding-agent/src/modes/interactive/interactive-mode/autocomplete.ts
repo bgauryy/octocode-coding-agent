@@ -148,9 +148,9 @@ export function getSlashCommands(
 		};
 	}
 
-	const loginCommand = slashCommands.find((command) => command.name === "login");
-	if (loginCommand) {
-		loginCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
+	const providersCommand = slashCommands.find((command) => command.name === "providers");
+	if (providersCommand) {
+		providersCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
 			const providers = getLoginProviderCompletionOptions(host.getLoginProviderOptions()).map((provider) => ({
 				value: provider.id,
 				label: provider.id,

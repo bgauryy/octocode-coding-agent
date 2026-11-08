@@ -49,7 +49,7 @@ function setup(options: { isSubagent?: boolean; goal?: string } = {}) {
 }
 
 function ctxFor(options: { trusted?: boolean; hasUI?: boolean; branch?: unknown[] } = {}) {
-	const ctx = fakeCtx({ cwd, hasUI: options.hasUI ?? true });
+	const ctx = fakeCtx({ cwd, hasUI: options.hasUI ?? true, mode: "rpc" });
 	Object.assign(ctx, { isProjectTrusted: () => options.trusted ?? true });
 	Object.assign(ctx.sessionManager, { getBranch: () => options.branch ?? [] });
 	return ctx;
@@ -200,14 +200,13 @@ describe("/memory review", () => {
 		memoryStore(cwd).set({ title: "Unused note", author: "agent" });
 		const ctx = ctxFor();
 		const titles: string[] = [];
-		// Pick the memory, choose Delete, then dismiss the list it returns to.
+		// Pick the memory, choose Delete, confirm it, then dismiss the list it returns to.
 		Object.assign(ctx.ui, {
 			select: async (title: string, options: string[]) => {
 				titles.push(title);
 				if (titles.length === 1) return options.find((option) => option.includes("Unused note"));
-				return titles.length === 2 ? "Delete" : undefined;
+				return titles.length <= 3 ? "Delete" : undefined;
 			},
-			confirm: async () => true,
 		});
 		await command.handler("review", ctx);
 		expect(titles[0]).toBe("Memories never used or not updated in 30 days (pick one to edit or delete)");

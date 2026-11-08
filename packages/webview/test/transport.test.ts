@@ -52,7 +52,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 function connection() {
-	const observer = { application: vi.fn(), workspace: vi.fn(), backlogs: vi.fn(), status: vi.fn() };
+	const observer = { application: vi.fn(), workspace: vi.fn(), profiler: vi.fn(), backlogs: vi.fn(), status: vi.fn() };
 	const client = new BrowserConnection("secret", observer);
 	client.open();
 	return { client, observer, socket: Socket.instances[0] };
@@ -245,5 +245,44 @@ it("returns a streamed failure when an older HTTP acceptance arrives afterwards"
 	socket.receive(frame(1, { type: "event", event: { type: "command.receipt", receipt: failed } }));
 	response.resolve(new Response(JSON.stringify({ receipt: { id: "request", status: "accepted" } })));
 	await expect(pending).resolves.toEqual(failed);
+	client.close();
+});
+
+it("forwards a valid profiler frame to the observer and ignores a malformed one", () => {
+	const { client, observer, socket } = connection();
+	const update = {
+		agent: {
+			id: "main",
+			role: "main",
+			status: "idle",
+			requests: 1,
+			totals: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+			profiled: true,
+		},
+		request: {
+			agentId: "main",
+			index: 0,
+			at: 1,
+			model: "m",
+			usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+			layers: [],
+			estimated: true,
+		},
+	};
+	socket.receive({
+		type: "profiler",
+		data: { ...update, request: { ...update.request, layers: [{ kind: "bogus" }] } },
+	});
+	socket.receive({ type: "profiler", data: { agent: update.agent, events: [{ id: 1 }] } });
+	expect(observer.profiler).not.toHaveBeenCalled();
+	socket.receive({ type: "profiler", data: update });
+	expect(observer.profiler).toHaveBeenCalledWith(update);
+	// A frame may carry only the agent row and new events or messages.
+	const eventsOnly = {
+		agent: update.agent,
+		events: [{ id: "main:tool:1", agentId: "main", kind: "tool", at: 1, label: "bash" }],
+	};
+	socket.receive({ type: "profiler", data: eventsOnly });
+	expect(observer.profiler).toHaveBeenLastCalledWith(eventsOnly);
 	client.close();
 });

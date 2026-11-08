@@ -9,7 +9,8 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { formatKeyText, keyHint } from "../keybinding-hints.ts";
+import { renderHintLine } from "../hint-bar.ts";
+import { formatKeyText, keyText } from "../keybinding-hints.ts";
 import { plainText } from "../styled-line.ts";
 import type { TreeList } from "./tree-list.ts";
 
@@ -75,7 +76,6 @@ export class TreeHelp implements Component {
 }
 
 const TREE_HELP_ITEMS: Array<{ keys: Keybinding[]; label: string; labelFirst?: boolean }> = [
-	{ keys: ["tui.select.up", "tui.select.down"], label: "move" },
 	{ keys: ["tui.editor.cursorLeft", "tui.editor.cursorRight"], label: "page" },
 	{ keys: ["app.tree.foldOrUp", "app.tree.unfoldOrDown"], label: "branch" },
 	{ keys: ["app.message.copy"], label: "copy" },
@@ -162,9 +162,13 @@ export class LabelInput implements Component, Focusable {
 		lines.push(truncateToWidth(`${indent}${theme.fg("muted", "Label (empty to remove):")}`, width));
 		lines.push(...this.input.render(availableWidth).map((line) => truncateToWidth(`${indent}${line}`, width)));
 		lines.push(
-			truncateToWidth(
-				`${indent}${keyHint("tui.select.confirm", "save")}  ${keyHint("tui.select.cancel", "cancel")}`,
+			renderHintLine(
+				[
+					[keyText("tui.select.confirm"), "save", 1],
+					[keyText("tui.select.cancel"), "cancel", 0],
+				],
 				width,
+				indent.length,
 			),
 		);
 		return lines;

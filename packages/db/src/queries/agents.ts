@@ -48,7 +48,7 @@ export function refresh(
 	const before = events.member(db, member.id);
 	const { changes } = db
 		.prepare(
-			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
+			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, cache_write = ?, output = ?, cost = ?, unpriced = ?
          WHERE id = ? AND pid = ? AND started IS ?`,
 		)
 		.run(
@@ -66,6 +66,7 @@ export function refresh(
 			member.toolCalls,
 			member.input,
 			member.cacheRead,
+			member.cacheWrite ?? 0,
 			member.output,
 			member.cost,
 			member.unpriced ? 1 : 0,
@@ -105,8 +106,8 @@ export function insert(
 ): boolean {
 	const row = db
 		.prepare(
-			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced, session_id, cwd, branch, process_title)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, cache_write, output, cost, unpriced, session_id, cwd, branch, process_title)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO NOTHING RETURNING id`,
 		)
 		.get(
@@ -128,6 +129,7 @@ export function insert(
 			member.toolCalls,
 			member.input,
 			member.cacheRead,
+			member.cacheWrite ?? 0,
 			member.output,
 			member.cost,
 			member.unpriced ? 1 : 0,

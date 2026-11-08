@@ -7,7 +7,7 @@ import { initTheme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
-import { diffStats, querySize } from "../../src/octocode/files/render.ts";
+import { diffStats, querySize } from "../../src/octocode/files/outcome.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { validateFileInput } from "../../src/octocode/shared/file-input.ts";
 import { BASH_READER, FileGuard, mcpReader, returnedContent } from "../../src/octocode/files/tool/guard.ts";

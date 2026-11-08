@@ -15,7 +15,7 @@ import { currentPrice, type ModelRef } from "./model.ts";
 const CREDENTIAL_REFUSED =
 	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|expired|insufficient[ _](?:quota|credit|balance)|billing/i;
 const CHECK_TIMEOUT_MS = 20_000;
-/** How long a credential refusal steers routing away from its provider: a `/login` since then is not otherwise seen. */
+/** How long a credential refusal steers routing away from its provider: a `/providers` since then is not otherwise seen. */
 const REFUSAL_ROUTING_MS = 15 * 60_000;
 
 export interface ProviderStatus {
@@ -85,7 +85,7 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	if (status.ok && status.via === "list") return ` ✓ credential accepted (${source}, ${when}; credit not tested)`;
 	if (status.ok) return ` ✓ credential worked (${source}, ${when})`;
 	const refused = status.detail && CREDENTIAL_REFUSED.test(status.detail);
-	return ` ✗ ${refused ? "credential refused" : "check failed"} (${source}, ${when}): ${status.detail ?? "no detail"}${refused ? " — fix with /login" : ""}`;
+	return ` ✗ ${refused ? "credential refused" : "check failed"} (${source}, ${when}): ${status.detail ?? "no detail"}${refused ? " — fix with /providers" : ""}`;
 }
 
 /**

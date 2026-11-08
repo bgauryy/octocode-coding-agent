@@ -250,6 +250,62 @@ it("detaches mutable provider objects from published frames and bounds oversized
 	expect(JSON.parse(f.service.readAsset(large.full.id)!.data).arguments.content).toHaveLength(300000);
 });
 
+it("carries a tool's progress and lets each result replace the previous one with its asset", () => {
+	const f = fixture();
+	const events: ApplicationEvent[] = [];
+	f.service.subscribe((event) => events.push(event));
+	f.emit({ type: "tool_execution_start", toolCallId: "p", toolName: "mcp__s__slow", args: { q: 1 } });
+	const update = (partialResult: unknown) =>
+		f.emit({ type: "tool_execution_update", toolCallId: "p", toolName: "mcp__s__slow", args: { q: 1 }, partialResult });
+	update({
+		content: [{ type: "text", text: "half" }],
+		details: {},
+		progress: { progress: 2, total: 4, message: "half" },
+	});
+	expect(events.at(-1)).toMatchObject({ type: "tool.progress", progress: { progress: 2, total: 4, message: "half" } });
+	// Progress details too large to keep inline move to a mutable asset slot.
+	update({ content: [], details: { rows: "x".repeat(9000) }, progress: { progress: 3, total: Number.NaN } });
+	const spilled = events.at(-1);
+	if (spilled?.type !== "tool.progress" || !spilled.full) throw new Error("Expected spilled progress details");
+	expect(spilled.progress).toEqual({ progress: 3 });
+	f.emit({
+		type: "tool_execution_end",
+		toolCallId: "p",
+		toolName: "mcp__s__slow",
+		result: { content: [{ type: "text", text: "done" }], details: { rows: 1 } },
+		isError: false,
+	});
+	const completed = events.at(-1);
+	expect(completed).toMatchObject({ type: "tool.completed", details: { rows: 1 }, arguments: { q: 1 } });
+	if (completed?.type !== "tool.completed") throw new Error("Expected completion");
+	expect(completed.full).toBeUndefined();
+	expect(completed.progress).toBeUndefined();
+	expect(f.service.getSnapshot().tools?.find((tool) => tool.toolCallId === "p")?.full).toBeUndefined();
+});
+
+it("keeps an oversized message's identity fields beside its full-content asset", () => {
+	const f = fixture();
+	const events: ApplicationEvent[] = [];
+	f.service.subscribe((event) => events.push(event));
+	f.emit({
+		type: "message_end",
+		message: {
+			role: "toolResult",
+			toolCallId: "big-call",
+			toolName: "read",
+			content: [{ type: "text", text: "y".repeat(70000) }],
+			details: { rows: "z".repeat(70000) },
+			isError: false,
+			timestamp: 7,
+		},
+	});
+	const event = events.find((item) => item.type === "message.completed");
+	if (event?.type !== "message.completed") throw new Error("Expected a completed message");
+	expect(event.message).toMatchObject({ role: "toolResult", toolCallId: "big-call", timestamp: 7 });
+	expect(event.message.full).toBeDefined();
+	expect(event.message.details).toBeUndefined();
+});
+
 it("rejects reads and uploads from a previously bound session before exposing the new session", () => {
 	const f = fixture();
 	const asset = f.service.uploadAsset({ mimeType: image.mimeType, data: image.data }, "content-test");

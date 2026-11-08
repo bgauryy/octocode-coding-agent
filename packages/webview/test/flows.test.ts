@@ -42,6 +42,28 @@ const workspace: WorkspaceSnapshot = {
 	],
 };
 
+/** The profiler routes the page reads: one profiled agent, no requests, no events. */
+function profilerBody(url: string): unknown {
+	const path = url.split("?")[0];
+	if (path.endsWith("/timeline")) return { sessionId: "session", events: [], messages: [], until: 0, hasMore: false };
+	if (path.endsWith("/insights")) return { sessionId: "session", findings: [], generatedAt: 0 };
+	if (path.includes("/agents/")) return { agentId: "worker", requests: [], hasMore: false };
+	return {
+		sessionId: "session",
+		generatedAt: Date.now(),
+		agents: [
+			{
+				id: "worker",
+				role: "reviewer",
+				status: "working",
+				requests: 0,
+				totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				profiled: true,
+			},
+		],
+	};
+}
+
 /** Set a form control's value the way typing does, so React's change tracking sees it. */
 function type(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
 	const window = element.ownerDocument.defaultView!;
@@ -58,6 +80,7 @@ async function page(fragment = "access=test") {
 	const fetch = vi.fn(
 		async (url?: string, init?: RequestInit): Promise<{ ok: boolean; json: () => Promise<unknown> }> => {
 			if (url === WEB_PREFS_ROUTE) return { ok: true, json: async () => ({ sound: false, theme: "system" }) };
+			if (url?.startsWith("/api/profiler")) return { ok: true, json: async () => profilerBody(url) };
 			const command = JSON.parse(String(init?.body));
 			return {
 				ok: true,
@@ -121,8 +144,8 @@ async function page(fragment = "access=test") {
 		button,
 		findButton,
 		fetch,
-		/** The command requests the page sent; the preference read on load is counted apart in `prefsReads`. */
-		commands: () => fetch.mock.calls.filter(([url]) => url !== WEB_PREFS_ROUTE),
+		/** The command requests the page sent (they carry a body); preference and profiler reads are counted apart. */
+		commands: () => fetch.mock.calls.filter(([url, init]) => url !== WEB_PREFS_ROUTE && init?.body !== undefined),
 		prefsReads: () => fetch.mock.calls.filter(([url]) => url === WEB_PREFS_ROUTE),
 		application: (frame: unknown) => socket.onmessage?.({ data: JSON.stringify({ type: "application", data: frame }) }),
 		backlogs: (data: unknown) => socket.onmessage?.({ data: JSON.stringify({ type: "snapshot", data }) }),
@@ -152,14 +175,26 @@ it("keeps Markdown inspection controls and focused code in place when new events
 	expect(app.button("View Markdown")).toBeDefined();
 });
 
+/** The message form lives in the agent drawer: open the Profiler's Overview and pick the agent. */
+async function openWorker(app: Awaited<ReturnType<typeof page>>) {
+	app.navigate("profiler?panel=overview");
+	const row = await vi.waitFor(() => {
+		const found = [...app.document.querySelectorAll<HTMLElement>('[role="button"]')].find((element) =>
+			element.getAttribute("aria-label")?.startsWith("worker,"),
+		);
+		return found ?? Promise.reject(new Error("No agent row"));
+	});
+	row.click();
+}
+
 it("restores message drafts across navigation and only clears them after acceptance", async () => {
 	const app = await page();
-	app.navigate("agents");
+	await openWorker(app);
 	const text = await app.screen.findByLabelText<HTMLTextAreaElement>("Message");
 	type(text, "Please check the tests");
 	app.navigate("activity");
 	await app.findButton("Pause feed");
-	app.navigate("agents");
+	await openWorker(app);
 	const restored = await app.screen.findByLabelText<HTMLTextAreaElement>("Message");
 	expect(restored.value).toBe("Please check the tests");
 	expect(app.screen.getByLabelText<HTMLSelectElement>("Recipient").required).toBe(true);
@@ -191,7 +226,7 @@ it("restores message drafts across navigation and only clears them after accepta
 	expect(restored.isConnected).toBe(true);
 	app.navigate("activity");
 	await app.findButton("Pause feed");
-	app.navigate("agents");
+	await openWorker(app);
 	await vi.waitFor(() => expect(app.screen.getByLabelText<HTMLTextAreaElement>("Message").value).toBe(""));
 });
 

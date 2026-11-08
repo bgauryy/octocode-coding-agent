@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../shared/format.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { capOutput, contentText } from "../shared/util.ts";
 import {
@@ -200,18 +200,23 @@ export class ReportTracker {
 	 * `reminder`: its own timer woke this turn and no tool ran, so after a report its text only echoes the reminder.
 	 */
 	answer(
-		raw: string | undefined,
+		answerText: string | undefined,
 		stopReason: unknown,
 		errorMessage?: unknown,
 		waiting = false,
 		reminder = false,
 	): void {
+		// The child's answer and failure reach the parent model and the saved report: a credential it quotes (an error body, a
+		// file it read) is removed here, so the preview, the scratch files and the structured result all hold clean text.
+		const raw = answerText === undefined ? undefined : redactSecrets(answerText);
 		const failed = stopReason === "error" || stopReason === "aborted" || stopReason === "length";
 		this.failure = failed
-			? visibleControls(
-					describeError(
-						errorMessage ??
-							(stopReason === "length" ? "Model output limit reached; the report is incomplete" : stopReason),
+			? redactSecrets(
+					visibleControls(
+						describeError(
+							errorMessage ??
+								(stopReason === "length" ? "Model output limit reached; the report is incomplete" : stopReason),
+						),
 					),
 				)
 			: undefined;

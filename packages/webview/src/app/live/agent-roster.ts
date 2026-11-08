@@ -12,7 +12,7 @@ export interface AgentNode {
 const PREVIEW = 90;
 
 /** The newest message involving the agent; traffic arrives oldest first. */
-function lastMessage(id: string, traffic: readonly Traffic[]): Traffic | undefined {
+export function lastMessage(id: string, traffic: readonly Traffic[]): Traffic | undefined {
 	for (let index = traffic.length - 1; index >= 0; index--) {
 		const message = traffic[index];
 		if (message.from === id || message.to.includes(id)) return message;

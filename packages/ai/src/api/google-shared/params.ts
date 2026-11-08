@@ -54,6 +54,8 @@ export function buildGoogleParams<T extends GoogleApiType>(
 			: undefined;
 	const systemInstruction = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
 	const config: GenerateContentConfig = {
+		// SDK 2.29+ defaults this on: it re-requests long outputs as billed hops and resends dropped streams outside our retry.
+		automaticContinuation: false,
 		...(Object.keys(generationConfig).length > 0 && generationConfig),
 		...(systemInstruction && { systemInstruction: sanitizeSurrogates(systemInstruction) }),
 		...(currentTools.length > 0 && {

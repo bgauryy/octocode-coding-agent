@@ -1,3 +1,9 @@
+import {
+	toolProgressFraction,
+	toolProgressText,
+	type ApplicationToolProgress,
+	type ToolDisplay,
+} from "@octocodeai/octocode-contracts";
 import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
 import { visibleControls } from "../../common/src/sanitize.ts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
@@ -18,6 +24,16 @@ import {
 } from "./tools.ts";
 
 const OUTPUT_PREVIEW_LINES = 5;
+const METER_CELLS = 20;
+
+/** `██████░░░░ 3/10 (30%) · message`; without a known total only the text. */
+function progressMeter(progress: ApplicationToolProgress): string {
+	const fraction = toolProgressFraction(progress);
+	const text = visibleControls(toolProgressText(progress)).replace(/\s+/g, " ");
+	if (fraction === undefined) return text;
+	const filled = Math.round(fraction * METER_CELLS);
+	return `${"█".repeat(filled)}${"░".repeat(METER_CELLS - filled)} ${text}`;
+}
 
 interface PreparedMcpCall {
 	args: Record<string, unknown>;
@@ -105,6 +121,8 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		...(({ renderCall, renderResult }) => ({ renderCall, renderResult }))(
 			options.presentation ?? createMcpToolRenderers(label),
 		),
+		// A preset that draws its own rows still gets the generic display for other surfaces.
+		display: options.presentation?.display ?? createMcpToolRenderers(label).display,
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const client = await options.getClient();
 			const requested = (params ?? {}) as Record<string, unknown>;
@@ -115,7 +133,15 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 				onProgress: (progress) => {
 					const total = progress.total === undefined ? "" : `/${progress.total}`;
 					const text = visibleControls(progress.message ?? `Progress ${progress.progress}${total}`);
-					onUpdate?.({ content: [{ type: "text", text }], details: { server, tool: tool.name } });
+					onUpdate?.({
+						content: [{ type: "text", text }],
+						details: { server, tool: tool.name },
+						progress: {
+							progress: progress.progress,
+							...(progress.total === undefined ? {} : { total: progress.total }),
+							...(progress.message ? { message: visibleControls(progress.message) } : {}),
+						},
+					});
 				},
 			});
 			const result = call.review ? call.review(reply) : reply;
@@ -126,9 +152,51 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	};
 }
 
+/** `key=value` pairs of a call's arguments, for its header: the server owns the input, so no field is singled out. */
+function argumentSummary(args: unknown): string {
+	if (!args || typeof args !== "object") return "";
+	return Object.entries(args as Record<string, unknown>)
+		.filter(([, value]) => value !== undefined)
+		.map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`)
+		.join(" ")
+		.replace(/\s+/g, " ")
+		.slice(0, 200);
+}
+
 /** Renderers of calls to an MCP tool, labeled `server/tool`, also used before the tool is registered. */
 export function createMcpToolRenderers(label: string): McpToolRenderers {
 	return {
+		display({ args, result, status }: { args: unknown; result?: AgentToolResult<McpToolDetails>; status: string }) {
+			const summary = argumentSummary(args);
+			const head: ToolDisplay = { title: label, ...(summary ? { summary } : {}), kind: "other", blocks: [] };
+			if (!result) return head;
+			const text = result.content
+				.flatMap((block) => (block.type === "text" ? [block.text] : []))
+				.join("\n")
+				.trim();
+			const spill = result.details?.fullOutputPath;
+			if (status === "running" && result.progress)
+				return { ...head, outcome: { text: toolProgressText(result.progress), tone: "muted" }, blocks: [] };
+			const [first = "", ...rest] = text.split("\n");
+			return {
+				...head,
+				...(status === "failed" ? { outcome: { text: first, tone: "error" as const } } : {}),
+				blocks: [
+					...((status === "failed" ? rest.join("\n") : text).trim()
+						? [
+								{
+									type: "text" as const,
+									text: status === "failed" ? rest.join("\n") : text,
+									...(status === "running" ? { preview: "tail" as const } : {}),
+								},
+							]
+						: []),
+					...(spill
+						? [{ type: "path" as const, text: `full output: ${spill}`, label: "full output", path: spill }]
+						: []),
+				],
+			};
+		},
 		renderCall(args, theme, context) {
 			const component = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
 			component.setText(hostRender().formatToolCallWithArgs(label, args, theme, context.expanded));
@@ -137,6 +205,12 @@ export function createMcpToolRenderers(label: string): McpToolRenderers {
 		renderResult(result, options, theme, context) {
 			const component = (context.lastComponent as Container | undefined) ?? new Container();
 			component.clear();
+			// A running call that reports progress shows a meter; its text update says the same in words.
+			if (context.isPartial && result.progress) {
+				component.addChild(new Spacer(1));
+				component.addChild(new Text(theme.fg("muted", progressMeter(result.progress)), 0, 0));
+				return component;
+			}
 			const output = hostRender().getTextOutput(result, context.showImages).trim();
 			if (!output) return component;
 			const color = context.isError ? "error" : "toolOutput";

@@ -35,6 +35,9 @@ export interface Member {
 	/** Every prompt token it sent (uncached, cache reads and writes); `cacheRead` is the part read from cache. */
 	input: number;
 	cacheRead: number;
+	/** The part of `input` the provider wrote to cache on this agent's replies. */
+	/** Absent on rows written before cache writes were counted; read as 0. */
+	cacheWrite?: number;
 	output: number;
 	/** Octocode's estimate at list rates, without the replies of a model with no pricing (`unpriced` says there were some). */
 	cost: number;
@@ -64,5 +67,7 @@ export interface Traffic {
 	text: string;
 	at: number;
 	replyTo?: number;
+	/** When the first recipient took it (epoch ms); absent while every delivery is still queued. */
+	deliveredAt?: number;
 	state: "queued" | "delivered" | "awaiting reply" | "answered" | "dead-lettered";
 }

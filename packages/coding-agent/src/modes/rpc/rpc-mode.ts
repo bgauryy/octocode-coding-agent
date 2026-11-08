@@ -11,6 +11,7 @@
  * - Extension UI: Extension UI requests are emitted, client responds with extension_ui_response
  */
 
+import { createToolDisplayAttacher } from "./tool-display.ts";
 import { VERSION } from "../../config.ts";
 import type { AgentSessionEvent } from "../../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
@@ -78,8 +79,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		session = runtimeHost.session;
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
+		const withDisplay = createToolDisplayAttacher((name) => session.getToolRenderers(name));
 		unsubscribe = session.subscribe((event) => {
-			outputEvent(event);
+			outputEvent(withDisplay(event));
 			if (event.type === "agent_settled") {
 				void checkShutdownRequested();
 			}

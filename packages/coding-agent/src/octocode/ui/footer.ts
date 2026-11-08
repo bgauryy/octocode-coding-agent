@@ -7,7 +7,7 @@ import type { StatusEntry } from "../../core/footer-data-provider.ts";
 import { paintStatus } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
-import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
+import { formatCost, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
 import { STATUS } from "../shared/status.ts";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
 import {
@@ -45,8 +45,7 @@ export interface FooterState {
 	context?: { percent: number | null; limit: number } | undefined;
 	/** The session's replies and every subagent's spend (foreground results, background reports): `input` is the whole prompt, shown as new tokens plus cache reads (`formatTokenUsage`); `cost` is Octocode's estimate. */
 	usage: UsageTotals;
-	/** Wall time of the current or last run, including tool calls and automatic compaction. */
-	runMs?: number;
+	/** A run is in progress. The run's time is the transcript's turn line (`Worked 12s`), not the footer's. */
 	running?: boolean;
 	/** Completed compaction entries across the session, including resumed history. */
 	compactions?: number;
@@ -205,14 +204,7 @@ export function footerLines(
 			{ text: status(OWN.hooks), priority: 80, keep: true },
 		],
 		[
-			{
-				text:
-					state.runMs !== undefined && !state.running
-						? theme.fg("muted", `last run ${formatDuration(state.runMs)}`)
-						: "",
-				priority: 85,
-			},
-			// The speed of the last run, beside its time: hidden while the next one works.
+			// The speed of the last run: hidden while the next one works.
 			{ text: text(OWN.speed) && !state.running ? theme.fg("dim", text(OWN.speed)) : "", priority: 10 },
 			{ text: cost ? theme.fg("muted", cost) : "", priority: 40 },
 		],
@@ -276,16 +268,13 @@ export function registerFooter(api: ExtensionAPI): void {
 	/** Moves whenever `state` changes, so the render cache knows its lines are stale. */
 	let version = 0;
 	let repaint: (() => void) | undefined;
-	let startedAt: number | undefined;
-	const sampleRun = () => {
-		if (startedAt === undefined) return;
-		state.runMs = Math.max(0, Date.now() - startedAt);
+	const setRunning = (running: boolean) => {
+		if (state.running === running) return;
+		state.running = running;
 		version += 1;
 		repaint?.();
 	};
 	const stop = () => {
-		sampleRun();
-		startedAt = undefined;
 		state.running = false;
 		version += 1;
 		repaint?.();
@@ -328,7 +317,6 @@ export function registerFooter(api: ExtensionAPI): void {
 	api.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		stop();
-		state.runMs = undefined;
 		countCompactions(ctx);
 		state.usage = emptyTotals();
 		scan.reset();
@@ -384,10 +372,7 @@ export function registerFooter(api: ExtensionAPI): void {
 		await refresh(event, ctx);
 	});
 	api.on("agent_start", async (_event, ctx) => {
-		if (!ctx.hasUI || ctx.mode !== "tui" || startedAt !== undefined) return;
-		startedAt = Date.now();
-		state.running = true;
-		sampleRun();
+		if (ctx.hasUI && ctx.mode === "tui") setRunning(true);
 	});
 	api.on("agent_settled", async () => stop());
 	api.on("session_shutdown", async () => stop());

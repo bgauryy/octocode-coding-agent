@@ -190,6 +190,10 @@ export class ModelRuntime implements Models {
 		return this.availability.getAvailable(providerId, options);
 	}
 
+	setDisabledProviders(providerIds: readonly string[]): void {
+		this.availability.setDisabledProviders(providerIds);
+	}
+
 	getAvailableSnapshot(): readonly Model<Api>[] {
 		return this.availability.snapshot.available;
 	}

@@ -3,6 +3,7 @@ import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts
 import { getPromptCommands } from "../../../core/prompt-templates.ts";
 import { getSkillCommands } from "../../../core/skill-commands.ts";
 import { VERSION } from "../../../config.ts";
+import { redactUrlCredentials } from "../../../../../common/src/url-credentials.ts";
 import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
 import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "../rpc-types.ts";
 import { RPC_PROTOCOL_VERSION } from "../session-identity.ts";
@@ -16,6 +17,11 @@ export interface RpcCommandHost {
 	readonly session: AgentSession;
 	runtimeHost: AgentSessionRuntime;
 	output: RpcOutput;
+}
+
+/** A model as an RPC client sees it: headers are already cleared; the baseUrl loses any user name or key a configuration put in it. */
+function publicModel<T extends { baseUrl: string }>(model: T): T {
+	return { ...model, baseUrl: redactUrlCredentials(model.baseUrl) };
 }
 
 // Handle a single command
@@ -84,7 +90,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			const state: RpcSessionState = {
 				protocolVersion: RPC_PROTOCOL_VERSION,
 				version: VERSION,
-				model: host.session.model,
+				model: host.session.model && publicModel(host.session.model),
 				thinkingLevel: host.session.thinkingLevel,
 				isStreaming: host.session.isStreaming,
 				isCompacting: host.session.isCompacting,
@@ -111,7 +117,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 				return error(id, "set_model", `Model not found: ${command.provider}/${command.modelId}`);
 			}
 			await host.session.setModel(model);
-			return success(id, "set_model", model);
+			return success(id, "set_model", publicModel(model));
 		}
 
 		case "cycle_model": {
@@ -119,12 +125,12 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			if (!result) {
 				return success(id, "cycle_model", null);
 			}
-			return success(id, "cycle_model", result);
+			return success(id, "cycle_model", { ...result, model: publicModel(result.model) });
 		}
 
 		case "get_available_models": {
 			const models = host.session.modelRuntime.getAvailableSnapshot();
-			return success(id, "get_available_models", { models });
+			return success(id, "get_available_models", { models: models.map(publicModel) });
 		}
 
 		// =================================================================

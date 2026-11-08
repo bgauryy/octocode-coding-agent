@@ -20,8 +20,10 @@ export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "pref
 interface PromptInputs {
 	/** The research MCP server, from its entry's roles, when this agent can reach it: the research section then routes code search to it and names its tools. */
 	research?: ResearchContext | undefined;
-	/** Subagent profile names and one-line descriptions. */
-	profiles: Array<{ name: string; description: string }>;
+	/** Subagent profile names and one-line descriptions, with the model each runs on when known. */
+	profiles: Array<{ name: string; description: string; model?: string | undefined }>;
+	/** The coordinator's model, providers and purpose routes, frozen per session (`subagents/routing-watch.ts`). */
+	routing?: { sessionModel: string; providers: string[]; small: string; medium: string } | undefined;
 	/** Browser specialists to use when the main session has no browser tool. */
 	browserProfiles?: string[];
 	/** False inside a subagent: no delegation, report back to the parent. */
@@ -88,13 +90,24 @@ function policyFlags(input: PromptInputs) {
 	};
 }
 
+/** A model route in backticks, or as prose when it is a routing error. */
+const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);
+
 export function octocodePromptSections(input: PromptInputs): Record<string, string> {
+	const routing = input.routing;
 	const values = {
 		...policyFlags(input),
 		browserProfiles: (input.browserProfiles ?? []).map((name) => `\`${name}\``).join(", "),
 		profiles: input.profiles
-			.map((profile) => `  - ${profile.name}${profile.description ? `: ${profile.description}` : ""}`)
+			.map(
+				(profile) =>
+					`  - ${profile.name}${profile.model ? ` (${quote(profile.model)})` : ""}${profile.description ? `: ${profile.description}` : ""}`,
+			)
 			.join("\n"),
+		providers: routing ? routing.providers.map(quote).join(", ") : "",
+		sessionModel: routing ? quote(routing.sessionModel) : "",
+		smallRoute: routing ? quote(routing.small) : "",
+		mediumRoute: routing ? quote(routing.medium) : "",
 	};
 	return Object.fromEntries(
 		SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map(({ name }) => [

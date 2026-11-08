@@ -1,3 +1,4 @@
+import { builtinDescription } from "../../core/slash-commands.ts";
 import { contentText } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
@@ -87,7 +88,7 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 		}
 	};
 	commands.add("plan", {
-		description: "Research under a planning constraint",
+		description: builtinDescription("plan"),
 		argumentHint: "[description|--off|--approve <revision>]",
 		dialog: "interaction",
 		complete: (prefix) => wordCompletions(["--off", "--approve"], prefix),

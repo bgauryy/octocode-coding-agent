@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
+import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { say } from "../../shared/commands.ts";
+import { showCommandPage } from "../../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { delegatePrompt, doItPrompt } from "../actions.ts";
 import { type Backlog, type BacklogOptions, userActor } from "../context.ts";
 import { CLOSE_KINDS, type CloseKind } from "@octocodeai/octocode-contracts/backlogs";
 import { isState, itemDetail, itemLine } from "../format.ts";
 import { refText } from "../row.ts";
-import { type BacklogStore, type Item, PRIORITIES, type UpdateInput } from "../store.ts";
+import { type BacklogStore, type Item, PRIORITIES, priorityName, type UpdateInput } from "../store.ts";
 import { createTaskActions } from "./task-actions.ts";
 import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 
@@ -305,10 +308,24 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 				},
 			},
 		];
-		const choice = await ctx.ui.select(
-			itemLine(item, backlog.session),
-			choices.map(({ label }) => label),
-		);
+		const labels = choices.map(({ label }) => label);
+		const choice =
+			ctx.mode === "tui"
+				? (
+						await showCommandPage(ctx.ui, {
+							title: `${item.ref} ${sanitizeTerminalText(item.title)}`,
+							facts: [
+								{ label: "State", value: item.state },
+								{ label: "Priority", value: priorityName(item.priority) },
+							],
+							sections: [{ heading: "Actions", rows: labels.map((name) => ({ id: name, name })) }],
+							hints: [
+								[keyText("tui.select.confirm"), "run", 0],
+								[keyText("tui.select.cancel"), "back", 1],
+							],
+						})
+					)?.id
+				: await ctx.ui.select(itemLine(item, backlog.session), labels);
 		return (await choices.find(({ label }) => label === choice)?.run()) === true;
 	};
 	return { apply, handOff, move, closeItem, add, actions, tasks };

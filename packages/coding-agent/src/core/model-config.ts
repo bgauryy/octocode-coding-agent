@@ -15,9 +15,11 @@ import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
 import { getModelsPath } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
+import { providerSourceGate } from "./provider-sources/gate.ts";
 import { stripJsonComments } from "../../../common/src/json.ts";
 import { normalizePath } from "../../../common/src/paths.ts";
 import { stripBom } from "../../../common/src/text.ts";
+import { urlCredentialProblem } from "../../../common/src/url-credentials.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -144,6 +146,27 @@ export type ModelsJsonModel = Static<typeof ModelDefinitionSchema>;
 export type ModelsJsonModelOverride = Static<typeof ModelOverrideSchema>;
 export type ModelsJsonProvider = Static<typeof ProviderConfigSchema>;
 
+/** Every baseUrl that carries a credential, as `providers.<id>.baseUrl` paths and what is wrong; never the URL itself. */
+function baseUrlCredentialErrors(providers: Record<string, ModelsJsonProvider>): string[] {
+	const errors: string[] = [];
+	for (const [providerId, provider] of Object.entries(providers)) {
+		const fields: [string, string | undefined][] = [
+			[`providers.${providerId}.baseUrl`, provider.baseUrl],
+			...(provider.models ?? []).map((model): [string, string | undefined] => [
+				`providers.${providerId}.models[${model.id}].baseUrl`,
+				model.baseUrl,
+			]),
+		];
+		for (const [field, value] of fields) {
+			const problem = value === undefined ? undefined : urlCredentialProblem(value);
+			if (problem) {
+				errors.push(`  - ${field}: ${problem}; put the key in apiKey or headers instead`);
+			}
+		}
+	}
+	return errors;
+}
+
 function deepFreeze<T>(value: T): T {
 	if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
 	for (const child of Object.values(value)) deepFreeze(child);
@@ -165,7 +188,12 @@ export class ModelConfig {
 		const paths = [modelsJsonPath];
 		if (resolve(normalizePath(modelsJsonPath)) === resolve(getModelsPath())) {
 			// Octocode's file first, then Pi's: the first definition of a provider wins.
-			const input = discoveryInput({ cwd: process.cwd(), agentDir: dirname(getModelsPath()), projectTrusted: false });
+			const input = discoveryInput({
+				cwd: process.cwd(),
+				agentDir: dirname(getModelsPath()),
+				projectTrusted: false,
+				...(providerSourceGate.isEnabled("pi") ? {} : { piRoots: [] }),
+			});
 			for (const item of configDiscovery.discover("model", input)) {
 				if (item.loaded && resolve(item.provenance.path) !== resolve(modelsJsonPath)) paths.push(item.provenance.path);
 			}
@@ -206,6 +234,14 @@ export class ModelConfig {
 					.map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
 					.join("\n") || "Unknown schema error";
 			return new ModelConfig(new Map(), `Invalid models.json schema:\n${errors}\n\nFile: ${path}`);
+		}
+
+		const credentialErrors = baseUrlCredentialErrors(parsed.providers);
+		if (credentialErrors.length > 0) {
+			return new ModelConfig(
+				new Map(),
+				`Invalid models.json: a baseUrl must not carry credentials:\n${credentialErrors.join("\n")}\n\nFile: ${path}`,
+			);
 		}
 
 		const providers = new Map<string, ModelsJsonProvider>();

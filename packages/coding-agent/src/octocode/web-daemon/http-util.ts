@@ -1,14 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-export type Reply = (status: number, body: unknown) => void;
+export type Reply = (status: number, body: unknown, headers?: Record<string, string>) => void;
 
 const MAX_BODY_BYTES = 262144;
 
 export function replier(res: ServerResponse): Reply {
-	return (status, body) => {
+	return (status, body, headers) => {
 		if (res.headersSent) return;
 		res.writeHead(status, {
+			...headers,
 			"content-type": "application/json",
 			"cache-control": "no-store",
 			"x-content-type-options": "nosniff",

@@ -6,11 +6,11 @@ import type { BashJob, VerificationReceipt } from "../bash-jobs/types.ts";
 import type { OrphanJob } from "../bash-jobs/records.ts";
 import { moveFile } from "../../shared/sweep.ts";
 import { firstLine } from "../../shared/util.ts";
-import type { BashDetails } from "../render.ts";
+import type { BashDetails } from "../outcome.ts";
 import { verificationJson, verificationLine } from "./verification.ts";
 import { BashExecutionError } from "../../../core/tools/bash/outcome.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { RERUN_HINT } from "../render.ts";
+import { RERUN_HINT } from "../outcome.ts";
 import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 import { cutText } from "../../../../../common/src/text.ts";
 

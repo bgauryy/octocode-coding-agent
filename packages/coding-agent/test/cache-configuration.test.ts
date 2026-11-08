@@ -2,11 +2,7 @@ import type { Api, Model } from "@octocodeai/octocode-ai";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { withCacheCapabilities, withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-	describeCachePolicy,
-	headlessCachePreferences,
-	resolveConfiguredCache,
-} from "../src/core/cache-configuration.ts";
+import { describeCachePolicy, resolveConfiguredCache } from "../src/core/cache-configuration.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -184,6 +180,26 @@ describe("cache configuration", () => {
 				"Instructions 30m; history 12h.",
 			);
 		});
+		// Azure OpenAI Responses sends `prompt_cache_retention: "24h"` only where `azureAcceptsExtendedRetention` says so:
+		// /status uses that same check, not a declared lifetime the adapter never sends.
+		it("names the Azure 24h tier for long history only where the adapter requests it", () => {
+			const azure = (id: string, overrides: Partial<Model<"azure-openai-responses">> = {}) =>
+				asApi("azure-openai-responses", { id, ...overrides });
+			const long = { cacheRetention: "long" } as const;
+			expect(describeWith(azure("gpt-5.5"), long)).toContain("24h extended retention requested");
+			expect(describeWith(azure("gpt-5.5"), { cacheRetention: "short" })).not.toMatch(/\b24h\b/);
+			expect(describeWith(azure("gpt-6.1-sol"), long)).toContain("Provider-managed");
+			expect(describeWith(azure("gpt-6.1-sol"), long)).not.toMatch(/\b24h\b/);
+			// A custom deployment that declares a long lifetime but is not on Microsoft's list sends no retention field.
+			const declared = azure("team-deployment", { promptCache: { short: 300, long: 86_400 } });
+			expect(describeWith(declared, long)).toContain("Provider-managed");
+			expect(describeWith(declared, long)).not.toMatch(/\b24h\b/);
+			// `compat.supportsLongCacheRetention: true` opts a deployment-named model in; `false` opts a listed one out.
+			const optedIn = azure("team-deployment", { compat: { supportsLongCacheRetention: true } });
+			expect(describeWith(optedIn, long)).toContain("24h extended retention requested");
+			const optedOut = azure("gpt-5.5", { compat: { supportsLongCacheRetention: false } });
+			expect(describeWith(optedOut, long)).not.toMatch(/\b24h\b/);
+		});
 		it("says provider-managed for Azure, Codex, Mistral, Google and generic completions", () => {
 			for (const api of [
 				"azure-openai-responses",
@@ -198,18 +214,5 @@ describe("cache configuration", () => {
 				expect(text, api).not.toMatch(/\b(1h|12h|24h)\b/);
 			}
 		});
-	});
-});
-
-describe("headless runs", () => {
-	it("default to short history behind long instructions unless a setting or the environment chose", () => {
-		expect(headlessCachePreferences([], {})).toEqual({ cacheRetention: "short", instructionCacheRetention: "long" });
-		expect(
-			headlessCachePreferences([{ source: "global settings", values: { cacheRetention: "long" } }], {}),
-		).toBeUndefined();
-		expect(
-			headlessCachePreferences([{ source: "project settings", values: { instructionCacheRetention: "short" } }], {}),
-		).toBeUndefined();
-		expect(headlessCachePreferences([], { OCTOCODE_CACHE_RETENTION: "long" })).toBeUndefined();
 	});
 });

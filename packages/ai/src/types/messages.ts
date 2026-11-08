@@ -1,6 +1,7 @@
 import type { TSchema } from "typebox";
 import type { ModelThinkingLevel } from "../providers/model-schema.ts";
 import type { AssistantMessageDiagnostic } from "../utils/diagnostics.ts";
+import type { RequestTrace } from "../utils/payload-layers.ts";
 import type { Api, ProviderId } from "./ids.ts";
 import type { IsJsonCompatible, JsonObject, JsonRepresentation, JsonValue } from "./json.ts";
 import type { ContentAnnotation, MediaContent, ResourceContent, UnsupportedContent } from "./content.ts";
@@ -187,6 +188,11 @@ export interface AssistantMessage {
 	 * for deferred results fetched later.
 	 */
 	durationMs?: number;
+	/**
+	 * What the request that produced this response sent, layer by layer (sizes and hashes, no text). Recorded by the
+	 * host for profiling; provider converters never read it, so it is not part of any request.
+	 */
+	requestTrace?: RequestTrace;
 }
 
 /** A tool call that another tool made while it ran, for example from another tool. */

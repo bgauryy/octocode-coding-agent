@@ -54,6 +54,8 @@ export interface PermissionRequest {
 	nested?: boolean;
 	/** The mode whose rules judge this call, when a stricter constraint than the session's mode holds it (plan). */
 	asMode?: PermissionMode;
+	/** When the ask was shown; set by the check, read by the audit entry (`AuditEntry.askedAt`). */
+	askedAt?: number;
 	/** Called once when this call will wait for the user, so whoever is behind it can be told. */
 	onAsk?: () => void;
 	signal?: AbortSignal;

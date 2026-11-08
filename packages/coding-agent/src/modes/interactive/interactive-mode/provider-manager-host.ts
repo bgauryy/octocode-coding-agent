@@ -13,6 +13,7 @@ export type ProviderManagerHost = Pick<
 	| "showModelSelector"
 	| "showStatus"
 	| "showError"
+	| "showWarning"
 	| "updateAvailableProviderCount"
 	| "ui"
 >;

@@ -92,9 +92,13 @@ const CASES: Record<string, Case> = {
 	context: { check: says(/Total context: 0 of [\d,]+ tokens/) },
 	diff: { check: says(/Repository diff[\s\S]*No staged changes/) },
 	status: { check: says(/Session Info[\s\S]*File:/) },
-	llama: { check: says(/Configure llama\.cpp with \/login llama\.cpp/) },
-	// The dialog lists each configured server with its state: the Octocode server is connected with its tools.
-	mcp: { check: asks(/MCP servers[\s\S]*› browser\s+not selected[\s\S]*octocode\s+connected · \d+ tools/) },
+	llama: { check: says(/Configure llama\.cpp with \/providers llama\.cpp/) },
+	// The dialog lists each configured server with its source and state: the Octocode server is connected with its tools.
+	mcp: {
+		check: asks(
+			/MCP servers[\s\S]*› browser\s+direct · default\s+not selected[\s\S]*octocode\s+direct · default\s+connected · \d+ tools/,
+		),
+	},
 	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
 	api: { check: says(/Octocode API oc-[0-9a-f]+\s+socket: \S+\.sock\s+Discovery:[\s\S]*\/home\/\.octocode\/api/) },
 	archive: { check: says(/segment|archive|compact/i) },
@@ -144,7 +148,7 @@ const CASES: Record<string, Case> = {
 			expect(list.text).toMatch(/no\s+trust\s+decision\s+yet[\s\S]*No\s+trust\s+decisions\s+are\s+stored/);
 		},
 	},
-	login: { check: asks(/Configured means credentials are present/) },
+	providers: { check: asks(/Configured means credentials are present/) },
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),
 	},

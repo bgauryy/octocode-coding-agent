@@ -63,7 +63,9 @@ export type ApplicationSession = ApplicationOperations &
 	Pick<
 		AgentSessionApi,
 		"sessionId" | "messages" | "isStreaming" | "model" | "sessionManager" | "subscribe" | "answerDialog"
-	>;
+	> &
+	// Optional so a session without tools (a fixture) still projects; its calls then use the generic display.
+	Partial<Pick<AgentSessionApi, "getToolRenderers">>;
 
 /** Run a listed operation on the session; any other name, even of a session method, is refused. */
 export function invokeOperation<K extends ApplicationOperation<ApplicationOperations>>(

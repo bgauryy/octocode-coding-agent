@@ -14,7 +14,7 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 	];
 	const identity = identityLabels.find((label) => visibleWidth(label) <= width) ?? thinking;
 	// Model ids and providers can come from vendor model lists and the remote catalog.
-	const selection = model ? plainText(`${model.provider}/${model.id}`) : "No model selected · /login";
+	const selection = model ? plainText(`${model.provider}/${model.id}`) : "No model selected · /providers";
 	const combined = `${identity} · ${selection}`;
 	const lines =
 		visibleWidth(combined) <= width

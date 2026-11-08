@@ -1,5 +1,6 @@
 import type { generateImages as generateImagesOpenRouterFunction } from "../../api/openrouter-images.ts";
 import { registerImagesApiProvider } from "../../images-api-registry.ts";
+import { redactProviderText } from "../../utils/error-body.ts";
 import type {
 	AssistantImages,
 	ImageApi,
@@ -22,7 +23,7 @@ function createLazyLoadErrorImages(model: ImageModel<ImageApi>, error: unknown):
 		model: model.id,
 		output: [],
 		stopReason: "error",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage: redactProviderText(error instanceof Error ? error.message : String(error)),
 		timestamp: Date.now(),
 	};
 }

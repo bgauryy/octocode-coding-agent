@@ -1,3 +1,4 @@
+import { bashDisplay } from "./display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
@@ -18,7 +19,8 @@ import { foregroundPlan } from "./bash/auto.ts";
 import { LONG_COMMAND_AFTER_SECONDS, sleepHint } from "./bash/long-commands.ts";
 import { hostQuirkHint } from "./bash/host-hints.ts";
 import { probeCliHost, renderCliGuide } from "./bash/cli-guide.ts";
-import { type BashDetails, renderBashResult, renderJobMessage } from "./render.ts";
+import type { BashDetails } from "./outcome.ts";
+import { renderBashResult, renderJobMessage } from "./render.ts";
 import {
 	adoptFullOutput,
 	CLAMP_NOTE,
@@ -391,6 +393,7 @@ export function registerBashTool(
 				);
 			},
 			renderResult: renderBashResult,
+			display: bashDisplay,
 		}),
 	);
 	return jobs;

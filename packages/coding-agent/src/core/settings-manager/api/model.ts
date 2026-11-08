@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
 
 /** Default model and provider, thinking levels, message delivery modes, transport and the model and tool selections. */
@@ -32,6 +33,12 @@ export interface ModelSettingsApi {
 	setTransport(transport: TransportSetting): void;
 	getThinkingBudgets(): ThinkingBudgetsSettings | undefined;
 	getEnabledModels(): string[] | undefined;
+	getDisabledProviders(): string[];
+	setDisabledProviders(providerIds: readonly string[]): void;
+	/** The user's changes from the provider source defaults (global only). */
+	getProviderSources(): ProviderSourceOverrides;
+	/** Turn a source on or off; a value equal to its default removes the override. */
+	setProviderSourceEnabled(id: ToggleableSourceId, enabled: boolean): void;
 
 	/** The resolved `defaultTools` selection, or undefined when no settings layer sets it. */
 	getDefaultTools(defaults?: readonly string[]): string[] | undefined;

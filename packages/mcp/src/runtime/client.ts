@@ -286,3 +286,25 @@ export async function runRequest<T>(
 		}
 	}
 }
+
+/** MCP log levels from least to most severe (RFC 5424 order, as the spec lists them). */
+const LOG_LEVELS = ["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"];
+
+/**
+ * Report a server's log messages of warning severity or worse as one line (`warning: text`), for the server's `/mcp`
+ * page; every message still goes to `mcp.log`.
+ */
+export function trackServerWarnings(client: McpClient, report: (line: string | undefined) => void): void {
+	report(undefined);
+	client.onNotification("notifications/message", (params) => {
+		const message = params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+		const level = typeof message.level === "string" ? message.level : "info";
+		if (LOG_LEVELS.indexOf(level) < LOG_LEVELS.indexOf("warning")) return;
+		const data = typeof message.data === "string" ? message.data : JSON.stringify(message.data);
+		report(
+			`${level}: ${visibleControls(data ?? "")
+				.replace(/\s+/g, " ")
+				.slice(0, 300)}`,
+		);
+	});
+}

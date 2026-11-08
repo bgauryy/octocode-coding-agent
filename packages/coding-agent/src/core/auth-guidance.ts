@@ -14,8 +14,8 @@ function getDocsLine(): string {
 
 function getProviderLoginAction(surface: AuthGuidanceSurface): string {
 	return surface === "cli"
-		? `Run \`${APP_NAME}\` and type /login to connect one with an account or API key, or set the provider's API key environment variable (for example OPENAI_API_KEY).`
-		: "Type /login to connect one with an account or API key.";
+		? `Run \`${APP_NAME}\` and type /providers to connect one with an account or API key, or set the provider's API key environment variable (for example OPENAI_API_KEY).`
+		: "Type /providers to connect one with an account or API key.";
 }
 
 export function formatNoModelsAvailableMessage(surface: AuthGuidanceSurface = "session"): string {
@@ -28,10 +28,10 @@ export function formatNoModelSelectedMessage(): string {
 
 export function formatNoApiKeyFoundMessage(provider: string): string {
 	const providerDisplay = provider === UNKNOWN_PROVIDER ? "the selected model" : provider;
-	return `No API key found for ${providerDisplay}. Type /login to sign in or add a key, then /model to pick a model.\n${getDocsLine()}`;
+	return `No API key found for ${providerDisplay}. Type /providers to sign in or add a key, then /model to pick a model.\n${getDocsLine()}`;
 }
 
 /** The provider uses OAuth and its sign-in no longer works: expired credentials, or the network is down. */
 export function formatAuthExpiredMessage(provider: string): string {
-	return `Sign-in for ${provider} failed: the credentials may have expired, or the network is down. Type /login ${provider} to sign in again.`;
+	return `Sign-in for ${provider} failed: the credentials may have expired, or the network is down. Type /providers ${provider} to sign in again.`;
 }

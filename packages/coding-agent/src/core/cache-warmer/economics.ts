@@ -6,6 +6,7 @@ import {
 	getSystemMessageText,
 	type Model,
 	normalizeContext,
+	resolveModelCapabilities,
 	type SimpleStreamOptions,
 	type Usage,
 } from "@octocodeai/octocode-ai";
@@ -54,8 +55,10 @@ interface PromptCacheLifetime {
 }
 
 /**
- * Lifetimes of the prompt cache entries a request writes, from the model's `promptCache` tiers for the
- * retention pair the request used. Undefined when the model has no lifetime for that tier or caching is off.
+ * Lifetimes of the prompt cache entries a request writes, for the retention pair the request used: the model's resolved
+ * cache tiers (`resolveModelCapabilities`), which take a declared `promptCache` lifetime first and otherwise the lifetime
+ * the adapter sends, and have no long tier where the adapter sends none. Undefined when the model has no lifetime for
+ * that tier or caching is off.
  */
 export function getPromptCacheLifetime(
 	model: Model<Api>,
@@ -67,17 +70,11 @@ export function getPromptCacheLifetime(
 	// Adapters with Anthropic-style markers send long history behind short instructions at the short lifetime; that is
 	// the safe lifetime to plan with for any provider.
 	const history = instructions === "short" && retention === "long" ? "short" : retention;
-	const seconds = model.promptCache?.[history];
+	const lifetimes = resolveModelCapabilities(model, options?.env).cache.lifetimes;
+	const seconds = lifetimes[history];
 	if (!validSeconds(seconds)) return undefined;
-	const longSeconds = model.promptCache?.long;
-	const longSupported = (model.compat as { supportsLongCacheRetention?: boolean } | undefined)
-		?.supportsLongCacheRetention;
 	const layered =
-		instructions === "long" &&
-		history === "short" &&
-		longSupported !== false &&
-		validSeconds(longSeconds) &&
-		longSeconds > seconds;
+		instructions === "long" && history === "short" && validSeconds(lifetimes.long) && lifetimes.long > seconds;
 	return { ttlMs: seconds * 1000, layered };
 }
 

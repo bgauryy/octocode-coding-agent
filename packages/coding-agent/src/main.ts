@@ -108,6 +108,12 @@ export async function main(args: string[]) {
 		return;
 	}
 
+	if (args[0] === "profile") {
+		const { runProfileCommand } = await import("./cli/profile-command.ts");
+		process.exitCode = await runProfileCommand(args.slice(1), { cwd });
+		return;
+	}
+
 	if (args[0] === "marketplace" || args[0] === "plugin") {
 		const { runMarketplaceCommand, runPluginCommand } = await import("./octocode/plugins/marketplace/command.ts");
 		const run = args[0] === "plugin" ? runPluginCommand : runMarketplaceCommand;

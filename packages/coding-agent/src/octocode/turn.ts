@@ -13,6 +13,7 @@ import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
 import { browserMcpTool } from "../../../common/src/browser-mcp.ts";
 import { type AgentProfile, profileSelectsBrowser } from "./subagents/profiles.ts";
+import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/routing-watch.ts";
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
@@ -32,6 +33,9 @@ export function registerTurnSetup(
 	// Skills the parent chose ride in the task (`subagents/task-skills.ts`), so the cached prompt does not depend on them.
 	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
+	// Only the coordinator routes tasks: its prompt states the routes once per session, later changes arrive as a notice.
+	const routing = new RoutingWatch();
+	const coordinates = (selected: readonly string[]) => !options.isSubagent && selected.includes("agent");
 
 	api.on("before_agent_start", async (event, ctx) => {
 		// Read each turn: the prompt changes only when a person attaches or leaves, not on its own.
@@ -59,13 +63,22 @@ export function registerTurnSetup(
 				? { prefix: roles.prefix, reader: roles.reader, search: roles.search }
 				: undefined;
 		const profiles = [...options.profiles().values()];
+		const current = coordinates(selected) ? currentRouting(ctx, profiles) : undefined;
+		const routes = routing.prompt(current);
+		const notice = routing.notice(current);
 		// A child whose profile declares `browser.control` and that holds the browser server drives its own isolated
 		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
 		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
 		const browserControl = browserMcp && ownProfile?.permissions?.includes("browser.control") === true;
 		const inputs = {
 			research,
-			profiles: profiles.map(({ name, description }) => ({ name, description })),
+			profiles: profiles.map(({ name, description }) => ({ name, description, model: routes?.profiles[name] })),
+			routing: routes && {
+				sessionModel: routes.sessionModel,
+				providers: routes.providers,
+				small: routes.small,
+				medium: routes.medium,
+			},
 			browserProfiles:
 				!options.isSubagent && selected.includes("agent") && !browserMcp
 					? profiles.filter(profileSelectsBrowser).map(({ name }) => name)
@@ -119,13 +132,22 @@ export function registerTurnSetup(
 			event.systemPromptOptions.sections.docs = "";
 			event.systemPromptOptions.skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
 		}
-		return undefined;
+		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
+	});
+
+	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
+	api.on("turn_end", (_event, ctx) => {
+		if (!coordinates(api.getActiveTools())) return;
+		const notice = routing.notice(currentRouting(ctx, options.profiles().values()));
+		if (notice)
+			void api.sendMessage({ customType: ROUTING_NOTICE_ID, content: notice, display: false }, { triggerTurn: false });
 	});
 
 	return {
 		reset() {
 			prompt = undefined;
 			promptKey = undefined;
+			routing.reset();
 		},
 	};
 }

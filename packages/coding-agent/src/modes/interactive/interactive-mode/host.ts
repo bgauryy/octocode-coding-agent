@@ -143,7 +143,7 @@ export interface InteractiveModeMethods {
 	handleFollowUp(): Promise<void>;
 	handleHotkeysCommand(): void;
 	handleImportCommand(text: string): Promise<void>;
-	handleLoginCommand(providerRef?: string): Promise<void>;
+	handleProvidersCommand(providerRef?: string): Promise<void>;
 	handleModelCommand(searchTerm?: string): Promise<void>;
 	handleNameCommand(text: string): void;
 	handleReloadCommand(): Promise<void>;
@@ -231,7 +231,7 @@ export interface InteractiveModeMethods {
 	showModelSelector(initialSearchInput?: string): void;
 	showModelsSelector(): void;
 	showNewVersionNotification(release: LatestOctocodeRelease): void;
-	showOAuthSelector(mode: "login" | "logout"): Promise<void>;
+	showOAuthSelector(mode: "logout"): Promise<void>;
 	showPackageUpdateNotification(packages: string[]): void;
 	showSelector(create: (done: () => void) => { component: Component; focus: Component; dispose?: () => void }): void;
 	showSessionSelector(): void;

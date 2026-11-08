@@ -15,6 +15,7 @@ import {
 	resolveConfigValueOrThrow,
 	resolveHeadersOrThrow,
 } from "../config-value.ts";
+import { registerAuthSecrets } from "../secret-redaction.ts";
 import type { ExtensionOAuthConfig, ProviderConfigInput } from "./types.ts";
 
 function adaptOAuth(config: ExtensionOAuthConfig): OAuthAuth {
@@ -142,7 +143,10 @@ export function composeApiKeyAuth(
 			const explicitEnv = { ...input.credential?.env, ...result.env };
 			const headerEnv = await configContextEnv(Object.values(rawHeaders ?? {}), input.ctx, explicitEnv);
 			const headers = resolveHeadersOrThrow(rawHeaders, `provider "${providerId}"`, headerEnv);
-			return { ...result, auth: withConfiguredAuth(result.auth, headers, authHeader) };
+			const auth = withConfiguredAuth(result.auth, headers, authHeader);
+			// What the request carries, from stored, configured, command or environment sources alike: errors may quote it.
+			registerAuthSecrets(auth, explicitEnv);
+			return { ...result, auth };
 		},
 	};
 }
@@ -167,7 +171,9 @@ export function composeOAuthAuth(
 				`provider "${providerId}"`,
 				typeof env === "object" && env !== null ? (env as Record<string, string>) : undefined,
 			);
-			return withConfiguredAuth(auth, headers, authHeader);
+			const configured = withConfiguredAuth(auth, headers, authHeader);
+			registerAuthSecrets(configured);
+			return configured;
 		},
 	};
 }

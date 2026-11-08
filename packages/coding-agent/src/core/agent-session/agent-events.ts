@@ -71,7 +71,10 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 			event.message.role === "toolResult"
 		) {
 			// Regular LLM message - persist as SessionMessageEntry
-			entryId = session.sessionManager.appendMessage(event.message);
+			entryId = session.sessionManager.appendMessage(
+				event.message,
+				event.message.role === "user" ? host.inputs.originOf(event.message) : undefined,
+			);
 		}
 		if (entryId) host.boundaries.recordEntryId(event.message, entryId);
 		// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere

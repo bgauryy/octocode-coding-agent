@@ -429,20 +429,20 @@ describe("agent tool with a scripted child", () => {
 			const footer = fencedParts(refused.content[0].text)?.footer ?? "";
 			expect(footer).toContain("Ran on alt/shared, medium thinking (profile scout: shared).");
 			expect(footer).toContain('model: "faux/model"');
-			expect(footer).toContain("/login");
+			expect(footer).toContain("/providers");
 			expect(footer).not.toContain("narrower task");
 			await s.run({ task: "auth error please", profile: "scout", background: true });
 			await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 			const report = String(s.sent[0].message.content);
 			// The first run's credential refusal steers routing away from `alt` (B347 P2-5): the report names where it ran instead.
 			expect(report).toContain("Ran on faux/model, medium thinking (shared: alt refused its credential).");
-			expect(report).toContain("fix the faux credential with /login");
+			expect(report).toContain("fix the faux credential with /providers");
 			expect(report).not.toContain("narrower task");
 			// On this session's own model, switching to it cannot help: the credential is the fix.
 			const own = await s.run({ task: "auth error please" });
 			const ownFooter = fencedParts(own.content[0].text)?.footer ?? "";
 			expect(ownFooter).toContain("Ran on faux/model, medium thinking (this session's model).");
-			expect(ownFooter).toContain("/login");
+			expect(ownFooter).toContain("/providers");
 			expect(ownFooter).not.toContain('model: "faux/model"');
 			// Any other failure keeps the usual advice and still names the model.
 			const down = await s.run({ task: "error please", model: "other" });

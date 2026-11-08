@@ -16,7 +16,7 @@ describe("provider health", () => {
 		health.noteRun("opencode-go/kimi", '401: {"code":"api_key_expired","message":"This API key has expired."}');
 		expect(health.get("opencode-go")).toMatchObject({ ok: false, via: "run" });
 		expect(describeHealth(health.get("opencode-go"))).toMatch(
-			/✗ credential refused \(subagent run, .*\): 401.*fix with \/login/,
+			/✗ credential refused \(subagent run, .*\): 401.*fix with \/providers/,
 		);
 		health.noteRun("opencode-go/kimi");
 		expect(health.get("opencode-go")).toMatchObject({ ok: true });

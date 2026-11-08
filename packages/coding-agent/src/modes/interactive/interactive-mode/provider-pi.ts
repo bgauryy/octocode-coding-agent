@@ -8,6 +8,15 @@ import {
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
+import { confirmAction, successNotice } from "./provider-ui.ts";
+
+/** Pi's configuration folders, empty when Pi discovery is off (explicit Octocode home or SDK directory). */
+export function piConfigDirs(host: Pick<ProviderManagerHost, "session">): string[] {
+	const directory = host.session.modelRuntime.getConfigurationDirectory();
+	return directory
+		? [...discoveryInput({ cwd: process.cwd(), agentDir: directory, projectTrusted: false }).piRoots]
+		: [];
+}
 
 /** Pi is a setup source. Its providers still own authentication, model IDs and requests. */
 export async function showPiProviders(
@@ -15,15 +24,12 @@ export async function showPiProviders(
 	openProvider: (id: string) => Promise<void>,
 ): Promise<void> {
 	try {
-		const directory = host.session.modelRuntime.getConfigurationDirectory();
-		const dirs = directory
-			? [...discoveryInput({ cwd: process.cwd(), agentDir: directory, projectTrusted: false }).piRoots]
-			: [];
+		const dirs = piConfigDirs(host);
 		const [entries, definitions] = await Promise.all([listPiProviderCredentials(dirs), listPiModelProviders(dirs)]);
 		const ids = [...new Set([...entries.map((entry) => entry.providerId), ...definitions.keys()])];
 		if (!ids.length) {
 			host.showStatus(
-				"No Pi providers found in models.json or auth.json. Pi discovery is disabled with an explicit Octocode home or SDK directory. Use /login to connect directly.",
+				"No Pi providers found in models.json or auth.json. Pi discovery is disabled with an explicit Octocode home or SDK directory. Use /providers to connect directly.",
 			);
 			return;
 		}
@@ -52,16 +58,15 @@ export async function showPiProviders(
 			if (action !== "Import Pi credential") return;
 		}
 		const keychain = entry.type === "api_key" ? detectKeychain(process.platform) : undefined;
-		const confirm = await host.showExtensionSelector(
+		const keychainLabel = keychain ? `Import API key into ${keychain.name}` : undefined;
+		const fileLabel = "Import into local auth.json (plaintext; created with owner-only permissions)";
+		const confirm = await confirmAction(
+			host,
 			`Import ${entry.providerId} from Pi? This replaces its saved Octocode credential.`,
-			[
-				"Cancel",
-				...(keychain ? [`Import API key into ${keychain.name}`] : []),
-				"Import into local auth.json (plaintext; created with owner-only permissions)",
-			],
+			[...(keychainLabel ? [keychainLabel] : []), fileLabel],
 		);
-		if (!confirm || confirm === "Cancel") return;
-		const useKeychain = keychain && confirm === `Import API key into ${keychain.name}`;
+		if (!confirm) return;
+		const useKeychain = keychain && confirm === keychainLabel;
 		const credential = await readPiProviderCredential(entry, Boolean(useKeychain));
 		await runtime.importCredential(
 			entry.providerId,
@@ -79,13 +84,17 @@ export async function showPiProviders(
 		);
 		host.updateAvailableProviderCount();
 		host.showStatus(
-			`Imported ${entry.providerId} from Pi. Pi files are unchanged. Choose a model to start using this provider.`,
+			successNotice(
+				"Imported",
+				entry.providerId,
+				"Pi files are unchanged. Choose a model to start using this provider.",
+			),
 		);
 		host.showModelSelector(`${entry.providerId}/`);
 	} catch (error) {
 		host.showError(
 			error instanceof CredentialSynchronizationError
-				? "Pi credential imported, but local model availability could not be updated. Reopen /login."
+				? "Pi credential imported, but local model availability could not be updated. Reopen /providers."
 				: `Could not import from Pi: ${errorMessage(error)}`,
 		);
 	}

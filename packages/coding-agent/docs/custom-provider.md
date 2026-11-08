@@ -13,7 +13,7 @@ Provider extensions run inside Octocode and can inspect credentials, prompts, to
 | Add models behind a supported API               | [`models.json`](models.md#configure-a-compatible-endpoint) |
 | Change an existing provider endpoint or headers | `models.json` or a small provider extension                |
 | Discover models dynamically                     | A provider with `refreshModels`                            |
-| Add a `/login` flow                             | A provider with native or legacy OAuth configuration       |
+| Add a `/providers` flow                         | A provider with native or legacy OAuth configuration       |
 | Implement an unsupported wire protocol          | A provider with `stream` or `streamSimple`                 |
 
 ## Register a provider
@@ -134,7 +134,7 @@ Static providers can resolve an API key from a literal, environment interpolatio
 
 Use native provider authentication when the integration needs stored credentials, custom resolution, provider-scoped environment, or multiple login methods.
 
-An OAuth provider supplies a display name, login flow, token refresh, and access-token resolution. After registration it appears in `/login`, and Octocode stores returned credentials in `~/.octocode/octocodecode/auth.json`.
+An OAuth provider supplies a display name, login flow, token refresh, and access-token resolution. After registration it appears in `/providers`, and Octocode stores returned credentials in `~/.octocode/octocodecode/auth.json`.
 
 OAuth callbacks are UI-neutral. They can open an authorization URL, show a device code, report progress, request input, or ask the user to choose a login method. Honor cancellation and the supplied abort signal during network requests.
 
@@ -144,9 +144,9 @@ Never write access tokens, refresh tokens, authorization headers, or complete pr
 
 Every model needs an ID, display name, input capabilities, and cost metadata. Chat and classifier models also need a context window; chat models need an output limit and reasoning support; image models declare their output modalities. Choose the API implementation at the provider level unless one model requires an override.
 
-Set `promptCache.short` or `promptCache.long` to the provider's best-effort cache lifetime in seconds when Octocode should keep an idle prompt cache warm. Leave them unset to disable cache warming for that retention tier.
+Set `promptCache.short` or `promptCache.long` to the provider's best-effort cache lifetime in seconds when Octocode should keep an idle prompt cache warm. Left unset, warming plans with the lifetime the adapter sends for that tier, if any (5m and 1h for Anthropic-style markers); set `compat.supportsLongCacheRetention: false` when the endpoint cannot hold a long entry.
 
-Compatibility flags describe verified differences in an otherwise supported API. Do not enable them based only on an endpoint claiming compatibility.
+Compatibility flags describe verified differences in an otherwise supported API. Do not enable them based only on an endpoint claiming compatibility. For example, Azure OpenAI Responses sends `prompt_cache_retention: "24h"` only to the models Microsoft lists for extended retention, matched by model `id`. A model whose `id` is a deployment name (such as `prod-gpt-5`) opts in with `compat: { supportsLongCacheRetention: true }` when that deployment runs a listed model; `false` turns it off for a listed one.
 
 Confirm the request fields and response behavior against the actual server.
 

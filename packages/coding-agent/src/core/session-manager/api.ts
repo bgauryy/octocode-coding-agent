@@ -1,6 +1,7 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { BashExecutionMessage, CustomMessage } from "../messages.ts";
 import type {
+	InputOrigin,
 	ContextEditEntry,
 	NewSessionOptions,
 	SessionContext,
@@ -44,7 +45,7 @@ export interface SessionManagerApi {
 	 * so it is easier to find them.
 	 * These need to be appended via appendCompaction() and appendBranchSummary() methods.
 	 */
-	appendMessage(message: Message | CustomMessage | BashExecutionMessage): string;
+	appendMessage(message: Message | CustomMessage | BashExecutionMessage, origin?: InputOrigin): string;
 
 	/** Append a thinking level change as child of current leaf, then advance leaf. Returns entry id. */
 	appendThinkingLevelChange(thinkingLevel: string): string;

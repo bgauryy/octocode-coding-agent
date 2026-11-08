@@ -1,3 +1,4 @@
+import { textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import path from "node:path";
 import { StringEnum } from "@octocodeai/octocode-ai";
@@ -304,6 +305,34 @@ function registerCoordinateTool(
 				return textResult(`${agents}${others}`, {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",
 				});
+			},
+			display(input) {
+				const { args } = input;
+				const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
+				const { id, goal, requests } = args as Partial<CoordinateParams>;
+				const summary = [
+					/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
+					String(args.action ?? ""),
+					id === undefined ? "" : String(id),
+					requests === undefined ? "" : `+${String(requests)}`,
+					paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? ""),
+					goal ? `"${String(goal)}"` : "",
+					/* oxlint-enable typescript/no-unnecessary-type-conversion */
+				]
+					.filter(Boolean)
+					.join(" ");
+				const stated = isRecord(input.result?.details) && typeof input.result.details.summary === "string";
+				return textResultDisplay(
+					{
+						title: "Coordinate",
+						summary,
+						kind: "agent",
+						...(paths.length ? { locations: paths.map((path) => ({ path })) } : {}),
+						blocks: [],
+					},
+					input,
+					stated ? { summary: (input.result!.details as { summary: string }).summary, keepBody: true } : {},
+				);
 			},
 			renderCall(args, theme, context) {
 				const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];

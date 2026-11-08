@@ -158,7 +158,7 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 	literalHeaders?: boolean;
 	oauth?: McpOAuthConfig;
 	/**
-	 * Send the token of a model provider (`/login <provider>`) instead of using OAuth. Not allowed in project
+	 * Send the token of a model provider (`/providers <provider>`) instead of using OAuth. Not allowed in project
 	 * `mcp.json` files, and requires https except on loopback hosts, since it sends the credential to `url`.
 	 */
 	auth?: { provider: string };

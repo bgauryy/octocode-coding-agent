@@ -10,11 +10,9 @@ import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 import { redactSecrets } from "../../../../../common/src/sanitize.ts";
 import { getDebugLogPath } from "../../../config.ts";
 import { describeCachePolicy } from "../../../core/cache-configuration.ts";
-import { computeCacheWaste } from "../../../core/cache-stats.ts";
 import { formatCacheWarmingStatus } from "../../../core/cache-warmer.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
-import { getUsageCostBreakdown } from "../../../core/usage-totals.ts";
-import { cachedPercent, formatTokens } from "../../../octocode/shared/format.ts";
+import { formatSessionReport } from "../../../octocode/shared/session-report.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../components/dynamic-border.ts";
 import { formatKeyText, keyText } from "../components/keybinding-hints.ts";
@@ -39,95 +37,37 @@ type InfoCommandsHost = Pick<
 >;
 
 export function handleSessionCommand(host: InfoCommandsHost): void {
+	// Snapshot the stats; the text is built on demand so it follows theme changes.
 	const stats = host.session.getSessionStats();
 	const sessionName = host.sessionManager.getSessionName();
 	const entries = host.sessionManager.getEntries();
-	const cacheWaste = computeCacheWaste(entries, host.session.modelRuntime);
-
-	// Cost/token totals per provider/model actually used (e.g. OpenRouter `auto`
-	// resolves to a concrete responseModel). Usage without model attribution is
-	// grouped separately so the breakdown reconciles with the session total.
-	const usageBreakdown = getUsageCostBreakdown(entries);
-
-	// Snapshot the stats; the text is built on demand so it follows theme changes.
 	const cacheWarmingStatus = host.session.cacheWarmingStatus;
 	const cacheWarmingMode = host.settingsManager.getCacheWarmingMode();
 	const model = host.session.model;
-	const selectedModelKey = `${model?.provider}/${model?.id}`;
 	const resumeCommand = formatResumeCommand(host.sessionManager);
 	const renderInfo = (): string => {
-		let info = `${theme.bold("Session Info")}\n\n`;
-		if (sessionName) {
-			info += `${theme.fg("dim", "Name:")} ${sessionName}\n`;
-		}
-		info += `${theme.fg("dim", "File:")} ${stats.sessionFile ?? "In-memory"}\n`;
-		info += `${theme.fg("dim", "ID:")} ${stats.sessionId}\n`;
-		if (resumeCommand) info += `${theme.fg("dim", "Resume:")} ${resumeCommand}\n`;
-		info += "\n";
-		info += `${theme.bold("Messages")}\n`;
-		info += `${theme.fg("dim", "Total:")} ${stats.totalMessages}\n`;
-		info += `${theme.fg("dim", "User:")} ${stats.userMessages}\n`;
-		info += `${theme.fg("dim", "Assistant:")} ${stats.assistantMessages}\n`;
-		info += `${theme.fg("dim", "Tools:")} ${stats.toolCalls} calls, ${stats.toolResults} results\n\n`;
-		info += `${theme.bold("Tokens")}\n`;
-		// "Input" is the full prompt volume. With cache activity, split it into
-		// cached (served from cache) vs uncached (everything else) - the only
-		// provider-independent split. Cache writes, where reported, are a detail
-		// of the uncached portion.
-		const { input, cacheRead, cacheWrite } = stats.tokens;
-		const promptTokens = input + cacheRead + cacheWrite;
-		info += `${theme.fg("dim", "Input:")} ${promptTokens.toLocaleString()}\n`;
-		if (promptTokens > 0 && (cacheRead > 0 || cacheWrite > 0)) {
-			const hitRate = theme.fg("dim", `(${cachedPercent(cacheRead, promptTokens, 1)?.toFixed(1)}%)`);
-			info += `  ${theme.fg("dim", "Cached:")} ${cacheRead.toLocaleString()} ${hitRate}\n`;
-			const written = cacheWrite > 0 ? ` ${theme.fg("dim", `(${cacheWrite.toLocaleString()} written to cache)`)}` : "";
-			info += `  ${theme.fg("dim", "Uncached:")} ${(input + cacheWrite).toLocaleString()}${written}\n`;
-		}
-		info += `${theme.fg("dim", "Output:")} ${stats.tokens.output.toLocaleString()}\n`;
-		info += `${theme.fg("dim", "Total:")} ${stats.tokens.total.toLocaleString()}\n`;
-		if (stats.thinkingReduced > 0) {
-			info += `${theme.fg("dim", "Thinking budget reduced:")} ${stats.thinkingReduced} requests\n`;
-		}
-
-		const conversationCache = stats.cache.conversation;
-		info += `${theme.fg("dim", "Conversation cache hits:")} ${conversationCache.hitRate === null ? "Unknown" : `${(conversationCache.hitRate * 100).toFixed(1)}%`} (${conversationCache.requests} requests)\n`;
-		const refreshUsage = stats.cache.warming;
-		info += `${theme.fg("dim", "Recorded refresh usage:")} ${refreshUsage.requests} requests, $${refreshUsage.cost.toFixed(3)}\n`;
-
-		info += `\n${theme.bold("Cache Warming")}\n`;
+		let warming = `${theme.bold("Cache Warming")}\n`;
 		if (model)
-			info += `${describeCachePolicy(model, host.session.modelRuntime.getCachePolicy(model, undefined, host.settingsManager.getCachePreferenceLayers()), host.session.modelRuntime.isUsingSubscription(model.provider))}\n`;
-		info += `${theme.fg("dim", "Mode:")} ${cacheWarmingMode}\n`;
-		info += `${theme.fg("dim", "Status:")} ${cacheWarmingStatus ? formatCacheWarmingStatus(cacheWarmingStatus) : "Inactive (cache warming unavailable)"}\n`;
+			warming += `${describeCachePolicy(model, host.session.modelRuntime.getCachePolicy(model, undefined, host.settingsManager.getCachePreferenceLayers()), host.session.modelRuntime.isUsingSubscription(model.provider))}\n`;
+		warming += `${theme.fg("dim", "Mode:")} ${cacheWarmingMode}\n`;
+		warming += `${theme.fg("dim", "Status:")} ${cacheWarmingStatus ? formatCacheWarmingStatus(cacheWarmingStatus) : "Inactive (cache warming unavailable)"}\n`;
 		const decision = cacheWarmingStatus?.decision;
 		if (decision?.economicsAvailable) {
-			info += `${theme.fg("dim", "Estimated cache miss penalty:")} $${decision.missCost.toFixed(3)}\n`;
-			info += `${theme.fg("dim", "Estimated refresh cost:")} $${decision.warmCost.toFixed(3)}\n`;
+			warming += `${theme.fg("dim", "Estimated cache miss penalty:")} $${decision.missCost.toFixed(3)}\n`;
+			warming += `${theme.fg("dim", "Estimated refresh cost:")} $${decision.warmCost.toFixed(3)}\n`;
 		}
-
-		if (stats.cost > 0 || cacheWaste.missedTokens > 0 || stats.lowerBoundEntries > 0) {
-			info += `\n${theme.bold("Cost")}\n`;
-			info += `${theme.fg("dim", "Total:")} ${stats.cost.toFixed(3)}`;
-			if (stats.lowerBoundEntries > 0) {
-				const dropped = stats.lowerBoundEntries === 1 ? "1 response" : `${stats.lowerBoundEntries} responses`;
-				info += ` ${theme.fg("dim", `(at least: ${dropped} ended before the provider's final count)`)}`;
-			}
-			// A single entry repeats the total, unless it names a model other than the selected one.
-			if (usageBreakdown.length > 1 || usageBreakdown[0]?.key !== selectedModelKey) {
-				for (const entry of usageBreakdown) {
-					info += `\n  ${theme.fg("dim", `${entry.key}:`)} $${entry.cost.toFixed(3)} ${theme.fg("dim", `(${formatTokens(entry.tokens)} tokens)`)}`;
-				}
-			}
-			if (cacheWaste.missedTokens > 0) {
-				const missLabel = cacheWaste.missCount === 1 ? "1 miss" : `${cacheWaste.missCount} misses`;
-				const detail = `${cacheWaste.missedTokens.toLocaleString()} tokens, ${missLabel}`;
-				info +=
-					cacheWaste.missedCost >= 0.0001
-						? `\n${theme.fg("dim", "Estimated cache re-billing:")} $${cacheWaste.missedCost.toFixed(3)} ${theme.fg("dim", `(${detail})`)}`
-						: `\n${theme.fg("dim", "Estimated cache re-billing:")} ${detail}`;
-			}
-		}
-		return info;
+		return formatSessionReport(
+			{
+				stats,
+				entries,
+				prices: host.session.modelRuntime,
+				selectedModelKey: `${model?.provider}/${model?.id}`,
+				name: sessionName,
+				resumeCommand,
+				afterCache: warming,
+			},
+			{ bold: (text) => theme.bold(text), dim: (text) => theme.fg("dim", text) },
+		);
 	};
 
 	host.chatContainer.addChild(new Spacer(1));

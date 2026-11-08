@@ -5,16 +5,18 @@
 import type { Model, ProviderEnv } from "../../types.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 
+/** Separators in free-text profile names and vendor ids ("Claude Sonnet 4.5", "anthropic/claude-sonnet-4@20250514"). */
+const NAME_SEPARATORS = /[\s_.:@/]+/g;
+
 /**
- * Check if the model supports adaptive thinking (Opus 4.6+, Sonnet 4.6).
- * Checks both model ID and model name to support application inference profiles
- * whose ARNs don't contain the model name.
+ * The lowercase model ID and name, each also with its separators turned into "-". Checks both so application
+ * inference profiles, whose ARNs don't contain the model name, match by name.
  */
 export function getModelMatchCandidates(modelId: string, modelName?: string): string[] {
 	const values = modelName ? [modelId, modelName] : [modelId];
 	return values.flatMap((value) => {
 		const lower = value.toLowerCase();
-		return [lower, lower.replace(/[\s_.:]+/g, "-")];
+		return [lower, lower.replace(NAME_SEPARATORS, "-")];
 	});
 }
 
@@ -73,11 +75,38 @@ export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, e
 	}
 	// Claude 5 models (fable-5, opus-5, sonnet-5, haiku-5)
 	if (candidates.some(isClaude5Candidate)) return true;
-	// Claude 4.x models (opus-4, sonnet-4, haiku-4)
-	if (candidates.some((s) => s.includes("-4-"))) return true;
+	// Claude 4.x models (opus-4, sonnet-4, haiku-4); a profile name such as "Claude Sonnet 4" ends in "-4".
+	if (candidates.some((s) => s.includes("-4-") || s.endsWith("-4"))) return true;
 	// Claude 3.7 Sonnet
 	if (candidates.some((s) => s.includes("claude-3-7-sonnet"))) return true;
 	// Claude 3.5 Haiku
 	if (candidates.some((s) => s.includes("claude-3-5-haiku"))) return true;
 	return false;
+}
+
+/**
+ * Claude models on Bedrock that accept only five-minute cache points: Sonnet 4, Opus 4, Opus 4.1 and Claude 3.x, in
+ * Bedrock ids, display names and Anthropic aliases ("claude-sonnet-4-0"). The "Supported TTL" column of the AWS model
+ * cards (fetched 2026-11-08) is the source: Sonnet 4 and Opus 4.1 list "5 minutes"
+ * (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4.html,
+ * https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-1.html), Sonnet 4.5 lists
+ * "5 minutes, 1 hour" (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-5.html),
+ * and https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html lists one hour for Claude 5.x, Opus 4.5
+ * and later, Sonnet 4.6 and later and Haiku 4.5. A `ttl` on a five-minute-only model can be rejected with a
+ * ValidationException. Unknown and newer models keep the one-hour TTL.
+ */
+const FIVE_MINUTE_ONLY_CLAUDE = /(?:sonnet|opus)-4(?:-0(?!\d)|-20\d{6}|(?!-\d))|opus-4-1(?!\d)|claude-3-/;
+
+export function supportsOneHourCacheTtl(modelId: string, modelName?: string): boolean {
+	// Only the separator-normalized forms: in a raw "claude-sonnet-4.5" the "sonnet-4" is followed by "." and would match.
+	const normalized = getModelMatchCandidates(modelId, modelName).map((value) => value.replace(NAME_SEPARATORS, "-"));
+	return !normalized.some((candidate) => FIVE_MINUTE_ONLY_CLAUDE.test(candidate));
+}
+
+/**
+ * Whether long retention sends one-hour cache points. An explicit `compat.supportsLongCacheRetention` decides;
+ * otherwise the model rule does ({@link supportsOneHourCacheTtl}). The adapter and the model capabilities both use it.
+ */
+export function bedrockSupportsLongCacheRetention(model: Model<"bedrock-converse-stream">): boolean {
+	return model.compat?.supportsLongCacheRetention ?? supportsOneHourCacheTtl(model.id, model.name);
 }

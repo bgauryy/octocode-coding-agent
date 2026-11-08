@@ -123,6 +123,17 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .content-tool > header { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; font-size: 12px; }
 .content-tool > header strong { font-family: var(--mono); }
 .content-tool > header span { color: var(--text-2); }
+.tool-display { display: grid; gap: 6px; min-width: 0; }
+.tool-display-outcome { margin: 0; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.tool-display .tone-error { color: var(--danger); } .tool-display .tone-warning { color: var(--warning); } .tool-display .tone-success { color: var(--success); } .tool-display .tone-muted { color: var(--text-3); }
+.tool-display-subjects, .tool-display-list { margin: 0; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
+.tool-display-list { list-style: none; padding-left: 0; } .tool-display-list li { display: block; }
+.tool-display-fields { display: grid; gap: 2px; margin: 0; font-size: 13px; } .tool-display-fields div { display: flex; gap: 8px; } .tool-display-fields dt { color: var(--text-2); } .tool-display-fields dd { margin: 0; overflow-wrap: anywhere; }
+.tool-display-path { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.tool-display-preview .link-button, .tool-display .link-button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: 12px; }
+.tool-output { margin: 0; display: grid; gap: 4px; } .tool-output figcaption { font-size: 12px; overflow-wrap: anywhere; }
+.tool-progress { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.tool-progress progress { flex: 0 0 120px; accent-color: var(--accent); }
 .content-tool > .tool-reason { margin: 0; color: var(--text-3); font-size: 12px; font-style: italic; overflow-wrap: anywhere; }
 .content-tool > .tool-purposes { display: grid; gap: 2px; color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
 .tool-purposes > p { margin: 0; }

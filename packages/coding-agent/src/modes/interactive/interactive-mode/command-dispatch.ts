@@ -32,7 +32,7 @@ type CommandDispatchHost = Pick<
 	| "handleExportCommand"
 	| "handleHotkeysCommand"
 	| "handleImportCommand"
-	| "handleLoginCommand"
+	| "handleProvidersCommand"
 	| "handleModelCommand"
 	| "handleNameCommand"
 	| "handleReloadCommand"
@@ -171,8 +171,8 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			host.handleNameCommand(`/name${args ? ` ${args}` : ""}`);
 			return;
 		case "status":
-			host.handleSessionCommand();
-			await runNativeCommand(host, "status");
+			// One output: the native report (version, skills, MCP) when native features are on, else the session statistics.
+			if (!(await runNativeCommand(host, "status"))) host.handleSessionCommand();
 			return;
 		case "changelog":
 			host.handleChangelogCommand();
@@ -193,8 +193,8 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 		case "queue":
 			host.showQueueManager();
 			return;
-		case "login":
-			await host.handleLoginCommand(args || undefined);
+		case "providers":
+			await host.handleProvidersCommand(args || undefined);
 			return;
 		case "logout":
 			await host.showOAuthSelector("logout");

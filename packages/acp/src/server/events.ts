@@ -1,5 +1,6 @@
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { SessionNotification, StopReason, ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
+import { toolDisplayText, type ToolDisplay } from "@octocodeai/octocode-contracts";
 import type { AcpWorkerEvent } from "../host.ts";
 
 /** A compaction summary as the Markdown a person reads (the host owns the summary format). */
@@ -91,16 +92,22 @@ function compactionEnd(
 
 /**
  * Only project visible textual content; details, raw output and binary payloads never cross this adapter. An oversized
- * result keeps its start and its end: a command's status line leads and its failure or summary comes last.
+ * result keeps its start and its end: a command's status line leads and its failure or summary comes last. With the
+ * host's display, the text is the display's (what a person reads), else the result's.
  */
-export function toolContent(result: unknown): ToolCallContent[] {
-	if (!result || typeof result !== "object" || !("content" in result) || !Array.isArray(result.content)) return [];
+export function toolContent(result: unknown, display?: ToolDisplay): ToolCallContent[] {
 	const texts: string[] = [];
-	for (const block of result.content) {
-		if (!block || typeof block !== "object" || block.type !== "text" || typeof block.text !== "string") continue;
-		texts.push(block.text);
-	}
-	let text = texts.join("\n");
+	if (display) texts.push(toolDisplayText(display));
+	else if (result && typeof result === "object" && "content" in result && Array.isArray(result.content))
+		for (const block of result.content) {
+			if (!block || typeof block !== "object" || block.type !== "text" || typeof block.text !== "string") continue;
+			texts.push(block.text);
+		}
+	return boundedText(texts.join("\n"));
+}
+
+function boundedText(whole: string): ToolCallContent[] {
+	let text = whole;
 	if (text.length > MAX_TOOL_TEXT) {
 		const keep = MAX_TOOL_TEXT - NOTE_ROOM;
 		const omitted = text.length - keep;
@@ -113,12 +120,32 @@ export function toolContent(result: unknown): ToolCallContent[] {
  * A tool call's title: its name and, when the arguments state one, the call's `reason` (every native tool requires it;
  * models add it to MCP calls), on one line. A one-word reason (`Edit`) says no more than the name, as in the terminal.
  */
-export function toolTitle(name: string, args?: unknown): string {
+export function toolTitle(name: string, args?: unknown, display?: ToolDisplay): string {
+	const flat = (text: string) => text.replace(/[\s\p{Cc}]+/gu, " ").trim();
+	if (display) {
+		const head = display.summary ? `${display.title}(${flat(display.summary)})` : display.title;
+		return (display.reason ? `${head}: ${flat(display.reason)}` : head).slice(0, 512);
+	}
 	const reason =
-		args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
-			? args.reason.replace(/[\s\p{Cc}]+/gu, " ").trim()
-			: "";
+		args && typeof args === "object" && "reason" in args && typeof args.reason === "string" ? flat(args.reason) : "";
 	return (reason.includes(" ") ? `${name}: ${reason}` : name).slice(0, 512);
+}
+
+/** ACP's kind for a display's kind; `agent` has no ACP counterpart. */
+function displayKind(display: ToolDisplay | undefined): ToolKind | undefined {
+	return display?.kind && display.kind !== "agent" ? display.kind : undefined;
+}
+
+/** The files a call works on, for clients that follow along. */
+function locations(display: ToolDisplay | undefined): { locations?: { path: string; line?: number }[] } {
+	return display?.locations?.length
+		? {
+				locations: display.locations.map((location) => ({
+					path: location.path,
+					...(location.line ? { line: location.line } : {}),
+				})),
+			}
+		: {};
 }
 
 /** What a client's icon says about a native tool; anything else, MCP tools included, is ACP's default `other`. */
@@ -133,8 +160,8 @@ const TOOL_KINDS: Readonly<Record<string, ToolKind>> = {
 	lspSearch: "search",
 };
 
-export function toolKind(name: string): ToolKind {
-	return Object.hasOwn(TOOL_KINDS, name) ? TOOL_KINDS[name] : "other";
+export function toolKind(name: string, display?: ToolDisplay): ToolKind {
+	return displayKind(display) ?? (Object.hasOwn(TOOL_KINDS, name) ? TOOL_KINDS[name] : "other");
 }
 
 /**
@@ -230,25 +257,28 @@ export class AcpEventProjector {
 				return updates;
 			}
 			case "tool_execution_start":
-				return this.startTool(event.toolCallId, event.toolName, event.args);
+				return this.startTool(event.toolCallId, event.toolName, event.args, event.display);
 			case "tool_execution_update":
 				return [
-					...this.startTool(event.toolCallId, event.toolName, event.args),
+					...this.startTool(event.toolCallId, event.toolName, event.args, event.display),
 					{
 						sessionUpdate: "tool_call_update",
 						toolCallId: event.toolCallId,
 						status: "in_progress",
-						content: toolContent(event.partialResult),
+						content: toolContent(event.partialResult, event.display),
+						...locations(event.display),
 					},
 				];
 			case "tool_execution_end":
 				return [
-					...this.startTool(event.toolCallId, event.toolName),
+					...this.startTool(event.toolCallId, event.toolName, undefined, event.display),
 					{
 						sessionUpdate: "tool_call_update",
 						toolCallId: event.toolCallId,
 						status: event.isError ? "failed" : "completed",
-						content: toolContent(event.result),
+						...(event.display ? { title: toolTitle(event.toolName, undefined, event.display) } : {}),
+						content: toolContent(event.result, event.display),
+						...locations(event.display),
 					},
 				];
 			default:
@@ -265,17 +295,18 @@ export class AcpEventProjector {
 		};
 	}
 
-	private startTool(id: string, name: string, args?: unknown): Update[] {
+	private startTool(id: string, name: string, args?: unknown, display?: ToolDisplay): Update[] {
 		if (this.tools.has(id)) return [];
 		this.tools.add(id);
 		return [
 			{
 				sessionUpdate: "tool_call",
 				toolCallId: id,
-				title: toolTitle(name, args),
+				title: toolTitle(name, args, display),
 				name,
-				kind: toolKind(name),
+				kind: toolKind(name, display),
 				status: "in_progress",
+				...locations(display),
 			},
 		];
 	}

@@ -1,6 +1,7 @@
-import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { keyHint } from "../keybinding-hints.ts";
+import { renderHintLine } from "../hint-bar.ts";
+import { keyHint, keyText } from "../keybinding-hints.ts";
 import type { NameFilter, SortMode } from "../session-selector-search.ts";
 import type { SessionScope } from "./types.ts";
 
@@ -144,24 +145,24 @@ export class SessionSelectorHeader implements Component {
 			const color = this.statusMessage.type === "error" ? "error" : "accent";
 			return [theme.fg(color, truncateToWidth(this.statusMessage.message, width, "…"))];
 		}
-		const hints = [
-			keyHint("tui.select.confirm", "resume"),
-			theme.fg("dim", "space") + theme.fg("muted", this.previewOpen ? " close preview" : " preview"),
-			keyHint("tui.input.tab", "scope"),
-			...(this.showRenameHint ? [keyHint("app.session.rename", "rename")] : []),
-			keyHint("app.session.mark", "mark"),
-			keyHint("app.session.delete", "delete"),
-			...(this.showActionsHint ? [keyHint("app.session.actions", "actions")] : []),
-			keyHint("app.session.toggleSort", "sort"),
-			keyHint("app.session.toggleNamedFilter", "named"),
-			keyHint("app.session.togglePath", `path ${this.showPath ? "(on)" : "(off)"}`),
-			keyHint("tui.select.cancel", "close"),
+		return [
+			renderHintLine(
+				[
+					[keyText("tui.select.confirm"), "resume", 0],
+					["space", this.previewOpen ? "close preview" : "preview", 6],
+					[keyText("tui.input.tab"), "scope", 3],
+					...(this.showRenameHint ? [[keyText("app.session.rename"), "rename", 7] as const] : []),
+					[keyText("app.session.mark"), "mark", 5],
+					[keyText("app.session.delete"), "delete", 2],
+					...(this.showActionsHint ? [[keyText("app.session.actions"), "actions", 4] as const] : []),
+					[keyText("app.session.toggleSort"), "sort", 8],
+					[keyText("app.session.toggleNamedFilter"), "named", 9],
+					[keyText("app.session.togglePath"), `path ${this.showPath ? "(on)" : "(off)"}`, 10],
+					[keyText("tui.select.cancel"), "close", 1],
+				],
+				width,
+				0,
+			),
 		];
-		const shown = [theme.fg("dim", "↑↓") + theme.fg("muted", " move")];
-		for (const hint of hints) {
-			if (visibleWidth([...shown, hint].join(sep())) > width) break;
-			shown.push(hint);
-		}
-		return [truncateToWidth(shown.join(sep()), width, "…")];
 	}
 }

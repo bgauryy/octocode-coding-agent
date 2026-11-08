@@ -312,3 +312,51 @@ describe("ACP tool content", () => {
 		]);
 	});
 });
+
+describe("ACP tool calls from the host's display", () => {
+	it("titles, kinds, locates and fills a call from its display", () => {
+		const projector = new AcpEventProjector((summary) => summary);
+		const display = {
+			title: "File",
+			summary: "edit src/a.ts · 1 edit",
+			reason: "Fix the parser",
+			kind: "edit" as const,
+			locations: [{ path: "src/a.ts" }],
+			blocks: [],
+		};
+		expect(
+			projector.update({ type: "tool_execution_start", toolCallId: "f", toolName: "file", args: {}, display }),
+		).toEqual([
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "f",
+				title: "File(edit src/a.ts · 1 edit): Fix the parser",
+				name: "file",
+				kind: "edit",
+				status: "in_progress",
+				locations: [{ path: "src/a.ts" }],
+			},
+		]);
+		const done = {
+			...display,
+			outcome: { text: "Applied" },
+			blocks: [{ type: "text" as const, text: "a.ts +1 -0" }],
+		};
+		const [update] = projector.update({
+			type: "tool_execution_end",
+			toolCallId: "f",
+			toolName: "file",
+			result: { content: [{ type: "text", text: "raw model text" }] },
+			isError: false,
+			display: done,
+		});
+		expect(update).toMatchObject({
+			sessionUpdate: "tool_call_update",
+			status: "completed",
+			locations: [{ path: "src/a.ts" }],
+		});
+		const content = JSON.stringify(update);
+		expect(content).toContain("⎿ Applied");
+		expect(content).not.toContain("raw model text");
+	});
+});

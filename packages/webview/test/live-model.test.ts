@@ -5,7 +5,6 @@ import {
 	activityCard,
 	connectionTone,
 	EventInterner,
-	fileDiffs,
 	groupFeed,
 	latestProgress,
 	mergeEvents,
@@ -350,19 +349,6 @@ describe("per-tool rendering", () => {
 			progress(7, undefined, "waiting for a slot (1 running)"),
 		]);
 		expect(events.map((event) => event.id)).toEqual([3, 4, 5, 7]);
-	});
-	it("extracts unified diffs from file tool details", () => {
-		expect(
-			fileDiffs({
-				outcomes: [
-					{ type: "edit", path: "a.ts", ok: true, diff: "--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-old\n+new", lineDelta: 0 },
-					{ type: "delete", path: "b.ts", ok: true },
-					{ type: "edit", path: "c.ts", ok: false, message: "no match" },
-				],
-			}),
-		).toEqual([{ path: "a.ts", type: "edit", diff: "--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-old\n+new" }]);
-		expect(fileDiffs({ truncation: true })).toEqual([]);
-		expect(fileDiffs(undefined)).toEqual([]);
 	});
 });
 

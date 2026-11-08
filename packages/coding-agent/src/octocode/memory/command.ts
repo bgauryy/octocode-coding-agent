@@ -1,8 +1,10 @@
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { confirmAction, successNotice } from "../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { lastInjection } from "./inject.ts";
+import { ADD_ROW, memoryDetailPage, memoryListPage, sectionOf } from "./page.ts";
 import { memoryLabel } from "./query.ts";
 import {
 	MEMORY_KINDS,
@@ -68,14 +70,7 @@ export function parseTemplate(text: string): MemoryInput {
 	return input;
 }
 
-const section = (memory: Memory) =>
-	memory.pinned
-		? "Pinned"
-		: memory.scope === "workspace"
-			? "Workspace"
-			: memory.scope === "project"
-				? "Project"
-				: "Global";
+const section = sectionOf;
 
 /** One picker option: `Pinned · M3 (project, decision, pinned) Title — body…`. */
 const optionOf = (memory: Memory) => `${section(memory)} · ${memoryLine(memory, 80)}`;
@@ -243,12 +238,22 @@ async function browse(
 ): Promise<void> {
 	if (!ctx.hasUI) return say(ctx, textList(memories, title), "info");
 	let list = grouped(memories);
+	let selected: string | undefined;
 	for (;;) {
-		const options = [...list.map(optionOf), ADD];
-		const choice = await ctx.ui.select(title, options);
-		if (choice === undefined) return;
-		if (choice === ADD) return add(ctx, store, "");
-		const picked = list[options.indexOf(choice)];
+		let picked: Memory | undefined;
+		if (ctx.mode === "tui") {
+			const id = await memoryListPage(ctx, list, title, selected);
+			if (id === undefined) return;
+			if (id === ADD_ROW) return add(ctx, store, "");
+			selected = id;
+			picked = list.find((memory) => String(memory.id) === id);
+		} else {
+			const options = [...list.map(optionOf), ADD];
+			const choice = await ctx.ui.select(title, options);
+			if (choice === undefined) return;
+			if (choice === ADD) return add(ctx, store, "");
+			picked = list[options.indexOf(choice)];
+		}
 		if (!picked) return;
 		const changed = await act(ctx, store, picked);
 		if (changed === "closed") return;
@@ -271,16 +276,20 @@ async function act(
 		"Delete",
 		"Show",
 	];
-	const action = await ctx.ui.select(`${label} ${memory.title}`, actions);
+	const action =
+		ctx.mode === "tui"
+			? await memoryDetailPage(ctx, memory, actions)
+			: await ctx.ui.select(`${label} ${memory.title}`, actions);
 	if (action === undefined) return memory;
 	if (action === "Show") {
 		say(ctx, describeMemory(memory), "info");
 		return memory;
 	}
 	if (action === "Delete") {
-		if (!(await ctx.ui.confirm(`Delete ${label}?`, memory.title))) return memory;
+		const question = `Delete ${label}?\n${memory.title}`;
+		if (!(await confirmAction((title, options) => ctx.ui.select(title, options), question, ["Delete"]))) return memory;
 		store.delete(memory.id);
-		say(ctx, `Deleted ${label}.`, "info");
+		say(ctx, successNotice("Deleted", label, "Other memories are unchanged."), "info");
 		return undefined;
 	}
 	let updated: Memory | undefined;

@@ -176,7 +176,7 @@ describe("unified MCP slash management", () => {
 		await harness.session.prompt("/mcp");
 		expect(menus[0].details).toContain(join(harness.tempDir, "agent", "mcp.json"));
 		expect(menus[2].items[0].value).toBe("echo");
-		expect(menus[3].details).toContain('"type": "object"');
+		expect(menus[3].facts?.map((fact) => fact.value).join("\n")).toContain('"type": "object"');
 	});
 	it.each(["global", "default"] as const)(
 		"withdraws and restores tools when changing %s enablement, saving only controls",

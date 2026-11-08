@@ -35,6 +35,7 @@ const STATS = [
 	"toolCalls",
 	"input",
 	"cacheRead",
+	"cacheWrite",
 	"output",
 	"cost",
 	"unpriced",

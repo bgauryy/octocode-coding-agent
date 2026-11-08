@@ -30,7 +30,7 @@ function withEnv(overrides: Record<string, string | undefined>): () => void {
 
 function renderSelector(): string[] {
 	const selector = new OAuthSelectorComponent(
-		"login",
+		"sign-in",
 		[{ id: "anthropic", name: "Anthropic", authType: "api_key" }],
 		() => {},
 		() => {},
@@ -119,9 +119,10 @@ describe("key hint lines", () => {
 		expect(stripAnsi(hintLine(pairs))).toBe("enter select \u00b7 esc cancel");
 	});
 
-	test("the /login provider picker ends with the key hints the other selectors show", () => {
+	test("the /providers provider picker ends with the key hints the other selectors show", () => {
 		const text = renderSelector().map(stripAnsi).join("\n");
-		expect(text).toMatch(/\u2191\u2193 navigate \u00b7 enter select \u00b7 \S+ cancel/);
+		expect(text).toMatch(/enter select \u00b7 \S+ cancel/);
+		expect(text).not.toContain("\u2191\u2193");
 		// The selected row uses the shared cursor glyph.
 		expect(text).toContain("\u203a Anthropic");
 		expect(text).not.toContain("\u2192");

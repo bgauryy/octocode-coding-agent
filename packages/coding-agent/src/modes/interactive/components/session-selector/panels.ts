@@ -8,7 +8,8 @@ import {
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { hintLine, keyText } from "../keybinding-hints.ts";
+import { HintBar, renderHintLine } from "../hint-bar.ts";
+import { keyText } from "../keybinding-hints.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
 import { rowTitle } from "./row.ts";
 import type { SessionAction } from "./types.ts";
@@ -21,14 +22,10 @@ export function renamePanel(input: Input): Component {
 	panel.addChild(input);
 	panel.addChild(new Spacer(1));
 	panel.addChild(
-		new Text(
-			hintLine([
-				[keyText("tui.select.confirm"), "save"],
-				[keyText("tui.select.cancel"), "cancel"],
-			]),
-			1,
-			0,
-		),
+		new HintBar([
+			[keyText("tui.select.confirm"), "save", 1],
+			[keyText("tui.select.cancel"), "cancel", 0],
+		]),
 	);
 	return panel;
 }
@@ -86,13 +83,12 @@ export class ActionsMenu implements Component {
 		});
 		lines.push(
 			"",
-			truncateToWidth(
-				` ${hintLine([
-					[keyText("tui.select.confirm"), "run"],
-					[keyText("tui.select.cancel"), "back"],
-				])}`,
+			renderHintLine(
+				[
+					[keyText("tui.select.confirm"), "run", 1],
+					[keyText("tui.select.cancel"), "back", 0],
+				],
 				width,
-				"…",
 			),
 		);
 		return lines;

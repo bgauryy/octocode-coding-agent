@@ -1,3 +1,4 @@
+import { displayText, textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { type BacklogTask, TASK_STATES, type TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import { StringEnum } from "@octocodeai/octocode-ai";
@@ -209,6 +210,28 @@ export function registerTaskTool(
 					const result = run(openBacklog(ctx, options), params);
 					if (params.op !== "list") options.changed?.(ctx);
 					return result;
+				},
+				display(input) {
+					const { args } = input;
+					const summary = [
+						args.op,
+						args.id,
+						args.item ? `in ${args.item}` : "",
+						args.state ? `→ ${args.state}` : "",
+						// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
+						args.goal ? `"${String(args.goal)}"` : "",
+					]
+						.filter(Boolean)
+						.join(" ");
+					const head = { title: "Steps", summary, kind: "other" as const, blocks: [] };
+					if (!input.result || input.status === "failed") return textResultDisplay(head, input);
+					const text = displayText(input.result);
+					const body = (args.op === "list" ? text : text.split("\n").slice(1).join("\n")).trim();
+					return {
+						...head,
+						outcome: { text: taskSummary(args.op, (input.result.details ?? {}) as TaskToolDetails, text) },
+						blocks: body ? [{ type: "text" as const, text: body }] : [],
+					};
 				},
 				renderCall(args, theme, context) {
 					const target = [

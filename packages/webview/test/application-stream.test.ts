@@ -207,6 +207,21 @@ it("keeps a tool call's hint after progress and completion replace its text", ()
 		{ toolCallId: "t", order: 0, toolName: "bash", hint: "npm test", text: "3 passed", status: "completed" },
 	]);
 });
+it("shows a tool's latest progress and drops it, with earlier result assets, when the result arrives", () => {
+	const stream = new ApplicationStream();
+	stream.accept(frame(0, { type: "snapshot", snapshot }));
+	const tool = (sequence: number, event: Record<string, unknown>) =>
+		stream.accept(frame(sequence, { type: "event", event: { toolCallId: "t", toolName: "mcp__s__slow", ...event } }));
+	tool(1, { type: "tool.started" });
+	const full = { id: "tool:t:data", mimeType: "application/json", size: 9000 };
+	tool(2, { type: "tool.progress", text: "half", content: [], full, progress: { progress: 2, total: 4 } });
+	expect(stream.snapshot?.tools?.[0]).toMatchObject({ status: "running", full, progress: { progress: 2, total: 4 } });
+	tool(3, { type: "tool.completed", text: "done", content: [{ id: "b", type: "text", text: "done" }] });
+	const completed = stream.snapshot?.tools?.[0];
+	expect(completed).toMatchObject({ status: "completed", text: "done" });
+	expect(completed?.full).toBeUndefined();
+	expect(completed?.progress).toBeUndefined();
+});
 it("keeps live tool calls between the surrounding messages through progress and completion", () => {
 	const stream = new ApplicationStream();
 	stream.accept(

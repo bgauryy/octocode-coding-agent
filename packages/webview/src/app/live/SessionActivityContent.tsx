@@ -1,7 +1,8 @@
 import type { ApplicationActivity } from "@octocodeai/octocode-contracts";
 import { Button } from "../ui/primitives.tsx";
 import { type AssetLoader, useAssetRead } from "./asset-expansion.tsx";
-import { ExpandedText, JsonDetails } from "./ContentBlocks.tsx";
+import { ExpandedText } from "./ContentBlocks.tsx";
+import { JsonDetails } from "./ToolRawData.tsx";
 
 /** Session notices share the same authenticated content reads as messages and tool results. */
 export function SessionActivityContent({

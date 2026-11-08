@@ -5,6 +5,7 @@
  * host's shapes. Add a member only when MCP code uses it.
  */
 
+import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 import type { AgentToolResult, AgentToolUpdateCallback, EventBus } from "@octocodeai/octocode-agent-core";
 import type { ModelInputLimits } from "@octocodeai/octocode-ai";
 import type { AutocompleteItem, Component } from "@octocodeai/octocode-tui";
@@ -116,6 +117,13 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 		onUpdate: AgentToolUpdateCallback<TDetails> | undefined,
 		ctx: McpContext,
 	): Promise<AgentToolResult<TDetails>>;
+	/** How every surface draws a call: built from the arguments and result alone. */
+	display?(input: {
+		toolName: string;
+		args: Static<TParams>;
+		result?: AgentToolResult<TDetails>;
+		status: "running" | "completed" | "failed";
+	}): ToolDisplay;
 	renderCall?: (args: Static<TParams>, theme: McpTheme, context: McpRenderContext) => Component;
 	renderResult?: (
 		result: AgentToolResult<TDetails>,
@@ -133,6 +141,7 @@ export interface McpToolRenderers {
 	renderShell?: "default" | "self";
 	renderCall?: (args: any, theme: any, context: any) => Component;
 	renderResult?: (result: any, options: any, theme: any, context: any) => Component;
+	display?: (input: any) => ToolDisplay;
 }
 
 /** A registered tool as `getAllTools()` lists it. */

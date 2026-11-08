@@ -41,6 +41,7 @@ import {
 import { addCustomHeadersMiddleware, addResponseHeadersMiddleware } from "./bedrock-converse-stream/middleware.ts";
 import { isAnthropicClaudeModel, supportsAdaptiveThinking } from "./bedrock-converse-stream/model-match.ts";
 import { buildAdditionalModelRequestFields } from "./bedrock-converse-stream/request-fields.ts";
+import { redactProviderText } from "../utils/error-body.ts";
 import {
 	finalizeStreamingBlock,
 	handleContentBlockDelta,
@@ -164,7 +165,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 					const { stopReason, errorMessage } = mapStopReason(item.messageStop.stopReason);
 					output.stopReason = stopReason;
 					if (errorMessage) {
-						output.errorMessage = errorMessage;
+						output.errorMessage = redactProviderText(errorMessage);
 					}
 				} else if (item.metadata) {
 					delete output.usage.lowerBound;
@@ -204,7 +205,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 				finalizeStreamingBlock(block);
 			}
 			output.stopReason = options.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = formatBedrockError(error);
+			output.errorMessage = redactProviderText(formatBedrockError(error));
 			const retryAfterMs = retryAfterMsFromError(error);
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			if (output.stopReason === "error") {

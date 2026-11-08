@@ -171,6 +171,10 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `research` | object |  | Research tool settings. |
 | `research.allowedPaths` | `string[]` |  | Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn. |
 | `toggles` | object |  | Harness, plugin and hook switches by ID, as `/harness` writes them: `harness:&lt;vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:&lt;path>`, `hooks:&lt;host>`, `hooks:&lt;host>:&lt;source>` or `hook:&lt;id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository. |
+| `disabledProviders` | `string[]` |  | Provider ids turned off in /providers. Their models leave the model selector, cycling and subagent routing; saved credentials stay. Global only. |
+| `providerSources` | object |  | Provider sources you changed from their defaults (Octocode and Pi on, COPILOT_GITHUB_TOKEN off), managed in /providers. Global only. |
+| `providerSources.pi` | boolean |  | Use Pi's auth.json (read-only fallback) and models.json. On by default; false leaves them out of availability without changing Pi's files. |
+| `providerSources.copilot-env` | boolean |  | Use the COPILOT_GITHUB_TOKEN environment variable as the github-copilot credential. Off by default. |
 | `remote` | object |  |  |
 | `remote.transport` | `"ssh" \| "relay"` | `"ssh"` | How a published /remote link reaches the daemon: "ssh" prints a port forward to run; "relay" dials remote.relayUrl. |
 | `remote.relayUrl` | string |  | The ws:// or wss:// relay the daemon dials for relay links. |

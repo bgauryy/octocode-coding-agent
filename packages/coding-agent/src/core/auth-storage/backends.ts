@@ -32,13 +32,15 @@ export type LockResult<T> = {
 	next?: string;
 };
 
-// The mode applies only on creation so administrator-managed modes and ACLs remain intact.
 const AUTH_FILE_WRITE_OPTIONS = { encoding: "utf-8", mode: 0o600 } as const;
 
-/** Replace auth.json whole (temp file, fsync, rename): a crash leaves the old or the new credentials, never a torn file. */
-function writeAuthFile(path: string, next: string): void {
-	// An existing file keeps its mode (administrator-managed modes and ACLs); a new one is private.
-	atomicWriteFileSync(path, next, existsSync(path) ? {} : { mode: 0o600 });
+/**
+ * Replace the file whole (temp file, fsync, rename): a crash leaves the old or the new content, never a torn file.
+ * A credential file is always private (0600), so one an older build or a person left at 0644 is tightened on the next
+ * write; a file without secrets (`keepMode`) keeps an existing file's mode (administrator-managed modes and ACLs).
+ */
+function writeAuthFile(path: string, next: string, keepMode: boolean): void {
+	atomicWriteFileSync(path, next, keepMode && existsSync(path) ? {} : { mode: 0o600 });
 }
 
 /** What the store held when an async operation failed, read under the same lock; `unreadable` when it could not be read. */
@@ -61,9 +63,12 @@ export interface AuthStorageBackend {
 
 export class FileAuthStorageBackend implements AuthStorageBackend {
 	private authPath: string;
+	/** Set for files without secrets (the models cache): an existing file keeps its mode instead of being tightened. */
+	private readonly keepMode: boolean;
 
-	constructor(authPath: string = join(getAgentDir(), "auth.json")) {
+	constructor(authPath: string = join(getAgentDir(), "auth.json"), options: { keepMode?: boolean } = {}) {
 		this.authPath = normalizePath(authPath);
+		this.keepMode = options.keepMode ?? false;
 	}
 
 	private ensureParentDir(): void {
@@ -91,7 +96,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			const current = existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined;
 			const { result, next } = fn(current);
 			if (next !== undefined) {
-				writeAuthFile(this.authPath, next);
+				writeAuthFile(this.authPath, next, this.keepMode);
 			}
 			return result;
 		} finally {
@@ -189,7 +194,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 				throwIfCompromised();
 				options?.signal?.throwIfAborted();
 				if (next !== undefined) {
-					writeAuthFile(this.authPath, next);
+					writeAuthFile(this.authPath, next, this.keepMode);
 				}
 				throwIfCompromised();
 				return result;

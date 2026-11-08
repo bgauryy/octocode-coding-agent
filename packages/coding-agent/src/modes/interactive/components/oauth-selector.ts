@@ -71,13 +71,13 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 	private allProviders: AuthSelectorProvider[];
 	private filteredProviders: AuthSelectorProvider[];
 	private selectedIndex: number = 0;
-	private mode: "login" | "logout" | "manage";
+	private mode: "sign-in" | "logout";
 	private onSelectCallback: (providerId: string, authType: AuthSelectorProvider["authType"]) => void;
 	private onCancelCallback: () => void;
 	private showAuthTypeLabels: boolean;
 
 	constructor(
-		mode: "login" | "logout" | "manage",
+		mode: "sign-in" | "logout",
 		providers: AuthSelectorProvider[],
 		onSelect: (providerId: string, authType: AuthSelectorProvider["authType"]) => void,
 		onCancel: () => void,
@@ -97,18 +97,12 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 
 		// Add title
-		const title =
-			mode === "manage"
-				? "AI providers — connect, update or remove credentials"
-				: mode === "login"
-					? "Select provider to configure:"
-					: "Remove a saved AI provider credential:";
+		const title = mode === "sign-in" ? "Sign in — choose a provider" : "Remove a saved AI provider credential:";
 		this.addChild(new TruncatedText(theme.fg("accent", theme.bold(title)), 1, 0));
-		if (mode === "manage") {
-			this.addChild(new TruncatedText(theme.fg("muted", "/model chooses a model"), 1, 0));
+		if (mode === "sign-in") {
 			this.addChild(
 				new TruncatedText(
-					theme.fg("muted", "Configured means credentials are present; provider access is not verified."),
+					theme.fg("muted", "Account or API key. /model chooses a model once you are signed in."),
 					1,
 					0,
 				),
@@ -137,7 +131,6 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		this.addChild(
 			new TruncatedText(
 				hintLine([
-					["↑↓", "navigate"],
 					[keyText("tui.select.confirm"), mode === "logout" ? "remove" : "select"],
 					[keyText("tui.select.cancel"), "cancel"],
 				]),
@@ -186,7 +179,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 				? theme.fg("muted", ` · ${provider.detail}`)
 				: formatAuthSelectorProviderStatus(provider);
 			const authTypeLabel =
-				this.showAuthTypeLabels && this.mode !== "manage"
+				this.showAuthTypeLabels && this.mode !== "sign-in"
 					? theme.fg("muted", ` [${formatAuthSelectorProviderType(provider.authType, provider.subscription)}]`)
 					: "";
 			let line = "";
@@ -211,9 +204,9 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		if (this.filteredProviders.length === 0) {
 			const message =
 				this.allProviders.length === 0
-					? this.mode === "login"
+					? this.mode === "sign-in"
 						? "No providers available"
-						: "No providers logged in. Use /login first."
+						: "No providers logged in. Use /providers first."
 					: "No matching providers";
 			this.listContainer.addChild(new TruncatedText(theme.fg("muted", `  ${message}`), 1, 0));
 		}

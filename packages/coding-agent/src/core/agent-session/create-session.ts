@@ -18,6 +18,7 @@ import type { SessionManager } from "../session-manager.ts";
 import { applyToolModifiers, getToolListError, isToolModifier } from "../settings-manager.ts";
 import { getBranchSelection, isVirtualModel } from "../virtual-models.ts";
 import { createConvertToLlmWithBlockImages } from "./block-images.ts";
+import { withRequestTrace } from "./request-trace.ts";
 
 /** Session inputs resolved against already-created, cwd-bound services. */
 export interface CreateSessionFromServicesOptions {
@@ -261,7 +262,7 @@ export async function createSessionFromServices(
 			// the provider request, so top-level object identity is not a valid cache key.
 			if (options?.sessionId === sessionManager.getSessionId())
 				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
-			return modelRuntime.streamSimple(model, context, requestOptions);
+			return withRequestTrace(requestOptions, (traced) => modelRuntime.streamSimple(model, context, traced));
 		},
 		sessionId: sessionManager.getSessionId(),
 		transformContext: async (messages) => {

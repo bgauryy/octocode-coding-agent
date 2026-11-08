@@ -66,7 +66,12 @@ describe("layered cache warming", () => {
 	it("treats the pair as one lifetime when the endpoint cannot write long entries", () => {
 		const shortOnly = { ...model, compat: { supportsLongCacheRetention: false } };
 		expect(getPromptCacheLifetime(shortOnly, layered)).toEqual({ ttlMs: 300_000, layered: false });
-		expect(getPromptCacheLifetime({ ...model, promptCache: { short: 300 } }, layered)?.layered).toBe(false);
+	});
+	it("plans with the 1h instruction entry the adapter writes when the model declares only its short lifetime", () => {
+		expect(getPromptCacheLifetime({ ...model, promptCache: { short: 300 } }, layered)).toEqual({
+			ttlMs: 300_000,
+			layered: true,
+		});
 	});
 	it("keeps single-lifetime warming and honors explicit disabling", () => {
 		expect(getPromptCacheLifetime(model, { cacheRetention: "long" })).toEqual({ ttlMs: 3600000, layered: false });

@@ -1,3 +1,4 @@
+import { displayText, textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -126,6 +127,28 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 						origin: skillOrigin(skill),
 					} satisfies SkillDetails,
 				);
+			},
+			display(input) {
+				const name = typeof input.args?.name === "string" ? bareName(input.args.name) : "";
+				const head = { title: name ? `Skill: ${name}` : "Skill", kind: "read" as const, blocks: [] };
+				if (!input.result || input.status !== "completed") return textResultDisplay(head, input);
+				const text = displayText(input.result);
+				const details = input.result.details as Partial<SkillDetails> | undefined;
+				const instructions = skillInstructions(parseSkillBlock(text)?.content ?? text);
+				const lines = details?.lines ?? instructions.split("\n").length;
+				return {
+					...head,
+					outcome: {
+						text: [`Loaded ${plural(lines, "line")}`, details?.origin].filter(Boolean).join(" \u00b7 "),
+						tone: "muted",
+					},
+					blocks: [
+						...(details?.location
+							? [{ type: "path" as const, text: `file: ${details.location}`, label: "file", path: details.location }]
+							: []),
+						{ type: "markdown" as const, text: instructions },
+					],
+				};
 			},
 			renderCall(args, theme, context) {
 				const name = typeof args?.name === "string" ? bareName(args.name) : "";

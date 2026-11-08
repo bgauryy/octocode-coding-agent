@@ -132,7 +132,8 @@ describe("queued-messages list", () => {
 		expect(rendered).toContain("Next turn");
 		expect(rendered).toContain("After run");
 		expect(rendered).toContain("1 attachment, extension");
-		expect(rendered).toContain("enter edit");
+		// Keys and verbs are styled apart (`hintLine`), so the hint is read as visible text.
+		expect(rendered.replace(/\x1b\[[0-9;]*m/g, "")).toContain("enter edit");
 		for (const line of list()?.render(80) ?? [])
 			expect(line.replace(/\x1b\[[0-9;]*m/g, "").length).toBeLessThanOrEqual(80);
 	});

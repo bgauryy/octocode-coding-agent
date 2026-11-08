@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { currentMutationRevision, mutationEpoch } from "../feedback/revisions.ts";
 import type { BashJob, JobExit, VerificationReceipt } from "../bash-jobs/types.ts";
 import { logTail, TAIL_BYTES } from "../bash-jobs/tail.ts";
-import type { BashDetails } from "../render.ts";
+import type { BashDetails } from "../outcome.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Public tool schema for the receipt's stable, JSON-only fields. */

@@ -3,7 +3,6 @@ import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import { resolveCacheRetention, resolvePromptCacheKey } from "../utils/cache-policy.ts";
 import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
@@ -12,9 +11,15 @@ import { failStreamTask } from "./lazy.ts";
 import { getUserAgent } from "../utils/user-agent.ts";
 import { hasProviderHeader, providerHeadersToRecord } from "../utils/headers.ts";
 import { getDeclaredTools, resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
-import { type AzureEndpointOptions, resolveAzureConfig, resolveDeploymentName } from "./azure-openai-config.ts";
+import {
+	type AzureEndpointOptions,
+	azureAcceptsExtendedRetention,
+	azureInstructionCacheTtl,
+	resolveAzureConfig,
+	resolveDeploymentName,
+} from "./azure-openai-config.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
+import { resolveOpenAIResponsesCacheFields } from "./openai-prompt-cache.ts";
 import { requestOpenAISdkStream } from "./openai-sdk-request.ts";
 import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./openai-responses-shared/finalize.ts";
 import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "./openai-responses-shared/messages.ts";
@@ -174,6 +179,8 @@ function buildParams(
 		}),
 	);
 	const messages = convertResponsesMessages(model, context, AZURE_TOOL_CALL_PROVIDERS, {
+		instructionCacheTtl: azureInstructionCacheTtl(model, options),
+		instructionCacheBoundary: options?.instructionCacheBoundary,
 		grammarToolInputProperties,
 		supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
 		supportsAdditionalTools,
@@ -184,14 +191,23 @@ function buildParams(
 		},
 	});
 
+	const cache = resolveOpenAIResponsesCacheFields(
+		{
+			// Explicit mode is left out: provisioned GPT-5.6 deployments do not support breakpoints and the adapter cannot
+			// tell them apart. GPT-6 Astra's instruction breakpoints come from azureInstructionCacheTtl.
+			supportsExplicitPromptCacheMode: false,
+			supportsLongCacheRetention: azureAcceptsExtendedRetention(model),
+		},
+		options,
+		false,
+	);
 	const params: ResponseCreateParamsStreaming = {
 		model: deploymentName,
 		input: messages,
 		stream: true,
-		prompt_cache_key:
-			resolveCacheRetention(options?.cacheRetention, options?.env) === "none"
-				? undefined
-				: clampOpenAIPromptCacheKey(resolvePromptCacheKey(options)),
+		prompt_cache_key: cache.prompt_cache_key,
+		// oxlint-disable-next-line typescript/no-deprecated -- the 24h policy is the field pre-GPT-5.6 Azure models accept; `prompt_cache_options.ttl` is for GPT-5.6+
+		prompt_cache_retention: cache.prompt_cache_retention,
 		store: false,
 	};
 

@@ -133,9 +133,12 @@ export async function checkPermission(
 				host.snapshotMs === undefined ? {} : { timeoutMs: host.snapshotMs },
 			);
 	};
+	/** Set when the dialog is about to be shown: the audit entry records how long the user took. */
+	const shown: { at?: number } = {};
 	const decided = (verdict: Verdict, note?: string): Verdict => {
 		if (verdict.allowed && source?.decision === "ask" && invocation?.active) host.answeredSourceAsks().add(invocation);
-		return host.decided(request, verdict, note ?? transaction?.auditNote ?? grantNote, snapshot);
+		const answered = shown.at === undefined ? request : { ...request, askedAt: shown.at };
+		return host.decided(answered, verdict, note ?? transaction?.auditNote ?? grantNote, snapshot);
 	};
 	const completeAllowed = async (
 		verdict: Extract<Verdict, { allowed: true }>,
@@ -299,6 +302,7 @@ export async function checkPermission(
 		...(grant ? { grant } : {}),
 	};
 	if (!grant) delete asked.grant;
+	shown.at = Date.now();
 	request.onAsk?.();
 	return withDialog(async () => {
 		// A preceding dialog may have granted this scope while this call waited. A forcing reason is never granted.

@@ -167,6 +167,7 @@ export class PermissionTrail {
 		this.record({
 			action,
 			...(reasons.length > 0 ? { reasons } : {}),
+			...(request.askedAt === undefined ? {} : { askedAt: request.askedAt }),
 			what: auditLines(request.what),
 			...(request.purpose ? { purpose: auditLine(request.purpose) } : {}),
 			...(request.reasonDerived ? { reasonDerived: true } : {}),

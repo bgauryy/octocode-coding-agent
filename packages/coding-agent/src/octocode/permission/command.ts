@@ -1,3 +1,4 @@
+import { builtinDescription } from "../../core/slash-commands.ts";
 import type { registerPlanning } from "../plan/register.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
@@ -89,7 +90,7 @@ export function registerPermissionCommand(
 	};
 
 	commands.add("permissions", {
-		description: "What Octocode asks before it acts",
+		description: builtinDescription("permissions"),
 		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log]",
 		complete: (prefix) =>
 			wordCompletions(

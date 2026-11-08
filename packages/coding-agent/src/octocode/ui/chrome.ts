@@ -1,3 +1,4 @@
+import { registerToolDisplays } from "./tool-display.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { type Color, mixColors, SPINNER } from "@octocodeai/octocode-tui";
@@ -103,6 +104,7 @@ export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
  * messages counts toward the speed, so tool calls, subagents and askUser waits don't drag the number down.
  */
 export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
+	registerToolDisplays(api);
 	if (isSubagent) return;
 	registerFooter(api);
 	registerTurnLine(api);

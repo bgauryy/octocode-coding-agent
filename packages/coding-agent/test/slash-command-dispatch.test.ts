@@ -30,7 +30,7 @@ describe("built-in slash commands", () => {
 			expect(Object.keys(command)).not.toContain("aliases");
 			expect(getBuiltinCommand(command.name)).toBe(command);
 		}
-		for (const name of ["qui", "Settings", "sessions", "providers", "models", "thinking", "exit", "config"])
+		for (const name of ["qui", "Settings", "sessions", "login", "models", "thinking", "exit", "config"])
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
@@ -41,7 +41,7 @@ describe("built-in slash commands", () => {
 			"handleClearCommand",
 			"shutdown",
 			"showSettingsSelector",
-			"handleLoginCommand",
+			"handleProvidersCommand",
 			"handleModelCommand",
 			"handleThinkingCommand",
 			"handleSessionCommand",
@@ -49,13 +49,13 @@ describe("built-in slash commands", () => {
 			instance[method] = () => effects.push(method);
 		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
-		for (const removed of ["/models", "/thinking high", "/providers", "/exit", "/config", "/stats"])
+		for (const removed of ["/models", "/thinking high", "/login", "/exit", "/config", "/stats"])
 			await instance.defaultEditor.onSubmit(removed);
 		expect(effects).toEqual([]);
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
 			"Unknown command /models. Did you mean /model?",
 			"Unknown command /thinking. Search commands with /help thinking.",
-			"Unknown command /providers. Search commands with /help providers.",
+			"Unknown command /login. Search commands with /help login.",
 			"Unknown command /exit. Search commands with /help exit.",
 			"Unknown command /config. Did you mean /reload?",
 			"Unknown command /stats. Did you mean /status?",
@@ -92,12 +92,12 @@ describe("built-in slash commands", () => {
 		]);
 	});
 
-	it("dispatches /login to the provider manager and refuses unavailable native commands", async () => {
+	it("dispatches /providers to the provider manager and refuses unavailable native commands", async () => {
 		const instance = mode();
-		instance.handleLoginCommand = vi.fn();
-		await instance.defaultEditor.onSubmit("/login");
-		await instance.defaultEditor.onSubmit("/login anthropic");
-		expect(instance.handleLoginCommand.mock.calls).toEqual([[undefined], ["anthropic"]]);
+		instance.handleProvidersCommand = vi.fn();
+		await instance.defaultEditor.onSubmit("/providers");
+		await instance.defaultEditor.onSubmit("/providers anthropic");
+		expect(instance.handleProvidersCommand.mock.calls).toEqual([[undefined], ["anthropic"]]);
 		await instance.defaultEditor.onSubmit("/agents");
 		expect(instance.showWarning).toHaveBeenCalledWith("/agents requires native features.");
 	});
@@ -165,7 +165,7 @@ describe("built-in slash commands", () => {
 		expect(instance.showUserMessageSelector).toHaveBeenCalledOnce();
 	});
 
-	it("combines native status with statistics and routes the session browser to the native owner", async () => {
+	it("prints /status once, from the native owner, and routes the session browser to it", async () => {
 		const instance = mode();
 		instance.handleSessionCommand = vi.fn();
 		instance.showSessionSelector = vi.fn();
@@ -184,12 +184,19 @@ describe("built-in slash commands", () => {
 		await instance.defaultEditor.onSubmit("/status");
 		await instance.defaultEditor.onSubmit("/resume project");
 		await instance.defaultEditor.onSubmit("/resume all");
-		expect(instance.handleSessionCommand).toHaveBeenCalledOnce();
+		expect(instance.handleSessionCommand).not.toHaveBeenCalled();
 		expect(status).toHaveBeenCalledOnce();
 		expect(resume).toHaveBeenNthCalledWith(1, "project", context);
 		expect(resume).toHaveBeenNthCalledWith(2, "all", context);
 		expect(foreign).not.toHaveBeenCalled();
 		expect(instance.showSessionSelector).not.toHaveBeenCalled();
+	});
+
+	it("falls back to the session statistics for /status when native features are disabled", async () => {
+		const instance = mode();
+		instance.handleSessionCommand = vi.fn();
+		await instance.defaultEditor.onSubmit("/status");
+		expect(instance.handleSessionCommand).toHaveBeenCalledOnce();
 	});
 
 	it("falls back to core resume when native features are disabled", async () => {

@@ -291,7 +291,7 @@ describe("/harness", () => {
 			return { ok: true, message: `${request.name}: saved` };
 		});
 		const reload = vi.fn(async () => {});
-		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { confirms: [true] } }), { reload });
+		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { selects: ["Reload"] } }), { reload });
 		await harness(api).handler("disable hooks:claude docs", ctx);
 		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: false, saveOnly: true }]);
 		expect(reload).toHaveBeenCalledOnce();
@@ -346,12 +346,12 @@ describe("/harness terminal list", () => {
 		const reload = vi.fn(async () => {});
 		const { api } = fakeHost();
 		Object.assign(api, { getSettings: () => on });
-		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { custom, confirms: [true] } }), { reload });
+		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { custom, selects: ["Reload"] } }), { reload });
 		const run = harness(api).handler("", ctx);
 		await vi.waitFor(() => expect(component).toBeDefined());
 		const press = (...keys: string[]) => keys.forEach((key) => component!.handleInput(key));
 		const screen = () => component!.render(200).join("\n");
-		expect(screen()).toContain("Harness · Global");
+		expect(screen()).toContain("(global)");
 		expect(screen()).toMatch(/Harnesses\n> +\[-\] Octocode/);
 		expect(screen()).toMatch(/\[x\] Claude Code  default off\n +\[ \] Claude Code auto memory  default off/);
 		for (let index = 0; index < 8; index++) press("tui.select.down");
@@ -367,7 +367,7 @@ describe("/harness terminal list", () => {
 
 		// Project scope cannot reach a user hook file, and says what to do instead.
 		press("tui.select.down", "tui.input.tab", " ");
-		expect(screen()).toContain("Harness · Project");
+		expect(screen()).toContain("(project)");
 		expect(screen()).toContain("~/.claude/settings.json: not part of this repository: switch it globally.");
 		press("tui.input.tab");
 

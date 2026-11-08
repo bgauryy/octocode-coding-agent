@@ -1,4 +1,5 @@
 import { createAbortError } from "../utils/abort.ts";
+import { redactProviderText } from "../utils/error-body.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
@@ -82,7 +83,7 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 				delete (block as { partialArgs?: string }).partialArgs;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = formatMistralError(error);
+			output.errorMessage = redactProviderText(formatMistralError(error));
 			const retryAfterMs = retryAfterMsFromError(error);
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });

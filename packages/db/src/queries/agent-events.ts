@@ -175,6 +175,7 @@ export function endData(
 		toolCalls: row.tool_calls,
 		input: row.input,
 		cacheRead: row.cache_read,
+		cacheWrite: row.cache_write,
 		output: row.output,
 		cost: row.cost,
 		unpriced: row.unpriced === 1,

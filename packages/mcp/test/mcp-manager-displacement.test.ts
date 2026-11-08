@@ -105,7 +105,7 @@ describe("the /mcp manager view displaced by another dialog, selector or the res
 		const opened = await openMcp();
 		// Enter the server's own menu, which subscribes again in place of the server list.
 		opened.env.terminal.sendInput("\r");
-		await vi.waitFor(async () => expect(await opened.env.screen()).toContain("MCP server octocode"));
+		await vi.waitFor(async () => expect(await opened.env.screen()).toContain("octocode — MCP server"));
 		expect(opened.state.listeners.size).toBe(opened.listenersBefore + 1);
 		const selectorDispose = vi.fn();
 		const selector = { render: () => ["built-in selector"], invalidate: () => {} };

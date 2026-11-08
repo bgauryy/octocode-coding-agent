@@ -12,9 +12,9 @@ import {
 	matchesKey,
 	stripTerminalSequences,
 	truncateToWidth,
-	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
+import { renderHintLine } from "./hint-bar.ts";
 
 export interface QueueListRow {
 	mode: "steer" | "followUp";
@@ -135,15 +135,20 @@ export class QueueListComponent implements Component, Focusable {
 		}
 		if (end < this.rows.length) lines.push(fit(theme.fg("muted", `  … ${this.rows.length - end} more`)));
 		const toggle = this.rows[this.selected]?.mode === "followUp" ? "next turn" : "after run";
-		// The longest hint that fits: a narrow terminal drops words, never the keys that edit, delete and close.
-		const hints = [
-			["↑↓ select", "shift+↑↓ move", "enter edit", `s ${toggle}`, "d delete", "esc close"],
-			["↑↓", "shift+↑↓ move", "enter edit", "s mode", "d delete", "esc close"],
-			["↑↓", "enter edit", "d delete", "esc close"],
-			["d delete", "esc close"],
-		].map((parts) => parts.join(" · "));
-		const hint = hints.find((text) => visibleWidth(` ${text}`) <= width) ?? hints[hints.length - 1];
-		lines.push(fit(theme.fg("dim", hint)), border);
+		// A narrow terminal drops the least needed hints first, never the keys that delete and close. The arrows that move
+		// the cursor are not named: every list moves with them.
+		const hint = renderHintLine(
+			[
+				["shift+↑↓", "reorder", 4],
+				["enter", "edit", 2],
+				["s", toggle, 3],
+				["d", "delete", 1],
+				["esc", "close", 0],
+			],
+			width,
+			1,
+		);
+		lines.push(hint, border);
 		return lines;
 	}
 }

@@ -13,6 +13,7 @@ import type {
 	ModelTypeMap,
 } from "../types.ts";
 import { ModelsError } from "./models-error.ts";
+import { redactProviderText } from "./error-body.ts";
 
 /** The type of a model. Models without `type` are chat models. */
 export function getModelType(model: AnyModel): ModelType {
@@ -59,7 +60,7 @@ export function imageErrorResult(model: ImageModel<ImageApi>, error: unknown, ab
 		model: model.id,
 		output: [],
 		stopReason: aborted ? "aborted" : "error",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage: redactProviderText(error instanceof Error ? error.message : String(error)),
 		timestamp: Date.now(),
 	};
 }
@@ -75,7 +76,7 @@ export function classifierErrorResult(
 		model: model.id,
 		answers: {},
 		stopReason: aborted ? "aborted" : "error",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage: redactProviderText(error instanceof Error ? error.message : String(error)),
 		timestamp: Date.now(),
 	};
 }

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { num } from "../rows.ts";
+import { num, type Row } from "../rows.ts";
 
 /** What `me` and `other` exchanged in `team` since `since`: whether any message went either way, and whether `me` still had a question to `other` that its leaving left unanswered. */
 export interface Correspondence {
@@ -28,4 +28,24 @@ export function between(db: DatabaseSync, team: string, me: string, other: strin
 		)
 		.get(team, me, other, since);
 	return { exchanged: exchanged !== undefined, asked: num(open?.n) > 0 };
+}
+
+/** The messages created at or after `since` that one of `agentIds` sent or received, oldest first, each with its deliveries' state. */
+export function involving(
+	db: DatabaseSync,
+	agentIds: readonly string[],
+	since: number,
+): Array<{ message: Row; deliveries: Row[] }> {
+	if (agentIds.length === 0) return [];
+	const marks = agentIds.map(() => "?").join(", ");
+	const rows = db
+		.prepare(
+			`SELECT * FROM messages WHERE created_at >= ?
+			 AND (sender IN (${marks}) OR id IN (SELECT message FROM deliveries WHERE recipient IN (${marks}))) ORDER BY id`,
+		)
+		.all(since, ...agentIds, ...agentIds) as Row[];
+	const deliveries = db.prepare(
+		"SELECT recipient, delivered_at, completed_at, dead_at FROM deliveries WHERE message = ? ORDER BY recipient",
+	);
+	return rows.map((message) => ({ message, deliveries: deliveries.all(num(message.id)) as Row[] }));
 }

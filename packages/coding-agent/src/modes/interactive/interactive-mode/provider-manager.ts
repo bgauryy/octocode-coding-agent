@@ -1,162 +1,158 @@
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
-import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { OAuthSelectorComponent, type AuthSelectorProvider } from "../components/oauth-selector.ts";
+import { describeProviderSources } from "../../../core/provider-sources/index.ts";
+import type { ProviderSourceEnvironment } from "../../../core/provider-sources/types.ts";
+import { keyText } from "../components/keybinding-hints.ts";
+import type { PageRow, PageSection } from "../components/manage-page.ts";
+import { credentialSource, isProviderDisabled, modelCount, setProviderEnabled } from "./provider-actions.ts";
+import { showProviderDetail } from "./provider-detail.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPiProviders } from "./provider-pi.ts";
+import { type PageContext, showSignIn } from "./provider-signin.ts";
+import {
+	fileRow,
+	fileRowId,
+	loadSourcesView,
+	runToolAction,
+	showSourceDetail,
+	sourceRow,
+	toggleSource,
+	toolRow,
+} from "./provider-sources-page.ts";
+import { showPage } from "./provider-ui.ts";
 
-/** Describe configuration without resolving secrets or claiming a successful network login. */
-function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): string {
-	const runtime = host.session.modelRuntime;
-	const status = runtime.getProviderAuthStatus(id);
-	if (!status.configured) return "Not configured";
-	const method = runtime.isUsingOAuth(id) ? "Account" : "API key";
-	const source =
-		status.label ??
-		{
-			stored: "saved credential",
-			runtime: "session credential",
-			environment: "environment",
-			fallback: "extension configuration",
-			models_json_key: "models.json",
-			models_json_command: "secret command in models.json",
-		}[status.source ?? "environment"];
-	return `${method} configured · ${source}`;
+const SIGN_IN_ROW = "signin";
+const providerRowId = (id: string): string => `provider:${id}`;
+
+export interface ProviderManagerOptions {
+	/** Where to look for sources and detected tools; tests point it at a temporary home. */
+	sourceEnvironment?: ProviderSourceEnvironment;
 }
 
-export async function removeProviderCredential(host: ProviderManagerHost, id: string, name: string): Promise<void> {
-	const sessionOverride = host.session.modelRuntime.getProviderAuthStatus(id).source === "runtime";
-	const removeLabel = sessionOverride
-		? "Remove saved and session credentials — environment and models.json stay unchanged"
-		: "Remove credential — environment and models.json stay unchanged";
-	const choice = await host.showExtensionSelector(
-		`Remove ${sessionOverride ? "saved and session credentials" : "saved credential"} for ${name}?`,
-		["Cancel", removeLabel],
-	);
-	if (choice !== removeLabel) return;
-	try {
-		await host.session.modelRuntime.logout(id, { signal: AbortSignal.timeout(15_000) });
-		host.updateAvailableProviderCount();
-		const remains = host.session.modelRuntime.getProviderAuthStatus(id).configured;
-		host.showStatus(
-			`Removed ${sessionOverride ? "saved and session credentials" : "saved credential"} for ${name}.${remains ? ` Still configured: ${providerStatus(host, id)}.` : ""} Environment and models.json are unchanged.`,
-		);
-	} catch (error) {
-		host.showError(
-			error instanceof CredentialSynchronizationError
-				? `Credential removed for ${name}, but model availability could not be updated. Reopen /login.`
-				: `Could not remove credential: ${errorMessage(error)}`,
-		);
+/**
+ * `/providers`: the main page lists providers by state, then sources, detected tools and custom models files. Sign-in is
+ * one action row that opens its own flow. `query` opens a provider's page when it names one, `pi` the Pi import list,
+ * and anything else the sign-in picker filtered by it.
+ */
+export async function showProviderManager(
+	host: ProviderManagerHost,
+	query = "",
+	options: ProviderManagerOptions = {},
+): Promise<void> {
+	const wanted = query.trim().toLowerCase();
+	const ctx: PageContext = {
+		host,
+		reopen: (id) => {
+			showProviderManager(host, id ?? "", options).catch((error: unknown) => host.showError(errorMessage(error)));
+		},
+	};
+	if (wanted === "pi") {
+		const pi = describeProviderSources(
+			host.session.settingsManager.getProviderSources(),
+			options.sourceEnvironment,
+		).find((source) => source.id === "pi");
+		if (pi && !pi.state.enabled) {
+			host.showStatus("The Pi source is off. Turn it on in /providers (Sources) to use its providers and sign-ins.");
+			return;
+		}
+		await showPiProviders(host, async (id) => showProviderManager(host, id, options));
+		return;
 	}
-}
-
-async function manageProvider(host: ProviderManagerHost, id: string, saved: readonly CredentialInfo[]): Promise<void> {
-	const runtime = host.session.modelRuntime;
-	const provider = runtime.getProvider(id);
-	const name = provider?.name ?? id;
-	const sessionOverride = runtime.getProviderAuthStatus(id).source === "runtime";
-	const methods = host.getLoginProviderOptions().filter((option) => option.id === id);
-	const choices = new Map<string, () => void | Promise<void>>();
-	if (sessionOverride)
-		choices.set("Clear session API key override — keep saved credentials", async () => {
-			await runtime.removeRuntimeApiKey(id, { signal: AbortSignal.timeout(15_000) });
-			host.updateAvailableProviderCount();
-			host.showStatus(`Cleared session override for ${name}. ${providerStatus(host, id)}.`);
+	let initialId: string | undefined;
+	for (;;) {
+		let saved: readonly CredentialInfo[];
+		try {
+			saved = await host.session.modelRuntime.listCredentials({ signal: AbortSignal.timeout(15_000) });
+		} catch {
+			host.showError("Could not read saved provider credentials. No credentials were changed.");
+			return;
+		}
+		const runtime = host.session.modelRuntime;
+		const ids = new Set([
+			...runtime.getProviders().map((provider) => provider.id),
+			...saved.map((entry) => entry.providerId),
+		]);
+		const nameOf = (id: string) => runtime.getProvider(id)?.name ?? id;
+		if (wanted && initialId === undefined) {
+			const exact = [...ids].find((id) => [id, nameOf(id)].some((value) => value.toLowerCase() === wanted));
+			if (exact) {
+				await showProviderDetail(ctx, exact, saved);
+				return;
+			}
+			await showSignIn(ctx, saved, query);
+			return;
+		}
+		const view = await loadSourcesView(ctx, options.sourceEnvironment);
+		const providerRows = (disabled: boolean): PageRow[] =>
+			[...ids]
+				.filter((id) => isProviderDisabled(host, id) === disabled)
+				.filter((id) => disabled || runtime.hasConfiguredAuth(id) || saved.some((entry) => entry.providerId === id))
+				.sort((a, b) => nameOf(a).localeCompare(nameOf(b)))
+				.map((id) => {
+					const configured = runtime.getProviderAuthStatus(id).configured;
+					const method = runtime.isUsingOAuth(id) ? "account" : "key";
+					const count = modelCount(host, id);
+					return {
+						id: providerRowId(id),
+						name: nameOf(id),
+						detail: `${configured ? `${method} · ${credentialSource(host, id)}` : "not configured"} · ${count} ${count === 1 ? "model" : "models"}`,
+						badge: disabled ? "disabled" : "enabled",
+						tone: disabled ? ("muted" as const) : ("success" as const),
+					};
+				});
+		const disabledRows = providerRows(true);
+		const sections: PageSection[] = [
+			{ heading: "Signed in", rows: providerRows(false), empty: "none yet — choose Sign in below" },
+			...(disabledRows.length ? [{ heading: "Disabled", rows: disabledRows }] : []),
+			{
+				heading: "Sign in",
+				rows: [{ id: SIGN_IN_ROW, name: "+ Add a provider", detail: "sign in with an account or an API key" }],
+			},
+			{ heading: "Sources", rows: view.sources.map(sourceRow) },
+			{ heading: "Detected", rows: view.tools.map((tool) => toolRow(ctx, tool)), empty: "no other tools found" },
+			{ heading: "Custom models", rows: view.files.map(fileRow) },
+		];
+		const choice = await showPage(host, {
+			title: "AI providers — sign in, enable or disable providers, manage sources",
+			notes: ["/model chooses a model · Configured means credentials are present; access is not verified."],
+			sections,
+			initialId,
+			keys: ["e"],
+			hints: [
+				[keyText("tui.select.confirm"), "open", 0],
+				["e", "enable/disable", 1],
+				[keyText("tui.select.cancel"), "close", 2],
+			],
 		});
-	if (runtime.getAvailableSnapshot().some((model) => model.provider === id)) {
-		choices.set("Choose a model for this chat", () => host.showModelSelector(`${id}/`));
-	}
-	for (const option of methods) {
-		// Login dialogs call `back` synchronously and drop its result, so it reports its own failure.
-		const back = () => {
-			showProviderManager(host, id).catch((error: unknown) => host.showError(errorMessage(error)));
-		};
-		if (option.authType === "oauth") {
-			choices.set(
-				`${runtime.isUsingOAuth(id) ? "Sign in again" : "Sign in"} — ${option.method?.name ?? "account"}`,
-				() => host.showLoginDialog(id, name, back),
-			);
-		} else if (option.method?.login) {
-			choices.set(
-				`${sessionOverride ? "Update saved" : saved.some((entry) => entry.providerId === id) ? "Replace" : "Add"} API key`,
-				() => host.showApiKeyLoginDialog(id, name, back),
-			);
-		} else {
-			choices.set(`Setup instructions — ${option.method?.name ?? "external credentials"}`, () =>
-				host.showAmbientAuthDialog(option, back),
-			);
+		if (!choice) return;
+		initialId = choice.id;
+		try {
+			const [kind, ...rest] = choice.id.split(":");
+			const key = rest.join(":");
+			let result: "again" | "stop" = "again";
+			if (choice.id === SIGN_IN_ROW) result = (await showSignIn(ctx, saved)) ? "stop" : "again";
+			else if (kind === "provider") {
+				if (choice.key) setProviderEnabled(host, key, nameOf(key), isProviderDisabled(host, key));
+				else result = await showProviderDetail(ctx, key, saved);
+			} else if (kind === "source") {
+				const source = view.sources.find((entry) => entry.id === key);
+				if (source && choice.key) {
+					if (source.toggleable) await toggleSource(ctx, source, !source.state.enabled);
+				} else if (source) result = await showSourceDetail(ctx, source, view.files);
+			} else if (kind === "tool") {
+				const tool = view.tools.find((entry) => entry.id === key);
+				if (tool && !choice.key) result = await runToolAction(ctx, tool, saved);
+			} else if (kind === "models") {
+				const file = view.files[Number(key)];
+				if (file && !choice.key && choice.id === fileRowId(Number(key))) {
+					host.showStatus(
+						`${file.origin} models.json: ${file.path}${file.exists ? "" : " (not found; create it to define providers)"}. Edit it, then open /model to refresh models (or restart). See docs/custom-provider.md.`,
+					);
+				}
+			}
+			if (result === "stop") return;
+		} catch (error) {
+			host.showError(errorMessage(error));
 		}
 	}
-	if (saved.some((entry) => entry.providerId === id)) {
-		choices.set(sessionOverride ? "Remove saved and session credentials" : "Remove saved credential", () =>
-			removeProviderCredential(host, id, name),
-		);
-	}
-	if (!choices.size) {
-		host.showStatus(`${name}: ${providerStatus(host, id)}. Configure this provider in models.json.`);
-		return;
-	}
-	const choice = await host.showExtensionSelector(`${name} — ${providerStatus(host, id)}`, [...choices.keys()]);
-	if (choice) await choices.get(choice)?.();
-}
-
-export async function showProviderManager(host: ProviderManagerHost, query = ""): Promise<void> {
-	if (query.trim().toLowerCase() === "pi") {
-		await showPiProviders(host, (id) => showProviderManager(host, id));
-		return;
-	}
-	let saved: readonly CredentialInfo[];
-	try {
-		saved = await host.session.modelRuntime.listCredentials({ signal: AbortSignal.timeout(15_000) });
-	} catch {
-		host.showError("Could not read saved provider credentials. No credentials were changed.");
-		return;
-	}
-	const runtime = host.session.modelRuntime;
-	const ids = new Set([
-		...runtime.getProviders().map((provider) => provider.id),
-		...saved.map((entry) => entry.providerId),
-	]);
-	const providers: AuthSelectorProvider[] = [...ids].map((id) => ({
-		id,
-		name: runtime.getProvider(id)?.name ?? id,
-		authType: "api_key",
-		detail: `${providerStatus(host, id)} · ${runtime.getAvailableSnapshot().filter((model) => model.provider === id).length} models`,
-	}));
-	providers.sort(
-		(a, b) =>
-			Number(runtime.hasConfiguredAuth(b.id)) - Number(runtime.hasConfiguredAuth(a.id)) || a.name.localeCompare(b.name),
-	);
-	const exact = providers.find((provider) =>
-		[provider.id, provider.name].some((value) => value.toLowerCase() === query.trim().toLowerCase()),
-	);
-	if (exact) {
-		await manageProvider(host, exact.id, saved);
-		return;
-	}
-	providers.push({
-		id: "__pi__",
-		name: "Pi (config)",
-		authType: "api_key",
-		detail: "Use models.json providers or import saved sign-ins",
-	});
-	host.showSelector((done) => {
-		const selector = new OAuthSelectorComponent(
-			"manage",
-			providers,
-			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; the handler reports its own failures
-			async (id) => {
-				done();
-				try {
-					if (id === "__pi__") await showPiProviders(host, (providerId) => showProviderManager(host, providerId));
-					else await manageProvider(host, id, saved);
-				} catch (error) {
-					host.showError(errorMessage(error));
-				}
-			},
-			done,
-			query,
-		);
-		return { component: selector, focus: selector };
-	});
 }

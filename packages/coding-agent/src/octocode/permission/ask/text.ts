@@ -53,7 +53,7 @@ export function modeSummary(mode: PermissionMode): string {
 		return "nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse.";
 	if (mode === "full")
 		return "nothing asks: destructive commands (rm -rf ~), private web fetches, browser control and a hook's ask all run without a prompt. Safeguards: the ⚠ counter, warning-colored activity lines and the audit log (/permissions log); a run with no UI has only the log. Invariants and hook denies still refuse.";
-	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits and profile permissions also ask.`;
+	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits, credential-store reads and profile permissions also ask.`;
 }
 
 /** What a session start says when the exported start mode bounds the wider mode the user chose before it. */

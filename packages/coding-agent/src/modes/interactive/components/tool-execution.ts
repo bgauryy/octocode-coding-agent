@@ -3,8 +3,6 @@ import {
 	Box,
 	type Component,
 	Container,
-	getCapabilities,
-	Image,
 	MouseRegion,
 	Spacer,
 	Text,
@@ -15,13 +13,15 @@ import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { rowMark, uiStateOf } from "../../../octocode/shared/render/motion.ts";
 import { phaseOf } from "../../../octocode/shared/render/rows.ts";
-import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../../../theme/theme.ts";
 import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
 import { GenericToolContent } from "./tool-execution/content.ts";
 import { purposeRows, reasonRow } from "../../../octocode/ui/reason-row.ts";
 import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
+import { displayRenderers, rowDisplay } from "./tool-execution/display.ts";
+import { noImages, updateImageRows, type ImageRows } from "./tool-execution/images.ts";
+import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
 
 export class ToolExecutionComponent extends Container {
@@ -33,10 +33,9 @@ export class ToolExecutionComponent extends Container {
 	private callRendererComponent?: Component;
 	private resultRendererComponent?: Component;
 	private rendererState: any = {};
-	private imageComponents: Image[] = [];
-	/** Inputs of imageComponents, so updateDisplay can reuse images and keep their converted PNG data. */
-	private imageSources: Array<{ data: string; mimeType: string; widthCells: number }> = [];
-	private imageSpacers: Spacer[] = [];
+	private images: ImageRows = noImages();
+	/** The host's display of this call, from the application stream; without it the row builds the same one itself. */
+	private liveDisplay?: ToolDisplay;
 	private toolName: string;
 	private toolCallId: string;
 	private args: any;
@@ -66,7 +65,16 @@ export class ToolExecutionComponent extends Container {
 		this.toolName = toolName;
 		this.toolCallId = toolCallId;
 		this.args = args;
-		this.toolDefinition = toolDefinition;
+		this.toolDefinition = displayRenderers(toolDefinition, () =>
+			rowDisplay({
+				live: this.liveDisplay,
+				definition: toolDefinition,
+				toolName,
+				args: this.args,
+				result: this.result,
+				isPartial: this.isPartial,
+			}),
+		);
 		this.showImages = options.showImages ?? true;
 		this.imageWidthCells = options.imageWidthCells ?? 60;
 		this.outputPad = options.outputPad ?? 1;
@@ -168,6 +176,11 @@ export class ToolExecutionComponent extends Container {
 		this.ui.requestRender();
 	}
 
+	/** The host's display of the call; a row without one draws the display it builds from the same result. */
+	setDisplay(display: ToolDisplay | undefined): void {
+		this.liveDisplay = display;
+	}
+
 	updateResult(result: ToolExecutionResult, isPartial = false): void {
 		this.result = result;
 		this.isPartial = isPartial;
@@ -216,7 +229,7 @@ export class ToolExecutionComponent extends Container {
 		if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
 			const contentLines = this.selfRenderContainer.render(width);
 			this.selfRenderHeight = contentLines.length;
-			if (contentLines.length === 0 && this.imageComponents.length === 0) {
+			if (contentLines.length === 0 && this.images.components.length === 0) {
 				return [];
 			}
 
@@ -225,15 +238,8 @@ export class ToolExecutionComponent extends Container {
 				lines.push("");
 				lines.push(...contentLines);
 			}
-			for (let i = 0; i < this.imageComponents.length; i++) {
-				const spacer = this.imageSpacers[i];
-				if (spacer) {
-					lines.push(...spacer.render(width));
-				}
-				const imageComponent = this.imageComponents[i];
-				if (imageComponent) {
-					lines.push(...imageComponent.render(width));
-				}
+			for (const [index, image] of this.images.components.entries()) {
+				lines.push(...(this.images.spacers[index]?.render(width) ?? []), ...image.render(width));
 			}
 			return lines;
 		}
@@ -342,54 +348,16 @@ export class ToolExecutionComponent extends Container {
 			return;
 		}
 
-		const previousImages = this.imageComponents;
-		const previousSources = this.imageSources;
-		for (const img of this.imageComponents) {
-			this.removeChild(img);
-		}
-		this.imageComponents = [];
-		this.imageSources = [];
-		for (const spacer of this.imageSpacers) {
-			this.removeChild(spacer);
-		}
-		this.imageSpacers = [];
+		this.images = updateImageRows(this, this.images, this.result?.content, {
+			show: this.showImages,
+			widthCells: this.imageWidthCells,
+			redraw: () => {
+				this.invalidate();
+				this.ui.requestRender();
+			},
+		});
 
-		if (this.result) {
-			const imageBlocks = this.result.content.filter((c) => c.type === "image");
-			const caps = getCapabilities();
-			for (const img of imageBlocks) {
-				if (caps.images && this.showImages && img.data && img.mimeType) {
-					const spacer = new Spacer(1);
-					this.addChild(spacer);
-					this.imageSpacers.push(spacer);
-					const source = { data: img.data, mimeType: img.mimeType, widthCells: this.imageWidthCells };
-					const index = this.imageComponents.length;
-					const previous = previousSources[index];
-					const imageComponent =
-						previous?.data === source.data &&
-						previous.mimeType === source.mimeType &&
-						previous.widthCells === source.widthCells
-							? previousImages[index]
-							: new Image(
-									source.data,
-									source.mimeType,
-									{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
-									{ maxWidthCells: source.widthCells },
-								);
-					if (source.mimeType !== "image/png") {
-						ensurePngTranscoder(() => {
-							this.invalidate();
-							this.ui.requestRender();
-						});
-					}
-					this.imageComponents.push(imageComponent);
-					this.imageSources.push(source);
-					this.addChild(imageComponent);
-				}
-			}
-		}
-
-		if (this.hasRendererDefinition() && !hasContent && this.imageComponents.length === 0) {
+		if (this.hasRendererDefinition() && !hasContent && this.images.components.length === 0) {
 			this.hideComponent = true;
 		}
 	}

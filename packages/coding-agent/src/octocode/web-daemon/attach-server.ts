@@ -47,6 +47,7 @@ export interface AttachEndpoint {
 interface Peer {
 	streams: Map<string, ApplicationConnection>;
 	unsubscribe?: () => void;
+	unsubscribeProfiler?: () => void;
 	/** Writes one line; false when an unsolicited event would pass the event cap (nothing is written then). */
 	send(message: AttachResponse | AttachEvent): boolean;
 }
@@ -120,6 +121,29 @@ async function answer(source: AttachSource, peer: Peer, request: AttachRequest):
 			return workspace.revision?.() ?? null;
 		case "workspace.subscribe":
 			peer.unsubscribe ??= workspace.subscribe(() => peer.send({ event: "workspace.changed" }));
+			return undefined;
+		case "profiler.agents":
+			if (!workspace.profiler) throw new Error("The profiler is unavailable in this session.");
+			return workspace.profiler.agents();
+		case "profiler.requests":
+			if (!workspace.profiler) throw new Error("The profiler is unavailable in this session.");
+			return workspace.profiler.requests(request.params.agentId, request.params.after, request.params.detail) ?? null;
+		case "profiler.timeline":
+		case "profiler.insights":
+		case "profiler.trace": {
+			if (!workspace.profiler) throw new Error("The profiler is unavailable in this session.");
+			if (request.method === "profiler.insights") return workspace.profiler.insights();
+			if (request.method === "profiler.trace") return workspace.profiler.trace();
+			return workspace.profiler.timeline(request.params.since);
+		}
+		case "profiler.subscribe":
+			peer.unsubscribeProfiler ??= workspace.profiler?.subscribe((data) =>
+				peer.send({ event: "profiler.update", data }),
+			);
+			return undefined;
+		case "profiler.unsubscribe":
+			peer.unsubscribeProfiler?.();
+			peer.unsubscribeProfiler = undefined;
 			return undefined;
 		case "workspace.execute":
 			return workspace.execute(request.params.command);
@@ -207,7 +231,11 @@ export async function startAttachServer(
 					result: {
 						sessionId: source.sessionId,
 						protocolVersion: ATTACH_PROTOCOL_VERSION,
-						capabilities: [...(source.workspace.application ? ["application"] : []), "workspace"],
+						capabilities: [
+							...(source.workspace.application ? ["application"] : []),
+							"workspace",
+							...(source.workspace.profiler ? ["profiler"] : []),
+						],
 					},
 				});
 				return;
@@ -242,6 +270,7 @@ export async function startAttachServer(
 			peers.delete(entry);
 			pending.delete(entry);
 			peer.unsubscribe?.();
+			peer.unsubscribeProfiler?.();
 			for (const connection of peer.streams.values()) connection.close();
 			peer.streams.clear();
 		});

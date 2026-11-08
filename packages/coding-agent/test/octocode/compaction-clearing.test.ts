@@ -103,7 +103,11 @@ function setup(
 	const cwd = options.cwd ?? "/repo";
 	const ctx = fakeCtx({
 		cwd,
-		model: options.withModel === false ? { ...model, promptCache: undefined } : (options.model ?? model),
+		// No known lifetime: provider-managed caching with no declared `promptCache` (an Anthropic model resolves 5m and 1h).
+		model:
+			options.withModel === false
+				? { ...model, api: "mistral-conversations", promptCache: undefined }
+				: (options.model ?? model),
 	});
 	const branch = () => [
 		...messages.map((message, index) => ({ type: "message", id: `m${index}`, message })),

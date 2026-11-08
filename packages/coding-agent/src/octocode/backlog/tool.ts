@@ -1,3 +1,4 @@
+import { displayText, textResultDisplay } from "../shared/display.ts";
 import {
 	EntityFields,
 	type EntityInput,
@@ -162,6 +163,31 @@ export function registerBacklogTool(
 					const result = batched(backlog, single) ?? run(backlog, single);
 					if (params.op !== "list" && params.op !== "get") options.changed?.(ctx);
 					return result;
+				},
+				display(input) {
+					const { args } = input;
+					const summary = [
+						args.op,
+						args.id,
+						args.state ? `→ ${args.state}` : "",
+						/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
+						args.from ? `from ${String(args.from)}` : "",
+						args.title ? `"${String(args.title)}"` : "",
+						args.query ? `"${String(args.query)}"` : "",
+						/* oxlint-enable typescript/no-unnecessary-type-conversion */
+					]
+						.filter(Boolean)
+						.join(" ");
+					const head = { title: "Backlog", summary, kind: "other" as const, blocks: [] };
+					if (!input.result || input.status === "failed") return textResultDisplay(head, input);
+					const text = displayText(input.result);
+					const listing = args.op === "list" || args.op === "get";
+					const body = (listing ? text : text.split("\n").slice(1).join("\n")).trim();
+					return {
+						...head,
+						outcome: { text: backlogSummary(args.op, (input.result.details ?? {}) as BacklogToolDetails, text) },
+						blocks: body ? [{ type: "text" as const, text: body }] : [],
+					};
 				},
 				renderCall(args, theme, context) {
 					const target = [

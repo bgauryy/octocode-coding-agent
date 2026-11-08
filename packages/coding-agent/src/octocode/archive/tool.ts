@@ -1,3 +1,4 @@
+import { textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { toolHeader } from "../shared/render.ts";
 import { clip } from "../shared/render/text.ts";
@@ -15,6 +16,7 @@ import { historyScope, PAGE_CHARS } from "../shared/history.ts";
 import { HistoryRepair } from "./repair.ts";
 import { createHistoryTool, pattern } from "./history-tool.ts";
 import { getRecord, readRecords } from "./reads.ts";
+import { readProfile } from "./profile-read.ts";
 
 type MemoryTool = ReturnType<typeof createMemoryActions>;
 
@@ -45,7 +47,8 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 			description:
 				"Search workspace memories, complete compaction summaries, session history and agent lifecycle events by op and source. " +
 				// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
-				"set and delete, where op lists them, need source memories; plan mode only reads; global or pinned changes ask for approval.",
+				"set and delete, where op lists them, need source memories; plan mode only reads; global or pinned changes ask for approval. " +
+				"source profile reads a session's agents, cache findings and request layers.",
 			promptGuidelines: memory?.promptGuidelines,
 			parameters: Type.Object({
 				...history.parameters.properties,
@@ -56,7 +59,7 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 						description: "search: topic keywords or regex query; get: full record by id; list: newest",
 					}),
 				source: Type.Optional(
-					StringEnum(["all", "sessions", "compactions", "memories", "agents", "events"] as const, {
+					StringEnum(["all", "sessions", "compactions", "memories", "agents", "events", "profile"] as const, {
 						description: "Record collection (default all)",
 					}),
 				),
@@ -74,8 +77,10 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 							: "Search topic words",
 					}),
 				),
-				agentId: Type.Optional(Type.String({ description: "Events: existing agent name" })),
-				sessionId: Type.Optional(Type.String({ description: "Events: exact session id" })),
+				agentId: Type.Optional(Type.String({ description: "Events, profile: existing agent name" })),
+				sessionId: Type.Optional(
+					Type.String({ description: "Events, profile: session id (profile default: current)" }),
+				),
 				eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: lifecycle transition" })),
 				until: Type.Optional(Type.String({ description: "Events: inclusive ISO timestamp" })),
 				limit: Type.Optional(Type.Integer({ description: "Records per source per page, 1–50 (default 10)" })),
@@ -83,6 +88,17 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 			}),
 			// Validation runs on the result, so the declared type is checked there, not here.
 			prepareArguments: (args) => opShape(args) as never,
+			display(input) {
+				const args = opShape(input.args);
+				const detail =
+					args.id ??
+					("title" in args && typeof args.title === "string" ? args.title : undefined) ??
+					args.keywords ??
+					args.query ??
+					(args.file ? `${args.file}${args.line ? `:${args.line}` : ""}` : args.errors ? "errors" : "");
+				const summary = [args.op ?? "list", args.source ?? "all", detail].filter(Boolean).join(" ");
+				return textResultDisplay({ title: "Archive", summary, kind: "search", blocks: [] }, input);
+			},
 			renderCall(raw, theme, context) {
 				const args = opShape(raw);
 				const detail =
@@ -117,6 +133,10 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 					["until", input.until],
 				] as const)
 					if (time && !Number.isFinite(Date.parse(time))) throw new Error(`${key} must be an ISO date or time.`);
+				if (input.source === "profile") {
+					const profile = readProfile(ctx.cwd, input);
+					return textResult(profile.text, { mode: "profile", session: profile.session, reason: input.reason });
+				}
 				if (op === "search" && input.source === "memories" && !input.query?.trim() && !input.keywords?.trim())
 					throw new Error("Memory search needs query or keywords.");
 				// Every source reads query as a regular expression: an invalid one names the fix before any search runs.

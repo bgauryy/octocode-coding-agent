@@ -188,7 +188,7 @@ try {
 			directName: codingAgentName,
 			directVersion: agent.version,
 			reviewedPackages,
-			allowInstallScripts: ["@google/genai@2.21.0", "protobufjs@7.6.6"],
+			allowInstallScripts: ["@google/genai@2.32.0", "protobufjs@7.6.6"],
 		});
 		if (
 			[...staged, ...Object.entries(mapping.packages).map(([name, entry]) => ({ ...entry, name }))].some(
@@ -231,7 +231,7 @@ try {
 				...reviewedPackages,
 				[codingAgentName]: { version: agent.version, integrity: agent.integrity },
 			},
-			allowInstallScripts: ["@google/genai@2.21.0", "protobufjs@7.6.6"],
+			allowInstallScripts: ["@google/genai@2.32.0", "protobufjs@7.6.6"],
 		});
 		const installed = realpathSync(join(consumer, "node_modules", codingAgentName));
 		if (!installed.startsWith(`${realpathSync(consumer)}/`))

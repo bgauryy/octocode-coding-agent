@@ -902,7 +902,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 		try {
 			expect(connection.oauthUrl).toBeUndefined();
 			await expect(connection.getClient()).rejects.toThrow(
-				'MCP server "gateway" requires sign-in. Run /login gateway to sign in.',
+				'MCP server "gateway" requires sign-in. Run /providers gateway to sign in.',
 			);
 			expect(connection.state).toBe("needs-auth");
 			expect(authorizations).toEqual(["Bearer tok"]);

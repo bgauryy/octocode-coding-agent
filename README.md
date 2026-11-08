@@ -17,7 +17,7 @@ octocode
 > [!NOTE]
 > Octocode first asks whether you trust the folder. Until you do, it reads nothing from it: no `AGENTS.md`, settings, MCP servers, hooks or skills.
 
-1. `/login` connects an AI provider (browser sign-in or API key).
+1. `/providers` connects an AI provider (browser sign-in or API key).
 2. `/model` picks the model, then type your task.
 3. Optional: `/octocode auth login` connects GitHub for code search.
 
@@ -44,7 +44,7 @@ octocode --trust -p "..."                                 # headless runs need a
 | [Skills](#skills)                                     | On-demand instructions for a kind of work                              | `/harness list skills`                       |
 | [Plugins and hooks](#plugins-and-hooks)               | Claude and Codex plugins, lifecycle hooks                              | `/harness`, `octocode marketplace add`       |
 | [Harnesses](#harnesses)                               | Reuse Pi, Claude Code, Codex, Cursor and `.agents` setup               | `/harness`                                   |
-| [Providers and models](#providers-and-models)         | Hosted providers, OAuth, local models, routing                         | `/login`, `/model`, `/modelsettings`         |
+| [Providers and models](#providers-and-models)         | Hosted providers, OAuth, local models, routing                         | `/providers`, `/model`, `/modelsettings`     |
 | [Prompt caching](#prompt-caching)                     | Layered cache, shared prefixes, warming                                | `cacheWarming`, `/status`                    |
 | [Permissions and safety](#permissions-and-safety)     | Modes, folder trust, plan mode, checkpoints                            | `/permissions`, `/trust`, `/plan`, `/rewind` |
 | [Sessions](#sessions-and-context)                     | Resume, fork, compaction, side questions                               | `/resume`, `/fork`, `/compact`, `/btw`       |
@@ -267,7 +267,7 @@ Enabling a harness connects its MCP servers at once; its skills and hooks apply 
 
 ## Providers and models
 
-`/login` lists every provider with its credential source: sign in through the browser (OAuth) or add an API key, stored in the OS keychain when available. Environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...) and key commands work too; Bedrock and Vertex use cloud credentials; `/login pi` imports Pi sign-ins; GitHub Copilot is `/login github-copilot`.
+`/providers` lists every provider with its credential source: sign in through the browser (OAuth) or add an API key, stored in the OS keychain when available. Environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...) and key commands work too; Bedrock and Vertex use cloud credentials; `/providers pi` imports Pi sign-ins; GitHub Copilot is `/providers github-copilot`.
 
 - `/model` picks the model for this chat; `/effort` sets reasoning effort; `/context size` sets the session context budget.
 - `/modelsettings` manages shortcuts, the catalog and which model each purpose (small, medium, subagent roles) uses.
@@ -359,7 +359,7 @@ Start flags: `--continue`, `--resume [id]` (an id resumes it; none opens a picke
 | ------------------------ | -------------------------------------------- | ----------------------------------------- |
 | Settings                 | `settings.json` (`/settings`)                | `.octocode/settings.json`                 |
 | MCP servers              | `~/.octocode/mcp.json`                       | `.octocode/mcp.json`                      |
-| Providers and models     | `models.json`, `auth.json` (`/login`)        | none                                      |
+| Providers and models     | `models.json`, `auth.json` (`/providers`)    | none                                      |
 | Skills                   | `skills/`                                    | `.octocode/skills/`                       |
 | Subagent roles           | `agents/*.md`                                | `.octocode/agents/*.md`                   |
 | Hooks                    | `hooks.json`                                 | `.octocode/hooks.json`                    |

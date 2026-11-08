@@ -14,6 +14,7 @@ import type {
 	LabelEntry,
 	ModelChangeEntry,
 	SessionInfoEntry,
+	InputOrigin,
 	SessionMessageEntry,
 	SessionNameSource,
 	ThinkingLevelChangeEntry,
@@ -22,13 +23,18 @@ import type {
 
 // Entry builders behind SessionManager's append methods. Each creates a child of the current leaf and advances it.
 
-export function appendMessage(state: SessionState, message: Message | CustomMessage | BashExecutionMessage): string {
+export function appendMessage(
+	state: SessionState,
+	message: Message | CustomMessage | BashExecutionMessage,
+	origin?: InputOrigin,
+): string {
 	const entry: SessionMessageEntry = {
 		type: "message",
 		id: generateId(state.byId),
 		parentId: state.leafId,
 		timestamp: new Date().toISOString(),
 		message,
+		...(origin ? { origin } : {}),
 	};
 	appendEntry(state, entry);
 	return entry.id;

@@ -120,3 +120,21 @@ it("marks results with the shared run-state shapes: stopped for not-run and cut-
 	expect([marks("stopped"), marks("failed"), marks("done")]).toEqual([2, 1, 1]);
 	expect(screen.getByText("Stopped")).toBeInTheDocument();
 });
+
+it("shows a running tool's progress as a bar with its count and message", () => {
+	const [event] = project({
+		tools: [
+			{
+				toolCallId: "p",
+				toolName: "mcp__s__slow",
+				text: "half",
+				status: "running",
+				progress: { progress: 2, total: 4, message: "half" },
+			},
+		],
+	});
+	render(<ResultCard event={event} />, { wrapper: Wrapper });
+	const bar = screen.getByLabelText("Tool progress");
+	expect(bar.getAttribute("value")).toBe("0.5");
+	expect(screen.getByText("2/4 (50%) · half", { exact: false })).toBeTruthy();
+});

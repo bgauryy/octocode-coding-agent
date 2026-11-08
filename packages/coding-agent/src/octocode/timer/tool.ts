@@ -1,3 +1,4 @@
+import { textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
@@ -153,6 +154,20 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 					? `\nJudging is capped: ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perCheckUsd.toFixed(2)} per judgment, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session, 30s apart.`
 					: "";
 			return textResult(`Set ${timerLine(timer, now)}${caps}\nCancel it with id ${timer.id}.`, { timer });
+		},
+		display(input) {
+			const { args } = input;
+			const summary = [
+				args.op,
+				args.id,
+				args.every !== undefined ? `every ${args.every}s` : args.after !== undefined ? `in ${args.after}s` : "",
+				untilTarget(args.until),
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
+				args.note ? `"${String(args.note)}"` : "",
+			]
+				.filter((part) => part !== undefined && part !== "")
+				.join(" ");
+			return textResultDisplay({ title: "Timer", ...(summary ? { summary } : {}), kind: "other", blocks: [] }, input);
 		},
 		renderCall(args, theme, context) {
 			const until = untilTarget(args.until);

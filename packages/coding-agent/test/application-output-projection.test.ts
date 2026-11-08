@@ -63,6 +63,8 @@ describe("application output projection", () => {
 			text: "safe",
 			content: [{ id: "tool:a:0", type: "text", text: "safe" }],
 			full: expect.objectContaining({ mimeType: "application/json" }),
+			// The display follows the projection: the raw output never reaches it.
+			display: { title: "agent", blocks: [{ type: "text", text: "safe", preview: "tail" }] },
 		});
 		expect(after.messages[0]).toEqual({
 			...before.messages[0],

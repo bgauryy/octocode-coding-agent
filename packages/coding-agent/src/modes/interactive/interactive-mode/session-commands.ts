@@ -194,7 +194,7 @@ export function getPathCommandArgument(text: string, command: "/export" | "/impo
 export async function handleImportCommand(host: SessionCommandsHost, text: string): Promise<void> {
 	const inputPath = host.getPathCommandArgument(text, "/import");
 	if (!inputPath) {
-		host.showError("Usage: /import <path.jsonl>");
+		host.showWarning("Usage: /import <path.jsonl>");
 		return;
 	}
 

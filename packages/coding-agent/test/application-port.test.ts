@@ -282,6 +282,13 @@ it("restores partial tools and compaction status on a fresh connection", async (
 			content: [{ id: "tool:tool-A:0", type: "text", text: "Partial output" }],
 			status: "running",
 			hint: "src/a.ts",
+			startedAt: expect.any(Number),
+			// No display() for this tool: the generic one, live output kept at its end.
+			display: {
+				title: "read",
+				summary: "src/a.ts",
+				blocks: [{ type: "text", text: "Partial output", preview: "tail" }],
+			},
 		},
 	]);
 	expect(frame.snapshot.status).toBe("compacting");

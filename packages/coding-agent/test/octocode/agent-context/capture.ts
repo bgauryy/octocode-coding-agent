@@ -303,15 +303,23 @@ async function captureMain(): Promise<AgentContext> {
 /**
  * A child as `subagents/tool.ts` starts it: the identity and role prompt reach it through its environment
  * (`subagentProcessEnv`), the tools, extensions and skills through its command line (`buildAgentArgs`), the skills
- * through the snapshot file the parent wrote, and the task through `childTaskInput` and `withIdentity`.
+ * through the snapshot file the parent wrote, and the task through `childTaskInput` and `withIdentity`. `isolated`
+ * starts it in a worktree folder of the project (its own trusted copy of AGENTS.md), as `isolation.ts` hands one over.
  */
 export async function captureChild(
 	name: string,
 	roleName: string | undefined,
 	parent: { task: string; goal: string } = { task: CHILD_TASK, goal: CHILD_GOAL },
+	{ isolated = false }: { isolated?: boolean } = {},
 ): Promise<AgentContext> {
 	const fx = fixture();
 	try {
+		const worktree = isolated ? path.join(fx.root, "worktrees", "child-example") : undefined;
+		if (worktree) {
+			fs.mkdirSync(worktree, { recursive: true });
+			fs.writeFileSync(path.join(worktree, "AGENTS.md"), PROJECT_INSTRUCTIONS);
+			trustFolder(worktree, baseEnv(fx));
+		}
 		const profiles = loadProfiles(fx.cwd, fx.home, false, {});
 		const profile: AgentProfile | undefined = roleName ? profiles.get(roleName) : undefined;
 		if (roleName && !profile) throw new Error(`Bundled role ${roleName} not found`);
@@ -349,6 +357,13 @@ export async function captureChild(
 			scratch: fx.scratch,
 			skillsInTask: skillPlan.inTask,
 			permission: { mode: "workspace", grants: [] },
+			// `isolation.ts`: the child runs in the worktree (its resolved path) and its prompt names the main checkout.
+			...(worktree
+				? {
+						isolation: { path: worktree, repo: fx.cwd, cwd: fs.realpathSync(worktree) },
+						workspace: fx.cwd,
+					}
+				: {}),
 		};
 		// A role's skills name their files in its prompt; where the research package is installed is the machine's.
 		for (const skill of adoptSkillResourceSnapshot(snapshot).skills) {
@@ -376,7 +391,8 @@ export async function captureChild(
 			// `main.ts` adopts the file only in a subagent that was handed one.
 			skillResourceSnapshot: readSkillResourceSnapshot(snapshotFile),
 		};
-		const context = await withEnv(env, () => firstRequest(fx, shape, task));
+		const runIn = identity.isolation ? { ...fx, cwd: identity.isolation.cwd } : fx;
+		const context = await withEnv(env, () => firstRequest(runIn, shape, task));
 		return describeRequest(name, "child", roleName, context, normalizer(fx));
 	} finally {
 		fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

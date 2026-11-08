@@ -256,7 +256,11 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		}
 		const repo = catalog.resolve(scope.id);
 		if (!repo) return reply(404, { error: "Unknown repository" });
-		if (scopedUrl.pathname === WORKSPACE_ROUTES.workspace || scopedUrl.pathname === WORKSPACE_ROUTES.application)
+		if (
+			scopedUrl.pathname === WORKSPACE_ROUTES.workspace ||
+			scopedUrl.pathname === WORKSPACE_ROUTES.application ||
+			scopedUrl.pathname.startsWith(WORKSPACE_ROUTES.profiler)
+		)
 			return reply(503, { error: "Agent controls need a running session; open one from the session list." });
 		if (await handleRepoRequest(req, scopedUrl, repo, catalog, undefined, reply)) return;
 		return reply(404, { error: "Not found" });

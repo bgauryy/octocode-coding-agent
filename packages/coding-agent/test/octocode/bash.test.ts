@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getAgentDir } from "../../src/config.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
-import { RERUN_HINT } from "../../src/octocode/files/render.ts";
+import { RERUN_HINT } from "../../src/octocode/files/outcome.ts";
 import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";

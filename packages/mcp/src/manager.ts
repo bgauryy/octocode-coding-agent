@@ -20,7 +20,7 @@ import {
 	type McpServer,
 } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import type { McpMenu, McpUi } from "./ui.ts";
+import type { McpMenu, McpMenuItem, McpUi } from "./ui.ts";
 
 function notices(state: McpExtensionState): string[] {
 	return [
@@ -29,10 +29,26 @@ function notices(state: McpExtensionState): string[] {
 	];
 }
 
+/** The badge colour of a server's state: success when connected, error when failed, warning when it needs the user. */
+function stateTone(server: McpServer): McpMenuItem["tone"] {
+	if (!isEnabled(server)) return "muted";
+	switch (server.connection?.state) {
+		case "connected":
+			return "success";
+		case "failed":
+			return "error";
+		case "needs-auth":
+			return "warning";
+		default:
+			return "muted";
+	}
+}
+
 function serversMenu(state: McpExtensionState): McpMenu {
 	const { projectTrusted } = state;
 	return {
-		title: "MCP servers",
+		title: "MCP servers — connect, enable or disable, manage tools",
+		heading: "Servers",
 		details: `Global: ${state.configLocations().globalWrite}\nWorkspace: ${state.configLocations().projectWrite}${projectTrusted ? "" : " (requires trust)"}\n/mcp config shows read order; /mcp tools lists tools.`,
 		error: notices(state).join("\n") || undefined,
 		items: [...state.servers]
@@ -40,10 +56,12 @@ function serversMenu(state: McpExtensionState): McpMenu {
 			.map((server) => ({
 				value: server.entry.name,
 				label: server.entry.name,
-				description: `${describeState(server)} · ${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
+				description: `${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
+				badge: describeState(server, false),
+				tone: stateTone(server),
 			})),
 		empty: `No MCP servers configured. Add them to ${state.configLocations().globalWrite} or ${state.configLocations().projectWrite}.`,
-		confirmLabel: "manage",
+		confirmLabel: "open",
 		cancelLabel: "close",
 	};
 }
@@ -98,22 +116,26 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 		}
 	}
 	items.push({ value: "exposure", label: "Exposure", description: exposureOf(entry) });
-	const details = [
-		describeTransport(entry),
-		`${entry.scope ?? "config"}: ${entry.source}`,
-		...(entry.override ? [`${entry.overrideScope ?? "project"} override: ${entry.override}`] : []),
-		`State: ${describeState(server, false)}`,
+	const facts = [
+		{ label: "Transport", value: describeTransport(entry) },
+		{ label: entry.scope ?? "config", value: entry.source },
+		...(entry.override ? [{ label: `${entry.overrideScope ?? "project"} override`, value: entry.override }] : []),
+		{ label: "State", value: describeState(server, false) },
+		// What the server last warned about and the last protocol error, which otherwise only reach mcp.log.
+		...(connection?.serverWarning ? [{ label: "Server log", value: connection.serverWarning }] : []),
+		...(connection?.clientError ? [{ label: "Client error", value: connection.clientError }] : []),
 	];
 	const error = [server.message, connection?.state === "connected" ? undefined : connection?.error]
 		.filter((line): line is string => line !== undefined)
 		.join("\n");
 	return {
-		title: `MCP server ${name}`,
-		details: details.join("\n"),
+		title: `${name} — MCP server`,
+		heading: "Actions",
+		facts,
 		error: error || undefined,
 		items,
 		selected: items[0]?.value,
-		confirmLabel: "select",
+		confirmLabel: "run",
 		cancelLabel: "back",
 	};
 }
@@ -122,8 +144,9 @@ async function showTools(state: McpExtensionState, ui: McpUi, name: string): Pro
 	for (;;) {
 		const selected = await ui.menu(
 			() => ({
-				title: `Tools of ${name}`,
-				details: "Select a tool to inspect its description and input schema. Hidden tools cannot be called.",
+				title: `${name} — tools`,
+				heading: "Tools",
+				details: "Open a tool to inspect its description and input schema. Hidden tools cannot be called.",
 				items: toolCatalog(state, name).map((tool) => ({
 					value: tool.name,
 					label: tool.name,
@@ -139,9 +162,13 @@ async function showTools(state: McpExtensionState, ui: McpUi, name: string): Pro
 		const tool = toolCatalog(state, name).find((candidate) => candidate.name === selected);
 		if (tool)
 			await ui.menu(() => ({
-				title: `Tool ${tool.name}`,
-				details: formatMcpTool(tool, true),
+				title: `${tool.name} — tool`,
+				heading: "Details",
+				facts: formatMcpTool(tool, true)
+					.split("\n")
+					.map((value) => ({ label: "", value })),
 				items: [],
+				empty: "",
 				confirmLabel: "",
 				cancelLabel: "back",
 			}));
@@ -151,7 +178,8 @@ async function showTools(state: McpExtensionState, ui: McpUi, name: string): Pro
 async function chooseExposure(state: McpExtensionState, ui: McpUi, server: McpServer): Promise<string | undefined> {
 	const current = exposureOf(server.entry);
 	const choice = await ui.menu(() => ({
-		title: `Exposure of ${server.entry.name}`,
+		title: `${server.entry.name} — exposure`,
+		heading: "Exposure",
 		details:
 			server.entry.scope === "extension"
 				? `Applies to this session; the server is registered by ${server.entry.source}.`
@@ -194,6 +222,26 @@ export function signInWithUi(state: McpExtensionState, ui: McpUi, server: McpSer
 	);
 }
 
+/** The one confirmation shape (`Cancel` first, then the action with what stays unchanged), drawn as a menu. */
+async function confirmSignOut(ui: McpUi, name: string): Promise<boolean> {
+	const choice = await ui.menu(() => ({
+		title: `Sign out of ${name}?`,
+		heading: "Confirm",
+		items: [
+			{ value: "cancel", label: "Cancel" },
+			{
+				value: "signout",
+				label: "Sign out",
+				description: "deletes the stored credentials; the server stays configured",
+			},
+		],
+		selected: "cancel",
+		confirmLabel: "confirm",
+		cancelLabel: "back",
+	}));
+	return choice === "signout";
+}
+
 /** Keep the subscribed menu usable while a connection opens or closes. */
 function runInBackground(
 	state: McpExtensionState,
@@ -233,6 +281,7 @@ async function runAction(
 			});
 			break;
 		case "signout":
+			if (!(await confirmSignOut(ui, server.entry.name))) break;
 			await signOut(state, server);
 			break;
 		case "tools":

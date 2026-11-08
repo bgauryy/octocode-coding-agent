@@ -3,6 +3,7 @@ import { openScratchFile, writeScratchFile } from "../../shared/report-artifact.
 import path from "node:path";
 import { tailNote } from "../../shared/format.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { SecretStream } from "../../../../../common/src/secret-stream.ts";
 import type { ChildState } from "../events.ts";
 import { type ChildNotices, noticeText } from "../notices.ts";
 import { cutText } from "../../../../../common/src/text.ts";
@@ -13,8 +14,10 @@ const STDERR_FILE = "stderr.txt";
 const NOTICES_FILE = "notices.txt";
 
 /**
- * A child's stderr, bounded in memory: its last `STDERR_TAIL_CHARS` characters (control characters made visible), and,
- * once it outgrows that, all of it streamed to `stderr.txt` in `dir`, so a failure that shows only the end can name the whole.
+ * A child's stderr, bounded in memory: its last `STDERR_TAIL_CHARS` characters (control characters made visible,
+ * credentials redacted), and, once it outgrows that, all of it streamed to `stderr.txt` in `dir`, so a failure that shows
+ * only the end can name the whole. Text is redacted as it is captured, so the tail, the file and every message built from
+ * them are free of credentials; a credential split across chunks is held until it can be recognized.
  */
 export class StderrTail {
 	private tail = "";
@@ -22,6 +25,7 @@ export class StderrTail {
 	private fd: number | undefined;
 	private file: string | undefined;
 	private failed = false;
+	private readonly secrets = new SecretStream();
 
 	private readonly dir: string | undefined;
 	constructor(dir: string | undefined) {
@@ -29,7 +33,18 @@ export class StderrTail {
 	}
 
 	write(chunk: string): void {
-		const text = visibleControls(chunk);
+		const released = this.secrets.push(visibleControls(chunk));
+		this.append(released ?? this.secrets.flush());
+	}
+
+	/** Releases the text still held back for a credential that might continue, so nothing waits behind it. */
+	private settle(): void {
+		this.append(this.secrets.flush());
+	}
+
+	/** Adds redacted text to the tail and, once the stderr outgrows the tail, to the file. */
+	private append(text: string): void {
+		if (!text) return;
 		const before = this.tail;
 		this.total += text.length;
 		this.tail = cutText(before + text, STDERR_TAIL_CHARS, { chars: true, tail: true });
@@ -52,6 +67,7 @@ export class StderrTail {
 	}
 
 	close(): void {
+		this.settle();
 		if (this.fd === undefined) return;
 		try {
 			fs.closeSync(this.fd);
@@ -63,6 +79,7 @@ export class StderrTail {
 
 	/** The first line that names an error (`SyntaxError …`, `ERR_…`, `Cannot find module …`), else the first line that is not a stack frame; cut to one short line. */
 	firstError(): string | undefined {
+		this.settle();
 		const lines = this.tail
 			.split("\n")
 			.map((line) => line.trim())
@@ -90,6 +107,7 @@ export class StderrTail {
 
 	/** What an error shows: the whole stderr when it fit, else a note on the cut and where the whole is, then the end. */
 	text(): string {
+		this.settle();
 		const shown = this.tail.trim() || "no output";
 		return this.total > STDERR_TAIL_CHARS
 			? `${tailNote("stderr", this.tail.length, this.total, this.file)}\n${shown}`

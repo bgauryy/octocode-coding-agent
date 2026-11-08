@@ -7,6 +7,7 @@
  */
 
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
+import { MAX_AUTH_ERROR_BODY_CHARS, summarizeErrorBody } from "../../utils/error-body.ts";
 import { sleep } from "../../utils/sleep.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { describeResponseFields, pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
@@ -58,7 +59,7 @@ async function startDeviceAuthorization(oauthHost: string, signal: AbortSignal):
 	});
 
 	if (!response.ok) {
-		const text = await response.text().catch(() => "");
+		const text = summarizeErrorBody(await response.text().catch(() => ""), MAX_AUTH_ERROR_BODY_CHARS);
 		throw new Error(`Kimi Code device authorization failed with status ${response.status}${text ? `: ${text}` : ""}`);
 	}
 
@@ -161,7 +162,10 @@ async function pollForToken(
 			}
 
 			const error = json?.error;
-			const description = typeof json?.error_description === "string" ? `: ${json.error_description}` : "";
+			const description =
+				typeof json?.error_description === "string"
+					? `: ${summarizeErrorBody(json.error_description, MAX_AUTH_ERROR_BODY_CHARS)}`
+					: "";
 			if (error === "authorization_pending") {
 				return { status: "pending" };
 			}
@@ -236,7 +240,11 @@ async function refreshToken(oauthHost: string, refreshTokenValue: string, signal
 			continue;
 		}
 
-		const text = JSON.stringify(json);
+		// A refresh response may carry tokens: name only its error fields, never the whole body.
+		const text = [json?.error, json?.error_description]
+			.filter((field): field is string => typeof field === "string")
+			.map((field) => summarizeErrorBody(field, MAX_AUTH_ERROR_BODY_CHARS))
+			.join(": ");
 		throw new Error(`Kimi Code token refresh failed with status ${response.status}${text ? `: ${text}` : ""}`);
 	}
 

@@ -93,7 +93,7 @@ function Providers({ snapshot, save }: { snapshot: ConfigSnapshot; save?: SaveCr
 				<>
 					{configured.length === 0 && (
 						<p className="panel-empty muted">
-							No provider has a credential yet. Sign in with <code>/login</code> in a terminal session.
+							No provider has a credential yet. Sign in with <code>/providers</code> in a terminal session.
 						</p>
 					)}
 					<ProviderGroup

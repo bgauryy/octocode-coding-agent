@@ -1,4 +1,5 @@
 import {
+	type Component,
 	type EditorTheme,
 	getKeybindings,
 	GLYPH,
@@ -8,6 +9,8 @@ import {
 	type SelectListTheme,
 	SEPARATOR,
 	type SettingsListTheme,
+	truncateToWidth,
+	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import { highlight, isHighlightable, resolveLanguage } from "../utils/syntax-highlight.ts";
 import type { Theme } from "./theme-class.ts";
@@ -305,4 +308,48 @@ export function hintText(hints: readonly KeyHintPair[]): string {
 /** The one key-hint line of selectors, dialogs and indicators: `key verb · key verb` in `rawKeyHint` colors. */
 export function hintLine(hints: readonly KeyHintPair[]): string {
 	return hints.map(([key, verb]) => rawKeyHint(key, verb)).join(theme.fg("dim", SEPARATOR));
+}
+
+/** A key hint with an optional rank: a lower number is kept longer. Hints without one rank by their position. */
+export type RankedHint = readonly [key: string, verb: string, rank?: number];
+
+/** The hints that fit `width` columns, in their original order: when they do not fit, the least important go first. */
+export function fitHints(hints: readonly RankedHint[], width: number): KeyHintPair[] {
+	const kept = hints.map((hint, index) => ({ pair: [hint[0], hint[1]] as KeyHintPair, rank: hint[2] ?? index, index }));
+	while (kept.length > 1 && visibleWidth(hintText(kept.map((entry) => entry.pair))) > width) {
+		let drop = 0;
+		for (let i = 1; i < kept.length; i++) {
+			if (kept[i].rank > kept[drop].rank || (kept[i].rank === kept[drop].rank && kept[i].index > kept[drop].index))
+				drop = i;
+		}
+		kept.splice(drop, 1);
+	}
+	return kept.map((entry) => entry.pair);
+}
+
+/** One line of key hints, indented by `indent` columns; the last hint left is cut with an ellipsis, never wrapped. */
+export function renderHintLine(hints: readonly RankedHint[], width: number, indent = 1): string {
+	const room = Math.max(1, width - indent);
+	return truncateToWidth(`${" ".repeat(indent)}${hintLine(fitHints(hints, room))}`, width, "…");
+}
+
+/** The one key-hint line of every selector, fitted to the width. */
+export class HintBar implements Component {
+	private hints: readonly RankedHint[];
+	private readonly indent: number;
+
+	constructor(hints: readonly RankedHint[], indent = 1) {
+		this.hints = hints;
+		this.indent = indent;
+	}
+
+	setHints(hints: readonly RankedHint[]): void {
+		this.hints = hints;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		return [renderHintLine(this.hints, width, this.indent)];
+	}
 }

@@ -128,7 +128,7 @@ describe("/trust", () => {
 
 	it("adds the current folder after a confirmation that says what trust allows", async () => {
 		const app = dir("code", "app");
-		const t = session(app, { confirm: [true] });
+		const t = session(app, { select: ["Trust"] });
 		await t.run("add");
 		expect(t.dialogs[0]).toMatch(/run commands[\s\S]*this folder/);
 		expect(live()).toMatchObject([
@@ -139,7 +139,7 @@ describe("/trust", () => {
 
 	it("records nothing when the confirmation is declined", async () => {
 		const app = dir("code", "app");
-		const t = session(app, { confirm: [false] });
+		const t = session(app, { select: ["Cancel"] });
 		await t.run("add");
 		expect(live()).toEqual([]);
 		expect(t.text()).toContain("Nothing was changed.");
@@ -148,7 +148,7 @@ describe("/trust", () => {
 	it("adds a parent as a subtree and turns a recorded refusal back into trust", async () => {
 		const app = dir("code", "app", "web");
 		refuseFolder(app, { source: "prompt", surface: "tui" }, options);
-		const t = session(app, { confirm: [true, true] });
+		const t = session(app, { select: ["Trust", "Trust"] });
 		await t.run("add --scope parent");
 		expect(live().find((row) => row.path === path.dirname(app))).toMatchObject({ scope: "subtree", source: "command" });
 		// The refusal on the folder itself is nearer, so it still stands until it is replaced.
@@ -158,7 +158,7 @@ describe("/trust", () => {
 	});
 
 	it("refuses the home folder and the root with a suggestion to open a project", async () => {
-		const t = session(dir("code", "app"), { confirm: [true] });
+		const t = session(dir("code", "app"), { select: ["Trust"] });
 		await t.run(`add ${home}`);
 		expect(t.text()).toMatch(/does not open your home folder[\s\S]*Open a project folder/);
 		await t.run(`add ${path.join(home, "x")} --scope parent`.replace(path.join(home, "x"), dir("home", "x")));
@@ -184,7 +184,7 @@ describe("/trust", () => {
 		const b = dir("code", "b");
 		const first = grantFolder(a, "folder", { source: "prompt", surface: "tui" }, options);
 		grantFolder(b, "folder", { source: "prompt", surface: "tui" }, options);
-		const t = session(dir("elsewhere"), { confirm: [true, true] });
+		const t = session(dir("elsewhere"), { select: ["Remove", "Remove"] });
 		await t.run(`remove #${first.id}`);
 		await t.run(`remove ${b}`);
 		expect(live()).toEqual([]);
@@ -196,7 +196,7 @@ describe("/trust", () => {
 	it("closes the session when the removed decision is the one that lets it run", async () => {
 		const app = dir("code", "app");
 		grantFolder(app, "folder", { source: "prompt", surface: "tui" }, options);
-		const t = session(app, { confirm: [true] });
+		const t = session(app, { select: ["Remove"] });
 		await t.run("remove .".replace(".", app));
 		expect(t.dialogs[0]).toContain("Octocode will close");
 		expect(t.shutdown).toHaveBeenCalledOnce();
@@ -220,10 +220,10 @@ describe("/trust", () => {
 		expect(menu).toContain("Folder trust");
 		expect(menu).toContain(`Trust ${path.dirname(app)} and everything under it`);
 		const entry = menu.split("\n").find((line) => line.includes(gone));
-		const t = session(app, { select: [entry], confirm: [true] });
+		const t = session(app, { select: [entry, "Remove"] });
 		await t.run("");
 		expect(live().map((row) => row.path)).toEqual([app]);
-		const wider = session(app, { select: [`Trust ${path.dirname(app)} and everything under it`], confirm: [true] });
+		const wider = session(app, { select: [`Trust ${path.dirname(app)} and everything under it`, "Trust"] });
 		await wider.run("");
 		expect(live().find((row) => row.path === path.dirname(app))).toMatchObject({ scope: "subtree" });
 	});

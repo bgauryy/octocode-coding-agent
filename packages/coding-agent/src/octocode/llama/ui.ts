@@ -1,4 +1,5 @@
 import {
+	type Component,
 	type Container,
 	type Focusable,
 	type SelectItem,
@@ -11,7 +12,8 @@ import { sanitizeTerminalText as plain } from "../../../../common/src/sanitize.t
 import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { frame, renderClipped, runInView } from "../../modes/interactive/components/framed-view.ts";
-import { hintLine, keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.ts";
+import { HintBar, type RankedHint } from "../../theme/theme-tui-helpers.ts";
+import { keyText } from "../../modes/interactive/components/keybinding-hints.ts";
 import type { Theme } from "../../theme/theme.ts";
 import type { LlamaModelInfo, LlamaProgress } from "./client.ts";
 import type { HuggingFaceModel } from "./huggingface.ts";
@@ -24,6 +26,11 @@ type LlamaManagerAction = { type: "model"; model: LlamaModelInfo } | { type: "do
 interface ProgressState extends LlamaProgress {
 	title: string;
 	model: string;
+}
+
+/** The spacer and key-hint line that end a view's body. */
+function hints(...keys: RankedHint[]): Component[] {
+	return [new Spacer(1), new HintBar(keys)];
 }
 
 function contextLabel(model: LlamaModelInfo): string | undefined {
@@ -148,15 +155,15 @@ class LlamaView implements LlamaUi, Focusable {
 			};
 			list.onCancel = () => resolve({ type: "close" });
 			this.setContent(
-				frame(
-					this.theme,
-					"llama.cpp models",
-					[new Text(this.theme.fg("dim", plain(serverUrl)), 1, 0), new Spacer(1), list],
-					hintLine([
-						[keyText("tui.select.confirm"), "load/unload/download"],
-						[keyText("tui.select.cancel"), "close"],
-					]),
-				),
+				frame(this.theme, "llama.cpp models", [
+					new Text(this.theme.fg("dim", plain(serverUrl)), 1, 0),
+					new Spacer(1),
+					list,
+					...hints(
+						[keyText("tui.select.confirm"), "load/unload/download", 1],
+						[keyText("tui.select.cancel"), "close", 0],
+					),
+				]),
 				list,
 			);
 		});
@@ -176,11 +183,11 @@ class LlamaView implements LlamaUi, Focusable {
 					this.theme,
 					// Titles carry server text: model ids and the server's error messages.
 					plain(title),
-					[new Spacer(1), list],
-					hintLine([
-						[keyText("tui.select.confirm"), "select"],
-						[keyText("tui.select.cancel"), "cancel"],
-					]),
+					[
+						new Spacer(1),
+						list,
+						...hints([keyText("tui.select.confirm"), "select", 1], [keyText("tui.select.cancel"), "cancel", 0]),
+					],
 				),
 				list,
 			);
@@ -209,15 +216,11 @@ class LlamaView implements LlamaUi, Focusable {
 				resolve,
 			);
 			this.setContent(
-				frame(
-					this.theme,
-					"Download model",
-					[new Spacer(1), component],
-					hintLine([
-						[keyText("tui.select.confirm"), "select"],
-						[keyText("tui.select.cancel"), "back"],
-					]),
-				),
+				frame(this.theme, "Download model", [
+					new Spacer(1),
+					component,
+					...hints([keyText("tui.select.confirm"), "select", 1], [keyText("tui.select.cancel"), "back", 0]),
+				]),
 				component,
 				component,
 			);
@@ -266,7 +269,7 @@ class LlamaView implements LlamaUi, Focusable {
 			);
 		}
 		if (state.detail) body.push(new Text(this.theme.fg("dim", plain(state.detail)), 1, 0));
-		this.content = frame(this.theme, plain(state.title), body, keyHint("tui.select.cancel", "stop"));
+		this.content = frame(this.theme, plain(state.title), [...body, ...hints([keyText("tui.select.cancel"), "stop"])]);
 		this.inputHandler = undefined;
 		this.tui.requestRender();
 	}

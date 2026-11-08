@@ -135,6 +135,13 @@ export interface AgentState {
 	readonly errorMessage?: string;
 }
 
+/** Progress reported by a running tool: `progress` grows; `total` is set when the amount of work is known. */
+export interface AgentToolProgress {
+	progress: number;
+	total?: number;
+	message?: string;
+}
+
 /** Final or partial result produced by a tool. */
 export interface AgentToolResult<T = JsonValue | undefined> {
 	/** Text or image content returned to the model. */
@@ -148,6 +155,8 @@ export interface AgentToolResult<T = JsonValue | undefined> {
 	structuredContent?: JsonValue;
 	/** Usage from the final tool execution itself, if available. Not used for main LLM context accounting. */
 	usage?: Usage;
+	/** How far a running tool is, set on partial updates for views to show. Not sent to the model. */
+	progress?: AgentToolProgress;
 	/**
 	 * Report a failure without throwing. The model sees `content` as an error result, like a thrown
 	 * error, but `details` and `structuredContent` are kept for the UI and programmatic callers.

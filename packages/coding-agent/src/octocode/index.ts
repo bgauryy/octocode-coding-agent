@@ -196,7 +196,7 @@ export default function octocode(host: ExtensionAPI): void {
 		? undefined
 		: new WorkspaceRuntime(api, {
 				application: (ctx) => getApplicationPortForSession(ctx.sessionManager.getSessionId()),
-				...teamView(team),
+				...teamView(team, true),
 				tell: (to, text, signal) => team.send(to, text, { from: "user", signal }),
 				stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
 			});

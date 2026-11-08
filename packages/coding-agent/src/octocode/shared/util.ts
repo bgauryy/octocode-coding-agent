@@ -224,12 +224,21 @@ export function addUsage(total: Usage, usage: unknown): void {
 export interface UsageTotals {
 	input: number;
 	cacheRead: number;
+	/** The part of `input` written to cache. */
+	cacheWrite?: number;
 	output: number;
 	cost: number;
 	unpriced: boolean;
 }
 
-export const emptyTotals = (): UsageTotals => ({ input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false });
+export const emptyTotals = (): UsageTotals => ({
+	input: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+	output: 0,
+	cost: 0,
+	unpriced: false,
+});
 
 /** A message that carries spend, shaped as a reply: `usage`, and `details.unpriced` when a subagent run judged its replies. */
 export interface Spend {
@@ -268,6 +277,7 @@ export function addReply(totals: UsageTotals, usage: unknown, unpriced: boolean)
 	if (!isRecord(usage)) return;
 	totals.input += finiteOrZero(usage.input) + finiteOrZero(usage.cacheRead) + finiteOrZero(usage.cacheWrite);
 	totals.cacheRead += finiteOrZero(usage.cacheRead);
+	totals.cacheWrite = (totals.cacheWrite ?? 0) + finiteOrZero(usage.cacheWrite);
 	totals.output += finiteOrZero(usage.output);
 	totals.cost += finiteOrZero(isRecord(usage.cost) ? usage.cost.total : undefined);
 	if (unpriced) totals.unpriced = true;

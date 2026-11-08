@@ -1,4 +1,4 @@
-import { parseApplicationTool, returnedPurpose } from "@octocodeai/octocode-contracts";
+import { parseApplicationTool } from "@octocodeai/octocode-contracts";
 import type {
 	ApplicationAsset,
 	ApplicationContentBlock,
@@ -13,6 +13,9 @@ import { Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
 import { type AssetLoader, AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { ToolDisplayView } from "./ToolDisplayView.tsx";
+import { RawToolData, ToolReason } from "./ToolRawData.tsx";
+import { ToolProgress } from "./ToolProgress.tsx";
 import { ToolPurposes } from "./ToolPurposes.tsx";
 
 interface ContentProps {
@@ -306,22 +309,36 @@ export function ToolContent({
 	if (ancestors.includes(toolCallId)) return <p className="muted">Nested tool reference: {name}</p>;
 	const path = [...ancestors, toolCallId];
 	const nested = tools.filter((item) => item.parentToolCallId === toolCallId);
-	const reason = toolReasonText(name, tool?.arguments ?? args, tool?.structuredContent);
+	// The host decides the reason line and how the call reads, the same for every surface.
+	const display = tool?.display;
+	const reason = display?.reason ?? "";
+	const media = tool?.content?.filter((block) => block.type !== "text" && block.type !== "thinking");
 	return (
 		<section
 			className={`content-tool${tool?.status === "failed" && !tool.notRun ? " is-failed" : ""}`}
 			aria-label={`Tool ${name}`}
 		>
 			<header>
-				<strong>{name}</strong>
+				<strong>
+					{display?.title ?? name}
+					{display?.summary && <span className="tool-summary">({display.summary})</span>}
+				</strong>
 				<span>
 					<StateMark state={toolState(tool)} size={12} /> {tool?.notRun ? "not run" : (tool?.status ?? "Preparing")}
+					{display?.meta?.length ? ` · ${display.meta.join(" · ")}` : ""}
 					{tool?.durationMs === undefined ? "" : ` · ${Math.round(tool.durationMs)} ms`}
 				</span>
 			</header>
 			<ToolReason reason={reason} />
-			{(tool?.arguments ?? args) !== undefined && <JsonDetails label="Arguments" value={tool?.arguments ?? args} />}
-			{tool?.content ? (
+			{tool?.status === "running" && tool.progress && <ToolProgress progress={tool.progress} />}
+			{display ? (
+				<>
+					<ToolDisplayView display={display} />
+					{media?.length ? (
+						<ContentBlocks content={media} tools={tools} loadAsset={loadAsset} ancestors={path} />
+					) : null}
+				</>
+			) : tool?.content ? (
 				<ContentBlocks
 					content={tool.content}
 					tools={tools}
@@ -333,11 +350,7 @@ export function ToolContent({
 				tool?.text && <pre className="text output">{tool.text}</pre>
 			)}
 			<ToolPurposes structuredContent={tool?.structuredContent} shown={reason} />
-			{tool?.structuredContent !== undefined && (
-				<JsonDetails label="Structured result" value={tool.structuredContent} />
-			)}
-			{tool?.details !== undefined && <JsonDetails label="Result details" value={tool.details} />}
-			{tool?.usage !== undefined && <JsonDetails label="Tool usage" value={tool.usage} />}
+			<RawToolData tool={tool} args={args} />
 			<AssetExpansionButton expansion={expansion} label="Load full tool result" />
 			{nested.map((child) => (
 				<ToolContent
@@ -351,33 +364,5 @@ export function ToolContent({
 				/>
 			))}
 		</section>
-	);
-}
-
-/**
- * Why the call was made, as one line under the tool's name like the terminal's `↳` row: a native call's `reason`
- * argument (every native tool requires one), or for an MCP tool (`mcp__…`), whose input is its server's, only the goal
- * or reason its returned data states. A one-word reason (`Edit`) says no more than the name.
- */
-function toolReasonText(name: string, args: unknown, structuredContent: unknown): string {
-	const stated = name.startsWith("mcp__")
-		? returnedPurpose(structuredContent)
-		: args && typeof args === "object" && "reason" in args && typeof args.reason === "string"
-			? args.reason
-			: undefined;
-	const reason = stated?.replace(/\s+/g, " ").trim() ?? "";
-	return reason.includes(" ") ? reason : "";
-}
-
-function ToolReason({ reason }: { reason: string }) {
-	return reason ? <p className="tool-reason">↳ {reason}</p> : null;
-}
-
-export function JsonDetails({ label, value }: { label: string; value: unknown }) {
-	return (
-		<details className="result-details">
-			<summary>{label}</summary>
-			<pre>{JSON.stringify(value, null, 2)}</pre>
-		</details>
 	);
 }

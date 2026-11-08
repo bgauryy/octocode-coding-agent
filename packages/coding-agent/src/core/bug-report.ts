@@ -5,6 +5,7 @@ import { hasTmuxSession } from "@octocodeai/octocode-tui/multiplexer";
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@octocodeai/octocode-ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
 import { redactData, redactSecrets } from "../../../common/src/sanitize.ts";
+import { redactUrlCredentials } from "../../../common/src/url-credentials.ts";
 import { VERSION } from "../config.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
 import { writeZipArchive } from "../utils/zip.ts";
@@ -30,28 +31,11 @@ function isSensitiveKey(key: string): boolean {
 	return SENSITIVE_KEY.test(key.replace(/([a-z0-9])([A-Z])/g, "$1_$2"));
 }
 
-/** Strip credentials and secret-looking query parameters from a URL. */
+/** Strip credentials and secret-looking query parameters from a URL, also behind a prefix such as `git:`. */
 export function redactUrl(value: string): string {
 	const nested = /^([a-z][a-z0-9+.-]*:)([a-z][a-z0-9+.-]*:\/\/.*)$/i.exec(value);
 	if (nested) return `${nested[1]}${redactUrl(nested[2])}`;
-	try {
-		const url = new URL(value);
-		let changed = false;
-		if (url.username || url.password) {
-			url.username = "";
-			url.password = "";
-			changed = true;
-		}
-		for (const key of url.searchParams.keys()) {
-			if (isSensitiveKey(key)) {
-				url.searchParams.set(key, REDACTED);
-				changed = true;
-			}
-		}
-		return changed ? url.toString() : value;
-	} catch {
-		return value;
-	}
+	return redactUrlCredentials(value, REDACTED);
 }
 
 /** Copy a JSON value while removing values that may contain credentials. */

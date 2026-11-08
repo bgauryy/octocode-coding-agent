@@ -358,7 +358,7 @@ describe("prompt", () => {
 			child.match(/Work until the Definition of Done \(the result and checks your task asks for\) or a blocker/g),
 		).toHaveLength(1);
 		expect(root).toContain(
-			"- Keep going until the request is done and checked, or you are blocked. Take the next unblocked step (verify, integrate, file follow-ups, close items) instead of offering it or asking whether to continue; end a turn only when the next step needs the user or a running child or job, and say which. A user message about the current task adjusts it; answer an unrelated one and continue.",
+			"- Keep going until the request is done and checked, or you are blocked. Take the next unblocked step (verify, integrate, file follow-ups, close items) instead of offering it or asking whether to continue; end a turn only when the next step needs the user, a running child or job, or a peer session you messaged, and say which. A user message about the current task adjusts it; answer an unrelated one and continue.",
 		);
 		expect(child).not.toContain("end a turn only when the next step needs the user");
 		// The team's status and the summary go to the user; a child's report contract already asks for verification.
@@ -525,10 +525,11 @@ describe("prompt", () => {
 			expect(prompt).toMatch(
 				/[Aa] deeper file wins within its directory, (and )?direct user instructions win over both/,
 			);
-		expect(root).toContain("Scale delegation:\n\n```mermaid");
-		expect(root).toContain("T{Task} -->|lookup or small change a few calls finish| N[do it yourself]");
-		expect(root).toContain("output-heavy triage so only its answer reaches you");
-		expect(writer).not.toContain("Scale delegation");
+		expect(root).toContain("Do the work yourself by default");
+		expect(root).toContain("T{Task} -->|a few calls, a known target, one file, an inline check| N[do it yourself]");
+		expect(root).toContain("noisy work where only the conclusion matters");
+		expect(root).toContain("Never delegate understanding, synthesis or the final judgment");
+		expect(writer).not.toContain("Do the work yourself by default");
 	});
 
 	it("defines cleanup once in Safety: removing what the task created needs no approval, deleting existing content does", () => {

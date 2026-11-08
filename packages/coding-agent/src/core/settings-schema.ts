@@ -3,6 +3,7 @@ import { type Static, Type } from "typebox";
 import { BashSettingsProperties } from "./settings-schema/bash.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
+import { ModelAvailabilitySettingsProperties } from "./settings-schema/model-availability.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
@@ -210,11 +211,7 @@ export const SettingsSchema = Type.Object(
 		),
 		terminal: Type.Optional(TerminalSettingsSchema),
 		images: Type.Optional(ImageSettingsSchema),
-		enabledModels: Type.Optional(
-			Type.Array(Type.String(), {
-				description: "Model patterns for cycling, in the same format as the --models CLI flag.",
-			}),
-		),
+		...ModelAvailabilitySettingsProperties,
 		defaultTools: Type.Optional(
 			Type.Array(Type.String(), {
 				description:

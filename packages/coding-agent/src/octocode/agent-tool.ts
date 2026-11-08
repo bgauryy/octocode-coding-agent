@@ -1,3 +1,4 @@
+import { textResultDisplay } from "./shared/display.ts";
 import { renderInstruction } from "../core/prompt-template.ts";
 import { type JsonObject, StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
 import { Text } from "@octocodeai/octocode-tui";
@@ -148,6 +149,29 @@ export function agentModes() {
 					});
 					return tagged(
 						await tool.execute(id, input, signal, onUpdate ? (update) => onUpdate(tagged(update)) : undefined, ctx),
+					);
+				},
+				// A mode's display reads its own arguments; a batch lists its goals.
+				display(input) {
+					const tasks = batchOf(input.args);
+					if (tasks) {
+						const goals = tasks.map(
+							(entry, index) => `${index + 1}. ${typeof entry.goal === "string" ? entry.goal : "(no goal)"}`,
+						);
+						return textResultDisplay(
+							{ title: "Agent", summary: `task ×${tasks.length}`, subjects: goals, kind: "agent", blocks: [] },
+							input,
+						);
+					}
+					const call = agentCall(input.args);
+					const type = (isRecord(input.result?.details) ? input.result.details.agentType : undefined) ?? call.type;
+					const own = modes.get(type as Mode)?.display?.({ ...input, args: call.input });
+					return (
+						own ??
+						textResultDisplay(
+							{ title: `Agent ${typeof type === "string" ? type : ""}`.trim(), kind: "agent", blocks: [] },
+							input,
+						)
 					);
 				},
 				// Mode renderers read their own arguments from `context.args`, so they get the mode's arguments, flat or from an old envelope.

@@ -1,3 +1,5 @@
+import { redactSecrets } from "../../../../common/src/sanitize.ts";
+
 /** A warning or error the child's extensions showed (`notify` with `notifyType` warning or error): the child has no screen, the parent keeps them. Whole, whatever its length. */
 interface ChildNotice {
 	level: "warning" | "error";
@@ -44,7 +46,9 @@ export class NoticeLog {
 	#dropped: ChildNotice | undefined;
 
 	/** Logs a notice: `notice` is set when it is new and kept, `repeat` when it folded into a logged one. */
-	add(level: ChildNotice["level"], text: string): { notice?: ChildNotice; repeat: boolean } {
+	add(level: ChildNotice["level"], raw: string): { notice?: ChildNotice; repeat: boolean } {
+		// A notice can quote a credential; it is kept (inline and in the saved log) only redacted.
+		const text = redactSecrets(raw);
 		const key = `${level}\u0000${text}`;
 		const seen = this.#byKey.get(key);
 		if (seen) {

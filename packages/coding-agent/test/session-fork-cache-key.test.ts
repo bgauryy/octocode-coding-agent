@@ -90,6 +90,18 @@ describe("prompt cache key across a fork", () => {
 		expect(seen[2]?.promptCacheKey).toBe(parentKey);
 	});
 
+	it("keeps the key after the session is resumed from disk", async () => {
+		const { runtime, faux, seen, answer } = await setup();
+		const original = SessionManager.create(tempDir, sessionsDir());
+		await prompt(original, runtime, faux, answer("one"));
+		const key = seen[0]?.promptCacheKey ?? seen[0]?.sessionId;
+		expect(key).toBe(original.getSessionId());
+		const resumed = SessionManager.open(original.getSessionFile()!, sessionsDir(), tempDir);
+		expect(resumed.getSessionId()).toBe(original.getSessionId());
+		await prompt(resumed, runtime, faux, answer("two"));
+		expect(seen[1]?.promptCacheKey ?? seen[1]?.sessionId).toBe(key);
+	});
+
 	it("gives an unrelated session its own key", async () => {
 		const { runtime, faux, seen, answer } = await setup();
 		const a = SessionManager.create(tempDir, sessionsDir());

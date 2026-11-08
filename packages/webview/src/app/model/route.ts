@@ -4,7 +4,12 @@ export interface Route {
 	params: Params;
 }
 type Destination =
-	| { kind: "view"; view: string; params: Params }
+	| {
+			kind: "view";
+			view: string;
+			params: Params;
+			/** The hash named a view that moved: rewrite it to this view's. */ moved?: true;
+	  }
 	| { kind: "item"; ref: string; mode: "view" | "edit" | "correct" }
 	| { kind: "new" };
 
@@ -40,10 +45,36 @@ export function hashFor(name: string, params: Params = {}): string {
 	return `#${name}${parts.length ? `?${parts.join("&")}` : ""}`;
 }
 
+/** Views that moved into another: an old link or bookmark lands on the panel that replaced it. */
+const MOVED: Record<string, { view: string; params: Params }> = {
+	agents: { view: "profiler", params: { panel: "overview" } },
+};
+
+/** Profiler panels that merged into another: a link to the old one opens the panel that replaced it. */
+const PROFILER_PANELS: Record<string, string> = {
+	agents: "overview",
+	events: "overview",
+	requests: "trace",
+	timeline: "trace",
+};
+
+/** The panel a retired profiler panel name stands for; absent for a current or unknown name. */
+export function movedProfilerPanel(panel: string | undefined): string | undefined {
+	return PROFILER_PANELS[panel ?? ""];
+}
+
 export function resolveRoute(route: Route, views: readonly string[]): Destination {
 	const item = ITEM_ROUTE.exec(route.name);
 	if (item) return { kind: "item", ref: item[1].toUpperCase(), mode: (item[2] as "edit" | "correct") ?? "view" };
 	if (route.name === "new") return { kind: "new" };
-	if (views.includes(route.name)) return { kind: "view", view: route.name, params: route.params };
+	const moved = MOVED[route.name];
+	if (moved && !views.includes(route.name) && views.includes(moved.view))
+		return { kind: "view", view: moved.view, params: { ...moved.params, ...route.params }, moved: true };
+	if (views.includes(route.name)) {
+		const panel = route.name === "profiler" ? movedProfilerPanel(route.params.panel) : undefined;
+		return panel
+			? { kind: "view", view: route.name, params: { ...route.params, panel }, moved: true }
+			: { kind: "view", view: route.name, params: route.params };
+	}
 	return { kind: "view", view: "board", params: {} };
 }

@@ -106,7 +106,9 @@ describe("models tool", () => {
 			"opencode/qwen-coder",
 		]);
 		expect(text).toMatch(/^ {2}anthropic · stored ✓ credential worked \(check, /m);
-		expect(text).toMatch(/^ {2}opencode · .* ✗ credential refused \(check, .*401 api_key_expired — fix with \/login$/m);
+		expect(text).toMatch(
+			/^ {2}opencode · .* ✗ credential refused \(check, .*401 api_key_expired — fix with \/providers$/m,
+		);
 		// Said once, on the provider row: the model headings carry no credential mark.
 		expect(text.match(/credential refused/g)).toHaveLength(1);
 	});

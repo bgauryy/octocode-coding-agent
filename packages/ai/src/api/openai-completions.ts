@@ -5,7 +5,7 @@ import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type OpenAI from "openai";
 import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, ThinkingContent } from "../types.ts";
-import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
+import { formatProviderError, normalizeProviderError, redactProviderText } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { getClientApiKey } from "../utils/headers.ts";
@@ -138,8 +138,9 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 			// into errorMessage, so only append the raw metadata when it is not already
 			// present to avoid double-printing it.
 			const rawMetadata = (error as any)?.error?.metadata?.raw;
-			if (rawMetadata && !output.errorMessage.includes(String(rawMetadata))) {
-				output.errorMessage += `\n${rawMetadata}`;
+			const metadataText = rawMetadata ? redactProviderText(String(rawMetadata)) : undefined;
+			if (metadataText && !output.errorMessage.includes(metadataText)) {
+				output.errorMessage += `\n${metadataText}`;
 			}
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();

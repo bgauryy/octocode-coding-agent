@@ -1,5 +1,6 @@
 import type { AssistantMessage, DeferredHandle, Model, TextContent, ThinkingContent, ToolCall } from "../../types.ts";
 import { createEmptyUsage } from "../../utils/assistant-message.ts";
+import { redactProviderText } from "../../utils/error-body.ts";
 import type { FauxContentBlock } from "./types.ts";
 
 export const DEFAULT_API = "faux";
@@ -107,7 +108,7 @@ export function createErrorMessage(error: unknown, api: string, provider: string
 		model: modelId,
 		usage: createEmptyUsage(),
 		stopReason: "error",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage: redactProviderText(error instanceof Error ? error.message : String(error)),
 		timestamp: Date.now(),
 	};
 }

@@ -89,6 +89,12 @@ function Shell({
 		useHashRoute(),
 		views.map((view) => view.name),
 	);
+	// An old link (`#agents`) lands on the view that replaced it; make the address say so, without a history entry.
+	const movedTo =
+		destination.kind === "view" && destination.moved ? hashFor(destination.view, destination.params) : undefined;
+	useEffect(() => {
+		if (movedTo) history.replaceState(null, "", movedTo);
+	}, [movedTo]);
 
 	// Adjust navigation state while rendering when the hash names a different view or filters (React's derived-state pattern).
 	const [nav, setNav] = useState<Navigation>(() => ({

@@ -121,9 +121,10 @@ describe("@ file picker keys and rows", () => {
 		assert.strictEqual(editor.getText(), "@zzzqq");
 	});
 
-	it("shows the key hint row", async () => {
+	it("shows the key hint row: actions only, in the lowercase key format", async () => {
 		await type("@src");
-		assert.ok(rendered().includes("↑↓ select · Tab/Enter insert · Esc close"));
+		assert.ok(rendered().includes("tab/enter insert · esc close"));
+		assert.ok(!rendered().includes("↑↓"));
 	});
 
 	it("Ctrl+N and Ctrl+P move the selection", async () => {

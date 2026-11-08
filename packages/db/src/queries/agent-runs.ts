@@ -34,6 +34,7 @@ export interface AgentRun {
 	toolCalls: number;
 	input: number;
 	cacheRead: number;
+	cacheWrite: number;
 	output: number;
 	cost: number;
 	unpriced: boolean;
@@ -93,6 +94,7 @@ export function decode(row: Row): AgentRun {
 		toolCalls: num(row.tool_calls),
 		input: num(row.input),
 		cacheRead: num(row.cache_read),
+		cacheWrite: num(row.cache_write),
 		output: num(row.output),
 		cost: num(row.cost),
 		unpriced: row.unpriced === 1,
@@ -243,7 +245,7 @@ export function ended(
 	const files = changedFiles(db, id, num(open.started_at), now);
 	const updated = db
 		.prepare(
-			`UPDATE agent_runs SET ended_at = ?, end_reason = ?, end_detail = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?,
+			`UPDATE agent_runs SET ended_at = ?, end_reason = ?, end_detail = ?, tool_calls = ?, input = ?, cache_read = ?, cache_write = ?, output = ?, cost = ?, unpriced = ?,
 				cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), pid = COALESCE(?, pid), files_changed = ?
 			 WHERE run_id = (SELECT run_id FROM agent_runs WHERE agent_id = ? AND ended_at IS NULL ORDER BY started_at DESC, rowid DESC LIMIT 1)
 			 RETURNING *`,
@@ -255,6 +257,7 @@ export function ended(
 			num(row.tool_calls),
 			num(row.input),
 			num(row.cache_read),
+			num(row.cache_write),
 			num(row.output),
 			num(row.cost),
 			num(row.unpriced),
@@ -325,6 +328,24 @@ export function recent(
 		db
 			.prepare(`SELECT * FROM agent_runs${where} ORDER BY started_at DESC, rowid DESC LIMIT ?`)
 			.all(...values, filter.limit ?? 10) as Row[]
+	).map(decode);
+}
+
+/**
+ * The runs of session `sessionId` and of every agent below it (a run whose parent session is in the tree, whether or
+ * not it ever joined), oldest first: the profile of a session that has ended reads its agents here, where `agents`
+ * only lists the live ones.
+ */
+export function inSessionTree(db: DatabaseSync, sessionId: string): AgentRun[] {
+	return (
+		db
+			.prepare(
+				`WITH RECURSIVE tree(sid) AS (
+				   SELECT ? UNION SELECT r.session_id FROM agent_runs r JOIN tree ON r.parent_session_id = tree.sid WHERE r.session_id IS NOT NULL)
+				 SELECT * FROM agent_runs WHERE session_id IN (SELECT sid FROM tree) OR parent_session_id IN (SELECT sid FROM tree)
+				 ORDER BY started_at, rowid`,
+			)
+			.all(sessionId) as Row[]
 	).map(decode);
 }
 

@@ -99,7 +99,7 @@ describe("NoticeTracker", () => {
 			event(6, "agent.progress"),
 		];
 		expect(tracker.observe(undefined, feed(...next))).toMatchObject([
-			{ kind: "finished", title: "Agent finished", hash: "#agents" },
+			{ kind: "finished", title: "Agent finished", hash: "#profiler?panel=overview" },
 			{ kind: "failed", title: "Agent failed" },
 		]);
 		expect(tracker.observe(undefined, feed(...next))).toEqual([]);

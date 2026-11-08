@@ -1,3 +1,4 @@
+import { agentTaskDisplay } from "./display.ts";
 import type { RunDetails } from "./run-types.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
@@ -280,6 +281,7 @@ export function registerAgentTool(
 		timedTool({
 			...agentToolSpec(),
 			execute: (id, params, signal, onUpdate, ctx) => spawnAgent(spawnEnv, id, params, signal, onUpdate, ctx),
+			display: agentTaskDisplay,
 			renderCall: renderAgentCall,
 			renderResult: renderAgentResult,
 		}),

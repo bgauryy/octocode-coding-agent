@@ -4,6 +4,7 @@ import { ApplicationCommandSchema, WORKSPACE_ROUTES } from "@octocodeai/octocode
 import { WorkspaceCommandSchema } from "@octocodeai/octocode-contracts/protocol";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
+import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleApplicationDataRequest } from "../workspace/application-data.ts";
 import type { AttachClient } from "./attach-client.ts";
 import { readJsonBody, type Reply } from "./http-util.ts";
@@ -21,6 +22,12 @@ export async function handleSessionRequest(
 	changed: () => void,
 ): Promise<boolean> {
 	if (await handleApplicationDataRequest(req, url, client.application, sessionId, reply)) return true;
+	try {
+		if (await handleProfilerRequest(req, url, client.profiler, reply)) return true;
+	} catch (error) {
+		reply(409, { error: redactSecrets(errorMessage(error)) });
+		return true;
+	}
 	if (url.pathname === WORKSPACE_ROUTES.application) {
 		if (req.method === "GET") {
 			reply(405, { error: "Use the application stream for state." });

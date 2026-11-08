@@ -6,6 +6,7 @@ import type { MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/b
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
+import { redactProviderText } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
@@ -179,7 +180,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				delete (block as { partialJson?: string }).partialJson;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			output.errorMessage = redactProviderText(error instanceof Error ? error.message : JSON.stringify(error));
 			const retryAfterMs = retryAfterMsFromError(error);
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });

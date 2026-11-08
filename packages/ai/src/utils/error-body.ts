@@ -14,6 +14,28 @@
 // into the message, so providers can preserve it without double-printing.
 
 export const MAX_PROVIDER_ERROR_BODY_CHARS = 4000;
+/** Sign-in and token endpoints answer in a few words; an error quotes no more than this of their body. */
+export const MAX_AUTH_ERROR_BODY_CHARS = 500;
+
+// Provider error text can quote the credential that was sent (a 401 "Incorrect API key provided: ...", a proxy echoing a
+// header). It is stored in sessions and sent back to the model, so it is redacted where it is built. `ai` may not import
+// `common` (the package policy lists only `contracts` and `telemetry`), so the host installs its credential redactor here.
+let redactor: ((text: string) => string) | undefined;
+
+/** Installs the function that removes credentials from provider error text (the host passes `redactSecrets`); `undefined` removes it. */
+export function setProviderTextRedactor(redact: ((text: string) => string) | undefined): void {
+	redactor = redact;
+}
+
+/** `text` with credentials removed by the installed redactor; unchanged when none is installed. */
+export function redactProviderText(text: string): string {
+	return redactor ? redactor(text) : text;
+}
+
+/** An upstream response body for an error message: credentials removed first (a cut could hide one from the redactor), then cut to `maxChars`. */
+export function summarizeErrorBody(body: string, maxChars = MAX_PROVIDER_ERROR_BODY_CHARS): string {
+	return truncateErrorText(redactProviderText(body.trim()), maxChars);
+}
 
 interface NormalizedProviderError {
 	/** HTTP status code, when one could be extracted from the SDK error object. */
@@ -38,18 +60,19 @@ type SdkErrorShape = Error & {
 
 export function normalizeProviderError(error: unknown): NormalizedProviderError {
 	if (!(error instanceof Error)) {
-		return { message: safeJsonStringify(error), messageCarriesBody: false };
+		return { message: redactProviderText(safeJsonStringify(error)), messageCarriesBody: false };
 	}
 
 	const sdkError = error as SdkErrorShape;
 	const status = extractStatus(sdkError);
 	const body = extractBody(sdkError);
-	const messageCarriesBody = body === undefined || error.message.includes(body);
+	const message = redactProviderText(error.message);
+	const messageCarriesBody = body === undefined || message.includes(body);
 
 	return {
 		status,
 		body,
-		message: error.message,
+		message,
 		messageCarriesBody,
 	} satisfies NormalizedProviderError;
 }
@@ -79,7 +102,7 @@ function extractBody(error: SdkErrorShape): string | undefined {
 	if (bodyText === undefined) return undefined;
 	const trimmed = bodyText.trim();
 	if (trimmed.length === 0) return undefined;
-	return truncateErrorText(trimmed, MAX_PROVIDER_ERROR_BODY_CHARS);
+	return summarizeErrorBody(trimmed);
 }
 
 function pickBodyText(error: SdkErrorShape): string | undefined {

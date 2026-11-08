@@ -1,7 +1,7 @@
 import { TRANSCRIPTS_SCHEMA } from "./queries/transcripts.ts";
 
-/** The audit table of agent runs and its indexes: a new file creates it with the rest, a version 2 file by migration 3. */
-export const AGENT_RUNS_SCHEMA = `
+/** The audit table as migration 3 created it, before `cache_write` (migration 8 adds that column). */
+export const AGENT_RUNS_SCHEMA_V3 = `
 CREATE TABLE agent_runs (
   run_id TEXT PRIMARY KEY, registration_id TEXT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), agent_id TEXT NOT NULL,
   kind TEXT NOT NULL CHECK(kind IN ('main','child')), parent_agent_id TEXT, parent_session_id TEXT, session_id TEXT,
@@ -11,6 +11,25 @@ CREATE TABLE agent_runs (
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0,
   outcome TEXT, outcome_source TEXT, report_path TEXT, files_changed TEXT);
+CREATE INDEX agent_runs_agent ON agent_runs(agent_id, started_at DESC);
+CREATE INDEX agent_runs_workspace ON agent_runs(workspace_id, started_at DESC);
+CREATE INDEX agent_runs_item ON agent_runs(backlog_workspace, backlog_seq) WHERE backlog_seq IS NOT NULL;
+CREATE INDEX agent_runs_session ON agent_runs(session_id);
+CREATE INDEX agent_runs_registration ON agent_runs(registration_id);
+`;
+
+/** The audit table of agent runs and its indexes: a new file creates it with the rest, an older file by migrations 3 and 8. */
+const AGENT_RUNS_SCHEMA = `
+CREATE TABLE agent_runs (
+  run_id TEXT PRIMARY KEY, registration_id TEXT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), agent_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('main','child')), parent_agent_id TEXT, parent_session_id TEXT, session_id TEXT,
+  started_by TEXT, profile TEXT, model TEXT, goal TEXT, backlog_workspace TEXT, backlog_seq INTEGER,
+  cwd TEXT, branch TEXT, process_title TEXT, pid INTEGER,
+  started_at INTEGER NOT NULL, ended_at INTEGER, end_reason TEXT, end_detail TEXT,
+  tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
+  cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0,
+  outcome TEXT, outcome_source TEXT, report_path TEXT, files_changed TEXT,
+  cache_write INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX agent_runs_agent ON agent_runs(agent_id, started_at DESC);
 CREATE INDEX agent_runs_workspace ON agent_runs(workspace_id, started_at DESC);
 CREATE INDEX agent_runs_item ON agent_runs(backlog_workspace, backlog_seq) WHERE backlog_seq IS NOT NULL;
@@ -288,7 +307,7 @@ CREATE TABLE agents (
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT, lease_workspace_id TEXT REFERENCES workspaces(id) CHECK(lease_workspace_id <> workspace_id), tmux_pane TEXT, session_id TEXT,
   registration_id TEXT, persist_events INTEGER NOT NULL DEFAULT 0, activation_id TEXT, lifecycle_session_id TEXT, parent_registration_id TEXT, end_hint TEXT,
-  cwd TEXT, branch TEXT, process_title TEXT);
+  cwd TEXT, branch TEXT, process_title TEXT, cache_write INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX agents_scope ON agents(team, joined_at);
 CREATE INDEX agents_workspace ON agents(workspace_id);
 CREATE TABLE agent_events (

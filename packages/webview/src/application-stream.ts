@@ -113,8 +113,10 @@ export class ApplicationStream {
 						tools.reduce((last, tool) => Math.max(last, tool.order ?? -1), -1),
 					) + 1;
 				const { type: _type, failed: _failed, ...data } = event;
+				// As on the host: an event with result data replaces the previous result and its asset and progress.
+				const kept = event.content === undefined ? previous : withoutResult(previous);
 				const tool = {
-					...previous,
+					...kept,
 					...data,
 					toolCallId: event.toolCallId,
 					order,
@@ -194,6 +196,20 @@ const LIVE_TOOLS = 200;
  * past the last message, the oldest tools do. A tool without an order (only an older host sends one) has no place a
  * history page could return it at, so it stays live and does not count toward the cap.
  */
+/** A tool's state without its result fields, which the next result replaces. */
+function withoutResult(tool: ApplicationTool | undefined): Partial<ApplicationTool> | undefined {
+	if (!tool) return tool;
+	const {
+		full: _full,
+		details: _details,
+		structuredContent: _structured,
+		usage: _usage,
+		progress: _progress,
+		...kept
+	} = tool;
+	return kept;
+}
+
 function retainTranscript(source: readonly ApplicationMessage[], tools: readonly ApplicationTool[] | undefined) {
 	let messages = source.slice(-LIVE_MESSAGES);
 	if (!tools) return { messages };

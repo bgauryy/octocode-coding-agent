@@ -12,9 +12,11 @@ import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { AuthStorage as DefaultAuthStorage } from "../auth-storage.ts";
 import { PiFallbackCredentialStore } from "../auth-storage/pi-fallback.ts";
 import { ModelConfig } from "../model-config.ts";
+import { withCopilotEnvSource } from "../provider-sources/copilot-env.ts";
 import { FileModelsStore } from "../models-store.ts";
 import { withPersonalizedCatalog, withRemoteCatalog } from "../remote-catalog-provider.ts";
 import { RuntimeCredentials } from "../runtime-credentials.ts";
+import { installSecretRedaction } from "../secret-redaction.ts";
 import type { CreateModelRuntimeOptions } from "./types.ts";
 
 /** What `ModelRuntime.create()` loads before constructing the runtime. */
@@ -30,6 +32,8 @@ export interface ModelRuntimeParts {
 
 /** Load credentials, models.json and the catalog store, and create the built-in providers. */
 export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions): Promise<ModelRuntimeParts> {
+	// Every session of every mode builds its runtime here, before the first provider call can fail with a credential in its text.
+	installSecretRedaction();
 	const credentials = new RuntimeCredentials(options.credentials ?? defaultCredentialStore(options.authPath));
 	const modelsPath =
 		options.modelsPath === null ? undefined : (options.modelsPath ?? join(getAgentDir(), "models.json"));
@@ -56,7 +60,8 @@ function defaultCredentialStore(authPath = join(getAgentDir(), "auth.json")) {
 /** The built-in providers, each refreshing its catalog from `catalogBaseUrl`. */
 function createBuiltinProviders(catalogBaseUrl: string | undefined): Provider[] {
 	const builtinModelDataGeneratedAt = builtinProviderCatalog.getBuiltinModelDataGeneratedAt();
-	return builtinProviderCatalog.builtinProviders().map((provider) => {
+	return builtinProviderCatalog.builtinProviders().map((builtin) => {
+		const provider = withCopilotEnvSource(builtin);
 		// OpenRouter narrows the catalog to the models, limits and prices of the user's key.
 		if (provider.id === "openrouter") {
 			return withPersonalizedCatalog(

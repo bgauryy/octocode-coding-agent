@@ -5,7 +5,8 @@ import type { SelectListOptions } from "../select-list.ts";
 import type { EditorState } from "./types.ts";
 
 const INDEXING_REFRESH_MS = 150;
-const FILE_LIST_HINT = "↑↓ select · Tab/Enter insert · Esc close";
+/** Actions only, in the lowercase key format every hint line uses; the arrows that move the cursor go unnamed. */
+const FILE_LIST_HINT = "tab/enter insert · esc close";
 
 /** A token whose list the user closed with Esc: it stays closed until the cursor leaves the token. */
 export interface DismissedToken {

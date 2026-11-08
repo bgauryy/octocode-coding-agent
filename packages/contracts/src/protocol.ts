@@ -4,6 +4,7 @@ import { CloseInputSchema, EntityFields, ITEM_TYPES } from "./backlogs.ts";
 import { STATES } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
 import type { WorkspaceSnapshot } from "./workspace.ts";
+import type { ProfileUpdate } from "./profiler.ts";
 
 export const WORKSPACE_ROUTES = {
 	application: "/api/application",
@@ -14,6 +15,8 @@ export const WORKSPACE_ROUTES = {
 	audit: "/api/audit",
 	reports: "/api/reports",
 	live: "/api/backlogs/live",
+	/** The profiler: agents at the route; requests, timeline, insights and trace export at `PROFILER_PATHS`. */
+	profiler: "/api/profiler",
 } as const;
 
 /**
@@ -116,4 +119,5 @@ export type ReportsIndex = Static<typeof ReportsIndexSchema>;
 export type ReportFile = Static<typeof ReportFileSchema>;
 export type WorkspaceServerEvent =
 	| { type: "snapshot"; data: Snapshot }
-	| { type: "workspace"; data: WorkspaceSnapshot };
+	| { type: "workspace"; data: WorkspaceSnapshot }
+	| { type: "profiler"; data: ProfileUpdate };

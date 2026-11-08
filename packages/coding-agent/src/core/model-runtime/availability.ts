@@ -20,6 +20,9 @@ export class ModelAvailability {
 		storedProviders: new Set(),
 		auth: new Map(),
 	};
+	/** Models usable by credentials, before the user's disabled providers are removed from the snapshot. */
+	private rawAvailable: readonly Model<Api>[] = [];
+	private disabledProviders: ReadonlySet<string> = new Set();
 	private availabilityRefreshSeq = 0;
 	private availabilityErrorSeq = 0;
 	private readonly providerAvailabilitySeq = new Map<string, number>();
@@ -30,13 +33,31 @@ export class ModelAvailability {
 		this.credentials = credentials;
 	}
 
+	/**
+	 * Providers the user turned off. Their models leave `snapshot.available`, so every consumer of availability (model
+	 * selector, cycling, routing) follows. Credentials and `all` are untouched.
+	 */
+	setDisabledProviders(providerIds: readonly string[]): void {
+		this.disabledProviders = new Set(providerIds);
+		this.publishAvailable();
+	}
+
+	isProviderDisabled(providerId: string): boolean {
+		return this.disabledProviders.has(providerId);
+	}
+
+	private visible(models: readonly Model<Api>[]): Model<Api>[] {
+		return models.filter((model) => !this.disabledProviders.has(model.provider));
+	}
+
+	private publishAvailable(): void {
+		this.snapshot = { ...this.snapshot, available: this.visible(this.rawAvailable) };
+	}
+
 	updateModelSnapshot(): void {
 		const all = [...this.models.getModels()];
-		this.snapshot = {
-			...this.snapshot,
-			all,
-			available: all.filter((model) => this.snapshot.configuredProviders.has(model.provider)),
-		};
+		this.rawAvailable = all.filter((model) => this.snapshot.configuredProviders.has(model.provider));
+		this.snapshot = { ...this.snapshot, all, available: this.visible(this.rawAvailable) };
 	}
 
 	private async runAvailabilityRefresh(seq: number, errorSeq: number, signal: AbortSignal): Promise<void> {
@@ -56,9 +77,10 @@ export class ModelAvailability {
 		const configuredProviders = new Set(
 			checks.filter((entry): entry is [string, AuthCheck] => entry[1] !== undefined).map(([providerId]) => providerId),
 		);
+		this.rawAvailable = [...available];
 		this.snapshot = {
 			all: [...this.models.getModels()],
-			available: [...available],
+			available: this.visible(this.rawAvailable),
 			configuredProviders,
 			storedProviders: new Set(credentials.map((entry) => entry.providerId)),
 			auth,
@@ -109,14 +131,15 @@ export class ModelAvailability {
 			else storedProviders.delete(providerId);
 			const all = [...this.models.getModels()];
 			const availableById = new Map(
-				[...this.snapshot.available.filter((model) => model.provider !== providerId), ...available].map((model) => [
+				[...this.rawAvailable.filter((model) => model.provider !== providerId), ...available].map((model) => [
 					`${model.provider}\0${model.id}`,
 					model,
 				]),
 			);
+			this.rawAvailable = all.flatMap((model) => availableById.get(`${model.provider}\0${model.id}`) ?? []);
 			this.snapshot = {
 				all,
-				available: all.flatMap((model) => availableById.get(`${model.provider}\0${model.id}`) ?? []),
+				available: this.visible(this.rawAvailable),
 				configuredProviders,
 				storedProviders,
 				auth: authByProvider,
@@ -140,7 +163,7 @@ export class ModelAvailability {
 			try {
 				const available = await this.models.getAvailable(providerId, options);
 				if (errorSeq === this.availabilityErrorSeq) this.availabilityError = undefined;
-				return available;
+				return this.visible(available);
 			} catch (error) {
 				if (errorSeq === this.availabilityErrorSeq && !options?.signal?.aborted) {
 					this.availabilityError = errorMessage(error);
@@ -163,12 +186,8 @@ export class ModelAvailability {
 		const auth = new Map(this.snapshot.auth);
 		// Never clobber a real check result.
 		if (!auth.get(providerId)) auth.set(providerId, { type, source: "configured provider" });
-		this.snapshot = {
-			...this.snapshot,
-			auth,
-			configuredProviders,
-			available: this.snapshot.all.filter((model) => configuredProviders.has(model.provider)),
-		};
+		this.rawAvailable = this.snapshot.all.filter((model) => configuredProviders.has(model.provider));
+		this.snapshot = { ...this.snapshot, auth, configuredProviders, available: this.visible(this.rawAvailable) };
 	}
 
 	/**

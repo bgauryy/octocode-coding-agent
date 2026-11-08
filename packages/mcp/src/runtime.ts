@@ -35,6 +35,7 @@ import {
 	type ServerState,
 	stderrTail,
 	trackToolListChanges,
+	trackServerWarnings,
 } from "./runtime/client.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -63,6 +64,7 @@ export class McpServerConnection implements McpToolCaller {
 	/** The last start answered too slowly, so it was retried once with a longer timeout (shown in the state). */
 	retriedAfterTimeout = false;
 	clientError: string | undefined;
+	serverWarning: string | undefined;
 	tools: McpTool[] = [];
 	/** Server instructions from `initialize`, describing its tools as a group. */
 	instructions: string | undefined;
@@ -280,6 +282,7 @@ export class McpServerConnection implements McpToolCaller {
 	private async connectOnce(signal: AbortSignal, timeoutMs: number): Promise<McpClient> {
 		const { client, closeClient } = createMcpClient(this.entry.name, this.cwd, timeoutMs, this.log);
 		this.clientError = undefined;
+		trackServerWarnings(client, (line) => (this.serverWarning = line)); // starts by clearing the last one
 		client.onError((error) => {
 			if (signal.aborted || this.closed || (this.client && this.client !== client)) return;
 			this.clientError = error.message;

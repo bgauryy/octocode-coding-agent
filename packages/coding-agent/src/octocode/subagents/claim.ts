@@ -198,7 +198,7 @@ function sessionOnlyProvider(registry: ExtensionContext["modelRegistry"] | undef
 
 function sessionOnlyError(provider: string): Error {
 	return new Error(
-		`${provider} is authenticated by this session's --api-key, which subagents do not receive. Connect it with /login or choose a model from another provider.`,
+		`${provider} is authenticated by this session's --api-key, which subagents do not receive. Connect it with /providers or choose a model from another provider.`,
 	);
 }
 

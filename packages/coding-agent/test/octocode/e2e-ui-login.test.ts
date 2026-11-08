@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { KEY, startUi, type UiHarness } from "./e2e-ui-flows/ui.ts";
 
 /**
- * `/login` API-key flow through the editor. The harness points the agent directory at a temp folder, so the key lands in
+ * `/providers` API-key flow through the editor. The harness points the agent directory at a temp folder, so the key lands in
  * that folder's `auth.json`; the dialog's "Local auth.json file" choice is taken so no system keychain is written.
  * Nothing contacts the provider: saving a key is local.
  */
@@ -30,9 +30,9 @@ const slash = async (line: string) => {
 	await new Promise((resolve) => setTimeout(resolve, 500));
 	t!.press(KEY.enter);
 };
-/** Opens `/login openrouter` on its "Add API key" row and returns once the key prompt shows. */
+/** Opens `/providers openrouter` on its "Add API key" row and returns once the key prompt shows. */
 const openKeyPrompt = async () => {
-	await slash("/login openrouter");
+	await slash("/providers openrouter");
 	await t!.until(shows("Add API key"), "provider menu");
 	t!.press(KEY.down);
 	await new Promise((resolve) => setTimeout(resolve, 300));
@@ -40,7 +40,7 @@ const openKeyPrompt = async () => {
 	await t!.until(shows("Enter OpenRouter API key"), "key prompt");
 };
 
-describe("/login API key", () => {
+describe("/providers API key", () => {
 	it("saves the key to auth.json and makes the provider's models available", async () => {
 		t = await startUi();
 		expect(openrouterModels()).toHaveLength(0);

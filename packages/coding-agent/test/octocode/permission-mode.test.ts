@@ -49,6 +49,7 @@ const REASONS: Record<AskReason, [string, string, string]> = {
 	"source.ask": ["ask", "ask", "ask"],
 	"memory.wide": ["ask", "ask", "ask"],
 	"shell.target": ["ask", "ask", "allow"],
+	"credential.read": ["ask", "ask", "allow"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],
 	"profile.permissions": ["ask", "ask", "allow"],
@@ -128,7 +129,9 @@ describe("permission modes", () => {
 		expect(modeSummary("full")).toMatch(/⚠ counter.*audit log.*no UI has only the log/);
 		expect(modeSummary("workspace")).toContain("shell.destructive");
 		expect(modeSummary("workspace")).toContain("browser.control");
-		expect(modeSummary("manual")).toContain("hook asks, provenance hits and profile permissions also ask");
+		expect(modeSummary("manual")).toContain(
+			"hook asks, provenance hits, credential-store reads and profile permissions also ask",
+		);
 	});
 
 	it("gives every class a reason line and a noun, and never a session kind to the per-call classes", () => {

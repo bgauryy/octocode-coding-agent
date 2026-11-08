@@ -1,3 +1,4 @@
+import { textResultDisplay } from "../../shared/display.ts";
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import { Box, Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
@@ -284,6 +285,35 @@ export function registerSendMessageTool(
 						waits,
 					details,
 				);
+			},
+			display(input) {
+				const { args } = input;
+				/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
+				const summary = [
+					args.forward === undefined ? "" : `forward #${String(args.forward)}`,
+					args.to === undefined ? "" : `→ ${String(args.to)}`,
+					args.replyTo === undefined ? "" : `reply to #${String(args.replyTo)}`,
+				]
+					.filter(Boolean)
+					.join(" · ");
+				const message = String(args.message ?? "");
+				/* oxlint-enable typescript/no-unnecessary-type-conversion */
+				const head = { title: "Send", ...(summary ? { summary } : {}), kind: "agent" as const, blocks: [] };
+				const details: Record<string, unknown> = asRecord(input.result?.details);
+				if (!input.result || input.status === "failed" || typeof details.id !== "number")
+					return textResultDisplay(head, input);
+				const sent = Array.isArray(details.to) ? details.to.map(String) : [];
+				const departed =
+					Array.isArray(details.departed) && details.departed.length
+						? ` · not sent to ${details.departed.map(String).join(", ")}`
+						: "";
+				return {
+					...head,
+					outcome: {
+						text: `Queued #${details.id}${sent.length > 1 ? ` to ${plural(sent.length, "agent")}` : ""}${departed}`,
+					},
+					blocks: message ? [{ type: "text" as const, text: message }] : [],
+				};
 			},
 			renderCall(args, theme, context) {
 				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders

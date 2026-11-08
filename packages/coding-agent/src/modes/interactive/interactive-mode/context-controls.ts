@@ -1,7 +1,7 @@
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
-type Host = Pick<InteractiveModeHost, "session" | "showExtensionSelector" | "showStatus" | "ui">;
+type Host = Pick<InteractiveModeHost, "session" | "showExtensionSelector" | "showStatus" | "showWarning" | "ui">;
 
 /** Decimal k/m suffixes follow the provider catalog's token units. */
 export function parseContextSize(value: string): number | undefined {
@@ -45,8 +45,10 @@ export async function handleContextSize(host: Host, args: string): Promise<boole
 		if (!tokens) throw new Error("Select a physical model with /model before choosing its context size.");
 	} else if (args !== "reset") {
 		tokens = parseContextSize(args);
-		if (tokens === undefined)
-			throw new Error("Usage: /context [all|size|reset|full|tokens]. Examples: /context 32k, /context 128000.");
+		if (tokens === undefined) {
+			host.showWarning("Usage: /context [all|size|reset|full|tokens]. Examples: /context 32k, /context 128000.");
+			return true;
+		}
 	}
 	const applied = port.invoke("setContextWindow", tokens);
 	const scope = tokens === undefined ? "the default working context" : "for this model in this session";

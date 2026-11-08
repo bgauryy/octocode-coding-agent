@@ -24,6 +24,7 @@ const commands: Record<string, readonly string[]> = {
 	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
 	trust: ["list", "add", "remove"],
+	profile: [],
 	marketplace: ["add", "list", "update", "remove"],
 	plugin: ["install", "update", "remove", "list"],
 	install: [],
@@ -166,6 +167,8 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 					"--",
 				);
 		}
+		if (command === "profile")
+			flags.push("--session", "--json", "--insights", "--agent", "--request", "--detail", "--timeline", "--trace");
 		if (["install", "remove", "config", "list", "update"].includes(command)) flags.push("--trust");
 		if (command === "plugin" && ["install", "update"].includes(action)) flags.push("--yes");
 		if (command === "trust") {

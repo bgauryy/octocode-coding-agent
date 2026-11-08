@@ -9,6 +9,8 @@ import {
 } from "./content.ts";
 import { AwaitingSchema } from "./application-awaiting.ts";
 import { ReplySchema } from "./question.ts";
+import { ApplicationToolProgressSchema } from "./tool-progress.ts";
+import { ToolDisplaySchema } from "./tool-display.ts";
 
 export const APPLICATION_PROTOCOL_VERSION = 1 as const;
 const identity = {
@@ -121,6 +123,12 @@ const MessageSchema = Type.Object({
 });
 const toolData = {
 	content: Type.Optional(Type.Array(ApplicationContentBlockSchema)),
+	/** Set by partial updates of a running tool that reports progress; a later update or the result replaces it. */
+	progress: Type.Optional(ApplicationToolProgressSchema),
+	/** How every surface draws the call, built on the host from the tool's arguments and result. */
+	display: Type.Optional(ToolDisplaySchema),
+	/** When the call started running (ms since the epoch), so views show elapsed time without their own clock state. */
+	startedAt: Type.Optional(Type.Number()),
 	arguments: Type.Optional(Type.Unknown()),
 	parentToolCallId: Type.Optional(Type.String()),
 	messageId: Type.Optional(Type.String()),
@@ -178,6 +186,7 @@ const ApplicationModelSchema = Type.Object({
 	name: Type.String(),
 	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
 });
+const SessionStatusSchema = Type.Union([Type.Literal("idle"), Type.Literal("compacting"), Type.Literal("retrying")]);
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,
 	Type.Object({ type: Type.Literal("session.model"), model: Type.Optional(ApplicationModelSchema) }),
@@ -235,10 +244,7 @@ export const ApplicationEventSchema = Type.Union([
 		steering: Type.Array(Type.String()),
 		followUp: Type.Array(Type.String()),
 	}),
-	Type.Object({
-		type: Type.Literal("session.status"),
-		status: Type.Union([Type.Literal("compacting"), Type.Literal("retrying"), Type.Literal("idle")]),
-	}),
+	Type.Object({ type: Type.Literal("session.status"), status: SessionStatusSchema }),
 	Type.Object({
 		type: Type.Literal("session.awaiting"),
 		/** The blocking dialog now open; absent when none is. */
@@ -249,7 +255,6 @@ export const ApplicationEventSchema = Type.Union([
 		receipt: ReceiptSchema,
 	}),
 ]);
-const SessionStatusSchema = Type.Union([Type.Literal("idle"), Type.Literal("compacting"), Type.Literal("retrying")]);
 export const ApplicationCursorSchema = Type.Object({
 	sessionId: Type.String(),
 	epoch: Type.String(),
@@ -280,7 +285,7 @@ export const ApplicationSnapshotSchema = Type.Object({
 	),
 });
 const frameFields = {
-	protocolVersion: Type.Literal(1),
+	protocolVersion: Type.Literal(APPLICATION_PROTOCOL_VERSION),
 	cursor: ApplicationCursorSchema,
 	at: Type.Number(),
 };

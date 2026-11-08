@@ -32,6 +32,7 @@ import { applyBacklogCommand, applyBacklogMutation, mutationShapeError } from ".
 import { handleApplicationDataRequest } from "./application-data.ts";
 import { pumpApplicationFrames } from "./application-stream.ts";
 import { handleDocsRequest, repoDocsNeverTrusted, type RepoDocsTrusted } from "./docs.ts";
+import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 import { readerStalled } from "./socket-pressure.ts";
@@ -97,6 +98,24 @@ export async function startWorkspaceWeb(
 			}
 		}
 	};
+	// One profiler subscription while a page is connected: a finished request of a listed agent goes to every page.
+	let stopProfiler: (() => void) | undefined;
+	const profilerLive = () => {
+		if (!workspace?.profiler || stopProfiler || !authenticated.size) return;
+		stopProfiler = workspace.profiler.subscribe((update) => {
+			const text = JSON.stringify({ type: "profiler", data: redactData(update) } satisfies WorkspaceServerEvent);
+			for (const socket of authenticated) {
+				if (socket.readyState !== WebSocket.OPEN) continue;
+				if (readerStalled(socket)) socket.terminate();
+				else socket.send(text);
+			}
+		});
+	};
+	const profilerIdle = () => {
+		if (authenticated.size) return;
+		stopProfiler?.();
+		stopProfiler = undefined;
+	};
 	const workspaceChanged = workspace && workspaceChanges(workspace);
 	const workspaceUpdates = () => {
 		if (!workspaceChanged || !authenticated.size) return;
@@ -116,13 +135,14 @@ export async function startWorkspaceWeb(
 	};
 	const unsubscribe = workspace?.subscribe(workspaceUpdates);
 	const server = http.createServer((req, res) => {
-		const reply = (status: number, body: unknown) => {
+		const reply = (status: number, body: unknown, headers?: Record<string, string>) => {
 			// A failure after the answer went out must not write headers again: that throws inside the rejection handler.
 			if (res.headersSent) {
 				res.end();
 				return;
 			}
 			res.writeHead(status, {
+				...headers,
 				"content-type": "application/json",
 				"cache-control": "no-store",
 				"x-content-type-options": "nosniff",
@@ -161,6 +181,7 @@ export async function startWorkspaceWeb(
 			const requestUrl = new URL(req.url ?? "/", origin);
 			if (await handleWebPrefsRequest(req, requestUrl.pathname, webPrefs, reply, WEB_PAGE_ASSETS)) return;
 			if (await handleApplicationDataRequest(req, requestUrl, workspace?.application, backlog.session, reply)) return;
+			if (await handleProfilerRequest(req, requestUrl, workspace?.profiler, reply)) return;
 			if (requestUrl.pathname === WORKSPACE_ROUTES.audit && req.method === "GET") {
 				const before = requestUrl.searchParams.get("before");
 				if (before !== null && !/^[1-9][0-9]*$/.test(before)) return reply(400, { error: "Invalid audit cursor" });
@@ -259,6 +280,7 @@ export async function startWorkspaceWeb(
 			client.on("close", () => {
 				clearTimeout(timeout);
 				authenticated.delete(client);
+				profilerIdle();
 				applicationStreams.get(client)?.close();
 				applicationStreams.delete(client);
 			});
@@ -294,6 +316,7 @@ export async function startWorkspaceWeb(
 				if (!authorized(supplied)) return client.close(1008, "Reopen /web");
 				clearTimeout(timeout);
 				authenticated.add(client);
+				profilerLive();
 				try {
 					sendSnapshot(client);
 					sendWorkspace(client);
@@ -325,6 +348,7 @@ export async function startWorkspaceWeb(
 	await new Promise<void>((resolve, reject) => {
 		const onError = (error: Error) => {
 			clearInterval(updates);
+			stopProfiler?.();
 			unsubscribe?.();
 			workspace?.close();
 			sockets.close();
@@ -346,6 +370,7 @@ export async function startWorkspaceWeb(
 			new Promise<void>((resolve) => {
 				closed = true;
 				clearInterval(updates);
+				stopProfiler?.();
 				unsubscribe?.();
 				workspace?.close();
 				for (const socket of sockets.clients) socket.terminate();

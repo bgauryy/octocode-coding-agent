@@ -9,7 +9,13 @@ import { fence } from "../../../octocode/shared/archive/text.ts";
 
 type Host = Pick<
 	InteractiveModeHost,
-	"chatContainer" | "getMarkdownThemeWithSettings" | "session" | "showExtensionSelector" | "showStatus" | "ui"
+	| "chatContainer"
+	| "getMarkdownThemeWithSettings"
+	| "session"
+	| "showExtensionSelector"
+	| "showStatus"
+	| "showWarning"
+	| "ui"
 >;
 
 const BTW_USAGE =
@@ -32,7 +38,7 @@ export async function handleWorkflowCommand(host: Host, name: string, args: stri
 			else host.showStatus("No side question is running.");
 		} else if (args) {
 			if (service.snapshot().running)
-				throw new Error("A side question is already running. Use /btw --cancel to stop it.");
+				return host.showWarning("A side question is already running. Use /btw --cancel to stop it.");
 			const block = appendReport(host, "Side question", `**Question:** ${args}\n\n${ANSWERING}`);
 			// The service owns errors and usage; the block shows only this question's exchange.
 			void port.invoke("askSideQuestion", args).then(
@@ -52,7 +58,9 @@ export async function handleWorkflowCommand(host: Host, name: string, args: stri
 						.join("\n\n---\n\n") || BTW_USAGE
 				);
 			};
-			const block = appendReport(host, "Side thread", view());
+			const text = view();
+			if (text === BTW_USAGE) return host.showWarning(BTW_USAGE);
+			const block = appendReport(host, "Side thread", text);
 			if (service.snapshot().running) {
 				// Follow the running request; once it settles the block keeps its final text.
 				const unsubscribe = service.subscribe(() => {

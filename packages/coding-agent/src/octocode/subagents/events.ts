@@ -3,7 +3,7 @@ import { NEEDS_APPROVAL } from "../permission/ask/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
 import { EXPOSURE_NOTIFY_PREFIX } from "../permission/provenance/exposure.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { Thought } from "../shared/thought.ts";
 import { addUsage, contentText, emptyUsage } from "../shared/util.ts";
 import { JOB_TYPE, TIMER_TYPE } from "../shared/messages.ts";
@@ -202,7 +202,8 @@ function noteNotice(state: ChildState, event: Record<string, unknown>): boolean 
 		(level !== "warning" && level !== "error")
 	)
 		return false;
-	const text = visibleControls(message.replace(/\s+/g, " ").trim());
+	// A notice can quote a credential (a provider's 401 body); redacted here, the kept list, the saved file and `lastError` all hold the clean text.
+	const text = redactSecrets(visibleControls(message.replace(/\s+/g, " ").trim()));
 	const { notice, repeat } = state.noticeLog.add(level, text);
 	if (!repeat) {
 		const { kept } = state.notices;

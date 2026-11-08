@@ -31,7 +31,8 @@ export class FileModelsStore implements ModelsStore {
 
 	constructor(path: string = join(getAgentDir(), "models-store.json")) {
 		this.path = normalizePath(path);
-		this.storage = new FileAuthStorageBackend(this.path);
+		// The models cache holds no secrets: an existing file keeps its mode.
+		this.storage = new FileAuthStorageBackend(this.path, { keepMode: true });
 		this.readState = sharedModelsFileReadState?.path === this.path ? sharedModelsFileReadState.readState : { data: {} };
 		sharedModelsFileReadState ??= { path: this.path, readState: this.readState };
 	}

@@ -5,6 +5,7 @@ import { resetApiProviders } from "@octocodeai/octocode-ai/compat";
 import { ExtensionRunner, type ToolDefinition } from "../features/index.ts";
 import { emitSessionShutdownEvent } from "../features/runner.ts";
 import { ModelRegistry } from "../model-registry.ts";
+import { applyProviderSources } from "../provider-sources/index.ts";
 import { defaultToolNames } from "../native-tools.ts";
 import { applyToolModifiers } from "../settings-manager.ts";
 import { createBashToolDefinition } from "../tools/index.ts";
@@ -102,6 +103,8 @@ export async function reloadExtensionRuntime(
 			: [];
 	const previousDefaultTools = new Set(getDefaultTools());
 	await session.settingsManager.reload();
+	session.modelRuntime.setDisabledProviders(session.settingsManager.getDisabledProviders());
+	await applyProviderSources(session.modelRuntime, session.settingsManager.getProviderSources());
 	host.syncQueueModesFromSettings();
 	resetApiProviders();
 	await session.resourceLoader.reload();

@@ -7,6 +7,7 @@ import {
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
+import { redactData } from "../../../../common/src/sanitize.ts";
 import { dbStamp } from "../../../../db/src/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
@@ -37,6 +38,8 @@ interface Tab {
 	/** The token that opened this tab, so rotating it can end the tab. */
 	credential?: TokenAccess;
 	connection?: ApplicationConnection;
+	/** Stops this tab's profiler frames. */
+	profilerOff?: () => void;
 }
 
 function validCursor(value: unknown): value is ApplicationCursor {
@@ -140,6 +143,7 @@ export class TabHub {
 			this.pending.delete(socket);
 			this.tabs.delete(tab);
 			tab.connection?.close();
+			this.releaseProfiler(tab);
 			// Only a tab that proved the token counts as use; a stranger's socket never restarts the idle timer.
 			if (authenticated) {
 				this.activity();
@@ -188,10 +192,26 @@ export class TabHub {
 		const session = tab.scope.session;
 		if (!session) return;
 		await this.sendWorkspace(tab, session.client);
+		// Live request frames of this session's agents: the session sends them to the daemon once it is subscribed.
+		tab.profilerOff = session.client.profiler.onUpdate((update) =>
+			this.post(tab, { type: "profiler", data: redactData(update) }),
+		);
+		void session.client.profiler.subscribe().catch(() => undefined);
+		if (tab.socket.readyState !== WebSocket.OPEN) this.releaseProfiler(tab);
 		const connection = session.client.application.connect({ sessionId: session.id, cursor });
 		tab.connection = connection;
 		if (tab.socket.readyState !== WebSocket.OPEN) return connection.close();
 		await pumpApplicationFrames(tab.socket, connection, { access: tab.access });
+	}
+
+	/** Stops a tab's profiler frames; the session stops sending them (and polling) once no tab of it is left. */
+	private releaseProfiler(tab: Tab): void {
+		if (!tab.profilerOff) return;
+		tab.profilerOff();
+		tab.profilerOff = undefined;
+		const session = tab.scope.session;
+		if (!session?.client.connected || [...this.tabs].some((other) => other.scope.session?.id === session.id)) return;
+		void session.client.profiler.unsubscribe().catch(() => undefined);
 	}
 
 	private post(tab: Tab, event: WorkspaceServerEvent | { type: "daemon"; data: { draining: boolean } }): void {

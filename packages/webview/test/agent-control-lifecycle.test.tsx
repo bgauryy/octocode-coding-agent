@@ -2,7 +2,8 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { AgentsView } from "../src/app/live/AgentsView.tsx";
+import { Drawer } from "../src/app/live/profiler/Drawer.tsx";
+import { agent } from "./profiler-fixtures.ts";
 import { MessageForm } from "../src/app/live/controls.tsx";
 import { ItemActivity } from "../src/app/live/ItemPanels.tsx";
 import { controlView, deferredControl, fetchControl, member, posted, setupControls } from "./control-fixtures.tsx";
@@ -102,12 +103,22 @@ it("does not clear a newly edited comment when the previous view finishes saving
 	expect(box).toHaveValue("Next comment");
 });
 
-it("reenables stop when a lingering agent starts another run and points main control to Activity", async () => {
-	const view = controlView(<AgentsView />);
+it("reenables stop when a lingering agent starts another run", async () => {
+	const view = controlView(
+		<Drawer
+			selection={{ kind: "agent", agentId: "worker" }}
+			agents={[agent("worker", { parentId: "main" })]}
+			requests={new Map()}
+			timeline={undefined}
+			width={380}
+			onWidth={() => {}}
+			onSelect={() => {}}
+			onStep={() => {}}
+		/>,
+	);
 	await view.workspace({ agents: [member(), member({ id: "main", role: "main" })] });
 	await userEvent.click(screen.getByRole("button", { name: "Request stop" }));
 	await waitFor(() => expect(screen.getByRole("button", { name: "Request stop" })).toBeDisabled());
-	expect(screen.getByRole("link", { name: "Open session controls" })).toHaveAttribute("href", "#activity");
 	await view.workspace({ agents: [member({ status: "idle" })] });
 	await view.workspace({ agents: [member({ status: "working" })] });
 	await userEvent.click(screen.getByRole("button", { name: "Request stop" }));

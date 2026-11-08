@@ -575,7 +575,7 @@ describe("summary usage", () => {
 });
 
 describe("run metrics", () => {
-	it("records wall time through tool waits and compaction without duplicating the live activity clock", async () => {
+	it("counts compactions and leaves the run's time to the transcript's turn line", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
 		try {
@@ -600,14 +600,13 @@ describe("run metrics", () => {
 			await fake.emit("session_compact", {}, ctx);
 			await fake.emit("agent_start", {}, ctx);
 			vi.advanceTimersByTime(2_000);
-			expect(rendered()).not.toContain("last run");
 			expect(rendered()).toContain("2 compactions");
 			await fake.emit("agent_settled", {}, ctx);
 			vi.advanceTimersByTime(5_000);
-			expect(rendered()).toContain("last run 20s");
+			// `✻ Worked 20s` is the turn line's: the footer never repeats the run's time.
+			expect(rendered()).not.toMatch(/last run|20s/);
 			expect(vi.getTimerCount()).toBe(0);
 			await fake.emit("agent_start", {}, ctx);
-			expect(rendered()).not.toContain("last run");
 			component.dispose();
 			expect(vi.getTimerCount()).toBe(0);
 			entries = [];
@@ -621,13 +620,7 @@ describe("run metrics", () => {
 
 	it("keeps compact totals readable without overflowing narrow terminals", () => {
 		for (const width of [0, 1, 20, 40, 80, 120, 200]) {
-			const lines = footerLines(
-				{ ...state, runMs: 125_000, running: true, compactions: 3 },
-				null,
-				statuses,
-				theme,
-				width,
-			);
+			const lines = footerLines({ ...state, running: true, compactions: 3 }, null, statuses, theme, width);
 			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 			if (width >= 80) {
 				expect(lines.join("\n")).toContain("15.5k tokens");

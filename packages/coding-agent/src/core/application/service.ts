@@ -50,7 +50,7 @@ type Result<K extends Method> = ApplicationOperationResult<ApplicationOperations
 export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, ApplicationOperations> {
 	private readonly state = createApplicationState();
 	readonly stateSource = readOnlyApplicationState(this.state);
-	private readonly transcript = new ApplicationTranscript(this.state, () => this.session.sessionManager);
+	private readonly transcript = new ApplicationTranscript(this.state, () => this.session);
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
 	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());
 	private readonly source = new ContextSource();

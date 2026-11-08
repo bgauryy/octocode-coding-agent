@@ -76,8 +76,8 @@ describe("the end_hint migration", () => {
 		openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false }, plan);
 
 	it("is the first step, additive, and a migrated file has the shape of a new one", () => {
-		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`) and 7 (`backlog.rank`) came after these.
-		expect(SCHEMA_PLAN.version).toBe(7);
+		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`), 7 (`backlog.rank`) and 8 (`cache_write`) came after these.
+		expect(SCHEMA_PLAN.version).toBe(8);
 		expect(SCHEMA_PLAN.migrations).toEqual([
 			expect.objectContaining({ to: 2, additive: true }),
 			expect.objectContaining({ to: 3, additive: true }),
@@ -85,12 +85,15 @@ describe("the end_hint migration", () => {
 			expect.objectContaining({ to: 5, additive: true }),
 			expect.objectContaining({ to: 6, additive: true }),
 			expect.objectContaining({ to: 7, additive: true }),
+			expect.objectContaining({ to: 8, additive: true }),
 		]);
 		const old = path.join(root, "old.db");
 		const first = open(old, { version: 1, migrations: [] });
 		// A version 1 file as the previous Octocode wrote it: no end_hint column.
 		for (const column of ["end_hint", "cwd", "branch", "process_title"])
 			first.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
+		// Step 8 adds `cache_write` to `agents` (and to `agent_runs`, dropped below).
+		first.db.exec("ALTER TABLE agents DROP COLUMN cache_write");
 		first.db.exec("DROP TABLE agent_runs");
 		first.db.exec("DROP TABLE timers");
 		// Step 5 adds `backlog.closed` and recreates its audit triggers; a version 1 file has neither.
@@ -123,6 +126,24 @@ describe("the end_hint migration", () => {
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "1" });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'from-v1'").get()).toEqual({ value: "yes" });
 		raw.close();
+	});
+});
+
+describe("cache writes per agent", () => {
+	it("are stored on the live row and carried to the run the retiring writer ends", () => {
+		const kid = member("writer", { role: "main", cacheRead: 5, cacheWrite: 7 });
+		store.join(kid);
+		expect(store.list(1000).find((each) => each.id === "writer")).toMatchObject({ cacheRead: 5, cacheWrite: 7 });
+		store.save({ ...kid, cacheWrite: 11 });
+		expect(store.list(1000).find((each) => each.id === "writer")?.cacheWrite).toBe(11);
+		store.remove("writer", Date.now(), kid, "completed");
+		const [run] = store.presence.runs({ agentId: "writer" });
+		expect(run).toMatchObject({ cacheRead: 5, cacheWrite: 11 });
+	});
+
+	it("read as 0 for a member recorded without them", () => {
+		store.join(member("legacy"));
+		expect(store.list(1000).find((each) => each.id === "legacy")?.cacheWrite).toBe(0);
 	});
 });
 

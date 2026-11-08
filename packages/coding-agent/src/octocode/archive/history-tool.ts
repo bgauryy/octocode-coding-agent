@@ -88,7 +88,7 @@ export function createHistoryTool() {
 			file: Type.Optional(
 				Type.String({ description: "Listed file or folder: search narrows to it; get reads it from line" }),
 			),
-			line: Type.Optional(Type.Integer({ description: "Read from this line" })),
+			line: Type.Optional(Type.Integer({ description: "Read from this line; profile: request number" })),
 			page: Type.Optional(Type.Integer({ description: "Continue a result" })),
 			errors: Type.Optional(
 				Type.Boolean({

@@ -44,6 +44,8 @@ export interface AuditEntry {
 	purpose?: string;
 	/** `purpose` was derived from the call's arguments because the agent gave no reason. */
 	reasonDerived?: boolean;
+	/** When the user was shown the ask this entry answers (`at` is when it was decided); absent when nobody was asked. */
+	askedAt?: number;
 	/** Which agent issued it. */
 	agent: string;
 	allowed: boolean;
@@ -120,8 +122,10 @@ export function childAuditEntry(message: string, agent: string, nonce: string): 
 	if (reasons === null || suppressed === null || purpose === null || note === null || snapshot === null)
 		return undefined;
 	const at = typeof raw.at === "number" && Number.isFinite(raw.at) ? raw.at : Date.now();
+	const askedAt = typeof raw.askedAt === "number" && Number.isFinite(raw.askedAt) ? raw.askedAt : undefined;
 	return {
 		at,
+		...(askedAt === undefined ? {} : { askedAt }),
 		mode,
 		action: action as AuditEntry["action"],
 		...(reasons && reasons.length > 0 ? { reasons } : {}),

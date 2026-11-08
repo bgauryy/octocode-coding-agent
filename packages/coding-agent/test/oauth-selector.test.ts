@@ -66,7 +66,7 @@ describe("OAuthSelectorComponent", () => {
 
 	it("renders an option without compiled auth status as not configured", () => {
 		const selector = new OAuthSelectorComponent(
-			"login",
+			"sign-in",
 			[{ id: "google", name: "Google", authType: "api_key", status: undefined }],
 			() => {},
 			() => {},
@@ -79,7 +79,7 @@ describe("OAuthSelectorComponent", () => {
 
 	it("shows OAuth auth distinctly in the API key selector", () => {
 		const selector = new OAuthSelectorComponent(
-			"login",
+			"sign-in",
 			[{ id: "anthropic", name: "Anthropic", authType: "api_key", status: { type: "oauth", source: "OAuth" } }],
 			() => {},
 			() => {},
@@ -91,7 +91,7 @@ describe("OAuthSelectorComponent", () => {
 
 	it("shows environment API key auth as configured", () => {
 		const selector = new OAuthSelectorComponent(
-			"login",
+			"sign-in",
 			[{ id: "openai", name: "OpenAI", authType: "api_key", status: { type: "api_key", source: "OPENAI_API_KEY" } }],
 			() => {},
 			() => {},
@@ -104,7 +104,7 @@ describe("OAuthSelectorComponent", () => {
 
 	it("shows models.json API key auth as configured", () => {
 		const selector = new OAuthSelectorComponent(
-			"login",
+			"sign-in",
 			[
 				{
 					id: "local-proxy",
@@ -122,7 +122,7 @@ describe("OAuthSelectorComponent", () => {
 
 	it("shows models.json command auth as configured", () => {
 		const selector = new OAuthSelectorComponent(
-			"login",
+			"sign-in",
 			[
 				{
 					id: "op-proxy",

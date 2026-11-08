@@ -8,7 +8,7 @@
  * renderers: `core` (identity, paths, output, images, trust, models, browser) and `view` (render, ui).
  */
 
-import type { Component, Container, SelectListTheme, TUI } from "@octocodeai/octocode-tui";
+import type { Component, Container, TUI } from "@octocodeai/octocode-tui";
 import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { TSchema } from "typebox";
 import type { McpServerConfig } from "./servers.ts";
@@ -157,13 +157,40 @@ export interface McpRenderPort {
 	): string;
 }
 
+/** One page of the shared list → detail → action pattern: facts, one section of rows, notes and the key hints. */
+interface McpPageOptions {
+	title: string;
+	facts?: Array<{ label: string; value: string }>;
+	/** Problems, drawn in the error colour. */
+	alerts?: string[];
+	notes?: string[];
+	heading: string;
+	rows: Array<{
+		id: string;
+		name: string;
+		detail?: string;
+		badge?: string;
+		tone?: "success" | "muted" | "warning" | "error";
+	}>;
+	/** Shown when there are no rows. */
+	empty?: string;
+	initialId?: string;
+	/** What Enter does, for the key hint. */
+	confirmLabel: string;
+	/** What Escape does, for the key hint. */
+	cancelLabel: string;
+	onSelect(id: string): void;
+	onHighlight(id: string): void;
+	onCancel(): void;
+}
+
 /** The terminal view pieces of the `/mcp` manager. */
 export interface McpUiPort {
 	keyHint(keybinding: string, description: string): string;
 	frame(theme: McpTheme, title: string, body: Component[], footer?: string): Container;
 	renderClipped(content: Component, width: number): string[];
-	/** The select list's colours in the active theme. */
-	selectListTheme(): SelectListTheme;
+	/** The host's page component for `options`; it handles the arrow, Enter and Escape keys. */
+	page(options: McpPageOptions): Component;
 	/** The authorization-URL line with a copy action. */
 	authUrl(tui: TUI, url: string): Component & { copy(): Promise<void> };
 	/** Runs `run` against a view the host mounts for the command until `run` returns; failures are shown as errors. */

@@ -17,6 +17,7 @@ import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
 import type { AllowedSource, CheckContext } from "./provenance/ignorable.ts";
 import { grantedSource, sourceGrant } from "./provenance/grant.ts";
+import { credentialRead, credentialReason } from "./credential-store.ts";
 import { args, callRequest, classify, reasonPurpose } from "./gate/classify.ts";
 import { prepareReplacement, type ReplacementOwner } from "./gate/replacement.ts";
 import { decide, type Decision, type GateVerdict, type PermissionStepBodies } from "./judge.ts";
@@ -145,11 +146,15 @@ export function permissionGate(options: PermissionGateOptions) {
 		},
 		reasons: (state) => {
 			const { event, input, hit, prior, request } = state;
+			const credential = credentialRead(event.toolName, input, state.ctx.cwd);
 			const reasons: AskReason[] = [
 				...(hit ? (["provenance"] as const) : []),
 				...(prior?.ask ? (["hook.ask"] as const) : []),
+				...(credential === undefined ? [] : (["credential.read"] as const)),
 			];
-			const reason = [hit?.why, prior?.ask].filter(Boolean).join("\n");
+			const reason = [hit?.why, prior?.ask, credential === undefined ? undefined : credentialReason(credential)]
+				.filter(Boolean)
+				.join("\n");
 			state.call =
 				reasons.length > 0
 					? {

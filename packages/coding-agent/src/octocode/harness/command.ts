@@ -19,6 +19,7 @@ import type { HooksView } from "../hooks/register/types.ts";
 import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
+import { confirmAction, successNotice } from "../shared/page.ts";
 import { HarnessPicker } from "./picker.ts";
 import { switchHarness } from "./vendor-items.ts";
 
@@ -148,7 +149,8 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				...queued,
 				"Reloading applies the switches; the next request rebuilds the prompt cache once.",
 			].join("\n");
-			if (await ctx.ui.confirm("Reload now?", question)) {
+			const select = (title: string, options: string[]) => ctx.ui.select(title, options);
+			if (await confirmAction(select, `Reload now?\n${question}`, ["Reload"])) {
 				await runMcp(true);
 				if (failed) say(ctx, lines.join("\n"), "warning");
 				return ctx.reload();
@@ -219,7 +221,11 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			cwd: ctx.cwd,
 			out: (text) => void lines.push(text),
 			err: (text) => void lines.push(text),
-			confirm: ctx.mode === "tui" && ctx.hasUI ? (question) => ctx.ui.confirm("Plugin", question) : undefined,
+			confirm:
+				ctx.mode === "tui" && ctx.hasUI
+					? async (question) =>
+							!!(await confirmAction((title, options) => ctx.ui.select(title, options), question, ["Continue"]))
+					: undefined,
 		});
 		say(
 			ctx,
@@ -281,7 +287,9 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				inProject: change.scope === "project",
 			}));
 		await finish(ctx, {
-			lines: settingsChanged ? ["Switches saved.", ...(harnessSwitched ? [await reloadMcp(api)] : [])] : [],
+			lines: settingsChanged
+				? [successNotice("Saved", "switches"), ...(harnessSwitched ? [await reloadMcp(api)] : [])]
+				: [],
 			failed: false,
 			settingsChanged,
 			mcpChanges,

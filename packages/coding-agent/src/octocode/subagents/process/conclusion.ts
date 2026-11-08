@@ -4,7 +4,7 @@ import type { ChildState } from "../events.ts";
 import type { ReportTracker } from "../report.ts";
 import { unavailableResult } from "../result-schema.ts";
 import { shortPath } from "../../shared/format.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
 import type { Identity } from "./env.ts";
 import { exitReason, LOAD_ERROR, noAnswerError, StartupError, type SubagentOutcome } from "./outcome.ts";
 import type { StderrTail } from "./stderr.ts";
@@ -58,12 +58,14 @@ export function concludeRun(end: Conclusion): { reject: Error } | { resolve: Sub
 			: "";
 		return { reject: new Error(`Subagent ${exitReason(code, exitSignal)}: ${stderr.text()}${last}`) };
 	}
-	// A child that aborted itself (its compaction kept thrashing, say) says why in its last error notice.
+	// A child that aborted itself (its compaction kept thrashing, say) says why in its last error notice. Error text from the
+	// child can quote a credential (a provider's 401 body), so it is redacted before it reaches the parent.
+	const lastError = state.notices.lastError === undefined ? undefined : redactSecrets(state.notices.lastError);
 	const failure = cancelled
-		? state.notices.lastError
-			? `Subagent stopped: ${state.notices.lastError}`
+		? lastError
+			? `Subagent stopped: ${lastError}`
 			: "Subagent cancelled before its run settled"
-		: (error ?? (answered ? undefined : noAnswerError(state.notices.lastError)));
+		: ((error === undefined ? undefined : redactSecrets(error)) ?? (answered ? undefined : noAnswerError(lastError)));
 	return {
 		resolve: {
 			text: finalText,

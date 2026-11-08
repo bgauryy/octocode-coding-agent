@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import type { Args } from "../cli/args.ts";
 import type { CreateAgentSessionRuntimeFactory } from "../core/agent-session-runtime.ts";
-import { headlessCachePreferences } from "../core/cache-configuration.ts";
 import { type AgentSessionRuntimeDiagnostic, createAgentSessionServices } from "../core/agent-session-services.ts";
 import { createSessionFromServices } from "../core/agent-session/create-session.ts";
 import { warningsBesideListing } from "../core/resource-loader/feature-loading.ts";
@@ -75,11 +74,6 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			},
 		});
 		const { settingsManager, modelRuntime, resourceLoader } = services;
-		// A one-shot run writes its instruction blocks for the next run with the same tools and keeps its history short.
-		if (getAppMode() === "print") {
-			const headless = headlessCachePreferences(settingsManager.getCachePreferenceLayers(), process.env);
-			if (headless) settingsManager.applyOverrides(headless);
-		}
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...services.diagnostics,
 			// A path the user passed with `--skill` that is not there loads nothing: say so, and carry on.

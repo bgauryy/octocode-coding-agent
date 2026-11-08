@@ -1,3 +1,4 @@
+import { fileDisplay } from "./display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
@@ -14,7 +15,8 @@ import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import type { Checkpoints } from "./checkpoint.ts";
 import { readView } from "./coverage.ts";
-import { type QueryOutcome, renderFileCall, renderFileResult } from "./render.ts";
+import type { QueryOutcome } from "./outcome.ts";
+import { renderFileCall, renderFileResult } from "./render.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
 import { parsePatch } from "../shared/codex-patch/patch.ts";
 import { patchChanges, validateFileInput } from "../shared/file-input.ts";
@@ -300,6 +302,7 @@ export function registerFileTool(
 				},
 				renderCall: renderFileCall,
 				renderResult: renderFileResult,
+				display: fileDisplay,
 			},
 			{ exclusive: true },
 		),

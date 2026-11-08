@@ -19,14 +19,6 @@ export function appKey(action: Keybinding): string {
 	return shortcutText(action);
 }
 
-/** Fewest words a model-given reason needs to say anything the row's title does not (`Edit` alone does not; `Run tests` does). */
-const REASON_MIN_WORDS = 2;
-
-/** Whether a call's `reason` carries information worth a `↳` line. */
-export function isInformativeReason(reason: string | undefined): reason is string {
-	return reason !== undefined && reason.trim().split(/\s+/).length >= REASON_MIN_WORDS;
-}
-
 /** A multi-line message (an error that lists what was wrong) as one line, for a summary that `clip` would cut at its first line. */
 export function oneLine(text: string): string {
 	return text

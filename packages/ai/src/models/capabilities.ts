@@ -5,10 +5,12 @@
  */
 import { getAnthropicCompat } from "../api/anthropic-messages/compat.ts";
 import {
+	bedrockSupportsLongCacheRetention,
 	isAnthropicClaudeModel,
 	supportsAdaptiveThinking,
 	supportsPromptCaching,
 } from "../api/bedrock-converse-stream/model-match.ts";
+import { azureAcceptsExtendedRetention } from "../api/azure-openai-config.ts";
 import { usesGoogleThinkingLevel } from "../api/google-shared/thinking-format.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
@@ -41,7 +43,7 @@ export interface ModelCapabilities {
 const MARKER_LIFETIMES = { short: 300, long: 3600 } as const;
 /** OpenAI explicit cache mode lifetimes in seconds: 30 minutes and 12 hours. */
 const EXPLICIT_LIFETIMES = { short: 1800, long: 43_200 } as const;
-/** OpenAI extended retention for implicit caching (`prompt_cache_retention: "24h"`), in seconds. */
+/** OpenAI and Azure extended retention for implicit caching (`prompt_cache_retention: "24h"`), in seconds. */
 const EXTENDED_KEY_LIFETIME = 86_400;
 
 export function resolveModelCapabilities(model: Model<Api>, env?: ProviderEnv): ModelCapabilities {
@@ -96,6 +98,8 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 		};
 	if (mechanism === "key" && model.api === "openai-responses")
 		return { mechanism, lifetimes: tiers(declared.short, declared.long ?? EXTENDED_KEY_LIFETIME) };
+	if (model.api === "azure-openai-responses" && azureAcceptsExtendedRetention(model))
+		return { mechanism, lifetimes: tiers(declared.short, declared.long ?? EXTENDED_KEY_LIFETIME) };
 	return { mechanism, lifetimes: tiers(declared.short, declared.long) };
 }
 
@@ -136,6 +140,8 @@ function supportsLongRetention(model: Model<Api>): boolean {
 			return getResponsesCompat(model as Model<"openai-responses">).supportsLongCacheRetention;
 		case "openai-completions":
 			return getCompletionsCompat(model as Model<"openai-completions">).supportsLongCacheRetention;
+		case "bedrock-converse-stream":
+			return bedrockSupportsLongCacheRetention(model as Model<"bedrock-converse-stream">);
 		default:
 			return (
 				(model.compat as { supportsLongCacheRetention?: boolean } | undefined)?.supportsLongCacheRetention !== false

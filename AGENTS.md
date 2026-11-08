@@ -63,4 +63,4 @@ Change the generator, never its output (`yarn workspace @octocodeai/octocodecode
 
 ## Dogfooding
 
-Record where Octocode got in your way (tool errors, refusals, retries, wrong turns) in `.octocode/REFLECT.md`, trace each to its product cause, and fix it in its owner or file a backlog item. Lessons live there, not here.
+Research this repository with the local Octocode MCP server (`octocode-local` Reflect usage in `.octocode/REFLECT.md`,

@@ -1076,6 +1076,19 @@
       }
     }
 
+    /* Tool rows drawn from their display (display-html.ts). */
+    .td-head { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .td-title { color: var(--toolTitle, var(--text)); }
+    .td-sub { color: var(--muted); padding-left: 2ch; overflow-wrap: anywhere; }
+    .td-outcome { color: var(--toolOutput, var(--text)); overflow-wrap: anywhere; }
+    .td-text { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--toolOutput, var(--text)); }
+    .td-file { margin-top: 4px; overflow-wrap: anywhere; }
+    .td-list { margin: 4px 0; padding-left: 0; list-style: none; }
+    .td-fields { margin: 4px 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
+    .td-fields dt { color: var(--muted); } .td-fields dd { margin: 0; overflow-wrap: anywhere; }
+    .td-muted { color: var(--muted); } .td-error { color: var(--error); } .td-warning { color: var(--warning); } .td-success { color: var(--success); }
+    .td-add { color: var(--toolDiffAdded); } .td-del { color: var(--toolDiffRemoved); }
+
     @media print {
       #sidebar, #sidebar-resizer, #sidebar-toggle { display: none !important; }
       body { background: white; color: black; }

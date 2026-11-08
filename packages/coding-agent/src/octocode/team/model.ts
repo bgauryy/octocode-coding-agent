@@ -129,6 +129,7 @@ export function toMember(row: Row): Member {
 		toolCalls: num(row.tool_calls),
 		input: num(row.input),
 		cacheRead: num(row.cache_read),
+		cacheWrite: num(row.cache_write),
 		output: num(row.output),
 		cost: num(row.cost),
 		unpriced: num(row.unpriced) === 1,
@@ -148,6 +149,9 @@ export function toTraffic(row: Row, deliveries: Row[]): Traffic {
 					: "awaiting reply"
 				: "delivered";
 	const replyTo = row.reply_to;
+	const deliveredAt = Math.min(
+		...deliveries.map((d) => (typeof d.delivered_at === "number" ? d.delivered_at : Infinity)),
+	);
 	return {
 		id: num(row.id),
 		from: String(row.sender),
@@ -155,6 +159,7 @@ export function toTraffic(row: Row, deliveries: Row[]): Traffic {
 		text: String(row.body),
 		at: num(row.created_at),
 		...(typeof replyTo === "number" ? { replyTo } : {}),
+		...(Number.isFinite(deliveredAt) ? { deliveredAt } : {}),
 		state,
 	};
 }

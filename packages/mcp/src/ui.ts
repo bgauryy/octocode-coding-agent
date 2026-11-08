@@ -5,11 +5,9 @@
 
 import {
 	type Component,
-	type Container,
 	type Focusable,
 	Input,
 	type SelectItem,
-	SelectList,
 	Spacer,
 	Text,
 	type TUI,
@@ -17,13 +15,23 @@ import {
 import type { McpCommandContext, McpKeybindings, McpTheme } from "./host/types.ts";
 import { hostUi } from "./host.ts";
 
+export interface McpMenuItem extends SelectItem {
+	/** A short state word at the right edge. */
+	badge?: string;
+	tone?: "success" | "muted" | "warning" | "error";
+}
+
 export interface McpMenu {
 	title: string;
-	/** Shown below the title. */
+	/** Heading of the list: `Servers`, `Actions`. */
+	heading?: string;
+	/** Fact rows under the title (a detail page). */
+	facts?: Array<{ label: string; value: string }>;
+	/** Shown below the list, muted. */
 	details?: string;
-	/** Shown below the details in the error color. */
+	/** Shown below the list in the error color. */
 	error?: string;
-	items: SelectItem[];
+	items: McpMenuItem[];
 	/** Shown when there are no items. */
 	empty?: string;
 	/** Value of the item selected when the menu opens. */
@@ -50,13 +58,11 @@ export interface McpUi {
 	redirectUrl(title: string, authorizationUrl: string, signal: AbortSignal): Promise<string | undefined>;
 }
 
-const MAX_VISIBLE_ITEMS = 12;
-
 export class McpManagerView implements McpUi, Component, Focusable {
 	private readonly tui: TUI;
 	private readonly theme: McpTheme;
 	private readonly keybindings: McpKeybindings;
-	private content: Container;
+	private content: Component;
 	private inputHandler: ((data: string) => void) | undefined;
 	private inputTarget: Focusable | undefined;
 	private _focused = false;
@@ -82,7 +88,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 		if (this.inputTarget) this.inputTarget.focused = value;
 	}
 
-	private setContent(content: Container, inputHandler?: (data: string) => void, inputTarget?: Focusable): void {
+	private setContent(content: Component, inputHandler?: (data: string) => void, inputTarget?: Focusable): void {
 		if (this.disposed) return;
 		if (this.inputTarget) this.inputTarget.focused = false;
 		this.statusCancel = undefined;
@@ -109,36 +115,31 @@ export class McpManagerView implements McpUi, Component, Focusable {
 			const render = () => {
 				const menu = build();
 				const wanted = selected ?? menu.selected;
-				const body: Component[] = [];
-				if (menu.details) body.push(new Text(this.theme.fg("muted", menu.details), 1, 0));
-				if (menu.error) body.push(new Text(this.theme.fg("error", menu.error), 1, 0));
-				body.push(new Spacer(1));
-				const footer = `${hostUi().keyHint("tui.select.confirm", menu.confirmLabel)} • ${hostUi().keyHint("tui.select.cancel", menu.cancelLabel)}`;
-				if (menu.items.length === 0) {
-					body.push(new Text(this.theme.fg("muted", menu.empty ?? "Nothing to show."), 1, 0));
-					this.setContent(
-						hostUi().frame(this.theme, menu.title, body, hostUi().keyHint("tui.select.cancel", menu.cancelLabel)),
-						(data) => {
-							if (this.keybindings.matches(data, "tui.select.cancel")) finish(undefined);
-						},
-					);
-					return;
-				}
-				const list = new SelectList(
-					menu.items,
-					Math.min(menu.items.length, MAX_VISIBLE_ITEMS),
-					hostUi().selectListTheme(),
-				);
-				const index = menu.items.findIndex((item) => item.value === wanted);
-				if (index !== -1) list.setSelectedIndex(index);
-				selected = list.getSelectedItem()?.value;
-				list.onSelectionChange = (item) => {
-					selected = item.value;
-				};
-				list.onSelect = (item) => finish(item.value);
-				list.onCancel = () => finish(undefined);
-				body.push(list);
-				this.setContent(hostUi().frame(this.theme, menu.title, body, footer), (data) => list.handleInput(data));
+				const page = hostUi().page({
+					title: menu.title,
+					facts: menu.facts,
+					alerts: menu.error ? menu.error.split("\n") : undefined,
+					notes: menu.details ? menu.details.split("\n") : undefined,
+					heading: menu.heading ?? "Items",
+					rows: menu.items.map((item) => ({
+						id: item.value,
+						name: item.label,
+						detail: item.description,
+						badge: item.badge,
+						tone: item.tone,
+					})),
+					empty: menu.empty ?? "Nothing to show.",
+					initialId: wanted,
+					confirmLabel: menu.confirmLabel,
+					cancelLabel: menu.cancelLabel,
+					onSelect: (id) => finish(id),
+					onHighlight: (id) => {
+						selected = id;
+					},
+					onCancel: () => finish(undefined),
+				});
+				selected = menu.items.some((item) => item.value === wanted) ? wanted : menu.items[0]?.value;
+				this.setContent(page, (data) => page.handleInput?.(data));
 			};
 			render();
 			// Input handlers and `dispose` call `finish` only after this assignment.

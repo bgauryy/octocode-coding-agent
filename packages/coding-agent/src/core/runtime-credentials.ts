@@ -1,5 +1,6 @@
 import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@octocodeai/octocode-ai";
 import type { HeldCredential } from "./auth-storage.ts";
+import { registerCredentialSecrets, registerResolvedSecret } from "./secret-redaction.ts";
 
 /**
  * Rewrites a credential just before it is saved, e.g. to move a key into a keychain. `previous` is what storage held.
@@ -56,6 +57,7 @@ export class RuntimeCredentials implements CredentialStore {
 	}
 
 	setRuntimeApiKey(providerId: string, apiKey: string): void {
+		registerResolvedSecret(apiKey);
 		this.overrides.set(providerId, apiKey);
 	}
 
@@ -70,7 +72,10 @@ export class RuntimeCredentials implements CredentialStore {
 	async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		options?.signal?.throwIfAborted();
 		const override = this.overrides.get(providerId);
-		return override ? { type: "api_key", key: override } : this.store.read(providerId, options);
+		if (override) return { type: "api_key", key: override };
+		const credential = await this.store.read(providerId, options);
+		registerCredentialSecrets(credential);
+		return credential;
 	}
 
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
@@ -101,9 +106,15 @@ export class RuntimeCredentials implements CredentialStore {
 		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
 		options?: AuthOperationOptions,
 	): Promise<Credential | undefined> {
+		// A login or token refresh produces the credential here; remember it before a transform can swap it for a reference.
+		const remembering = async (current: Credential | undefined) => {
+			const next = await fn(current);
+			registerCredentialSecrets(next);
+			return next;
+		};
 		const transform = this.writeTransforms.get(providerId);
-		if (!transform) return this.store.modify(providerId, fn, options);
-		return this.modifyWithTransform(providerId, fn, transform, options);
+		if (!transform) return this.store.modify(providerId, remembering, options);
+		return this.modifyWithTransform(providerId, remembering, transform, options);
 	}
 
 	/** Once an external secret write starts, finish saving its reference even if the caller cancels. */

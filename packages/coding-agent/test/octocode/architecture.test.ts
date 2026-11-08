@@ -57,15 +57,18 @@ const ALLOWED: Record<string, string[]> = {
 	web: ["shared", "permission"],
 	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`).
 	compaction: ["shared", "files", "permission", "archive", "sessions"],
-	archive: ["shared", "memory", "permission"],
+	// The archive tool's profile source reads a stored session through the profiler.
+	archive: ["shared", "memory", "permission", "profiler"],
 	ui: ["shared", "permission"],
 	subagents: ["shared", "discovery", "team", "permission", "instructions", "backlog", "trust", "worktrees", "ask"],
 	instructions: ["shared"],
 	sessions: ["shared", "files", "subagents", "backlog", "archive"],
 	backlog: ["shared"],
 	trust: ["shared"],
-	workspace: ["shared", "backlog", "team", "subagents"],
-	"web-daemon": ["shared", "backlog", "workspace", "trust"],
+	// Rebuilds a stored session's profiler source from the team's message model.
+	profiler: ["team"],
+	workspace: ["shared", "backlog", "team", "subagents", "profiler"],
+	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler"],
 	remote: ["shared", "web-daemon", "workspace"],
 	memory: ["shared", "permission"],
 	plan: ["shared"],

@@ -155,7 +155,7 @@ own tools and commands; normal conflict diagnostics apply.
 
 An explicit home override (`OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR`) disables automatic Pi fallback.
 Pi sessions, trust decisions, device identity and telemetry consent are not imported.
-Pi authentication is not loaded automatically; `/login pi` offers an explicit,
+Pi authentication is not loaded automatically; `/providers pi` offers an explicit,
 confirmed credential import. Pi model definitions remain fallback inputs. Existing
 directories are neither moved nor deleted. See [provider setup](providers.md#use-pi-configuration).
 The separate agents-communication service keeps its shared directory at

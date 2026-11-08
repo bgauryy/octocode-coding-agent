@@ -21,7 +21,7 @@ it("shares entity schemas with transport and rejects invalid lifecycle values", 
 	).toBe(true);
 	expect(Value.Check(BacklogMutationSchema, { op: "update", state: "invented" })).toBe(false);
 	expect(Value.Check(BacklogMutationSchema, { op: "update", priority: 9 })).toBe(false);
-	expect(new Set(Object.values(WORKSPACE_ROUTES)).size).toBe(8);
+	expect(new Set(Object.values(WORKSPACE_ROUTES)).size).toBe(9);
 });
 it("validates report index and file payloads without admitting unknown kinds", () => {
 	const summary = {

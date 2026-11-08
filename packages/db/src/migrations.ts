@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
-	AGENT_RUNS_SCHEMA,
+	AGENT_RUNS_SCHEMA_V3,
 	BACKLOG_AUDIT_TRIGGERS,
 	BACKLOG_AUDIT_TRIGGERS_V5,
 	TIMERS_REBUILD_INDEXES,
@@ -58,7 +58,7 @@ const ADD_AGENT_RUNS: Migration = {
 	additive: true,
 	up: (db) => {
 		for (const column of ["cwd", "branch", "process_title"]) db.exec(`ALTER TABLE agents ADD COLUMN ${column} TEXT`);
-		db.exec(AGENT_RUNS_SCHEMA);
+		db.exec(AGENT_RUNS_SCHEMA_V3);
 	},
 };
 
@@ -130,9 +130,31 @@ const ADD_BACKLOG_RANK: Migration = {
 	},
 };
 
+/**
+ * 8: `agents.cache_write` and `agent_runs.cache_write`, the prompt tokens an agent wrote to cache (beside `cache_read`),
+ * for the cache profiler. Defaulted columns, so an Octocode that knows only version 7 keeps using the file (it never reads
+ * or writes them).
+ */
+const ADD_CACHE_WRITE: Migration = {
+	to: 8,
+	additive: true,
+	up: (db) => {
+		for (const table of ["agents", "agent_runs"])
+			db.exec(`ALTER TABLE ${table} ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0`);
+	},
+};
+
 export const SCHEMA_PLAN: SchemaPlan = {
-	version: 7,
-	migrations: [ADD_END_HINT, ADD_AGENT_RUNS, ADD_TIMERS, ADD_BACKLOG_CLOSED, WIDEN_TIMERS, ADD_BACKLOG_RANK],
+	version: 8,
+	migrations: [
+		ADD_END_HINT,
+		ADD_AGENT_RUNS,
+		ADD_TIMERS,
+		ADD_BACKLOG_CLOSED,
+		WIDEN_TIMERS,
+		ADD_BACKLOG_RANK,
+		ADD_CACHE_WRITE,
+	],
 };
 
 /** The oldest version that can use a file at `version`: the last step up to it that was not additive, else the first version. */

@@ -3,7 +3,7 @@
 import type { Agent, AgentMessage, AgentState, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmingStatus } from "../cache-warmer.ts";
-import type { ToolDefinition, ToolInfo } from "../features/index.ts";
+import type { ToolDefinition, ToolInfo, ToolRenderers } from "../features/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
@@ -103,6 +103,9 @@ export interface AgentSessionToolsApi {
 	getAllTools(): ToolInfo[];
 
 	getToolDefinition(name: string): ToolDefinition | undefined;
+
+	/** How calls to `name` are drawn: feature resolvers in load order, then the registered tool. */
+	getToolRenderers(name: string): ToolRenderers | undefined;
 
 	/**
 	 * Set active tools by name.

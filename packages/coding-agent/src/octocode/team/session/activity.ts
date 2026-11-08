@@ -99,6 +99,7 @@ export class Activity {
 		const { usage, model } = this.early;
 		me.input += usage.input;
 		me.cacheRead += usage.cacheRead;
+		me.cacheWrite = (me.cacheWrite ?? 0) + (usage.cacheWrite ?? 0);
 		me.output += usage.output;
 		me.cost += usage.cost;
 		if (usage.unpriced) me.unpriced = true;

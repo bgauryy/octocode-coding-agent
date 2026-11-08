@@ -1,7 +1,8 @@
 import { Container, getKeybindings, GLYPH, Spacer, Text } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { hintLine, keyText } from "./keybinding-hints.ts";
+import { HintBar } from "./hint-bar.ts";
+import { keyText } from "./keybinding-hints.ts";
 import { plainText } from "./styled-line.ts";
 
 /** One answer of a trust question: a key to press, what it does, and the value it returns. */
@@ -75,16 +76,11 @@ export class TrustPromptComponent<T> extends Container {
 		this.addChild(new Spacer(1));
 		const keys = options.rows.map((row) => row.key).join("/");
 		this.addChild(
-			new Text(
-				hintLine([
-					[keys, "choose"],
-					["↑↓", "move"],
-					[keyText("tui.select.confirm"), "confirm"],
-					[keyText("tui.select.cancel"), options.cancelLabel ?? "not now"],
-				]),
-				1,
-				0,
-			),
+			new HintBar([
+				[keys, "choose", 1],
+				[keyText("tui.select.confirm"), "confirm", 2],
+				[keyText("tui.select.cancel"), options.cancelLabel ?? "not now", 0],
+			]),
 		);
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());

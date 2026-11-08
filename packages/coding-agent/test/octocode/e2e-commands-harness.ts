@@ -266,8 +266,8 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 			await new Promise((resolve) => setTimeout(resolve, 100));
 			const open = editorOnly() !== idleEditor && host.editor !== host.defaultEditor;
 			if (open || host.activeSelectorDispose) {
-				// A selector or dialog replaced the editor: note what it shows, then dismiss it as a user would.
-				dialogs.push(screen().split("\n").filter(Boolean).slice(-12).join("\n"));
+				// A selector or dialog replaced the editor: note what it shows (title, rows and hint line), then dismiss it as a user would.
+				dialogs.push(screen().split("\n").filter(Boolean).slice(-16).join("\n"));
 				press("\x1b");
 				if (dialogs.length > 6) break;
 				continue;

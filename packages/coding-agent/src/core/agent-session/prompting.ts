@@ -236,7 +236,12 @@ export async function releaseHeldInput(host: PromptingHost): Promise<void> {
 		return;
 	}
 	const { text, images } = splitUserContent(next.content);
-	await host.runLoop.startRun({ messageType: "user", prompt: text, images }, undefined, inputs.getUserInput(next));
+	const input = inputs.getUserInput(next);
+	await host.runLoop.startRun(
+		{ messageType: "user", prompt: text, images },
+		undefined,
+		input ? { ...input, origin: "queued" } : { text, images, source: "interactive", origin: "queued" },
+	);
 }
 
 /** Split message content into the prompt text and its images. */

@@ -1,37 +1,12 @@
-import {
-	type Api,
-	type Model,
-	type ProviderEnv,
-	resolveModelCapabilities,
-	type StreamOptions,
-} from "@octocodeai/octocode-ai";
+import { type Api, type Model, resolveModelCapabilities, type StreamOptions } from "@octocodeai/octocode-ai";
+import { azureAcceptsExtendedRetention } from "@octocodeai/octocode-ai/api/azure-openai-config";
 import {
 	type CachePreferenceLayer,
-	type CachePreferences,
 	cacheEnvironmentPreferences,
 	mergeCachePreferences,
 } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { ModelsJsonProvider } from "./model-config.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
-
-/**
- * The retention a headless `--print` run uses when nobody chose one: long instructions (the block every session with
- * the same tools shares) over short history (a one-shot run has no second turn to profit from a one-hour entry).
- * Undefined when a settings layer or the environment set a retention, which then applies as configured.
- */
-export function headlessCachePreferences(
-	layers: readonly CachePreferenceLayer[],
-	env: NodeJS.ProcessEnv,
-): CachePreferences | undefined {
-	const fromEnv = cacheEnvironmentPreferences(env as ProviderEnv);
-	const chosen =
-		layers.some(
-			({ values }) => values.cacheRetention !== undefined || values.instructionCacheRetention !== undefined,
-		) ||
-		fromEnv.cacheRetention !== undefined ||
-		fromEnv.instructionCacheRetention !== undefined;
-	return chosen ? undefined : { cacheRetention: "short", instructionCacheRetention: "long" };
-}
 
 export function resolveConfiguredCache(
 	model: Model<Api>,
@@ -92,7 +67,8 @@ function describeMarkers({ cacheRetention: history, instructionCacheRetention: i
 	return text;
 }
 
-function describeOpenAIResponses(model: Model<"openai-responses">, policy: Policy, subscription: boolean): string {
+/** OpenAI Responses, and Azure OpenAI Responses on a model that accepts the 24h tier (the key path only). */
+function describeOpenAIResponses(model: Model<Api>, policy: Policy, subscription: boolean): string {
 	const { cacheRetention: history, instructionCacheRetention: instructions } = policy;
 	if (subscription) return "Subscription credentials: API-only retention controls omitted.";
 	const cache = resolveModelCapabilities(model).cache;
@@ -124,8 +100,11 @@ export function describeCachePolicy(
 	const cache = resolveModelCapabilities(model).cache;
 	if (cache.mechanism === "markers") {
 		effective = describeMarkers(policy.options, cache.lifetimes.long !== undefined);
-	} else if (model.api === "openai-responses") {
-		effective = describeOpenAIResponses(model as Model<"openai-responses">, policy.options, subscription);
+	} else if (
+		model.api === "openai-responses" ||
+		(model.api === "azure-openai-responses" && azureAcceptsExtendedRetention(model))
+	) {
+		effective = describeOpenAIResponses(model, policy.options, subscription);
 	} else {
 		effective =
 			describeProviderManaged(model.api, history) ??

@@ -18,6 +18,14 @@ export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 /** Share of a model's capacity the default working context may use. */
 const DEFAULT_BUDGET_SHARE = 0.9;
 
+/**
+ * The working context a `contextBudget` setting gives a model of `capacity` tokens: the setting capped at 90% of
+ * capacity (the margin absorbs tokenizer drift between the estimate and the provider's count), or all of it for "full".
+ */
+export function workingContextTokens(capacity: number, setting: number | "full"): number {
+	return setting === "full" ? capacity : Math.min(setting, Math.floor(capacity * DEFAULT_BUDGET_SHARE));
+}
+
 export class SessionModelControl {
 	scopedModels: ScopedModel[];
 	private contextBudgets = new Map<string, { tokens: number; capacity: number }>();
@@ -68,9 +76,7 @@ export class SessionModelControl {
 	private budgetFor(model: Model<any>): number {
 		const chosen = this.contextBudgets.get(this.contextKey(model));
 		if (chosen) return Math.min(model.contextWindow, chosen.tokens);
-		const setting = this.host.session.settingsManager.getContextBudget();
-		if (setting === "full") return model.contextWindow;
-		return Math.min(setting, Math.floor(model.contextWindow * DEFAULT_BUDGET_SHARE));
+		return workingContextTokens(model.contextWindow, this.host.session.settingsManager.getContextBudget());
 	}
 
 	private withContextBudget(model: Model<any>): Model<any> {

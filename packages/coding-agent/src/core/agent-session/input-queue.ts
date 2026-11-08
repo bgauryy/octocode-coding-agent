@@ -8,6 +8,7 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { CustomMessage } from "../messages.ts";
+import type { InputOrigin } from "../session-manager/types.ts";
 import type { SessionInternals } from "./host.ts";
 import type { PendingUserInput, QueuedInput, ReleasedQueuedInput } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -25,6 +26,8 @@ interface QueuedEntry {
 export class SessionInputQueue {
 	// Selected batches retain metadata across clearQueue; removed queue objects are weakly held.
 	private readonly _pendingUserInputs = new WeakMap<AgentMessage, PendingUserInput>();
+	/** How messages entered: the queue they came through, else what their input metadata says (kept when it is deleted). */
+	private readonly _origins = new WeakMap<AgentMessage, InputOrigin>();
 	/** Messages in the agent's steering and follow-up queues, in queue order. Removed when delivery begins. */
 	private _queued: QueuedEntry[] = [];
 	private _nextQueuedId = 1;
@@ -78,6 +81,15 @@ export class SessionInputQueue {
 		return this._pendingCustomMessages;
 	}
 
+	/** How a user message entered the agent, for its stored entry; undefined when nothing recorded it. */
+	originOf(message: AgentMessage): InputOrigin | undefined {
+		const queued = this._origins.get(message);
+		if (queued) return queued;
+		const input = this._pendingUserInputs.get(message);
+		if (!input) return undefined;
+		return input.origin ?? (input.source === "interactive" ? "typed" : "api");
+	}
+
 	/** The `user_input` metadata of a queued or starting message. */
 	getUserInput(message: AgentMessage): PendingUserInput | undefined {
 		return this._pendingUserInputs.get(message);
@@ -88,6 +100,8 @@ export class SessionInputQueue {
 	}
 
 	deleteUserInput(message: AgentMessage): void {
+		const origin = this.originOf(message);
+		if (origin) this._origins.set(message, origin);
 		this._pendingUserInputs.delete(message);
 	}
 
@@ -185,6 +199,7 @@ export class SessionInputQueue {
 		if (entry.mode === mode) return true;
 		this.host.session.agent.placeQueuedMessage(entry.message, mode);
 		entry.mode = mode;
+		this._origins.set(entry.message, mode === "steer" ? "steer" : "follow-up");
 		this._queued = [...this._queued.filter((candidate) => candidate !== entry), entry];
 		this._emitQueueUpdate();
 		return true;
@@ -237,6 +252,7 @@ export class SessionInputQueue {
 			timestamp: Date.now(),
 		};
 		if (input) this._pendingUserInputs.set(message, input);
+		this._origins.set(message, mode === "steer" ? "steer" : "follow-up");
 		this._queued.push({ id: `q${this._nextQueuedId++}`, mode, text, message });
 		if (mode === "steer") this.host.session.agent.steer(message);
 		else this.host.session.agent.followUp(message);

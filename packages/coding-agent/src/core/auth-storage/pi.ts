@@ -35,11 +35,11 @@ export async function readPiProviderCredential(entry: PiProviderCredential, reso
 	const credential = await new ReadOnlyAuthStorage(entry.authPath).readRaw(entry.providerId).catch(() => {
 		throw new Error("Could not read the selected Pi credential. Check the auth.json format.");
 	});
-	if (!credential) throw new Error("The Pi credential was removed. Reopen /login pi.");
-	if (credential.type !== entry.type) throw new Error("The Pi credential changed. Reopen /login pi.");
+	if (!credential) throw new Error("The Pi credential was removed. Reopen /providers pi.");
+	if (credential.type !== entry.type) throw new Error("The Pi credential changed. Reopen /providers pi.");
 	if (credential.type === "api_key" && credential.key?.startsWith("!")) {
 		throw new Error(
-			"Pi uses a secret command. Configure this provider directly in /login; its command was not executed.",
+			"Pi uses a secret command. Configure this provider directly in /providers; its command was not executed.",
 		);
 	}
 	if (resolveApiKey && credential.type === "api_key") {

@@ -17,6 +17,7 @@ async function setup() {
 	const chatContainer = new Container();
 	const showExtensionCustom = vi.fn();
 	const showStatus = vi.fn();
+	const showWarning = vi.fn();
 	const host = createFakeHost({
 		session: harness.session,
 		chatContainer,
@@ -24,10 +25,11 @@ async function setup() {
 		showExtensionCustom,
 		showExtensionSelector: vi.fn(),
 		showStatus,
+		showWarning,
 		ui: { requestRender: vi.fn() },
 	});
 	const text = () => stripVTControlCharacters(chatContainer.render(100).join("\n"));
-	return { host, chatContainer, showExtensionCustom, showStatus, text };
+	return { host, chatContainer, showExtensionCustom, showStatus, showWarning, text };
 }
 
 function streamAnswers(answer: string) {
@@ -59,10 +61,10 @@ describe("workflow commands render in the message list", () => {
 	});
 
 	it("shows usage for a bare /btw with no side thread", async () => {
-		const { host, showExtensionCustom, text } = await setup();
+		const { host, showExtensionCustom, showWarning, text } = await setup();
 		await handleWorkflowCommand(host, "btw", "");
-		expect(text()).toContain("Side thread");
-		expect(text()).toContain("/btw --cancel");
+		expect(showWarning).toHaveBeenCalledWith(expect.stringContaining("/btw --cancel"));
+		expect(text()).not.toContain("Side thread");
 		expect(showExtensionCustom).not.toHaveBeenCalled();
 	});
 

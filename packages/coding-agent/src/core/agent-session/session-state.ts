@@ -8,7 +8,14 @@
 import type { AgentMessage, AgentState, Agent, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmingStatus } from "../cache-warmer.ts";
-import type { ContextUsage, ExtensionRunner, SessionStartEvent, ToolDefinition, ToolInfo } from "../features/index.ts";
+import type {
+	ContextUsage,
+	ExtensionRunner,
+	SessionStartEvent,
+	ToolDefinition,
+	ToolInfo,
+	ToolRenderers,
+} from "../features/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
@@ -148,6 +155,9 @@ export abstract class AgentSessionState {
 	}
 	getToolDefinition(name: string): ToolDefinition | undefined {
 		return this._c.tools.getToolDefinition(name);
+	}
+	getToolRenderers(name: string): ToolRenderers | undefined {
+		return this._extensionRunner.resolveToolRenderers(name, () => this.getToolDefinition(name));
 	}
 	setActiveToolsByName(toolNames: string[]): void {
 		this._c.tools.setActiveToolsByName(toolNames);

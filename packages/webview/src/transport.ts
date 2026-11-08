@@ -3,11 +3,13 @@ import {
 	type ApplicationCommand,
 	type ApplicationFrame,
 	type ApplicationReceipt,
+	type ProfileUpdate,
 	type Snapshot,
 	WORKSPACE_ROUTES,
 	type WorkspaceSnapshot,
 } from "@octocodeai/octocode-contracts";
 import { bearer } from "./access.ts";
+import { isProfileUpdate } from "./profiler-guards.ts";
 import { ApplicationStream } from "./application-stream.ts";
 import { requestJson } from "./request.ts";
 import { scopedRoute } from "./scope.ts";
@@ -15,6 +17,7 @@ import { scopedRoute } from "./scope.ts";
 interface Observer {
 	application(stream: ApplicationStream, frame: ApplicationFrame): void;
 	workspace(snapshot: WorkspaceSnapshot): void;
+	profiler(update: ProfileUpdate): void;
 	backlogs(snapshot: Snapshot): void;
 	status(message: string): void;
 }
@@ -115,6 +118,9 @@ export class BrowserConnection {
 			) {
 				this.authenticated = true;
 				this.observer.workspace(message.data as unknown as WorkspaceSnapshot);
+			} else if (message.type === "profiler" && isProfileUpdate(message.data)) {
+				this.authenticated = true;
+				this.observer.profiler(message.data);
 			} else if (
 				message.type === "snapshot" &&
 				record(message.data) &&

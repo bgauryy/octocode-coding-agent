@@ -6,9 +6,9 @@ import { LongText } from "../ui/LongText.tsx";
 import { Badge, type BadgeTone, cx } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
 import { AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
-import { ContentBlocks, JsonDetails, ToolContent } from "./ContentBlocks.tsx";
-import { DiffView } from "./DiffView.tsx";
-import { activityCard, type FeedEvent, fileDiffs, type Tone } from "./model.ts";
+import { ContentBlocks, ToolContent } from "./ContentBlocks.tsx";
+import { JsonDetails } from "./ToolRawData.tsx";
+import { activityCard, type FeedEvent, type Tone } from "./model.ts";
 import { Elapsed, ThoughtFor } from "./RunIndicator.tsx";
 import { useLive } from "./session.tsx";
 import { SessionActivityContent } from "./SessionActivityContent.tsx";
@@ -50,7 +50,6 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 	});
 	const message = expansion.value ?? event.message;
 	const card = activityCard({ ...event, message });
-	const diffs = event.type === "tool.result" ? fileDiffs(event.tool?.details ?? event.details) : [];
 	const streaming = card.status === "streaming";
 	return (
 		<article className={cx("result-card", `tone-${card.tone}`, compact && "is-compact", streaming && "is-streaming")}>
@@ -98,7 +97,6 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 			)}
 			{message?.usage && <JsonDetails label="Usage" value={message.usage} />}
 			{message?.details !== undefined && <JsonDetails label="Details" value={message.details} />}
-			{diffs.length > 0 && <DiffView diffs={diffs} />}
 			{card.files.length > 0 && (
 				<div className="result-files">
 					<strong>Related files</strong>

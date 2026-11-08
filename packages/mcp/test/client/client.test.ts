@@ -274,6 +274,35 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
+	it("ignores a late response and progress for a cancelled request but reports other errors", async () => {
+		const { clientTransport, server } = await createServer();
+		const client = new McpClient({ name: "test-client", version: "1.0.0" });
+		await client.connect(clientTransport);
+		const errors: Error[] = [];
+		client.onError((error) => errors.push(error));
+		server.setHandler("tools/call", () => new Promise(() => {}));
+		const controller = new AbortController();
+		const call = client.callTool("wait", {}, { signal: controller.signal, onProgress: () => {} });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const request = server.messages.find(
+			(message) => "method" in message && message.method === "tools/call",
+		) as JsonRpcRequest;
+		const token = ((request.params as Record<string, unknown>)._meta as Record<string, unknown>).progressToken;
+		controller.abort("stop");
+		await expect(call).rejects.toBeInstanceOf(McpAbortError);
+		// The server had not seen the cancellation yet: its progress and answer arrive after it.
+		await server.transport.send({
+			jsonrpc: "2.0",
+			method: "notifications/progress",
+			params: { progressToken: token, progress: 1 },
+		});
+		await server.transport.send({ jsonrpc: "2.0", id: request.id, result: { content: [] } });
+		clientTransport.emitError(new Error("stray log line"));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(errors.map((error) => error.message)).toEqual(["stray log line"]);
+		await client.close();
+	});
+
 	it("reports transport errors without failing pending requests", async () => {
 		const { clientTransport, server } = await createServer();
 		const client = new McpClient({ name: "test-client", version: "1.0.0" });

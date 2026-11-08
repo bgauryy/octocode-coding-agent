@@ -26,6 +26,7 @@ import { scopedRoute } from "../../scope.ts";
 import { BrowserConnection } from "../../transport.ts";
 import { createApplicationApi } from "./application-api.ts";
 import { createDocsApi } from "./docs-api.ts";
+import { createProfilerApi, ProfilerFeed } from "./profiler-api.ts";
 import type { BacklogStore } from "../extension.ts";
 import { stamp } from "../model/format.ts";
 import { Spinner } from "../ui/primitives.tsx";
@@ -56,6 +57,7 @@ function createApi(access: string) {
 	return {
 		...createApplicationApi(access),
 		...createDocsApi(access),
+		...createProfilerApi(access),
 		backlogs: async () =>
 			requestJson<Snapshot>(scopedRoute(WORKSPACE_ROUTES.backlogs), { headers }, "Could not load the board"),
 		mutate: async (payload: BacklogMutation) =>
@@ -158,6 +160,8 @@ interface LiveSession {
 	workspace: ReturnType<typeof createWorkspaceStore>;
 	session: StoreApi<SessionState>;
 	api: LiveApi;
+	/** Live profiler frames, for the profiler view while it is mounted. */
+	profiler: ProfilerFeed;
 	/** Reload the board after a change this tab made, without waiting for the push. */
 	refresh: () => Promise<void>;
 }
@@ -222,6 +226,7 @@ export function LiveProvider({
 			access,
 			backlog,
 			api,
+			profiler: new ProfilerFeed(),
 			workspace: createWorkspaceStore(),
 			session,
 			refresh: async () => {
@@ -264,6 +269,7 @@ export function LiveProvider({
 				domain = snapshot;
 				publish.schedule();
 			},
+			profiler: (update) => live.profiler.emit(update),
 			backlogs: (snapshot) => {
 				live.backlog.getState().setSnapshot(snapshot);
 				live.session.setState({

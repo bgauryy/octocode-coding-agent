@@ -1,3 +1,4 @@
+import { textResultDisplay } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
@@ -145,6 +146,51 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				].filter(Boolean);
 				const note = skipped.length > 0 ? `\n(Not asked: ${skipped.join(" and ")}.)` : "";
 				return { content: [{ type: "text", text: `${formatAnswers(result)}${note}` }], details: result };
+			},
+			display(input) {
+				const questions = input.args.questions ?? [];
+				const headers = questions
+					.map((q) => q?.header ?? "")
+					.filter(Boolean)
+					.join(", ");
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
+				const first = String(questions[0]?.question ?? "")
+					.split("\n")[0]
+					.trim();
+				const more = questions.length > 1 ? ` +${questions.length - 1} more` : "";
+				const summary = headers || (first ? `${first}${more}` : "");
+				const head = { title: "Ask", ...(summary ? { summary } : {}), kind: "other" as const, blocks: [] };
+				if (!input.result) return { ...head, state: "waiting" as const };
+				const details = input.result.details as Partial<AskResult> | undefined;
+				const answers = Array.isArray(details?.answers) ? details.answers : [];
+				const refused = !details?.cancelled
+					? undefined
+					: details.reason === "aborted"
+						? ("stopped" as const)
+						: ("failed" as const);
+				const items: Array<{ text: string; state: UiState }> = answers.map((entry) => ({
+					// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- recorded details may predate the current shape
+					text: `${String(entry.question)} → ${String(entry.answer)}`,
+					state: "done" as const,
+				}));
+				if (refused)
+					items.push({
+						text:
+							details?.reason === "unavailable"
+								? "Unavailable"
+								: details?.reason === "aborted"
+									? "Interrupted"
+									: items.length > 0
+										? "Declined the remaining questions"
+										: "Declined",
+						state: refused,
+					});
+				if (items.length === 0) return textResultDisplay(head, input);
+				return {
+					...head,
+					...(refused ? { state: refused } : {}),
+					blocks: [{ type: "list" as const, text: items.map((item) => item.text).join("\n"), items }],
+				};
 			},
 			renderCall(args, theme, context) {
 				const questions = args.questions ?? [];

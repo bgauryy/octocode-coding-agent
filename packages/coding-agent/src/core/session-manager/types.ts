@@ -34,9 +34,14 @@ interface SessionEntryBase {
 	timestamp: string;
 }
 
+/** How a user message entered the agent. Stored on the entry, never sent to the model. */
+export type InputOrigin = "typed" | "steer" | "follow-up" | "queued" | "api";
+
 export interface SessionMessageEntry extends SessionEntryBase {
 	type: "message";
 	message: AgentMessage;
+	/** Set on user messages only; absent in sessions recorded before origins were kept. */
+	origin?: InputOrigin;
 }
 
 export interface ThinkingLevelChangeEntry extends SessionEntryBase {

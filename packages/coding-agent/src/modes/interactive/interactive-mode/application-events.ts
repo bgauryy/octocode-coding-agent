@@ -59,6 +59,16 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		imageWidthCells: host.settingsManager.getImageWidthCells(),
 		requestRender: () => host.ui.requestRender(),
 	});
+	// A rebuild or compaction disposes rendered messages without an event here; drop what left the transcript, so the
+	// maps do not keep disposed components (and their content) alive for the rest of the session.
+	const forgetDetached = () => {
+		const mounted = new Set(host.chatContainer.children);
+		for (const [id, component] of assistants)
+			if (!mounted.has(component)) {
+				assistants.delete(id);
+				messages.delete(id);
+			}
+	};
 	const showMessage = (received: ApplicationMessage) => {
 		const message = fullContent.message(received, readAsset);
 		const previous = messages.get(message.id);
@@ -69,6 +79,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		} else if (message.role === "assistant") {
 			let component = assistants.get(message.id);
 			if (!component) {
+				forgetDetached();
 				component = new AssistantMessageComponent(
 					undefined,
 					host.uiStore.getState().view.hideThinking,
@@ -115,6 +126,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 					content: Array.isArray(data.content) ? (data.content as ApplicationContentBlock[]) : event.content,
 					details: data.details ?? event.details,
 					structuredContent: data.structuredContent ?? event.structuredContent,
+					display: (data.display as typeof event.display) ?? event.display,
 				};
 		}
 		switch (event.type) {
@@ -163,6 +175,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 					);
 					host.pendingTools.set(event.toolCallId, component);
 				} else if (event.arguments !== undefined) component.updateArgs(event.arguments);
+				component.setDisplay(event.display);
 				component.setArgsComplete();
 				component.markExecutionStarted();
 				break;
@@ -176,6 +189,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 					? toolContent(event.content, readAsset)
 					: [{ type: "text", text: event.text ?? "" }];
 				if (event.full && !full) content.push({ type: "text", text: `[Full tool data unavailable: ${event.full.id}]` });
+				component.setDisplay(event.display);
 				component.updateResult(
 					{
 						content,
@@ -184,6 +198,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 						structuredContent: (full?.structuredContent ??
 							event.structuredContent) as AgentToolResult["structuredContent"],
 						usage: event.usage as AgentToolResult["usage"],
+						...(event.progress ? { progress: event.progress } : {}),
 						durationMs: event.durationMs,
 					},
 					event.type === "tool.progress",

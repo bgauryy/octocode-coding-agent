@@ -45,7 +45,9 @@ const openaiModel: Model<Api> = {
 	...getBuiltinModel("openai", "gpt-5"),
 	promptCache: { short: 300, long: 86_400 },
 };
-const unknownModel: Model<Api> = { ...adaptiveModel, promptCache: undefined };
+// No lifetime to plan with: provider-managed caching with no declared `promptCache`. An Anthropic model without a declared
+// `promptCache` is not unknown: its resolved tiers are the 5m and 1h the adapter sends.
+const unknownModel: Model<Api> = { ...getBuiltinModel("mistral", "codestral-latest"), promptCache: undefined };
 
 const warmUsage: Usage = {
 	input: 0,

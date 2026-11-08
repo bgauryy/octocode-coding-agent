@@ -7,7 +7,6 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";
 import { ActivityView } from "../src/app/live/ActivityView.tsx";
-import { AgentsView } from "../src/app/live/AgentsView.tsx";
 import { AuditView } from "../src/app/live/AuditView.tsx";
 import { CommandButton, MessageForm } from "../src/app/live/controls.tsx";
 import { ItemActivity } from "../src/app/live/ItemPanels.tsx";
@@ -235,53 +234,6 @@ describe("MessageForm", () => {
 	});
 });
 
-describe("AgentsView", () => {
-	it("shows a connecting skeleton until the workspace snapshot arrives", () => {
-		renderLive(<AgentsView />);
-		expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "Agents" })).toBeNull();
-	});
-
-	it("summarizes working agents, offers stop only for non-main agents and hides unpriced cost", async () => {
-		const { socket } = renderLive(<AgentsView />);
-		await pushWorkspace(
-			socket,
-			workspace({
-				agents: [
-					member("main-1", { role: "main", status: "working", activity: "bash" }),
-					member("helper-1", { unpriced: true, goal: "Fix tests" }),
-				] as never,
-				traffic: [
-					{ id: 1, from: "main-1", to: ["helper-1"], text: "first", at: 0, state: "answered" },
-					{ id: 2, from: "helper-1", to: ["main-1"], text: "second", at: 1, state: "queued" },
-				],
-			}),
-		);
-		expect(screen.getByText(/1 of 2 working/)).toBeInTheDocument();
-		const main = screen.getByRole("heading", { name: "main-1" }).closest("article")!;
-		const helper = screen.getByRole("heading", { name: "helper-1" }).closest("article")!;
-		expect(within(main).queryByRole("button", { name: "Request stop" })).toBeNull();
-		expect(within(helper).getByRole("button", { name: "Request stop" })).toBeInTheDocument();
-		expect(within(main).getByText(/150 tokens · \$0\.50/)).toBeInTheDocument();
-		expect(within(helper).getByText(/150 tokens/).textContent).not.toContain("$");
-		expect(within(main).getByText("bash")).toBeInTheDocument();
-		expect(within(main).getByText("No active task")).toBeInTheDocument();
-		expect(within(helper).getByText("Fix tests")).toBeInTheDocument();
-		const messages = within(screen.getByRole("region", { name: /Message delivery/ })).getAllByRole("listitem");
-		expect(messages.map((entry) => entry.textContent)).toEqual([
-			expect.stringContaining("second"),
-			expect.stringContaining("first"),
-		]);
-	});
-
-	it("explains empty agent and traffic lists", async () => {
-		const { socket } = renderLive(<AgentsView />);
-		await pushWorkspace(socket, workspace());
-		expect(screen.getByText("No agents in this session yet")).toBeInTheDocument();
-		expect(screen.getByText("No messages between agents yet.")).toBeInTheDocument();
-	});
-});
-
 describe("AuditView", () => {
 	const audit = (id: number, overrides: Partial<BacklogAudit> = {}): BacklogAudit => ({
 		id,
@@ -420,23 +372,23 @@ describe("ItemActivity comments", () => {
 describe("a live view with no session", () => {
 	afterEach(() => vi.useRealTimers());
 
-	it.each([
-		["Agents", () => <AgentsView />],
-		["Activity", () => <ActivityView index={indexBacklog(backlog)} params={{}} setParams={() => {}} />],
-	])("%s says Connecting for about 5 s, then explains there is no session", (_name, view) => {
-		vi.useFakeTimers();
-		renderLive(view());
-		expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
-		act(() => {
-			vi.advanceTimersByTime(4900);
-		});
-		expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
-		act(() => {
-			vi.advanceTimersByTime(200);
-		});
-		expect(screen.queryByRole("status", { name: "Connecting to the session" })).toBeNull();
-		expect(screen.getByText("No session")).toBeInTheDocument();
-		expect(screen.getByText(/Open \/(web|backlog) from a running Octocode session/)).toBeInTheDocument();
-		expect(screen.getByText(/keeps trying to connect/)).toBeInTheDocument();
-	});
+	it.each([["Activity", () => <ActivityView index={indexBacklog(backlog)} params={{}} setParams={() => {}} />]])(
+		"%s says Connecting for about 5 s, then explains there is no session",
+		(_name, view) => {
+			vi.useFakeTimers();
+			renderLive(view());
+			expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
+			act(() => {
+				vi.advanceTimersByTime(4900);
+			});
+			expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
+			act(() => {
+				vi.advanceTimersByTime(200);
+			});
+			expect(screen.queryByRole("status", { name: "Connecting to the session" })).toBeNull();
+			expect(screen.getByText("No session")).toBeInTheDocument();
+			expect(screen.getByText(/Open \/(web|backlog) from a running Octocode session/)).toBeInTheDocument();
+			expect(screen.getByText(/keeps trying to connect/)).toBeInTheDocument();
+		},
+	);
 });

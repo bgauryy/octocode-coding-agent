@@ -127,7 +127,8 @@ function renderToolCall(call) {
 
 	const invalidArg = '<span class="tool-error">[invalid arg]</span>';
 
-	switch (name) {
+	// A call the host drew from its display is shown as drawn; the cases below cover calls without one.
+	switch (renderedTools?.[call.id] ? "" : name) {
 		case "bash": {
 			const command = str(args.command);
 			const cmdDisplay = command === null ? invalidArg : escapeHtml(command || "...");

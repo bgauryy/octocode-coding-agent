@@ -531,7 +531,7 @@ describe("usage display", () => {
 		addReply(totals, { input: 10, output: 5, cacheRead: 80, cacheWrite: 10, cost: { total: 0.5 } }, false);
 		addReply(totals, { input: 100, output: 1, cost: { total: 0 } }, true);
 		addReply(totals, "not usage", false);
-		expect(totals).toEqual({ input: 200, cacheRead: 80, output: 6, cost: 0.5, unpriced: true });
+		expect(totals).toEqual({ input: 200, cacheRead: 80, cacheWrite: 10, output: 6, cost: 0.5, unpriced: true });
 	});
 });
 

@@ -67,9 +67,11 @@ function ctxFor(
 		editor?: Array<string | undefined>;
 	} = {},
 ) {
+	// These tests drive the select-list flow that RPC clients get; the terminal page has its own tests.
 	const ctx = fakeCtx({
 		cwd,
 		hasUI: options.hasUI ?? true,
+		mode: "rpc",
 		ui: { selects: options.selects ?? [], confirms: options.confirms ?? [] },
 	});
 	const branch = options.branch ?? [];
@@ -801,13 +803,16 @@ describe("/memory", () => {
 		await command.handler("search edited", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("author: user");
 
-		ctx.ui.selects.push("Pinned · M1 (global, decision, pinned) Edited title — new body", "Delete");
-		ctx.ui.confirms.push(false);
-		ctx.ui.selects.push("Pinned · M1 (global, decision, pinned) Edited title — new body", "Delete", undefined);
-		ctx.ui.confirms.push(true);
+		ctx.ui.selects.push("Pinned · M1 (global, decision, pinned) Edited title — new body", "Delete", "Cancel");
+		ctx.ui.selects.push(
+			"Pinned · M1 (global, decision, pinned) Edited title — new body",
+			"Delete",
+			"Delete",
+			undefined,
+		);
 		await command.handler("", ctx);
 		expect(store.get(1)).toBeUndefined();
-		expect(ctx.ui.notes.at(-1)!.message).toBe("Deleted M1.");
+		expect(ctx.ui.notes.at(-1)!.message).toBe("Deleted M1. Other memories are unchanged.");
 	});
 });
 

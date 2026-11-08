@@ -1,3 +1,4 @@
+import { builtinDescription } from "../../core/slash-commands.ts";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
@@ -109,7 +110,7 @@ export function describeModels(
 					? " (no capable model at 15–80% of its price)"
 					: " (no cheaper capable model)";
 	const tiers = MODEL_TIERS.map((tier) => {
-		const chosen = resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
+		const chosen = tierModel(tier, available, parent, catalog, refused);
 		const fallback = parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model";
 		const usedBy = tier === SUBAGENT_DEFAULT_TIER ? "; also a task with no profile or model" : "";
 		return `  ${tier}: ${chosen ? name(chosen) : fallback}${usedBy}`;
@@ -120,8 +121,7 @@ export function describeModels(
 	// Each profile as it would route now: the model it runs on, and what it asked for.
 	const routed = [...profiles.values()].map((profile) => {
 		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking });
-		const runs =
-			"error" in route ? route.error : route.model ? supportedThinking(route.model, available) : "this session's model";
+		const runs = profileRuns(route, available);
 		const asked = !profile.model
 			? ""
 			: "fallback" in route && route.fallback
@@ -142,6 +142,63 @@ export function describeModels(
 		unsuffixed,
 		...(routed.length > 0 ? ["", "Profiles:", ...routed] : []),
 	].join("\n");
+}
+
+/** The model a purpose resolves to now, skipping providers that refused their credential; undefined: the parent's. */
+const tierModel = (
+	tier: (typeof MODEL_TIERS)[number],
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	catalog: Catalog | undefined,
+	refused: (provider: string) => boolean,
+) => resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
+
+/** What a profile's route runs on: `provider/id:level`, the routing error, or the parent's model. */
+const profileRuns = (route: ReturnType<typeof routeModel>, available: readonly ModelRef[]) =>
+	"error" in route ? route.error : route.model ? supportedThinking(route.model, available) : "this session's model";
+
+/** Routing facts the coordinator's prompt states (`policy/delegation.md`): what each purpose and profile runs on now. */
+export interface RoutingFacts {
+	sessionModel: string;
+	/** Providers with a usable model, sorted. */
+	providers: string[];
+	small: string;
+	medium: string;
+	/** Profile name to the model it runs on. */
+	profiles: Record<string, string>;
+}
+
+/**
+ * The routes `describeModels` lists, reduced to what the coordinator needs. The prompt states them once per session
+ * and a later change arrives as a notice (`routing-watch.ts`), so the cached prompt stays stable.
+ */
+export function routingFacts(
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	profiles: Iterable<AgentProfile>,
+	catalog: Catalog | undefined,
+	refused: (provider: string) => boolean = (provider) => providerHealth.refused(provider),
+): RoutingFacts | undefined {
+	if (!parent || available.length === 0) return undefined;
+	const thinking = subagentThinking();
+	const purpose = (tier: (typeof MODEL_TIERS)[number]) => {
+		const chosen = tierModel(tier, available, parent, catalog, refused);
+		return name(chosen ?? parent);
+	};
+	return {
+		sessionModel: name(parent),
+		providers: [
+			...new Set(available.filter((model) => !refused(model.provider)).map((model) => model.provider)),
+		].sort(),
+		small: purpose("small"),
+		medium: purpose("medium"),
+		profiles: Object.fromEntries(
+			[...profiles].map((profile) => [
+				profile.name,
+				profileRuns(routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking }), available),
+			]),
+		),
+	};
 }
 
 /**
@@ -178,7 +235,7 @@ export async function modelCatalog(fetching?: () => void): Promise<{ catalog: Ca
 /** `/modelsettings`: the listing the `models` tool (`models-tool.ts`) gives the model, for the user. */
 export function registerModels(commands: Subcommands, getProfiles: () => Map<string, AgentProfile>): void {
 	commands.add("modelsettings", {
-		description: "Models, prices and subagent routing",
+		description: builtinDescription("modelsettings"),
 		argumentHint: "[check]",
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			if (args.trim() === "check") {

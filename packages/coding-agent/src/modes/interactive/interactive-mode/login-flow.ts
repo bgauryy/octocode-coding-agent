@@ -1,8 +1,9 @@
 /**
- * Provider management (/login) and credential removal (/logout).
+ * Provider management (/providers) and credential removal (/logout).
  */
 
-import { showProviderManager, removeProviderCredential } from "./provider-manager.ts";
+import { removeProviderCredential } from "./provider-actions.ts";
+import { showProviderManager } from "./provider-manager.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { type AuthSelectorProvider, OAuthSelectorComponent } from "../components/oauth-selector.ts";
 
@@ -59,16 +60,12 @@ async function getLogoutProviderOptions(host: ProviderManagerHost): Promise<Auth
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function handleLoginCommand(host: ProviderManagerHost, providerRef?: string): Promise<void> {
+export async function handleProvidersCommand(host: ProviderManagerHost, providerRef?: string): Promise<void> {
 	await showProviderManager(host, providerRef);
 }
 
-export async function showOAuthSelector(host: ProviderManagerHost, mode: "login" | "logout"): Promise<void> {
-	if (mode === "login") {
-		await showProviderManager(host);
-		return;
-	}
-
+/** `/logout`: the sign-out picker. Sign-in lives on the `/providers` page. */
+export async function showOAuthSelector(host: ProviderManagerHost, mode: "logout"): Promise<void> {
 	let providerOptions: AuthSelectorProvider[];
 	try {
 		providerOptions = await getLogoutProviderOptions(host);

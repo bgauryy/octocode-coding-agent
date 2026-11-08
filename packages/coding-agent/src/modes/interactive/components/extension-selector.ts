@@ -7,7 +7,8 @@ import { Container, getKeybindings, GLYPH, Spacer, Text, type TUI } from "@octoc
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { hintLine, keyText } from "./keybinding-hints.ts";
+import { HintBar, renderHintLine } from "./hint-bar.ts";
+import { keyText } from "./keybinding-hints.ts";
 import { DETAILS_KEY, hasMore, renderAskCard, startRow, writeInRow } from "../../../octocode/ask/card.ts";
 import type { AskView } from "../../../octocode/shared/ask-view.ts";
 
@@ -112,15 +113,10 @@ export class ExtensionSelectorComponent extends Container {
 		}
 		if (!this.ask)
 			this.addChild(
-				new Text(
-					hintLine([
-						["↑↓", "navigate"],
-						[keyText("tui.select.confirm"), "select"],
-						[keyText("tui.select.cancel"), "cancel"],
-					]),
-					1,
-					0,
-				),
+				new HintBar([
+					[keyText("tui.select.confirm"), "select", 1],
+					[keyText("tui.select.cancel"), "cancel", 0],
+				]),
 			);
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());
@@ -143,20 +139,21 @@ export class ExtensionSelectorComponent extends Container {
 			theme,
 			width - 2,
 		).map((line) => ` ${line}`);
-		const hints =
+		const hints = renderHintLine(
 			this.writing !== undefined
-				? hintLine([
-						[keyText("tui.select.confirm"), "send"],
-						[keyText("tui.select.cancel"), "back"],
-					])
-				: hintLine([
-						[`↑↓/1-${Math.min(9, this.options.length)}`, "move"],
-						[keyText("tui.select.confirm"), "choose"],
-						...(hasMore(ask, width - 2) ? [["tab", this.expanded ? "less" : "details"] as [string, string]] : []),
-						[keyText("tui.select.cancel"), "cancel"],
-					]);
+				? [
+						[keyText("tui.select.confirm"), "send", 1],
+						[keyText("tui.select.cancel"), "back", 0],
+					]
+				: [
+						[`${keyText("tui.select.confirm")}/1-${Math.min(9, this.options.length)}`, "choose", 1],
+						...(hasMore(ask, width - 2) ? [["tab", this.expanded ? "less" : "details", 2] as const] : []),
+						[keyText("tui.select.cancel"), "cancel", 0],
+					],
+			width,
+		);
 		const after = this.countdownLabel ? ` ${theme.fg("dim", this.countdownLabel)}` : "";
-		return [...lines, ...(after ? [after] : []), "", ` ${hints}`];
+		return [...lines, ...(after ? [after] : []), "", hints];
 	}
 
 	/** Ask mode's own keys: the write-in's editing, `tab`, and digits that move the cursor. True when the key was used. */

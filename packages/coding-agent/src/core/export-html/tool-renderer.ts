@@ -1,15 +1,17 @@
 /**
  * Tool HTML renderer for custom tools in HTML export.
  *
- * Renders custom tool calls and results to HTML by invoking their TUI renderers
- * and converting the ANSI output to HTML.
+ * Renders tool calls and results to HTML from their display (the data every surface draws); a tool without one is
+ * drawn by its TUI renderers with the ANSI output converted to HTML.
  */
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../theme/theme.ts";
 import type { ToolRenderContext, ToolRenderers } from "../features/types.ts";
+import { buildToolDisplay } from "../application/transcript-display.ts";
 import { ansiLinesToHtml } from "./ansi-to-html.ts";
+import { displayCallHtml, displayResultHtml } from "./display-html.ts";
 import type { ToolHtmlRenderer } from "./index.ts";
 
 interface ToolHtmlRendererDeps {
@@ -96,6 +98,9 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 			try {
 				renderedArgs.set(toolCallId, args);
 				const toolDef = getToolRenderers(toolName);
+				// A tool with a display is drawn from it, like every other surface; terminal output is the fallback.
+				if (toolDef?.display)
+					return displayCallHtml(buildToolDisplay(toolDef.display, { toolName, args, text: "", status: "running" }));
 				if (!toolDef?.renderCall) {
 					return undefined;
 				}
@@ -126,6 +131,26 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 		): { collapsed?: string; expanded?: string } | undefined {
 			try {
 				const toolDef = getToolRenderers(toolName);
+				if (toolDef?.display) {
+					const content = result as (TextContent | ImageContent)[];
+					const display = buildToolDisplay(toolDef.display, {
+						toolName,
+						args: renderedArgs.get(toolCallId),
+						result: { content, details, isError, structuredContent },
+						text: content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
+						status: isError ? "failed" : "completed",
+					});
+					// The call header already states a native call's reason; an MCP call's comes from its result.
+					const reason = display.reason && renderedArgs.has(toolCallId) ? "" : (display.reason ?? "");
+					const lead = reason
+						? `<div class="tool-reason">↳ ${reason.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>`
+						: "";
+					const html = displayResultHtml(display);
+					return {
+						...(html.collapsed !== html.expanded ? { collapsed: lead + html.collapsed } : {}),
+						expanded: lead + html.expanded,
+					};
+				}
 				if (!toolDef?.renderResult) {
 					return undefined;
 				}

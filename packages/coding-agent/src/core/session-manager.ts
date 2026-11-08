@@ -19,6 +19,7 @@ import {
 } from "./session-manager/storage.ts";
 import { buildSessionTree } from "./session-manager/tree.ts";
 import type {
+	InputOrigin,
 	ContextEditEntry,
 	FileEntry,
 	NewSessionOptions,
@@ -127,8 +128,8 @@ export class SessionManager implements SessionManagerApi {
 		persistence.materializeSession(this.state);
 	}
 
-	appendMessage(message: Message | CustomMessage | BashExecutionMessage): string {
-		return appends.appendMessage(this.state, message);
+	appendMessage(message: Message | CustomMessage | BashExecutionMessage, origin?: InputOrigin): string {
+		return appends.appendMessage(this.state, message, origin);
 	}
 
 	appendThinkingLevelChange(thinkingLevel: string): string {

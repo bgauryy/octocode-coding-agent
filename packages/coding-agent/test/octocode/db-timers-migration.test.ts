@@ -34,6 +34,8 @@ function versionFive(): string {
 	// A version 5 file has neither `backlog.rank` (step 7) nor the audit triggers that record it.
 	for (const name of ["insert", "update", "delete"]) fresh.db.exec(`DROP TRIGGER backlog_audits_${name}`);
 	fresh.db.exec("ALTER TABLE backlog DROP COLUMN rank");
+	// Nor the `cache_write` columns of step 8.
+	for (const table of ["agents", "agent_runs"]) fresh.db.exec(`ALTER TABLE ${table} DROP COLUMN cache_write`);
 	fresh.db.exec("PRAGMA user_version = 5");
 	fresh.close();
 	return file;

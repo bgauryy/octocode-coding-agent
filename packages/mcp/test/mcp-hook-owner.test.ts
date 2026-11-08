@@ -66,7 +66,10 @@ it("uses the configured MCP connection for hook calls without recursive tool eve
 			},
 		});
 		expect(result.content).toEqual([{ type: "text", text: '{"decision":"block","reason":"policy"}' }]);
-		expect(calls).toEqual([{ name: "check", arguments: { path: "a.txt" } }]);
+		// The call carries a progress token, so a server's progress keeps its idle timeout alive.
+		expect(calls).toEqual([
+			{ name: "check", arguments: { path: "a.txt" }, _meta: { progressToken: expect.any(Number) } },
+		]);
 		expect(authorized).toEqual([{ toolName: "mcp__policy__check", input: { path: "a.txt" } }]);
 		expect(recursive).toBe(0);
 		const cancelled = new AbortController();

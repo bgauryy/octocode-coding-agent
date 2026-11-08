@@ -127,6 +127,28 @@ export const AttachRequestSchema = Type.Union([
 	Type.Object({ ...requestId, method: Type.Literal("workspace.snapshot") }),
 	Type.Object({ ...requestId, method: Type.Literal("workspace.revision") }),
 	Type.Object({ ...requestId, method: Type.Literal("workspace.subscribe") }),
+	Type.Object({ ...requestId, method: Type.Literal("profiler.agents") }),
+	Type.Object({
+		...requestId,
+		method: Type.Literal("profiler.requests"),
+		params: Type.Object(
+			{
+				agentId: Text(64),
+				after: Type.Optional(Type.Integer({ minimum: 0 })),
+				detail: Type.Optional(Type.Boolean()),
+			},
+			{ additionalProperties: false },
+		),
+	}),
+	Type.Object({ ...requestId, method: Type.Literal("profiler.subscribe") }),
+	Type.Object({ ...requestId, method: Type.Literal("profiler.unsubscribe") }),
+	Type.Object({ ...requestId, method: Type.Literal("profiler.insights") }),
+	Type.Object({ ...requestId, method: Type.Literal("profiler.trace") }),
+	Type.Object({
+		...requestId,
+		method: Type.Literal("profiler.timeline"),
+		params: Type.Object({ since: Type.Optional(Type.Integer({ minimum: 0 })) }, { additionalProperties: false }),
+	}),
 	Type.Object({
 		...requestId,
 		method: Type.Literal("workspace.execute"),
@@ -159,6 +181,7 @@ export const AttachEventSchema = Type.Union([
 	Type.Object({ event: Type.Literal("application.frame"), streamId, frame: Type.Unknown() }),
 	Type.Object({ event: Type.Literal("application.end"), streamId }),
 	Type.Object({ event: Type.Literal("workspace.changed") }),
+	Type.Object({ event: Type.Literal("profiler.update"), data: Type.Unknown() }),
 	Type.Object({ event: Type.Literal("session.closed") }),
 ]);
 

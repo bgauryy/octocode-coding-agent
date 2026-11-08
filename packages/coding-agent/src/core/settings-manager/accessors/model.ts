@@ -1,6 +1,8 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { Settings, ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
+import { normalizeProviderSources, SOURCE_DEFAULTS } from "../../provider-sources/gate.ts";
+import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ModelSettingsApi } from "../api/model.ts";
 import { DEFAULT_TOOL_NAMES, resolveDefaultTools } from "../tool-list.ts";
 import { SettingsAccessorBase } from "./base.ts";
@@ -134,6 +136,31 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 
 	getEnabledModels(): string[] | undefined {
 		return this.settings.enabledModels;
+	}
+
+	/** Provider ids the user turned off. Global only: a project file cannot hide a provider. */
+	getDisabledProviders(): string[] {
+		return [...(this.globalSettings.disabledProviders ?? [])];
+	}
+
+	setDisabledProviders(providerIds: readonly string[]): void {
+		this.globalSettings.disabledProviders = [...new Set(providerIds)];
+		this.markModified("disabledProviders");
+		this.save();
+	}
+
+	/** Global only: a project file cannot turn a source on. Unknown ids and values equal to the default are dropped. */
+	getProviderSources(): ProviderSourceOverrides {
+		return normalizeProviderSources(this.globalSettings.providerSources);
+	}
+
+	setProviderSourceEnabled(id: ToggleableSourceId, enabled: boolean): void {
+		const next = { ...this.getProviderSources() };
+		if (enabled === SOURCE_DEFAULTS[id]) delete next[id];
+		else next[id] = enabled;
+		this.globalSettings.providerSources = next;
+		this.markModified("providerSources");
+		this.save();
 	}
 
 	getDefaultTools(defaults: readonly string[] = DEFAULT_TOOL_NAMES): string[] | undefined {

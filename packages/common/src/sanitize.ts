@@ -137,6 +137,11 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 	[/\bhf_[A-Za-z0-9]{20,}/, "a Hugging Face token"],
 	// `scheme://user:password@host`; `${VAR}` or `<placeholder>` passwords are templates, not secrets.
 	[/\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/${}<>]{3,}@/i, "a password in a URL"],
+	// `?key=…`, `&access_token=…` inside a URL a fetch error quoted: the name ends in key, token, secret or similar, so `token_type=bearer` passes.
+	[
+		/(?<=[?&])(?:[\w.-]*(?:key|secret|token|password|passwd|signature|credential|authorization)|sig|auth)=[^&\s"'<>#]{2,}/i,
+		"a credential in a URL query",
+	],
 	// `password = s3cretValue`: the value must hold a digit and no code punctuation, so `token = getToken()` passes.
 	[
 		new RegExp(`${SECRET_ASSIGNMENT}[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]*\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
@@ -151,6 +156,52 @@ const SECRETS = SECRET_PATTERNS.map(([pattern, what]) => ({
 	what,
 	all: new RegExp(pattern.source, `${pattern.flags}g`),
 }));
+
+/** Shorter values are not registered: replacing every `token` or `abc123` in a text would mangle it. */
+export const MIN_SECRET_VALUE_LENGTH = 8;
+const MAX_SECRET_VALUES = 256;
+
+/** Credential values this process resolved (API keys, OAuth tokens), in registration order; the oldest go first past the cap. */
+const secretValues = new Set<string>();
+let secretValuePattern: RegExp | undefined;
+
+/**
+ * Remembers a resolved credential so `redactSecrets` removes it wherever it appears, in text no pattern recognizes (a 32-character
+ * key echoed bare in an error body). Values under `MIN_SECRET_VALUE_LENGTH` characters or holding whitespace are ignored:
+ * the first would mangle ordinary text, the second cannot be told from the words around it. Returns whether it was kept.
+ */
+export function registerSecretValue(value: string | undefined): boolean {
+	const trimmed = value?.trim();
+	if (!trimmed || trimmed.length < MIN_SECRET_VALUE_LENGTH || /\s/u.test(trimmed)) return false;
+	if (secretValues.has(trimmed)) return true;
+	secretValues.add(trimmed);
+	if (secretValues.size > MAX_SECRET_VALUES) secretValues.delete(secretValues.values().next().value as string);
+	secretValuePattern = undefined;
+	return true;
+}
+
+/** Forgets every registered credential value (a sign-out, a test). */
+export function clearSecretValues(): void {
+	secretValues.clear();
+	secretValuePattern = undefined;
+}
+
+/** One alternation of the registered values, each as written and as a JSON string would hold it, longest first so a value holding another wins. */
+function registeredValuePattern(): RegExp | undefined {
+	if (secretValues.size === 0) return undefined;
+	if (!secretValuePattern) {
+		const forms = new Set<string>();
+		for (const value of secretValues) {
+			forms.add(value);
+			forms.add(JSON.stringify(value).slice(1, -1));
+		}
+		const escaped = [...forms]
+			.sort((left, right) => right.length - left.length)
+			.map((form) => form.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+		secretValuePattern = new RegExp(escaped.join("|"), "gu");
+	}
+	return secretValuePattern;
+}
 
 const SECRET_LINE_CONTINUATION = new RegExp(`(?:${SECRET_ASSIGNMENT}(?:[:=]\\s*)?|\\bBearer\\s*)$`, "i");
 
@@ -171,9 +222,12 @@ export function unfinishedPrivateKey(text: string): string | undefined {
 /** Redact a logical stream while keeping its fragment boundaries and metadata associations. */
 export function redactSecretFragments(fragments: readonly string[]): string[] {
 	const text = fragments.join("");
-	const ranges = SECRETS.flatMap(({ all }) =>
-		Array.from(text.matchAll(all), (match) => ({ start: match.index, end: match.index + match[0].length })),
-	).sort((left, right) => left.start - right.start);
+	const registered = registeredValuePattern();
+	const ranges = [...SECRETS.map(({ all }) => all), ...(registered ? [registered] : [])]
+		.flatMap((all) =>
+			Array.from(text.matchAll(all), (match) => ({ start: match.index, end: match.index + match[0].length })),
+		)
+		.sort((left, right) => left.start - right.start);
 	const merged: Array<{ start: number; end: number }> = [];
 	for (const range of ranges) {
 		const last = merged.at(-1);
@@ -224,9 +278,14 @@ export function storedSecret(
 	return undefined;
 }
 
-/** `text` with every credential-looking span replaced by `[redacted]`, for text drawn on screen or shared with other sessions. */
+/**
+ * `text` with every credential-looking span and every registered credential value replaced by `[redacted]`, for text drawn
+ * on screen, saved, or shared with a model or other sessions.
+ */
 export function redactSecrets(text: string): string {
-	return SECRETS.reduce((out, { all }) => out.replace(all, "[redacted]"), text);
+	const registered = registeredValuePattern();
+	const exact = registered ? text.replace(registered, "[redacted]") : text;
+	return SECRETS.reduce((out, { all }) => out.replace(all, "[redacted]"), exact);
 }
 
 /** Apply the same credential policy to JSON evidence without changing its field names or shape. */

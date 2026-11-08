@@ -2,35 +2,35 @@
 
 Use [`octocode models discover`](model-discovery.md) to compare documented vendor model lists with the configured catalog, including IDs that need metadata before use.
 
-For a built-in provider, start with `/login`, then choose a model with `/model`. Use custom model configuration only when Octocode does not already include the provider or endpoint you need.
+For a built-in provider, start with `/providers`, then choose a model with `/model`. Use custom model configuration only when Octocode does not already include the provider or endpoint you need.
 
 ## Choose a connection
 
-| What you have                                            | Recommended setup                                         |
-| -------------------------------------------------------- | --------------------------------------------------------- |
-| A supported subscription                                 | Sign in through `/login`                                  |
-| A provider API key                                       | Store it through `/login` or set its environment variable |
-| A local GGUF model                                       | Connect Octocode to the llama.cpp router                  |
-| An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                   |
-| A provider with a custom protocol or authentication flow | Build or install a provider extension                     |
+| What you have                                            | Recommended setup                                             |
+| -------------------------------------------------------- | ------------------------------------------------------------- |
+| A supported subscription                                 | Sign in through `/providers`                                  |
+| A provider API key                                       | Store it through `/providers` or set its environment variable |
+| A local GGUF model                                       | Connect Octocode to the llama.cpp router                      |
+| An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                       |
+| A provider with a custom protocol or authentication flow | Build or install a provider extension                         |
 
 Use `/model` to inspect the models available to this installation. Octocode starts with its bundled catalog. Set `OCTOCODE_MODEL_CATALOG_URL` to a compatible catalog service to enable remote catalog overlays; the fork does not default to Pi's service. Cached catalog data remains available offline. `octocode update --models` refreshes from the configured service. A catalog entry whose ID holds a control character (an escape sequence, a C0 or C1 control, a bidi override or a zero-width character) is dropped, including from data cached by an older version; control sequences are removed from names, and a missing or blank name shows the ID. A catalog response that is not valid JSON is reported without quoting its body.
 
 ## Authenticate
 
-Run `/login` and select a provider, then choose account sign-in or API-key setup. The same provider page offers key replacement and removal. See [providers](providers.md) for keychain storage and Pi configuration support.
+Run `/providers` and select a provider, then choose account sign-in or API-key setup. The same provider page offers key replacement and removal. See [providers](providers.md) for keychain storage and Pi configuration support.
 
 You can instead provide an API key through the provider's environment variable. This is useful in CI and other environments where Octocode should not write credentials. [Providers](providers.md) lists the variables and provider-specific setup.
 
 When several credential sources are configured, Octocode uses a runtime `--api-key` first, then a stored `auth.json` credential, an `apiKey` from `models.json`, and finally the provider's environment variables or ambient cloud credentials. Provider extensions can define their own authentication behavior.
 
-With the default home, Pi's providers load beside Octocode's. Octocode reads `~/.pi/agent/models.json` and `~/.pi/models.json` after its own `models.json`: a provider Octocode defines wins whole, and a provider only Pi defines is added. A provider with no Octocode `auth.json` credential uses its entry in Pi's `auth.json`, read only; a Pi key held in a secret command (`!cmd`) is skipped. Login, logout and token refresh write Octocode's `auth.json` only, so a refreshed Pi sign-in is saved there and Pi's files never change; logout removes only Octocode's copy, so a Pi credential stays in use until it is removed from Pi. `models-store.json` stays beside Octocode's `models.json`. An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` turns Pi's files off. `/login pi` still copies a Pi credential into Octocode's storage, which is needed only to keep it after Pi changes or to move it into a keychain.
+With the default home, Pi's providers load beside Octocode's. Octocode reads `~/.pi/agent/models.json` and `~/.pi/models.json` after its own `models.json`: a provider Octocode defines wins whole, and a provider only Pi defines is added. A provider with no Octocode `auth.json` credential uses its entry in Pi's `auth.json`, read only; a Pi key held in a secret command (`!cmd`) is skipped. Login, logout and token refresh write Octocode's `auth.json` only, so a refreshed Pi sign-in is saved there and Pi's files never change; logout removes only Octocode's copy, so a Pi credential stays in use until it is removed from Pi. `models-store.json` stays beside Octocode's `models.json`. An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` turns Pi's files off. `/providers pi` still copies a Pi credential into Octocode's storage, which is needed only to keep it after Pi changes or to move it into a keychain.
 
 Keep `auth.json` and any credential commands private. Project settings and extensions can execute inside the Octocode process after you trust a project. Review [Security](../../../SECURITY.md) before loading configuration from an untrusted directory.
 
 ## Select a model
 
-Run `/model` to search models grouped by provider. The picker shows models from configured providers; catalog presence does not verify account access. Choose a provider in `/login` first to filter to only its models. Press `Ctrl+S` on a model to save it as the default for new sessions.
+Run `/model` to search models grouped by provider. The picker shows models from configured providers; catalog presence does not verify account access. Choose a provider in `/providers` first to filter to only its models. Press `Ctrl+S` on a model to save it as the default for new sessions.
 
 Run `/effort` to select the thinking level for the current model. Press `Ctrl+S` there to save the startup level. Octocode limits the choices to levels supported by the selected model.
 
@@ -152,7 +152,7 @@ Use `promptCache` to declare the provider's best-effort cache lifetime in second
 { "id": "claude-sonnet-5", "promptCache": { "short": 300, "long": 3600 } }
 ```
 
-Choose the conservative end of any published range. A model without a lifetime for the active tier is not eligible for cache warming. A `modelOverrides` entry can set `inputLimits` or `promptCache` for a built-in or extension model, including a model accessed through a validated proxy. See `cacheWarming`.
+Choose the conservative end of any published range. Without a declared lifetime, warming plans with the lifetime the adapter sends for the tier: 5m and 1h for Anthropic-style markers, 30m and 12h for OpenAI explicit caching, and 24h for long history on OpenAI and listed Azure models with extended retention. A model with neither is not eligible for cache warming. A `modelOverrides` entry can set `inputLimits` or `promptCache` for a built-in or extension model, including a model accessed through a validated proxy. See `cacheWarming`.
 
 ### Configure sampling by thinking level
 
@@ -186,17 +186,17 @@ Compatibility settings should describe verified differences in the endpoint's re
 
 Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Octocode includes TypeSafe's Jev model from these providers, Cloudflare's Clef and Clef Flash models from Workers AI, and OpenAI's GPT-6 Luna through the [Decisions API](https://developers.openai.com/api/docs/guides/decisions).
 
-The [provider library's classifier table](../../ai/docs/classification.md) lists each provider's model IDs and the credential it reads. In Octocode, OpenRouter can also be connected with `/login`.
+The [provider library's classifier table](../../ai/docs/classification.md) lists each provider's model IDs and the credential it reads. In Octocode, OpenRouter can also be connected with `/providers`.
 
 Chat models on a llama.cpp router are also listed as classifier models.
 
-OpenAI's Decisions API needs an API key. ChatGPT sign-in credentials do not work with it, so `gpt-6-luna` is not listed as available while `openai` is logged in through `/login`, even when `OPENAI_API_KEY` is set; log out of `openai` to use the key. GPT-6 Luna also judges images passed in `images`; other classifier models return an error for them. The API rejects inputs above 922K tokens, but requests that run longer than about five seconds, currently above roughly 600K input tokens, fail with a gateway timeout.
+OpenAI's Decisions API needs an API key. ChatGPT sign-in credentials do not work with it, so `gpt-6-luna` is not listed as available while `openai` is logged in through `/providers`, even when `OPENAI_API_KEY` is set; log out of `openai` to use the key. GPT-6 Luna also judges images passed in `images`; other classifier models return an error for them. The API rejects inputs above 922K tokens, but requests that run longer than about five seconds, currently above roughly 600K input tokens, fail with a gateway timeout.
 
 Classifier models do not appear in `/model`. Extensions call `ctx.modelRegistry.classify()` and can inspect `result.usage` when the provider reports it. [Virtual models](virtual-models.md#route-requests) can use classifiers to route requests; see the `jev-router.ts` example. There is no built-in script executor exposing classifier calls to the conversational model.
 
 ## Use image models
 
-Image models generate images from a prompt and optional input images. Octocode lists OpenRouter's image models, such as `google/gemini-2.5-flash-image` and `black-forest-labs/flux.2-pro`, under the `openrouter` provider; they use the same `OPENROUTER_API_KEY` or `/login` credential as its chat models.
+Image models generate images from a prompt and optional input images. Octocode lists OpenRouter's image models, such as `google/gemini-2.5-flash-image` and `black-forest-labs/flux.2-pro`, under the `openrouter` provider; they use the same `OPENROUTER_API_KEY` or `/providers` credential as its chat models.
 
 Image models do not appear in `/model`. Extensions call `ctx.modelRegistry.generateImages()`. Its `input` accepts text and image blocks; the result contains output image blocks and usage when supplied by the provider. Extensions decide how to expose these results through a native tool.
 

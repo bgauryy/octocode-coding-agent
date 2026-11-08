@@ -126,6 +126,8 @@ it("keeps text, tool output, and following text in block order with one visible 
 		arguments: { path: "actual.ts", reason: "Inspect the\nactual file" },
 		structuredContent: { records: [7] },
 		content: [{ id: "out", type: "text", text: "Tool result" }],
+		// The host decides how the call reads, its reason line included.
+		display: { title: "inspect", reason: "Inspect the actual file", blocks: [{ type: "text", text: "Tool result" }] },
 	};
 	const events = project(
 		[
@@ -151,9 +153,9 @@ it("keeps text, tool output, and following text in block order with one visible 
 	expect(container.querySelector(".content-tool > .tool-reason")?.textContent).toBe("↳ Inspect the actual file");
 });
 
-it("shows an MCP call's purpose only when its returned data states one", () => {
+it("shows the reason line the host's display states, and none without one", () => {
 	const name = "mcp__octocode__localFetch";
-	const rendered = (structuredContent: unknown) => {
+	const rendered = (structuredContent: unknown, reason?: string) => {
 		const tool: ApplicationTool = {
 			toolCallId: "m",
 			toolName: name,
@@ -162,6 +164,11 @@ it("shows an MCP call's purpose only when its returned data states one", () => {
 			arguments: { queries: [{ path: "a.ts" }], reason: "Copied from a native tool" },
 			structuredContent,
 			content: [{ id: "out", type: "text", text: "Tool result" }],
+			display: {
+				title: "octocode/localFetch",
+				...(reason ? { reason } : {}),
+				blocks: [{ type: "text", text: "Tool result" }],
+			},
 		};
 		const events = project(
 			[message([{ id: "call", type: "toolCall", toolCallId: "m", name, arguments: tool.arguments }])],
@@ -173,12 +180,14 @@ it("shows an MCP call's purpose only when its returned data states one", () => {
 		return text;
 	};
 	expect(rendered({ results: [{ data: {} }] })).toBeUndefined();
-	expect(rendered({ results: [{ data: { mainGoal: "Trace the parser" } }] })).toBe("↳ Trace the parser");
+	expect(rendered({ results: [{ data: { mainGoal: "Trace the parser" } }] }, "Trace the parser")).toBe(
+		"↳ Trace the parser",
+	);
 });
 
 it("lists each query row's returned goal and reasoning below the tool output, never from the arguments", () => {
 	const name = "mcp__other__search";
-	const rendered = (structuredContent: unknown) => {
+	const rendered = (structuredContent: unknown, stated?: string) => {
 		const tool: ApplicationTool = {
 			toolCallId: "p",
 			toolName: name,
@@ -187,6 +196,11 @@ it("lists each query row's returned goal and reasoning below the tool output, ne
 			arguments: { queries: [{ mainGoal: "From the input" }] },
 			structuredContent,
 			content: [{ id: "out", type: "text", text: "Tool result" }],
+			display: {
+				title: "other/search",
+				...(stated ? { reason: stated } : {}),
+				blocks: [{ type: "text", text: "Tool result" }],
+			},
 		};
 		const events = project(
 			[message([{ id: "call", type: "toolCall", toolCallId: "p", name, arguments: tool.arguments }])],
@@ -199,22 +213,28 @@ it("lists each query row's returned goal and reasoning below the tool output, ne
 		unmount();
 		return { lines, order, reason };
 	};
-	const shared = rendered({
-		results: [
-			{ index: 0, mainGoal: "Map the parser", reasoning: "Entry point" },
-			{ index: 1, mainGoal: "Map the parser", reasoning: "Its callers" },
-		],
-	});
+	const shared = rendered(
+		{
+			results: [
+				{ index: 0, mainGoal: "Map the parser", reasoning: "Entry point" },
+				{ index: 1, mainGoal: "Map the parser", reasoning: "Its callers" },
+			],
+		},
+		"Map the parser",
+	);
 	// The shared goal is the one-line reason under the name, so the block lists the reasoning rows.
 	expect(shared.lines).toEqual(["· #0 Entry point", "· #1 Its callers"]);
 	expect(shared.order.indexOf("Tool result")).toBeLessThan(shared.order.indexOf("Entry point"));
 	expect(
-		rendered({
-			results: [
-				{ index: 0, mainGoal: "Find the loader" },
-				{ index: 1, mainGoal: "Find the writer" },
-			],
-		}).lines,
+		rendered(
+			{
+				results: [
+					{ index: 0, mainGoal: "Find the loader" },
+					{ index: 1, mainGoal: "Find the writer" },
+				],
+			},
+			"Find the loader",
+		).lines,
 	).toEqual(["#1 Find the writer"]);
 	const none = rendered({ results: [{ data: {} }] });
 	expect(none.lines).toEqual([]);

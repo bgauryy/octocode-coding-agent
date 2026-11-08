@@ -4,6 +4,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE } from "../../../common/src/file-mode.ts";
 import { lockSyncWithRetry } from "../../../common/src/file-write-lock.ts";
+import { redactSecrets } from "../../../common/src/sanitize.ts";
 import { getAgentDir, VERSION } from "../config.ts";
 import type { Extension } from "./features/types.ts";
 import { isSyntheticPath } from "./source-info.ts";
@@ -174,8 +175,9 @@ export function recordCrash(
 			timestamp: new Date().toISOString(),
 			version: VERSION,
 			kind: crash.kind,
-			message: error instanceof Error ? error.message || error.name : String(error),
-			stack: error instanceof Error && error.stack ? error.stack : null,
+			// An error can quote a credential (a provider's 401 body); the log is a file the user may attach to a report.
+			message: redactSecrets(error instanceof Error ? error.message || error.name : String(error)),
+			stack: error instanceof Error && error.stack ? redactSecrets(error.stack) : null,
 			sessionFile: crash.sessionFile ?? null,
 			cwd: crash.cwd,
 		};

@@ -20,7 +20,7 @@ import { notify } from "../../shared/commands.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { type Capture, type Checkpoints, lastUserEntry } from "../checkpoint.ts";
 import { lineCount } from "../coverage.ts";
-import type { MutationReceipt, QueryOutcome } from "../render.ts";
+import type { MutationReceipt, QueryOutcome } from "../outcome.ts";
 import { mutationEpoch, recordMutation } from "../feedback/revisions.ts";
 import { applyEdit, applyWrite } from "./apply.ts";
 import { resolveAnchoredEdits } from "./anchored.ts";

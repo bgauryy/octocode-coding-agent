@@ -47,7 +47,7 @@ An HTTP server without an `Authorization` header can use OAuth. Run `/mcp login 
 
 If the server does not support dynamic client registration, set `oauth.clientId`, optionally `clientSecret`, and `callbackPort` or `callbackUrl`. The callback must be loopback HTTP and end in `/callback`. `scope` overrides missing advertised scopes. `clientName` changes dynamic registration name; sign out before re-registering. `clientRegistration: "cimd"` requires `OCTOCODE_MCP_CLIENT_METADATA_URL` and cannot combine with `clientId` or `clientName`. `authServerMetadataUrl` overrides broken discovery with a trusted HTTPS metadata URL (loopback HTTP allowed).
 
-A server can instead use a current `/login` sign-in:
+A server can instead use a current `/providers` sign-in:
 
 ```json
 {

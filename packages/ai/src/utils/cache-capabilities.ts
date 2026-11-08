@@ -1,6 +1,6 @@
 import type { Api, Model, OpenAIResponsesCompat } from "../types.ts";
 
-// Verified 2026-10-21 against the model families and aliases documented at:
+// Verified 2026-11-08 against the model families and aliases documented at (GPT-5.6 and later):
 // https://developers.openai.com/api/docs/guides/prompt-caching
 // https://developers.openai.com/api/docs/pricing
 const OPENAI_EXPLICIT_CACHE_MODELS = new Set([
@@ -12,6 +12,7 @@ const OPENAI_EXPLICIT_CACHE_MODELS = new Set([
 	"gpt-6-sol",
 	"gpt-6-luna",
 	"gpt-6.1-sol",
+	"gpt-6.1-terra",
 	"gpt-daybreak-blue-latest",
 	"gpt-daybreak-red-latest",
 ]);

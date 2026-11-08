@@ -4,7 +4,6 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ActivityView } from "../src/app/live/ActivityView.tsx";
-import { AgentsView } from "../src/app/live/AgentsView.tsx";
 import { SessionComposer } from "../src/app/live/SessionComposer.tsx";
 import { indexBacklog } from "../src/app/model/backlog.ts";
 import { controlView, deferredControl, posted, setupControls } from "./control-fixtures.tsx";
@@ -54,12 +53,12 @@ it("shows an error with a reload action, not a loading skeleton, when the first 
 	expect(screen.getByText("Can't reach the session")).toBeInTheDocument();
 	expect(screen.getByRole("button", { name: "Reload page" })).toBeInTheDocument();
 	expect(screen.queryByRole("status", { name: "Connecting to the session" })).toBeNull();
-	view.show(<AgentsView />);
+	view.show(activity());
 	expect(screen.getByText("Can't reach the session")).toBeInTheDocument();
 });
 
 it("keeps the connecting skeleton while a reconnect is still being attempted", async () => {
-	const view = controlView(<AgentsView />);
+	const view = controlView(activity());
 	act(() => FakeSocket.instances[0].close(1006));
 	expect(screen.getByRole("status", { name: "Connecting to the session" })).toBeInTheDocument();
 	expect(screen.queryByText("Can't reach the session")).toBeNull();

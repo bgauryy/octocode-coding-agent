@@ -26,6 +26,11 @@
 			"types": "./dist/team.d.ts",
 			"import": "./dist/team.js"
 		},
+		"./profiler": {
+			"source": "./src/profiler.ts",
+			"types": "./dist/profiler.d.ts",
+			"import": "./dist/profiler.js"
+		},
 		"./workspace": {
 			"source": "./src/workspace.ts",
 			"types": "./dist/workspace.d.ts",

@@ -1,5 +1,6 @@
 import type { Api, AssistantMessage, AssistantMessageEvent, Model, ProviderStreams } from "../types.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
+import { redactProviderText } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 
 function createSetupErrorMessage(
@@ -11,7 +12,7 @@ function createSetupErrorMessage(
 	return {
 		...createPendingAssistantMessage(model),
 		stopReason: aborted ? "aborted" : "error",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage: redactProviderText(error instanceof Error ? error.message : String(error)),
 		timestamp,
 	};
 }

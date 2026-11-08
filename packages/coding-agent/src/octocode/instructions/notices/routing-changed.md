@@ -1,0 +1,1 @@
+[{{id}}] The user changed models or providers; this replaces the Models line and profile models in `<delegation>` until the session reloads. You run {{sessionModel}}. Providers: {{providers}}{{#if on}} (added {{on}}){{/if}}{{#if off}} (no longer available: {{off}}){{/if}}. `small` runs {{small}}; `medium` runs {{medium}}.{{#if profiles}} Profiles: {{profiles}}.{{/if}}

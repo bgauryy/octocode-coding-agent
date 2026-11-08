@@ -1,3 +1,4 @@
+import { displayText } from "../shared/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
@@ -153,6 +154,30 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 					"Compaction queued: it runs when this reply ends, and the task resumes from the summary. End your reply now with a one-line status.",
 					{ queued: true } satisfies CompactDetails,
 				);
+			},
+			display(input) {
+				const focus = typeof input.args?.focus === "string" ? input.args.focus.trim() : "";
+				const head = { title: "Compact", ...(focus ? { summary: focus } : {}), kind: "think" as const, blocks: [] };
+				if (!input.result) return head;
+				if (input.status === "failed") {
+					const text = displayText(input.result)
+						.replace(/\s+/g, " ")
+						.replace(/\s*Continue the task\.$/, "")
+						.trim();
+					const refused = text.startsWith("Compaction refused");
+					return {
+						...head,
+						outcome: { text, tone: refused ? "warning" : "error", ...(refused ? { stopped: true as const } : {}) },
+					};
+				}
+				const details = input.result.details as Partial<CompactDetails> | undefined;
+				return {
+					...head,
+					outcome: {
+						text: `${details?.already ? "Already queued" : "Queued"} \u00b7 runs when this reply ends`,
+						tone: "muted",
+					},
+				};
 			},
 			renderCall: (args, theme, context) => compactHeader(theme, context, args),
 			renderResult: (result, _options, theme, context) => compactResult(result, theme, context),

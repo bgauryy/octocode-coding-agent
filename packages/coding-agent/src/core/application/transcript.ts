@@ -25,6 +25,7 @@ import { streamHint, type StreamHint } from "./service/wire.ts";
 import { messageDelta, TranscriptStream, unchangedDisplay } from "./transcript-stream.ts";
 import { ToolCallStream } from "./transcript-toolcalls.ts";
 import { spillTool, spillToolData } from "./transcript-tools.ts";
+import { toolDisplay, type TranscriptSession } from "./transcript-display.ts";
 import { sameMessage, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
 
@@ -41,9 +42,12 @@ export class ApplicationTranscript {
 	private readonly toolCalls = new ToolCallStream();
 	private readonly messageEntries: ApplicationCollection<ApplicationMessage>;
 	private readonly toolEntries: ApplicationCollection<ApplicationTool>;
-	constructor(state: ApplicationStateStore, manager?: () => object) {
+	private readonly session?: () => TranscriptSession;
+	private readonly displays = (name: string) => this.session?.().getToolRenderers?.(name)?.display;
+	constructor(state: ApplicationStateStore, session?: () => TranscriptSession) {
+		this.session = session;
 		this.assets = new ApplicationAssets({
-			tempDir: manager ? () => withSessionStorage(manager(), runtimeTempDir) : undefined,
+			tempDir: session ? () => withSessionStorage(session().sessionManager, runtimeTempDir) : undefined,
 		});
 		this.stream = new TranscriptStream(this.assets);
 		this.messageEntries = new ApplicationCollection(
@@ -115,7 +119,9 @@ export class ApplicationTranscript {
 			}
 			for (const [id, tool] of this.tools) {
 				const source = this.toolSources.get(id);
-				if (source) this.putTool(id, { ...tool, ...this.toolData(source.value, id, source.owner, source.streaming) });
+				if (!source) continue;
+				const next = { ...tool, ...this.toolData(source.value, id, source.owner, source.streaming) };
+				this.putTool(id, { ...next, display: toolDisplay(next, source.value, true, this.displays) });
 			}
 		});
 	}
@@ -300,6 +306,7 @@ export class ApplicationTranscript {
 				? {
 						arguments: cloneDisplay(event.args),
 						hint: toolHint(event.args),
+						startedAt: Date.now(),
 						...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
 					}
 				: {}),
@@ -318,15 +325,26 @@ export class ApplicationTranscript {
 		event: Extract<ApplicationEvent, { type: "tool.started" | "tool.progress" | "tool.completed" }>,
 	): typeof event {
 		const previous = this.tools.get(event.toolCallId);
+		// An event with result data replaces the displayed result, including its full-data asset: an earlier asset
+		// (a mutable streaming slot) would otherwise outlive the result it held. An arguments-only event keeps it.
+		const replacesResult = event.content !== undefined;
 		let storedArguments = previous?.arguments;
-		if (storedArguments === undefined && previous?.full && event.full) {
+		if (storedArguments === undefined && previous?.full && (event.full || replacesResult)) {
 			const full = this.assets.get(previous.full.id);
 			if (full?.encoding === "utf8" && full.asset.mimeType === "application/json")
 				storedArguments = asRecord(JSON.parse(full.data)).arguments;
 		}
 		const { type, failed, ...data } = event;
+		const kept: Partial<ApplicationTool> = { ...previous };
+		if (replacesResult) {
+			delete kept.full;
+			delete kept.details;
+			delete kept.structuredContent;
+			delete kept.usage;
+			delete kept.progress;
+		}
 		const tool: ApplicationTool = {
-			...previous,
+			...(kept as ApplicationTool),
 			...(storedArguments === undefined ? {} : { arguments: storedArguments }),
 			...data,
 			order: previous?.order ?? this.nextOrder++,
@@ -334,6 +352,7 @@ export class ApplicationTranscript {
 			notRun: event.notRun,
 			status: type === "tool.completed" ? (failed ? "failed" : "completed") : "running",
 		};
+		tool.display = toolDisplay(tool, this.toolSources.get(event.toolCallId)?.value, replacesResult, this.displays);
 		spillTool(tool, this.assets, type === "tool.completed");
 		this.putTool(event.toolCallId, tool);
 		return { ...tool, type: event.type, ...(event.failed === undefined ? {} : { failed: event.failed }) };

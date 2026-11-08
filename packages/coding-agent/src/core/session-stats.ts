@@ -4,7 +4,7 @@ import { type CacheMetrics, computeCacheMetrics } from "./cache-stats.ts";
 import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { estimateProjectedContextTokens } from "./compaction/index.ts";
 import type { ContextUsage } from "./features/index.ts";
-import { getLatestCompactionEntry, type SessionManager } from "./session-manager.ts";
+import { getLatestCompactionEntry, type ReadonlySessionManager } from "./session-manager.ts";
 import { addUsageToTotals, createUsageTotals, entryUsage } from "./usage-totals.ts";
 
 /** Session statistics for /session command */
@@ -38,7 +38,7 @@ export interface SessionStats {
 
 /** Message counts, token and cost totals, and cache metrics of the session file's entries. */
 export function computeSessionStats(
-	sessionManager: SessionManager,
+	sessionManager: ReadonlySessionManager,
 	session: Pick<SessionStats, "sessionFile" | "sessionId" | "contextUsage"> & { lengthRecoveries?: number },
 ): SessionStats {
 	let userMessages = 0;
@@ -99,7 +99,7 @@ export function computeSessionStats(
 
 /** How full `model`'s context window is with the current branch; unknown tokens right after a compaction. */
 export function computeContextUsage(
-	sessionManager: SessionManager,
+	sessionManager: ReadonlySessionManager,
 	model: Model<any> | undefined,
 ): ContextUsage | undefined {
 	if (!model) return undefined;

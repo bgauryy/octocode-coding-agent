@@ -64,7 +64,8 @@ export type CredentialSynchronizationOperation =
 export class CredentialSynchronizationError extends Error {
 	readonly providerId: string;
 	readonly operation: CredentialSynchronizationOperation;
-	readonly credential: Credential | undefined;
+	/** Not enumerable, so logging, `JSON.stringify` and `util.inspect` of the error never print the credential. */
+	declare readonly credential: Credential | undefined;
 
 	constructor(
 		providerId: string,
@@ -76,6 +77,6 @@ export class CredentialSynchronizationError extends Error {
 		this.name = "CredentialSynchronizationError";
 		this.providerId = providerId;
 		this.operation = operation;
-		this.credential = credential;
+		Object.defineProperty(this, "credential", { value: credential, enumerable: false });
 	}
 }

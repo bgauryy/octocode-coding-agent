@@ -159,39 +159,39 @@ export async function init(host: StartupHost): Promise<void> {
 		const withTitle = (hints: string) =>
 			`${theme.fg("accent", APP_TITLE)} ${theme.fg("dim", `v${host.version}`)}\n${hints}`;
 
-		// Build startup instructions using keybinding hint helpers
+		// Build startup instructions using keybinding hint helpers: `key verb`, as every hint line reads.
 		const hint = (keybinding: AppKeybinding, description: string) => keyHint(keybinding, description);
 
 		const expandedInstructions = () =>
 			[
-				hint("app.interrupt", "to interrupt"),
-				hint("app.clear", "to clear"),
-				rawKeyHint(`${keyText("app.clear")} twice`, "to exit"),
-				hint("app.exit", "to exit (empty)"),
-				hint("app.suspend", "to suspend"),
-				keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
-				hint("app.thinking.cycle", "to cycle thinking level"),
-				rawKeyHint(`${keyText("app.model.cycleForward")}/${keyText("app.model.cycleBackward")}`, "to cycle models"),
-				hint("app.model.select", "to select model"),
-				hint("app.tools.expand", "to expand tools"),
-				hint("app.thinking.toggle", "to expand thinking"),
-				hint("app.editor.external", "for external editor"),
-				rawKeyHint("/", "for commands"),
-				rawKeyHint("!", "to run bash"),
-				rawKeyHint("!!", "to run bash (no context)"),
-				hint("app.message.followUp", "to queue follow-up"),
-				hint("app.message.dequeue", "to restore the last queued message"),
-				hint("app.clipboard.pasteImage", "to paste files on macOS, images, or text"),
-				rawKeyHint("drop files", "to attach"),
+				hint("app.interrupt", "interrupt"),
+				hint("app.clear", "clear"),
+				rawKeyHint(`${keyText("app.clear")} twice`, "exit"),
+				hint("app.exit", "exit (empty prompt)"),
+				hint("app.suspend", "suspend"),
+				keyHint("tui.editor.deleteToLineEnd", "delete to end of line"),
+				hint("app.thinking.cycle", "cycle thinking level"),
+				rawKeyHint(`${keyText("app.model.cycleForward")}/${keyText("app.model.cycleBackward")}`, "cycle models"),
+				hint("app.model.select", "select model"),
+				hint("app.tools.expand", "expand tools"),
+				hint("app.thinking.toggle", "expand thinking"),
+				hint("app.editor.external", "external editor"),
+				rawKeyHint("/", "commands"),
+				rawKeyHint("@", "files"),
+				rawKeyHint("!", "shell"),
+				rawKeyHint("!!", "shell (output not sent to the model)"),
+				hint("app.message.followUp", "queue follow-up"),
+				hint("app.message.dequeue", "restore the last queued message"),
+				hint("app.clipboard.pasteImage", "paste files on macOS, images, or text"),
+				rawKeyHint("drop files", "attach"),
 			].join("\n");
+		// The empty prompt's placeholder already names `/`, `@` and `!`; this row keeps only keys it does not show.
 		const compactInstructions = () =>
 			[
 				hint("app.interrupt", "interrupt"),
 				rawKeyHint(`${keyText("app.clear")}/${keyText("app.exit")}`, "clear/exit"),
-				rawKeyHint("/", "commands"),
-				rawKeyHint("!", "bash"),
 				hint("app.tools.expand", "more"),
-			].join(theme.fg("muted", " · "));
+			].join(theme.fg("dim", SEPARATOR));
 		const compactOnboarding = () =>
 			theme.fg(
 				"dim",
