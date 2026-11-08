@@ -88,8 +88,8 @@ export async function spawnAgent(
 		if (refusal) throw new Error(refusal);
 	};
 	refuseOverSpend();
-	// Refusals first (an item this session does not hold, unknown profile, unavailable model), then a slot, then the
-	// spawn ask: the user is never asked for a run that cannot start, and a denied spawn claims and starts nothing.
+	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
+	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
 	const linked = itemLink(ctx, params.item);
 	const plan = planRun(
 		env.getProfiles(),
@@ -149,6 +149,8 @@ export async function spawnAgent(
 		}
 		// Parallel calls of one batch all passed the first check, and a foreground call may have waited long for its slot.
 		refuseOverSpend();
+		// The item is claimed only now: everything that could refuse the call has passed.
+		linked?.claim();
 		claimed = claimRun(
 			runs,
 			plan,
@@ -182,7 +184,10 @@ export async function spawnAgent(
 		const waitsForSiblings = reserving.waitOn.length > 0;
 		const reserved = waitsForSiblings ? `\n\n(${waitingText(reserving)}.)` : takeReservation(team, run, reserving);
 		if (resultContract) run.identity.resultContract = resultContract;
-		if (linked) run.identity.item = linked.ref;
+		if (linked) {
+			run.identity.item = linked.ref;
+			runs.items.set(run.identity.id, linked.ref);
+		}
 		// A lean child reads its skills inlined in the task; it loads none itself.
 		if (!skillPlan.inline) run.identity.skillResources = skillResources;
 		run.identity.skillsInTask = skillPlan.inTask;

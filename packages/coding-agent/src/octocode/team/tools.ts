@@ -10,6 +10,7 @@ import { contentText, firstLine, optionalString, textResult } from "../shared/ut
 import { childAsks } from "./asks.ts";
 import { EDIT_RETENTION_MINUTES } from "./edits.ts";
 import type { ShellParse } from "../shared/shell-commands.ts";
+import { registerBreakAttribution } from "./break-attribution.ts";
 import { confineNode, registerConfinedNote } from "./node-confine.ts";
 import { lockAdvice } from "./lock-advice.ts";
 import { plural } from "../shared/render/text.ts";
@@ -87,6 +88,7 @@ export function registerCollab(
 	registerSendMessageTool(api, team, options.registerTool, options.peers);
 	registerTeamEvents(api, team, options.beforeLeave, options.shellChanges);
 	registerRecordedSpend(api, team);
+	registerBreakAttribution(api, team);
 	const markConfined = registerConfinedNote(api);
 	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
@@ -179,29 +181,27 @@ function registerCoordinateTool(
 			parameters: Type.Object({
 				action: StringEnum(actions, {
 					description:
-						"list: live agents and held paths; " +
-						(canStop ? "join: register or update your goal; leave: unregister and release reservations; " : "") +
-						"lock: reserve paths, all or none; unlock: release paths, or all without paths; " +
+						"list: agents and held paths; " +
+						(canStop ? "join: set your goal; leave: unregister and release reservations; " : "") +
+						"lock: reserve paths, all or none; unlock: release paths (none given: all); " +
 						(canStop
-							? "stop: kill a background subagent you started; merge: land an isolated subagent's saved work in this tree, or a linked worktree's branch in the main checkout (asks the user); grant: add requests to the limits of a running subagent you started, for this run only; "
+							? "stop: kill a background subagent you started; merge: land an isolated subagent's work in this tree, or a linked worktree's branch in the main checkout (asks the user); grant: add model requests to a running subagent you started, this run only; "
 							: "") +
-						"changes: recent file changes by agents, newest first",
+						"changes: recent agent file changes, newest first",
 				}),
 				...(canStop
 					? {
-							id: Type.Optional(Type.String({ description: "stop, merge, grant: id of the subagent" })),
+							id: Type.Optional(Type.String({ description: "stop, merge, grant: subagent id" })),
 							branch: Type.Optional(Type.String({ description: "merge: a linked worktree's branch, instead of id" })),
-							requests: Type.Optional(
-								Type.Integer({ description: "grant: model requests to add, a positive whole number" }),
-							),
+							requests: Type.Optional(Type.Integer({ description: "grant: model requests to add (positive integer)" })),
 						}
 					: {}),
 				...(canStop
-					? { goal: Type.Optional(Type.String({ description: "join: your goal, in the form of a task goal" })) }
+					? { goal: Type.Optional(Type.String({ description: "join: your goal, worded as a task goal" })) }
 					: {}),
 				paths: Type.Optional(
 					Type.Array(Type.String(), {
-						description: 'lock/unlock: files, or "dir/" for a tree. changes: only under these paths',
+						description: 'lock/unlock: files or "dir/". changes: only under these paths',
 					}),
 				),
 				withinMinutes: Type.Optional(Type.Integer({ description: "changes: window in minutes (default 60)" })),

@@ -2,6 +2,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { Settings } from "../../core/settings-schema.ts";
 import { formatSpan } from "../shared/format.ts";
+import { runningWorkOf } from "../shared/running-work.ts";
 import type { Mail } from "./mail.ts";
 import { PARENT_WAITS_ENV } from "./store/env.ts";
 import type { TeamStore } from "./store.ts";
@@ -12,10 +13,18 @@ export interface CheckInConfig {
 	seconds: number;
 	/** The parent is blocked in this run's `agent` call and reads messages only with its report (a foreground run). */
 	parentWaits: boolean;
+	/** This child has a pending timer or a running background bash job of its own: it waits legitimately, so no ping. */
+	busy?: boolean;
 }
 
+/** Whether the session of `owner` (its extension API) lists a background bash job or a timer: the two things that wake a child that ended its turn. */
+const waitsOnWork = (owner: object): boolean =>
+	runningWorkOf(owner)
+		.all()
+		.some((row) => row.kind === "bash" || row.kind === "timer");
+
 /** The `subagents.checkInSeconds` setting (a value the schema would refuse reads as the default) and how this child runs. */
-export function checkInConfig(settings: Settings["subagents"], env: NodeJS.ProcessEnv): CheckInConfig {
+export function checkInConfig(settings: Settings["subagents"], env: NodeJS.ProcessEnv, owner?: object): CheckInConfig {
 	const seconds = settings?.checkInSeconds;
 	return {
 		seconds:
@@ -23,6 +32,7 @@ export function checkInConfig(settings: Settings["subagents"], env: NodeJS.Proce
 				? seconds
 				: SETTINGS_DEFAULTS.subagents.checkInSeconds,
 		parentWaits: env[PARENT_WAITS_ENV] === "1",
+		busy: owner ? waitsOnWork(owner) : false,
 	};
 }
 
@@ -53,7 +63,7 @@ export class CheckIn {
 
 	/** Between two steps of `me`: sends the ping if it is due. The database is read only once the interval has passed. */
 	due(db: TeamStore, me: string, parent: string | undefined, config: CheckInConfig, now = Date.now()): void {
-		if (!parent || config.seconds <= 0) return;
+		if (!parent || config.seconds <= 0 || config.busy) return;
 		const intervalMs = config.seconds * 1000;
 		this.begin(now);
 		if (now - this.talkedAt! < intervalMs) return;

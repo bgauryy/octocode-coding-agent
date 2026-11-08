@@ -38,6 +38,7 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .dialog-answer-option { display: grid; gap: 2px; max-width: 28em; }
 .dialog-answer-description { font-size: 0.85em; overflow-wrap: anywhere; }
 .dialog-answer-card { display: grid; gap: 4px; }
+.dialog-answer-question { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dialog-answer-meta { margin: 0; font-size: 0.85em; overflow-wrap: anywhere; }
 .dialog-answer-body { margin: 0; padding-left: 10px; border-left: 2px solid var(--border, #8884); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24em; overflow: auto; }
 .dialog-answer-warning { margin: 0; color: var(--warning, #d97706); }

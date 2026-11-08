@@ -44,10 +44,10 @@ const ALLOWED: Record<string, string[]> = {
 	llama: ["shared"],
 	api: ["shared"],
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
-	external: ["shared", "api", "worktrees"],
+	external: ["shared", "api", "worktrees", "ask"],
 	ask: ["shared"],
-	// `cli`: the bash guide names the research CLI only when its shim is installed.
-	files: ["shared", "permission", "cli"],
+	// `cli`: the bash guide names the research CLI only when its shim is installed. `ask`: the file review is an approval question.
+	files: ["shared", "permission", "cli", "ask"],
 	team: ["shared"],
 	discovery: ["shared"],
 	hooks: ["shared", "discovery"],
@@ -55,10 +55,11 @@ const ALLOWED: Record<string, string[]> = {
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
 	harness: ["shared", "plugins", "hooks", "discovery", "skill"],
 	web: ["shared", "permission"],
-	compaction: ["shared", "files", "permission", "archive"],
+	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`).
+	compaction: ["shared", "files", "permission", "archive", "sessions"],
 	archive: ["shared", "memory", "permission"],
 	ui: ["shared", "permission"],
-	subagents: ["shared", "discovery", "team", "permission", "instructions", "backlog", "trust", "worktrees"],
+	subagents: ["shared", "discovery", "team", "permission", "instructions", "backlog", "trust", "worktrees", "ask"],
 	instructions: ["shared"],
 	sessions: ["shared", "files", "subagents", "backlog", "archive"],
 	backlog: ["shared"],
@@ -68,7 +69,8 @@ const ALLOWED: Record<string, string[]> = {
 	remote: ["shared", "web-daemon", "workspace"],
 	memory: ["shared", "permission"],
 	plan: ["shared"],
-	permission: ["shared", "plan"],
+	// Every question to a person goes through `ask/` (one Question type); permission, external and subagents ask there.
+	permission: ["shared", "plan", "ask"],
 	skill: ["shared"],
 	"context-optimization": ["shared"],
 	// `/optimize`: its helper call is the small-tier route `subagents/` owns.

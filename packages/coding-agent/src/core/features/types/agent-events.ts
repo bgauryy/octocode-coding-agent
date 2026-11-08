@@ -9,6 +9,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 } from "@octocodeai/octocode-ai";
+import type { Question } from "@octocodeai/octocode-contracts";
 import type { ExtensionUIAskView } from "./ui.ts";
 import type { RunOutcome } from "../../agent-session/run-outcome.ts";
 import type { CustomMessage } from "../../messages.ts";
@@ -137,12 +138,12 @@ export interface AgentSettledEvent {
 	outcome?: RunOutcome;
 }
 
-export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom";
+export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom" | "ask";
 
 /**
  * Fired when Octocode starts waiting on a blocking user-facing extension UI prompt. `id` names the dialog for a
  * remote answer (`AgentSession.answerDialog`); `options` are a select's choices (a confirm's are Yes and No);
- * `allowsText` says an input dialog takes free text; `approval` and `blocking` repeat the dialog options of those names;
+ * `allowsText` says an input dialog takes free text; `approval` is set when an `ask` dialog holds an approval question, `blocking` repeats the dialog option;
  * `nested` marks a dialog opened over another still open one.
  */
 export interface UIPromptStartEvent {
@@ -154,8 +155,10 @@ export interface UIPromptStartEvent {
 	options?: string[];
 	allowsText?: boolean;
 	approval?: boolean;
-	/** The card the dialog draws, for clients that draw it too. */
+	/** The card a custom dialog with a remote answer shape draws, for clients that draw it too. */
 	ask?: ExtensionUIAskView;
+	/** An `ask` dialog's typed questions (`ExtensionUIContext.ask`), which a remote client answers with one reply each. */
+	questions?: Question[];
 	blocking?: boolean;
 	nested?: boolean;
 }

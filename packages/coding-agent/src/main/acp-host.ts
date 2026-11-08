@@ -43,7 +43,7 @@ function isWorkerEvent(event: RpcEvent): event is Extract<RpcEvent, { type: AcpW
 function isDialog(
 	request: RpcExtensionUIRequest,
 ): request is Extract<RpcExtensionUIRequest, { method: AcpUiRequest["method"] }> {
-	return ["select", "confirm", "input", "editor"].includes(request.method);
+	return ["select", "confirm", "input", "editor", "ask"].includes(request.method);
 }
 
 function createWorker(launch: AcpWorkerLaunch): AcpWorkerClient {
@@ -53,7 +53,9 @@ function createWorker(launch: AcpWorkerLaunch): AcpWorkerClient {
 		cwd: launch.cwd,
 		ownProcessTree: true,
 		invocation: { command: invocation.command, args: invocation.prefix },
-		args: launch.args,
+		// `--rpc-ask`: the broker answers typed question batches (`AcpSession.ui`): an approval over `session/request_permission`,
+		// the rest over `elicitation/create` when the client offers it, else `unavailable`.
+		args: ["--rpc-ask", ...launch.args],
 		env: launch.env,
 	});
 	return {

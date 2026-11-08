@@ -43,8 +43,8 @@ describe("linger front matter", () => {
 		const tools = allowed(browser.tools);
 		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "web"]);
 		expect(tools).not.toContain("browser");
-		// Core tools: commands (still read-only through the permission gate), communication and steps.
-		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "steps", "file"]));
+		// Core tools: commands (still read-only through the permission gate), communication and history.
+		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "timer", "file"]));
 		expect(tools).not.toContain("task");
 	});
 
@@ -74,7 +74,6 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"steps",
 			"timer",
 			"archive",
 			"skill",
@@ -87,7 +86,6 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"steps",
 			"timer",
 			"archive",
 			"skill",
@@ -101,14 +99,13 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"steps",
 			"timer",
 			"archive",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
-		expect(CORE_TOOLS).toEqual(["file", "agent", "steps", "timer", "archive"]);
+		expect(CORE_TOOLS).toEqual(["file", "agent", "timer", "archive"]);
 		expect(SHELL_TOOLS).toEqual(["bash"]);
 		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
@@ -119,7 +116,6 @@ describe("core tools of a subagent profile", () => {
 			"agent*",
 			"file",
 			"bash",
-			"steps",
 			"timer",
 			"archive",
 			"skill",
@@ -133,7 +129,6 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"steps",
 			"timer",
 			"archive",
 			"skill",
@@ -150,6 +145,11 @@ describe("core tools of a subagent profile", () => {
 				(name) => `+${name}`,
 			),
 		);
+	});
+
+	it("gives a profile that lists steps the steps tool, and no other profile", () => {
+		expect(allowed(profile("tools: edit,steps").tools)).toContain("steps");
+		expect(allowed(profile("tools: edit").tools)).not.toContain("steps");
 	});
 
 	it("lets a profile drop the skill tool, unlike the core tools", () => {
@@ -169,8 +169,8 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: mcp__research__read_file", ["mcp__research__read_file"]],
 		['excludeTools: "agent,browser"', ["agent"]],
 		["excludeTools: archive", ["archive"]],
-		["excludeTools: steps", ["steps"]],
-		["tools: -steps", ["steps"]],
+		["excludeTools: timer", ["timer"]],
+		["tools: -timer", ["timer"]],
 		[
 			'excludeTools: "*"',
 			[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, "mcp__research__read_file", "mcp__research__search_code"],
@@ -201,7 +201,6 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"steps",
 			"timer",
 			"archive",
 			"skill",

@@ -51,6 +51,19 @@ describe("extension dialogs share one editor slot", () => {
 		initTheme("dark");
 	});
 
+	test("the blocked status is a question unless the caller reports a permission", () => {
+		const { host, setBlocked } = createDialogHost();
+		void extensionDialogs.showExtensionSelector(host, "Pick", ["A"]);
+		expect(setBlocked).toHaveBeenLastCalledWith("extension-dialog", expect.objectContaining({ kind: "question" }));
+		void extensionDialogs.showExtensionSelector(host, "Run bash?", ["Allow once"], undefined, {
+			kind: "permission",
+			message: "Run bash?",
+		});
+		expect(setBlocked).toHaveBeenLastCalledWith("extension-dialog", expect.objectContaining({ kind: "permission" }));
+		void extensionDialogs.showExtensionConfirm(host, "Sure?", "msg");
+		expect(setBlocked).toHaveBeenLastCalledWith("extension-dialog", expect.objectContaining({ kind: "question" }));
+	});
+
 	test("a dialog displaced by another one answers undefined instead of waiting forever", async () => {
 		const { host, editorContainer } = createDialogHost();
 		const first = extensionDialogs.showExtensionSelector(host, "First", ["A", "B"]);

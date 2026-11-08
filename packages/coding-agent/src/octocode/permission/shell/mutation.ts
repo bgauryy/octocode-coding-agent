@@ -28,7 +28,7 @@ import {
 	type Word,
 } from "./program-forms.ts";
 import { runInput, type RunInput } from "./input-runners.ts";
-import { inputMayWrite, readerWritingOptions, readOnlyCommand } from "./read-only.ts";
+import { inputMayWrite, plainReader, readerWritingOptions, readOnlyCommand } from "./read-only.ts";
 import { writerEffect } from "./writers.ts";
 import { sedFiles, sedInPlace, sedWrites } from "./sed-script.ts";
 import { base, wrappedCommand } from "./words.ts";
@@ -381,13 +381,15 @@ export function shellMutation(command: string, depth = 0, env: NodeJS.ProcessEnv
  * The paths a reservation check compares for `command`: its parsed writes and, when the parse gave up (`unparsed`), every
  * literal word as well. The parse has a time budget, so on a loaded machine a plain `echo x >> reserved.ts` can come back
  * unparsed; checking its words keeps a reserved path that the command names from being written unchecked. A word that
- * names no reserved path costs a lookup, not a refusal; expansions (`$FILE`) and options are skipped.
+ * names no reserved path costs a lookup, not a refusal; expansions (`$FILE`) and options are skipped, but the value of
+ * `--output=x` is a word. A plain reader (`plainReader`: `ls a.ts`, `rg x a.ts`, `sed -n '1,5p' a.ts`) writes nothing
+ * whatever its words name, so it keeps only the writes the parse found.
  */
 export function reservationTargets(command: string): string[] {
 	const found = shellMutation(command);
-	if (!found.unparsed) return found.writes;
+	if (!found.unparsed || plainReader(command)) return found.writes;
 	const words = command
-		.split(/[\s;&|<>()`'"]+/)
+		.split(/[\s;&|<>()`'"=]+/)
 		.filter((word) => word && !word.startsWith("-") && !/[$*?[\]{}]/.test(word));
 	return [...new Set([...found.writes, ...words])];
 }

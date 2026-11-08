@@ -12,6 +12,7 @@ import { canonicalPath } from "../shared/home/repo.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
+import { type Outline, outlineOf } from "./restore-outline.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { cutText } from "../../../../common/src/text.ts";
@@ -20,18 +21,21 @@ import { cutText } from "../../../../common/src/text.ts";
  * After a compaction, the files the agent was working on are read again from disk and put back in its context, as
  * Claude Code does: the summary names them, but editing one would otherwise need a fresh `read` first (the file guard
  * refuses a change to a file whose read left the context). The few most recently read or changed in the summarized
- * part come back, each within a per-file budget (a longer file shows the lines from where the agent last read or changed
- * it, with a note naming them), within a total budget sized to the window, and count as read once the message is in the model's context (Octocode holds a context-only message until the running turn
+ * part come back, each within a per-file budget (a file over it shows its outline, the declarations with their line
+ * numbers, not its text; one with no declaration shows the lines from where the agent last read or changed it, with a
+ * note naming them), within a total budget sized to the window, and count as read once the message is in the model's context (Octocode holds a context-only message until the running turn
  * ends, so the guard records them when a model call first carries it, not when it is sent). A file the messages kept
  * after the summary already hold, as it is on disk now (`heldFiles`), is not read back.
  */
 
 /** At most this many files come back (the few the work centered on; more would refill the context the summary freed)... */
 export const RESTORE_MAX_FILES = 5;
-/** ...each up to this many characters (about 6.7k tokens at `CHARS_PER_TOKEN`: a working file's relevant part; longer ones show whole lines from the last range worked on, with a note)... */
-export const RESTORE_FILE_CHARS = 20_000;
-/** ...and all of them together up to this many (about 16.7k tokens at `CHARS_PER_TOKEN`), but at most `RESTORE_SHARE` of the window left after Octocode's reserve (`windowBudget`)... */
-export const RESTORE_TOTAL_CHARS = 50_000;
+/** ...a file up to this many characters (about 2.7k tokens at `CHARS_PER_TOKEN`) comes back whole; a longer one shows its outline (at most `RESTORE_OUTLINE_CHARS`), or, with no declaration to list, whole lines from the last range worked on, with a note... */
+export const RESTORE_FILE_CHARS = 8_000;
+/** ...an outline takes up to this many characters (the declarations of a file that did not fit whole)... */
+export const RESTORE_OUTLINE_CHARS = 4_000;
+/** ...and all of them together up to this many (about 6.7k tokens at `CHARS_PER_TOKEN`), but at most `RESTORE_SHARE` of the window left after Octocode's reserve (`windowBudget`)... */
+export const RESTORE_TOTAL_CHARS = 20_000;
 /** ...the share of that window, so a small model is not refilled to its threshold. */
 export const RESTORE_SHARE = 0.1;
 /** A file that would get fewer characters than this is not read back: a stub counted as read helps no one. */
@@ -133,6 +137,8 @@ interface Window {
 	last: number;
 	total: number;
 	cut: boolean;
+	/** The text is the file's outline, not its lines. */
+	outline?: Outline;
 }
 
 /**
@@ -221,23 +227,44 @@ export function restoreFiles(
 		const real = canonicalPath(file);
 		if (held.has(real) || taken.has(real)) continue;
 		const read = textOf(file);
-		const text = read?.text;
-		let view = text === undefined ? undefined : windowOf(text, room, candidate.line);
-		if (read === undefined || text === undefined || !view || (view.text.length === 0 && text.length > 0)) {
+		if (read === undefined) {
+			skipped++;
+			continue;
+		}
+		const { text } = read;
+		// A file over the whole-file size shows its outline when it has declarations, else a window of whole lines.
+		const viewOf = (chars: number): Window => {
+			const outline =
+				text.length > RESTORE_FILE_CHARS
+					? outlineOf(text, Math.min(chars, RESTORE_OUTLINE_CHARS), candidate.line)
+					: undefined;
+			if (!outline) return windowOf(text, chars, candidate.line);
+			const lines = text.match(/[^\n]*\n|[^\n]+$/g)?.length ?? 0;
+			return { text: outline.text, first: 1, last: lines, total: lines, cut: true, outline };
+		};
+		let view = viewOf(room);
+		if (view.text.length === 0 && text.length > 0) {
 			skipped++;
 			continue;
 		}
 		const relative = path.relative(cwd, file);
 		const display = relative.startsWith("..") ? file : relative;
 		const render = (window: Window): string => {
-			const note = window.cut
-				? `\n${renderInstruction("notices/compaction/restored-cut.md", {
-						first: window.first,
-						last: window.last,
+			const note = window.outline
+				? `\n${renderInstruction("notices/compaction/restored-outline.md", {
+						shown: window.outline.shown,
+						count: window.outline.count,
 						total: window.total,
-						fromLast: Boolean(candidate.line) && window.first > 1,
+						fromLast: window.outline.marked,
 					})}`
-				: "";
+				: window.cut
+					? `\n${renderInstruction("notices/compaction/restored-cut.md", {
+							first: window.first,
+							last: window.last,
+							total: window.total,
+							fromLast: Boolean(candidate.line) && window.first > 1,
+						})}`
+					: "";
 			// The file's text stays exact; a file that itself contains `</file>` gets a tag it cannot close by accident.
 			const tag = window.text.includes("</file") ? `file-${sha256(text).slice(0, 8)}` : "file";
 			return `<${tag} path="${attribute(display)}">\n${window.text}${window.text.endsWith("\n") || window.text === "" ? "" : "\n"}</${tag}>${note}`;
@@ -247,7 +274,7 @@ export function restoreFiles(
 		while (block.length > available && room >= RESTORE_MIN_FILE_CHARS) {
 			room -= block.length - available;
 			if (room < RESTORE_MIN_FILE_CHARS) break;
-			view = windowOf(text, room, candidate.line);
+			view = viewOf(room);
 			block = render(view);
 		}
 		if (room < RESTORE_MIN_FILE_CHARS || block.length > available) break;

@@ -33,7 +33,10 @@ const lastResult = () => endpoint.requests.at(-1)?.toolResults.at(-1) ?? "";
 describe("steps and timer through a real session", () => {
 	it("keeps steps state across calls: add, update, list", async () => {
 		const box = sandbox(endpoint);
+		// `steps` is registered but not default-active: the run opts in.
 		const run = box.start([
+			"--tools",
+			"+steps",
 			"-p",
 			script([
 				{ tool: "steps", args: { op: "add", goal: "Write the thing" } },

@@ -28,6 +28,7 @@ export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptio
 	const inherited = registerInheritedMcpServers(api);
 	state.parentStopped = new Set(inherited.stopped);
 	state.taskServers = inherited.only ? new Set(inherited.only) : undefined;
+	state.taskNamed = inherited.only ? new Set(inherited.named) : undefined;
 	registerAcpClientMcpServers(api);
 
 	// A resumed session renders calls to MCP tools before their server connected, if it ever does.

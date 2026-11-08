@@ -3,6 +3,7 @@ import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../shared/web.ts";
 import { STATUS } from "../shared/status.ts";
 import { backlogCommand } from "./command.ts";
+import { registerBacklogDigest } from "./digest.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
 import { countsText, openTaskCount } from "./format.ts";
 import { registerTaskTool } from "./task-tool.ts";
@@ -70,6 +71,7 @@ export function registerBacklog(
 				openView: (ctx) => openView(ctx, "board"),
 			}),
 		);
+	if (!options.isSubagent) registerBacklogDigest(api, backlogOptions);
 	api.on("session_start", (_event, ctx) => refresh(ctx));
 	// Another session or agent may have changed the board: repaint at the end of every run.
 	api.on("agent_end", (_event, ctx) => refresh(ctx));

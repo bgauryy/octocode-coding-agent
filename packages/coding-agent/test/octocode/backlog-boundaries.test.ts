@@ -59,9 +59,8 @@ describe("backlog input and retrieval boundaries", () => {
 		expect(result.content[0].text).toContain('"limit":200,"offset":200');
 		const item = store.get("B1")!;
 		for (let i = 0; i < 205; i++) store.update(item.ref, { note: `note ${i}` }, { id: "user" });
-		const notes = vi.spyOn(BacklogStore.prototype, "notes");
 		const detail = await call({ op: "get", id: item.ref, limit: 100_000 });
-		expect(notes.mock.calls[0][1]).toBe(200);
+		expect(detail.content[0].text.match(/: note \d+$/gm)).toHaveLength(200);
 		expect(detail.content[0].text).toContain('"limit":200,"offset":200');
 	});
 

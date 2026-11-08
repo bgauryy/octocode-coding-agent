@@ -54,12 +54,18 @@ export function parseArgs(args: string[]): Args {
 				// `-p` takes a message unless the next word is an option or file; `---` text still reads as a message.
 				const takes =
 					inline !== undefined ||
-					(next !== undefined && !next.startsWith("@") && (!next.startsWith("-") || next.startsWith("---")));
+					(next !== undefined &&
+						!next.startsWith("@") &&
+						(!next.startsWith("-") || next.startsWith("---")) &&
+						(spec.takesNext?.(next) ?? true));
 				if (inline === undefined && takes) i++;
 				if (spec.name === "--print") {
 					spec.apply(result, undefined);
 					if (takes && next !== undefined) result.messages.push(next);
-				} else spec.apply(result, takes ? next : undefined);
+				} else {
+					const failure = spec.apply(result, takes ? next : undefined);
+					if (failure) error(`${eq === -1 ? arg : arg.slice(0, eq)}: ${failure}`);
+				}
 				continue;
 			}
 			const value = inline ?? args[i + 1];

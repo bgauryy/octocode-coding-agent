@@ -209,7 +209,7 @@ describe("registerNotify", () => {
 		expect(s.writes).toHaveLength(2);
 		expect(s.notices).toEqual([]);
 		await s.fake.fire("agent_start", {}, s.ctx);
-		await s.fake.fire("ui_prompt_start", { kind: "confirm", title: "Save?" }, s.ctx);
+		await s.fake.fire("ui_prompt_start", { kind: "select", title: "Save?", approval: true }, s.ctx);
 		expect(s.writes).toHaveLength(3);
 		expect(s.notices).toEqual([{ type: "permission_prompt", title: "Octocode: waiting for you", message: "Save?" }]);
 		vi.advanceTimersByTime(3_000);
@@ -220,6 +220,10 @@ describe("registerNotify", () => {
 			title: "Octocode: waiting for you",
 			message: "A question needs your answer",
 		});
+		// A plain confirmation is a question, not a permission.
+		vi.advanceTimersByTime(3_000);
+		await s.fake.fire("ui_prompt_start", { kind: "confirm", title: "Plain?" }, s.ctx);
+		expect(s.notices.at(-1)).toMatchObject({ type: "elicitation_dialog", message: "Plain?" });
 		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
 		// A keypress clears only a finished outcome; the run still waits on its dialog.
 		s.type("x");
@@ -306,7 +310,7 @@ describe("registerNotify", () => {
 		const rpc = setup({ OCTOCODE_NOTIFY: "always" }, "rpc");
 		await rpc.fake.fire("session_start", {}, rpc.ctx);
 		await rpc.fake.fire("agent_start", {}, rpc.ctx);
-		await rpc.fake.fire("ui_prompt_start", { kind: "confirm", title: "Run it?" }, rpc.ctx);
+		await rpc.fake.fire("ui_prompt_start", { kind: "select", title: "Run it?", approval: true }, rpc.ctx);
 		await rpc.fake.fire("agent_end", answer("Done"), rpc.ctx);
 		await rpc.fake.fire("agent_settled", {}, rpc.ctx);
 		vi.advanceTimersByTime(60_000);

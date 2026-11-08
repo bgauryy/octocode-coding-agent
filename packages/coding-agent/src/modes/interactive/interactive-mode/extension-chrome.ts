@@ -80,6 +80,9 @@ export function bindEditorHandlers(host: Pick<InteractiveModeHost, "defaultEdito
 		if (!customEditor.onPasteImage) {
 			customEditor.onPasteImage = () => host.defaultEditor.onPasteImage?.();
 		}
+		if (!customEditor.onPasteText) {
+			customEditor.onPasteText = (text: string) => host.defaultEditor.onPasteText?.(text);
+		}
 		if (!customEditor.onExtensionShortcut) {
 			customEditor.onExtensionShortcut = (data: string) => host.defaultEditor.onExtensionShortcut?.(data);
 		}

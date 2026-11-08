@@ -1,6 +1,10 @@
+import type { OptionRole, Question } from "@octocodeai/octocode-contracts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { ExtensionUIPermissionRequest } from "../../core/features/types.ts";
+import { ask } from "../ask/ask.ts";
+import { approvalQuestion } from "../ask/question.ts";
 import { kindOption } from "../permission/ask/text.ts";
+import { systemNote } from "../permission/ask/view.ts";
 import { plural } from "../shared/render/text.ts";
 import { foldLines } from "../permission/effect.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
@@ -27,8 +31,10 @@ const clipLine = (line: string, max = 110) => clipText(sanitizeTerminalText(line
 const target = (query: ChangeQuery): string =>
 	`${query.type} ${foldLines(query.path)}${query.movePath ? ` → ${foldLines(query.movePath)}` : ""}`;
 
+const AGENT_SAYS = "agent says (unverified):";
+
 /** What the agent says a change is for, as the dialogs label it. */
-const agentSays = (reason: string): string => `agent says (unverified): ${clipLine(foldLines(reason), 160)}`;
+const agentSays = (reason: string, label = ""): string => `${AGENT_SAYS} ${label}${clipLine(foldLines(reason), 160)}`;
 
 function snippet(text: string, sign: "-" | "+", maxLines = 3): string[] {
 	const lines = text.replace(/\n$/, "").split("\n");
@@ -71,61 +77,131 @@ const APPLY = "Apply";
 const REJECT = "Reject";
 const REJECT_NOTE = "Reject and tell the agent why…";
 
+/** Dim lines a question's metadata holds at most (`QUESTION_LIMITS.metaLines`). */
+const META_LINES = 12;
+/** Preview lines a per-change question shows, leaving room for what the agent says. */
+const PREVIEW_LINES = META_LINES - 2;
+const NOTE_TITLE = "Tell the agent why";
+const NOTE_PLACEHOLDER = "what to change instead";
+
+/** `lines` cut to `max`, the last one saying how many more there are. */
+const capped = (lines: string[], max: number, more: (count: number) => string): string[] =>
+	lines.length <= max ? lines : [...lines.slice(0, max - 1), more(lines.length - max + 1)];
+
+interface ReviewStep {
+	question: string;
+	/** The exact changes this answer covers; an RPC client reads them as the permission's targets. */
+	targets: string[];
+	/** What the change does, dim: a bounded preview of the text involved. */
+	preview?: string[];
+	/** What the agent says about each change, unverified, drawn last. */
+	says: string[];
+	reasonLines: readonly string[];
+	/** The choices, each with what it means to the engine; the one without a role opens a per-change review. */
+	choices: [label: string, role?: OptionRole][];
+	identity: Pick<ExtensionUIPermissionRequest, "toolCallId" | "toolName">;
+}
+
+/** One review dialog as an approval question: its `allow_once` and `deny` choices are the permission's `allowOnce` and `rejectOnce`. */
+function reviewQuestion(step: ReviewStep): Question {
+	const preview = capped(step.preview ?? [], PREVIEW_LINES, (count) => `… ${count} more line(s)`);
+	const says = capped(step.says, META_LINES - preview.length, (count) => `${AGENT_SAYS} … ${count} more`);
+	const meta = [...preview, ...says];
+	const note = step.choices.find(([, role]) => role === "deny_note")?.[0];
+	return approvalQuestion({
+		id: "file-review",
+		view: {
+			question: step.question,
+			...(meta.length ? { meta } : {}),
+			...(step.reasonLines.length ? { notes: step.reasonLines.map(systemNote) } : {}),
+			options: step.choices.map(([label, role]) => ({
+				label,
+				...(role === "deny" || role === "deny_note" ? { tone: "danger" as const } : {}),
+			})),
+			...(note ? { writeIn: { label: note, title: NOTE_TITLE, placeholder: NOTE_PLACEHOLDER } } : {}),
+		},
+		roles: Object.fromEntries(step.choices.flatMap(([label, role]) => (role ? [[label, role]] : []))),
+		approval: { ...step.identity, action: "file.workspace", targets: step.targets },
+	});
+}
+
+/** The choice picked in one review dialog and the note typed with it; undefined when dismissed or when it picks none of the offered choices. */
+async function decide(
+	ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+	step: ReviewStep,
+	signal: AbortSignal | undefined,
+): Promise<{ label: string; note: string | undefined } | undefined> {
+	const question = reviewQuestion(step);
+	const [reply] = await ask(ctx, [question], signal ? { signal } : {});
+	if (!reply || "cancelled" in reply || signal?.aborted) return undefined;
+	const picked = question.options?.find((option) => option.id === reply.picks[0]);
+	return picked ? { label: picked.label, note: reply.text?.trim() || undefined } : undefined;
+}
+
 /**
  * Ask which changes of a batch to apply. Maps rejected indices to optional user notes, or returns 'cancelled' when the dialog was
  * dismissed or interrupted (no verdict). Nothing is applied before this returns. `Permission.check` runs it, inside
- * its one-dialog-at-a-time lock.
+ * its one-dialog-at-a-time lock. Every dialog is an `approval` question, so a host that draws no card (an RPC client
+ * without `ask`) still gets its `select` with the permission fields derived from it.
  */
 export async function askReview(
-	ctx: Pick<ExtensionContext, "ui">,
+	ctx: Pick<ExtensionContext, "hasUI" | "ui">,
 	queries: ChangeQuery[],
 	signal?: AbortSignal,
 	reasonLines: readonly string[] = [],
 	identity: Pick<ExtensionUIPermissionRequest, "toolCallId" | "toolName"> = {},
 ): Promise<Map<number, string | undefined> | "cancelled" | "session"> {
 	const all = (note?: string) => new Map(queries.map((_, index) => [index, note]));
-	const options = signal ? { signal } : undefined;
-	const permission = (targets: string[], allowOnce: string, rejectOnce: string) => ({
-		...options,
-		permission: { ...identity, action: "file.workspace", targets, allowOnce, rejectOnce },
-	});
-	// What changes first, then the system's reason lines (the same card every prompt leads with), then what the agent says.
-	const list = queries.map((query, index) => `${index + 1}. ${target(query)}`).join("\n");
-	const says = queries.map((query, index) => `  ${index + 1}. ${agentSays(query.reason)}`).join("\n");
-	const choice = await ctx.ui.select(
-		`Apply ${plural(queries.length, "file change")}?\n${[list, ...reasonLines, says].join("\n")}`,
-		[APPLY_ALL, APPLY_SESSION, ...(queries.length > 1 ? [ONE_BY_ONE] : []), REJECT_ALL, REJECT_ALL_NOTE],
-		permission(
-			queries.map((query) => `${query.type} ${query.path}${query.movePath ? ` → ${query.movePath}` : ""}`),
-			APPLY_ALL,
-			REJECT_ALL,
-		),
+	const raw = (query: ChangeQuery) => `${query.type} ${query.path}${query.movePath ? ` → ${query.movePath}` : ""}`;
+	const whole = await decide(
+		ctx,
+		{
+			question: `Apply ${plural(queries.length, "file change")}?`,
+			targets: queries.map(raw),
+			says: queries.map((query, index) => agentSays(query.reason, `${index + 1}. `)),
+			reasonLines,
+			choices: [
+				[APPLY_ALL, "allow_once"],
+				[APPLY_SESSION, "allow_kind"],
+				...(queries.length > 1 ? [[ONE_BY_ONE] as [string]] : []),
+				[REJECT_ALL, "deny"],
+				[REJECT_ALL_NOTE, "deny_note"],
+			],
+			identity,
+		},
+		signal,
 	);
-	if (choice === undefined || signal?.aborted) return "cancelled";
-	if (choice === APPLY_ALL) return new Map();
-	if (choice === APPLY_SESSION) return "session";
-	if (choice === REJECT_ALL) return all();
-	if (choice === REJECT_ALL_NOTE) {
-		const note = await ctx.ui.input("Tell the agent why", "what to change instead", options);
-		return note === undefined || signal?.aborted ? "cancelled" : all(note.trim() || undefined);
-	}
-	if (choice !== ONE_BY_ONE) return "cancelled";
+	if (!whole) return "cancelled";
+	if (whole.label === APPLY_ALL) return new Map();
+	if (whole.label === APPLY_SESSION) return "session";
+	if (whole.label === REJECT_ALL) return all();
+	if (whole.label === REJECT_ALL_NOTE) return all(whole.note);
+	if (whole.label !== ONE_BY_ONE) return "cancelled";
 	const rejected = new Map<number, string | undefined>();
 	for (const [index, query] of queries.entries()) {
-		const [head, ...details] = describeChange(query);
-		const decision = await ctx.ui.select(
-			`Change ${index + 1} of ${queries.length}\n${[head, ...reasonLines, ...details].join("\n")}`,
-			[APPLY, REJECT, REJECT_NOTE],
-			permission([`${query.type} ${query.path}${query.movePath ? ` → ${query.movePath}` : ""}`], APPLY, REJECT),
+		const [, ...details] = describeChange(query);
+		const decision = await decide(
+			ctx,
+			{
+				question: `Change ${index + 1} of ${queries.length}`,
+				targets: [raw(query)],
+				preview: details.slice(0, -1).map((line) => line.replace(/^ {2}/, "")),
+				says: [agentSays(query.reason)],
+				reasonLines,
+				choices: [
+					[APPLY, "allow_once"],
+					[REJECT, "deny"],
+					[REJECT_NOTE, "deny_note"],
+				],
+				identity,
+			},
+			signal,
 		);
-		if (decision === undefined || signal?.aborted) return "cancelled";
-		if (decision === APPLY) continue;
-		if (decision === REJECT) rejected.set(index, undefined);
-		else if (decision === REJECT_NOTE) {
-			const note = await ctx.ui.input("Tell the agent why", "what to change instead", options);
-			if (note === undefined || signal?.aborted) return "cancelled";
-			rejected.set(index, note.trim() || undefined);
-		} else return "cancelled";
+		if (!decision) return "cancelled";
+		if (decision.label === APPLY) continue;
+		if (decision.label === REJECT) rejected.set(index, undefined);
+		else if (decision.label === REJECT_NOTE) rejected.set(index, decision.note);
+		else return "cancelled";
 	}
 	return rejected;
 }

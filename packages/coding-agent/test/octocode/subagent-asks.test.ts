@@ -159,13 +159,35 @@ describe("ask counts and the askUser windows", () => {
 		expect(listing).not.toContain("more detail");
 	});
 
-	it("shows a running child's last output, which only the process running it knows", () => {
+	it("shows a running child's last progress, which only the process running it knows", () => {
 		const members = [member("child-0001", "main-aaaaaa")];
 		const approvals = new WaitingApprovals();
-		expect(describeMembers(members, undefined, 90_000)).not.toContain("last output");
+		expect(describeMembers(members, undefined, 90_000)).not.toContain("last progress");
 		approvals.noteOutput("child-0001", 60_000);
 		const { members: overlaid } = approvals.overlay({ members });
-		expect(describeMembers(overlaid, undefined, 90_000)).toContain("last output 30s ago");
+		const listing = describeMembers(overlaid, undefined, 90_000);
+		expect(listing).toContain("last progress 30s ago");
+		expect(listing).not.toContain("stalled");
+	});
+
+	it("marks a working child stalled once its progress is ten minutes old, and an idle one never", () => {
+		const working = { ...member("child-0001", "main-aaaaaa"), status: "working" as const };
+		const idle = { ...member("child-0002", "main-aaaaaa"), status: "idle" as const };
+		const listing = describeMembers(
+			[
+				{ ...working, lastOutputAt: 0 },
+				{ ...idle, lastOutputAt: 0 },
+			],
+			undefined,
+			10 * 60_000,
+		);
+		const [first, second] = listing.split("child-0002");
+		expect(first).toContain("child-0001 · ");
+		expect(first).toMatch(/working · stalled/);
+		expect(first).toContain("stalled: no model request or tool event for 10m");
+		expect(second).not.toContain("stalled");
+		const fresh = describeMembers([{ ...working, lastOutputAt: 60_000 }], undefined, 10 * 60_000);
+		expect(fresh).not.toContain("stalled");
 	});
 
 	it("childAsks reads only this parent's children", () => {

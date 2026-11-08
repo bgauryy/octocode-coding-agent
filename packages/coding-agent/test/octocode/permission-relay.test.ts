@@ -13,6 +13,7 @@ import {
 } from "../../src/octocode/permission/header.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
 import { ownNonce, PERMISSION_ENV, PERMISSION_NONCE_FILE_ENV, PERMISSION_RELAY_ENV } from "../../../common/src/env.ts";
+import { degrade } from "../../src/octocode/ask/degrade.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
@@ -25,7 +26,23 @@ const shell: PermissionRequest = {
 	grant: { key: "npm test", label: "`npm test`" },
 };
 
-/** A subagent session, as Octocode's RPC mode reports it (hasUI true), with the dialog titles it was asked. */
+/** Records the plain titles a context's select is asked and the permission header each `ask` carries (`AskOptions.header`). */
+function recordDialogs(ctx: ReturnType<typeof fakeCtx>) {
+	const titles: string[] = [];
+	const headers: (string | undefined)[] = [];
+	const select = ctx.ui.select;
+	ctx.ui.select = async (title: string, ...rest: [string[], never]) => {
+		titles.push(title);
+		return select(title, ...rest);
+	};
+	(ctx.ui as { ask?: unknown }).ask = (questions: never, opts?: { header?: string }) => {
+		headers.push(opts?.header);
+		return degrade(ctx.ui, questions, opts);
+	};
+	return { titles, headers };
+}
+
+/** A subagent session, as Octocode's RPC mode reports it (hasUI true), with the dialog titles and headers it was asked. */
 const NONCE = "n0nce";
 function child(env: NodeJS.ProcessEnv) {
 	const fake = fakeHost();
@@ -35,26 +52,22 @@ function child(env: NodeJS.ProcessEnv) {
 		...fakeCtx({ cwd: tmp(), hasUI: true, mode: "rpc", ui: { selects: [ALLOW_ONCE] } }),
 		isProjectTrusted: () => true,
 	};
-	const titles: string[] = [];
-	const select = ctx.ui.select;
-	ctx.ui.select = async (title: string, ...rest: [string[], never]) => {
-		titles.push(title);
-		return select(title, ...rest);
-	};
+	const { titles, headers } = recordDialogs(ctx);
 	permission.start(ctx);
-	return { permission, ctx, titles, fake, environment };
+	return { permission, ctx, titles, headers, fake, environment };
 }
 
 describe("a subagent session that relays its dialogs", () => {
-	it("asks through its own select, led by the header its parent reads", async () => {
-		const { permission, ctx, titles } = child({ [PERMISSION_RELAY_ENV]: "1" });
+	it("asks with the header its parent reads, in the ask's header field and not in the title", async () => {
+		const { permission, ctx, titles, headers } = child({ [PERMISSION_RELAY_ENV]: "1" });
 		expect(await permission.check(ctx, { ...shell, also: ["net.private"], reasons: ["hook.ask"] })).toEqual({
 			allowed: true,
 			via: "user",
 			lasts: "call",
 		});
-		const { header, title } = splitHeader(titles[0], NONCE);
-		expect(titles[0].split("\n")[0].startsWith(HEADER_PREFIX)).toBe(true);
+		expect(titles[0].includes(HEADER_PREFIX)).toBe(false);
+		const { header, title } = splitHeader(`${headers[0]}\n${titles[0]}`, NONCE);
+		expect(headers[0]?.startsWith(HEADER_PREFIX)).toBe(true);
 		expect(header).toMatchObject({
 			action: "shell",
 			also: ["net.private"],
@@ -97,15 +110,10 @@ describe("a subagent session that relays its dialogs", () => {
 				...fakeCtx({ cwd: tmp(), hasUI: true, mode: "rpc", ui: { selects: [ALLOW_ONCE] } }),
 				isProjectTrusted: () => true,
 			};
-			const titles: string[] = [];
-			const select = ctx.ui.select;
-			ctx.ui.select = async (title: string, ...rest: [string[], never]) => {
-				titles.push(title);
-				return select(title, ...rest);
-			};
+			const { titles, headers } = recordDialogs(ctx);
 			reloaded.start(ctx);
 			await reloaded.check(ctx, shell);
-			expect(splitHeader(titles[0], "reload-nonce").header).toMatchObject({ action: "shell" });
+			expect(splitHeader(`${headers[0]}\n${titles[0]}`, "reload-nonce").header).toMatchObject({ action: "shell" });
 		} finally {
 			delete (globalThis as Record<symbol, unknown>)[Symbol.for("octocode.permissionNonce")];
 			process.env = saved;
@@ -113,13 +121,14 @@ describe("a subagent session that relays its dialogs", () => {
 	});
 
 	it("sends no header and no audit entry without a nonce: the parent would refuse both", async () => {
-		const { permission, ctx, titles } = child({
+		const { permission, ctx, titles, headers } = child({
 			[PERMISSION_RELAY_ENV]: "1",
 			[PERMISSION_NONCE_FILE_ENV]: undefined,
 		});
 		await permission.check(ctx, shell);
 		permission.typed("ls", "/tmp");
 		expect(titles[0].startsWith(HEADER_PREFIX)).toBe(false);
+		expect(headers[0]).toBeUndefined();
 		expect(ctx.ui.notes.filter((note) => note.message.startsWith(AUDIT_NOTIFY_PREFIX))).toEqual([]);
 	});
 

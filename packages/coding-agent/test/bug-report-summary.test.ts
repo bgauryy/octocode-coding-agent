@@ -24,7 +24,7 @@ it("requests a tool-free factual report without changing the session transcript"
 	expect(getCurrentTools(context.messages)).toEqual([]);
 	const system = contentText(getCurrentSystemMessage(context.messages)!.content);
 	expect(system).toContain("Never invent a reproduction");
-	expect(system).toContain("Do not reproduce secrets or credentials");
+	expect(system).toContain("Reproduce no secrets or credentials");
 	const request = contentText(context.messages.findLast((message) => message.role === "user")!.content);
 	expect(request).toContain("The terminal froze after /model.");
 	expect(request).toContain("Switching models hangs");

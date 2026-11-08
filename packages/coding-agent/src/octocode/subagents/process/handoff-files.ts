@@ -46,7 +46,12 @@ export function prepareChildResourceFiles(identity: Identity): ChildResourceFile
 				fs.closeSync(fd);
 			}
 		}
-		const mcpServers = serializeMcpSessionServers(identity.mcpServers ?? {}, identity.mcpStopped, identity.mcpOnly);
+		const mcpServers = serializeMcpSessionServers(
+			identity.mcpServers ?? {},
+			identity.mcpStopped,
+			identity.mcpOnly,
+			identity.mcpNamed,
+		);
 		if (mcpServers) {
 			// Server env and headers may hold credentials the user entered: an owner-only file, removed when the run ends.
 			const directory = outputDir("child-credentials");

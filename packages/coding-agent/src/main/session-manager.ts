@@ -300,7 +300,7 @@ export async function createSessionManager(
 		if (!isInteractiveStart(parsed)) {
 			console.error(
 				chalk.red(
-					"Error: --resume opens a session picker, which needs a terminal. Use --session <id>, --continue, or --fork <id> to copy a session from another folder.",
+					"Error: --resume without an id opens a session picker, which needs a terminal. Use --resume <id>, --continue, or --fork <id> to copy a session from another folder.",
 				),
 			);
 			process.exit(1);

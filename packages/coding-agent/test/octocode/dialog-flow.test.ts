@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../src/core/agent-session.ts";
 import { getApplicationPort } from "../../src/core/application/index.ts";
 import { UIPromptTracker } from "../../src/core/features/runner/ui-prompt.ts";
+import type { Question } from "@octocodeai/octocode-contracts";
 import type { ExtensionContext, ExtensionUIContext } from "../../src/core/features/types.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "../../src/modes/rpc/rpc-mode/ui-context.ts";
+import { degrade } from "../../src/octocode/ask/degrade.ts";
 import { externalPermissionDialog } from "../../src/octocode/external/permission-dialog.ts";
-import { DENY_NOTE, selectAnswer } from "../../src/octocode/permission/ask/text.ts";
+import { selectAnswer } from "../../src/octocode/permission/ask/text.ts";
 import { ChildRelay } from "../../src/octocode/subagents/relay.ts";
 import { awaitingFor, registerAwaiting } from "../../src/octocode/ui/awaiting.ts";
 import { SessionWatch } from "../../src/octocode/web-daemon/session-state.ts";
@@ -38,19 +40,33 @@ describe("permission prompts are approvals", () => {
 	it("publishes the native gate's dialog as an approval, and its note as a question", async () => {
 		const events: Started[] = [];
 		const tracker = new UIPromptTracker(async (event) => void events.push(event as unknown as Started));
-		const never = () => new Promise<undefined>(() => undefined);
-		const ui = tracker.wrap({ select: never, input: never } as unknown as ExtensionUIContext);
+		// The dialog queue is shared (an approval is asked through it): the dialogs close with their signal.
+		const controller = new AbortController();
+		const never = (_title: string, _options: unknown, opts?: { signal?: AbortSignal }) =>
+			new Promise<undefined>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(undefined)));
+		const plain = { select: never, input: never, confirm: async () => false };
+		const ui = tracker.wrap({
+			...plain,
+			ask: (questions: Question[], opts?: object) => degrade(plain, questions, opts),
+		} as unknown as ExtensionUIContext);
 		const ctx = { hasUI: true, ui } as unknown as Parameters<typeof selectAnswer>[0];
-		void selectAnswer(ctx, { title: "Run command?", what: ["git status"], action: "shell" }, "manual", false, "");
+		const answered = selectAnswer(
+			ctx,
+			{ title: "Run command?", what: ["git status"], action: "shell", signal: controller.signal },
+			"manual",
+			false,
+			"",
+		);
 		await vi.waitFor(() => expect(events).toHaveLength(1));
 		const start = events[0];
-		expect(start).toMatchObject({ type: "ui_prompt_start", kind: "select", approval: true });
+		expect(start).toMatchObject({ type: "ui_prompt_start", kind: "ask", approval: true });
 		expect(awaitingFor(start as never).kind).toBe("approval");
-		expect(tracker.answer(start.id as string, { choice: DENY_NOTE })).toEqual({ ok: true });
-		await vi.waitFor(() => expect(events.filter((event) => event.kind === "input")).toHaveLength(1));
-		const note = events.find((event) => event.type === "ui_prompt_start" && event.kind === "input")!;
-		expect(note.approval).toBeUndefined();
-		expect(awaitingFor(note as never).kind).toBe("question");
+		// The note rides in the reply: one prompt, no second input dialog.
+		expect(
+			tracker.answer(start.id as string, { replies: [{ id: "permission", picks: ["deny_note"], text: "later" }] }),
+		).toEqual({ ok: true });
+		expect(await answered).toEqual({ deny: "later" });
+		expect(events.filter((event) => event.kind === "input")).toHaveLength(0);
 	});
 
 	it("publishes an external agent's permission request as a blocking approval", async () => {
@@ -60,6 +76,15 @@ describe("permission prompts are approvals", () => {
 			// The dialog queue is shared: this dialog must close with its signal so later tests are not queued behind it.
 			select: (_title: string, _options: string[], opts?: { signal?: AbortSignal }) =>
 				new Promise<undefined>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(undefined))),
+			ask: (questions: Question[], opts?: object) =>
+				degrade(
+					{
+						select: (_title: string, _options: string[], o?: { signal?: AbortSignal }) =>
+							new Promise<undefined>((resolve) => o?.signal?.addEventListener("abort", () => resolve(undefined))),
+					} as never,
+					questions,
+					opts,
+				),
 		} as unknown as ExtensionUIContext;
 		const ctx = { hasUI: true, mode: "tui", ui: tracker.wrap(ui) } as unknown as ExtensionContext;
 		const controller = new AbortController();
@@ -75,7 +100,7 @@ describe("permission prompts are approvals", () => {
 			controller.signal,
 		);
 		await vi.waitFor(() => expect(events.length).toBeGreaterThan(0));
-		expect(events[0]).toMatchObject({ type: "ui_prompt_start", kind: "select", approval: true, blocking: true });
+		expect(events[0]).toMatchObject({ type: "ui_prompt_start", kind: "ask", approval: true, blocking: true });
 		controller.abort();
 		await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ type: "ui_prompt_end" }));
 	});
@@ -84,9 +109,9 @@ describe("permission prompts are approvals", () => {
 describe("RPC dialogs a client did not answer", () => {
 	it("tells the RPC host to close a dialog another client answered", async () => {
 		const side = rpcSide((event) => side.events.push(event));
-		const answered = side.ui.select("Run?", ["Allow once", "Deny"], { approval: true });
+		const answered = side.ui.select("Run?", ["Allow once", "Deny"]);
 		const asked = request(side.output, "select")!;
-		expect(asked).toMatchObject({ approval: true });
+		expect(asked).not.toHaveProperty("approval");
 		await side.flush();
 		const dialogId = side.events.find((event) => event.type === "ui_prompt_start")!.id as string;
 		expect(side.tracker.answer(dialogId, { choice: "Deny" })).toEqual({ ok: true });
@@ -132,6 +157,14 @@ describe("dialogs relayed from a subagent", () => {
 		registerAwaiting(fake.api);
 		const idle = fakeCtx({ cwd: "/x", idle: true });
 		const open = new Map<string, (value: unknown) => void>();
+		const plainUi = {
+			select: (_title: string, _options: string[], opts?: { signal?: AbortSignal }) =>
+				new Promise<string | undefined>((resolve) => {
+					opts?.signal?.addEventListener("abort", () => resolve(undefined), { once: true });
+				}),
+			input: async () => undefined,
+			confirm: async () => false,
+		} as unknown as ExtensionUIContext;
 		const ui = {
 			select: (_title: string, _options: string[], opts?: { signal?: AbortSignal }) =>
 				new Promise<string | undefined>((resolve) => {
@@ -140,6 +173,7 @@ describe("dialogs relayed from a subagent", () => {
 			confirm: async () => false,
 			input: async () => undefined,
 			notify: () => undefined,
+			ask: (questions: Question[], opts?: object) => degrade(plainUi, questions, opts),
 		} as unknown as ExtensionUIContext;
 		const tracker = new UIPromptTracker(async (event) => {
 			await fake.emit(event.type, event, idle);
@@ -156,13 +190,34 @@ describe("dialogs relayed from a subagent", () => {
 		);
 		return { service, tracker, relay, sent, waiting, open, fake, idle };
 	}
-	const ask = (relay: ChildRelay, extra: Record<string, unknown> = {}) =>
+	/** A child's `ask` event: one question; `approval` marks it a permission prompt the child's harness vouched for. */
+	const ask = (relay: ChildRelay, extra: { approval?: true } = {}) =>
 		relay.handle({
 			type: "extension_ui_request",
-			method: "select",
+			method: "ask",
 			id: "c1",
-			title: "Run rm -rf build?",
-			options: ["Allow once", "Deny"],
+			questions: [
+				extra.approval
+					? {
+							id: "permission",
+							type: "approval",
+							question: "Run rm -rf build?",
+							approval: { action: "shell", targets: ["rm -rf build"] },
+							options: [
+								{ id: "allow_once", label: "Allow once", role: "allow_once" },
+								{ id: "deny", label: "Deny", role: "deny" },
+							],
+						}
+					: {
+							id: "q",
+							type: "choice",
+							question: "Which one?",
+							options: [
+								{ id: "a", label: "A" },
+								{ id: "b", label: "B" },
+							],
+						},
+			],
 			...extra,
 		});
 
@@ -175,11 +230,22 @@ describe("dialogs relayed from a subagent", () => {
 		ask(relay, { approval: true });
 		await vi.waitFor(() => expect(service.getSnapshot().awaiting).toBeDefined());
 		const awaiting = service.getSnapshot().awaiting!;
-		expect(awaiting).toMatchObject({ kind: "approval", options: ["Allow once", "Deny"] });
-		expect(awaiting.title).toContain("child-1");
+		expect(awaiting).toMatchObject({ kind: "approval" });
+		// The child's identity comes from the process (the relay's label), and rides on the question.
+		expect(JSON.stringify(awaiting)).toContain("child-1 asks");
 		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: awaiting.title }));
-		expect(tracker.answer(awaiting.id!, { choice: "Allow once" })).toEqual({ ok: true });
-		await vi.waitFor(() => expect(sent).toEqual([{ type: "extension_ui_response", id: "c1", value: "Allow once" }]));
+		expect(tracker.answer(awaiting.id!, { replies: [{ id: "permission", picks: ["allow_once"] }] })).toEqual({
+			ok: true,
+		});
+		await vi.waitFor(() =>
+			expect(sent).toEqual([
+				{
+					type: "extension_ui_response",
+					id: "c1",
+					replies: [{ id: "permission", picks: ["allow_once"] }],
+				},
+			]),
+		);
 		await vi.waitFor(() => expect(service.getSnapshot().awaiting).toBeUndefined());
 		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
 	});

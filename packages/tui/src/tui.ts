@@ -19,7 +19,7 @@ import { Container } from "./tui/container.ts";
 import { extractCursorPosition, resolveFakeCursors } from "./tui/cursor.ts";
 import { FocusManager } from "./tui/focus-manager.ts";
 import { ResizeDebounce } from "./tui/resize-debounce.ts";
-import { InputListeners, type TuiInputListener } from "./tui/input-listeners.ts";
+import { InputListeners, isolateInput, type TuiInputListener } from "./tui/input-listeners.ts";
 import { OverlayCompositor } from "./tui/overlay-compositor.ts";
 import type { OverlayHandle, OverlayOptions } from "./tui/overlay-types.ts";
 import { RenderLedger } from "./tui/render-counters.ts";
@@ -248,7 +248,7 @@ export abstract class TuiBase extends Container implements TUI {
 		this.scheduler.start();
 		this.beforeTerminalStart();
 		this.terminal.start(
-			(data) => this.handleTerminalInput(data),
+			(data) => isolateInput(() => this.handleTerminalInput(data)),
 			() => this.resizeDebounce.trigger(),
 			() => {
 				if (this.stopped) return;

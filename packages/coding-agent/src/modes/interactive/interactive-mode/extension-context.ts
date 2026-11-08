@@ -7,6 +7,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import type { ExtensionContext, ExtensionRunner, ExtensionUIContext } from "../../../core/features/index.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../../../theme/theme.ts";
+import { askInTerminal } from "./extension-ask.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { pickSession } from "./session-picker.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -119,6 +120,7 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 
 export function createExtensionUIContext(host: ExtensionContextHost): ExtensionUIContext {
 	return {
+		ask: askInTerminal(host),
 		select: (title, options, opts) => host.showExtensionSelector(title, options, opts),
 		confirm: (title, message, opts) => host.showExtensionConfirm(title, message, opts),
 		input: (title, placeholder, opts) => host.showExtensionInput(title, placeholder, opts),

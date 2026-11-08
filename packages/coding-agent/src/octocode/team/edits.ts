@@ -46,6 +46,41 @@ export function changeNote(
 		: `Its last recorded change is this session's own (${how}); another process may also have written it.`;
 }
 
+/** A file whose latest recorded change is another agent's: `agent` wrote it `ago` ago (display form). */
+export interface OtherChange {
+	/** As named by the caller. */
+	file: string;
+	agent: string;
+	ago: string;
+}
+
+/**
+ * Which of `files` (absolute) another agent changed last, in the last hour, by one read of the log. A file this session
+ * wrote last, one outside the workspace and one with no recorded change are left out: only another agent's change names a
+ * likely cause. Empty without a log.
+ */
+export function changesByOthers(
+	log: EditLog | undefined,
+	files: string[],
+	self: string | undefined,
+	now = Date.now(),
+): OtherChange[] {
+	if (!log || files.length === 0) return [];
+	const root = log.workspace;
+	const named = new Map<string, string>();
+	for (const file of files) {
+		const relative = path.relative(root, canonicalIn(root, file)).split(path.sep).join("/");
+		if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) named.set(relative, file);
+	}
+	const me = self ?? unjoinedAgent();
+	return log.changes({ withinMs: NOTE_WINDOW_MS, prefixes: [...named.keys()] }, now).flatMap((change) => {
+		const file = named.get(change.path);
+		return file !== undefined && change.agents[0] !== me
+			? [{ file, agent: change.agents[0], ago: formatAgo(now - change.at) }]
+			: [];
+	});
+}
+
 /** What a session's writes are recorded under until it has a team name (it joins later; see `EditLog.adopt`). */
 export const unjoinedAgent = (): string => `pid ${process.pid}`;
 

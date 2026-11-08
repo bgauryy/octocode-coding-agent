@@ -18,6 +18,7 @@ function ui(answers: {
 	return {
 		asked,
 		ctx: {
+			hasUI: true,
 			ui: {
 				select: async (title: string) => {
 					asked.push(title);
@@ -80,12 +81,12 @@ describe("file change review", () => {
 	it("applies all, rejects all, or decides one by one", async () => {
 		const all = ui({ selects: ["Apply all"] });
 		expect([...(await askReview(all.ctx, changes))]).toEqual([]);
-		expect(all.asked[0]).toContain("1. edit src/a.ts\n2. write src/new.ts\n3. delete old.ts");
+		expect(all.asked[0]).toContain("  edit src/a.ts\n  write src/new.ts\n  delete old.ts");
 		// What the agent says comes last, per change and labelled unverified.
 		expect(all.asked[0].split("\n").slice(-3)).toEqual([
-			"  1. agent says (unverified): Fix the loop",
-			"  2. agent says (unverified): Add helper",
-			"  3. agent says (unverified): Unused",
+			"  agent says (unverified): 1. Fix the loop",
+			"  agent says (unverified): 2. Add helper",
+			"  agent says (unverified): 3. Unused",
 		]);
 		const withReasons = ui({ selects: ["Apply all"] });
 		await askReview(withReasons.ctx, changes, undefined, [

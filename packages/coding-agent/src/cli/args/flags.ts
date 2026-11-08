@@ -3,6 +3,7 @@ import { getToolListError, type TuiMode } from "../../core/settings-manager.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";
+import { RESUME_FLAG } from "./resume-flag.ts";
 import { WORKTREE_FLAG } from "./worktree-flag.ts";
 
 const csv = (value: string) =>
@@ -93,19 +94,21 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: set((a) => (a.noDialogs = true)),
 	},
 	{
+		name: "--rpc-ask",
+		kind: "boolean",
+		help: [
+			"RPC mode: this client answers `ask` requests (typed question batches); without it questions arrive as select, confirm and input",
+		],
+		apply: set((a) => (a.rpcAsk = true)),
+	},
+	{
 		name: "--continue",
 		short: "-c",
 		kind: "boolean",
 		help: ["Continue previous session"],
 		apply: set((a) => (a.continue = true)),
 	},
-	{
-		name: "--resume",
-		short: "-r",
-		kind: "boolean",
-		help: ["Select a session to resume"],
-		apply: set((a) => (a.resume = true)),
-	},
+	RESUME_FLAG,
 	{
 		name: "--session",
 		kind: "value",

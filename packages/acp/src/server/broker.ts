@@ -35,6 +35,7 @@ interface AcpBrokerOptions {
 export class AcpBroker {
 	private connection?: AgentConnection;
 	private initialized = false;
+	private elicitationForm = false;
 	private closing?: Promise<void>;
 	private stopped = false;
 	private readonly sessions = new Map<string, AcpSession>();
@@ -50,9 +51,11 @@ export class AcpBroker {
 	connect(stream: Stream): AgentConnection {
 		if (this.connection || this.stopped) throw new Error("ACP broker is already connected or closed");
 		const app = agent({ name: "octocode" })
-			.onRequest(methods.agent.initialize, () => {
+			.onRequest(methods.agent.initialize, ({ params }) => {
 				if (this.initialized) throw RequestError.invalidRequest(undefined, "Already initialized.");
 				this.initialized = true;
+				// `{}` advertises form support; absent or null does not (elicitation spec).
+				this.elicitationForm = params.clientCapabilities?.elicitation?.form != null;
 				return {
 					protocolVersion: PROTOCOL_VERSION,
 					agentInfo: { name: "octocode", version: this.options.host.version },
@@ -213,6 +216,7 @@ export class AcpBroker {
 				() => {
 					if (session && this.sessions.get(session.id) === session) this.sessions.delete(session.id);
 				},
+				this.elicitationForm,
 			);
 			const owned = session;
 			this.startups.add(owned);

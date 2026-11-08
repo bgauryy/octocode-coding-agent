@@ -1,15 +1,15 @@
-Write the bug report in Markdown with these sections:
+Write the bug report in Markdown:
 
 ## What the user was doing
 One short paragraph.
 
 ## What went wrong
-Concrete description of the failure: wrong output, errors, hangs, tool failures, unexpected behavior. Quote error messages and tool output verbatim where they exist.
+The failure (wrong output, errors, hangs, tool failures). Quote error messages and tool output verbatim.
 
 ## Steps to reproduce
-Numbered list, as specific as the transcript allows.
+Numbered, as specific as the transcript allows.
 
 ## Relevant details
-Tool calls involved, files touched, model behavior, anything else that helps a developer reproduce or locate the problem.
+Tool calls, files touched, model behavior.
 
-Do not include file contents, secrets, or credentials from the transcript; refer to files by path only. Keep the report factual and concise.
+No file contents, secrets or credentials: refer to files by path. Be factual and concise.

@@ -8,7 +8,9 @@
  *
  * A task can also name the servers the child gets (`only`, file version 3; `planTaskMcpServers`): a configured server
  * outside that list is left out of the child whatever its tool selection says, and the parent's added servers are
- * narrowed the same way before they are written.
+ * narrowed the same way before they are written. `only` also holds the servers the child's own tools name; `named` holds
+ * just the ones the task's `mcp` list named, and only those get all their tools active (a profile's exact
+ * `+mcp__x__tool` entry keeps that one tool).
  */
 
 import fs from "node:fs";
@@ -89,8 +91,9 @@ export function serializeMcpSessionServers(
 	servers: AddedServers,
 	stopped: readonly string[] = [],
 	only?: readonly string[],
+	named: readonly string[] = [],
 ): string | undefined {
-	if (only !== undefined) return JSON.stringify({ version: FILE_VERSION_ONLY, servers, stopped, only });
+	if (only !== undefined) return JSON.stringify({ version: FILE_VERSION_ONLY, servers, stopped, only, named });
 	if (Object.keys(servers).length === 0 && stopped.length === 0) return undefined;
 	return stopped.length === 0
 		? JSON.stringify({ version: FILE_VERSION, servers })
@@ -102,6 +105,7 @@ export function parseMcpSessionServers(text: string): {
 	servers: Record<string, McpServerConfig>;
 	stopped: string[];
 	only?: string[];
+	named?: string[];
 	errors: string[];
 } {
 	const servers: Record<string, McpServerConfig> = {};
@@ -117,12 +121,13 @@ export function parseMcpSessionServers(text: string): {
 		Array.isArray(list) ? list.filter((name): name is string => typeof name === "string") : [];
 	const stopped = value.version === FILE_VERSION ? [] : names(value.stopped);
 	const only = value.version === FILE_VERSION_ONLY && Array.isArray(value.only) ? names(value.only) : undefined;
+	const named = only ? names(value.named) : undefined;
 	for (const [name, config] of Object.entries(value.servers)) {
 		const validated = validateMcpServerConfig(name, config);
 		if (typeof validated === "string") errors.push(validated);
 		else servers[name] = validated;
 	}
-	return { servers, stopped, ...(only ? { only } : {}), errors };
+	return { servers, stopped, ...(only ? { only, named } : {}), errors };
 }
 
 /**
@@ -133,15 +138,15 @@ export function parseMcpSessionServers(text: string): {
 export function registerInheritedMcpServers(
 	api: McpExtensionApi,
 	env: NodeJS.ProcessEnv = process.env,
-): { stopped: string[]; only?: string[] } {
+): { stopped: string[]; only?: string[]; named?: string[] } {
 	const file = env[MCP_SESSION_SERVERS_FILE_ENV];
 	if (!file || !envFlag(env, SUBAGENT_ENV)) return { stopped: [] };
 	try {
 		if (fs.statSync(file).size > MAX_FILE_BYTES) throw new Error("file too large");
-		const { servers, stopped, only, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
+		const { servers, stopped, only, named, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
 		for (const message of errors) process.stderr.write(`Ignored inherited MCP server: ${message}\n`);
 		for (const [name, config] of Object.entries(servers)) api.registerMcpServer(name, config, { inherited: true });
-		return { stopped, ...(only ? { only } : {}) };
+		return { stopped, ...(only ? { only, named } : {}) };
 	} catch (error) {
 		process.stderr.write(
 			`Inherited MCP servers unavailable: ${error instanceof Error ? error.message : String(error)}\n`,

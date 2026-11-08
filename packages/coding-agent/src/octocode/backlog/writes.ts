@@ -256,7 +256,7 @@ export function updateItem(
 				);
 			const state = input.state ?? item.state;
 			if (!STATES.includes(state)) throw new BacklogError("Unknown backlog state.");
-			checkEpicState(agentDb.db, item, input);
+			checkEpicState(agentDb.db, repo, item, input);
 			if (
 				(state === "ongoing" || state === "done") &&
 				(input.state !== undefined ||

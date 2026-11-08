@@ -10,8 +10,8 @@ import { ID_PATTERN, legacyWorktreesDir, ownersOf, repoRoot, worktreesDir } from
 import { finishWorktree } from "./worktree-finish.ts";
 
 export interface PruneReport {
-	/** Orphaned worktrees removed after their changes were saved; `ref` is absent when one changed nothing, `item` is the backlog item its child worked on. */
-	saved: Array<{ agentId: string; ref?: string; item?: string }>;
+	/** Orphaned worktrees removed after their changes were saved; `ref` is absent when one changed nothing, `patch` is the child's own change as a file when the ref did not take it cleanly, `item` is the backlog item its child worked on. */
+	saved: Array<{ agentId: string; ref?: string; patch?: string; item?: string }>;
 	/** Orphaned worktrees kept because their changes could not be saved. */
 	kept: Array<{ agentId: string; error: string }>;
 }
@@ -104,11 +104,12 @@ async function pruneDir(repo: string, key: string, dir: string, report: PruneRep
 		};
 		try {
 			if (!sameRepository(record.repo, key)) throw new Error("Worktree owner record names a different repository");
-			const { ref } = await finishWorktree(worktree);
+			const { ref, conflict } = await finishWorktree(worktree);
 			fs.rmSync(claimed, { force: true });
 			report.saved.push({
 				agentId,
 				...(ref ? { ref } : {}),
+				...(conflict ? { patch: conflict.patch } : {}),
 				...(typeof record.item === "string" ? { item: record.item } : {}),
 			});
 		} catch (error) {
@@ -124,7 +125,7 @@ export function describePrune(report: PruneReport): { text: string; level: "info
 	const lines = [
 		...(report.saved.length
 			? [
-					`Removed ${report.saved.length} orphaned subagent worktree(s): ${report.saved.map(({ agentId, ref }) => (ref ? `${agentId} (changes on ${ref})` : `${agentId} (no changes)`)).join(", ")}.`,
+					`Removed ${report.saved.length} orphaned subagent worktree(s): ${report.saved.map(({ agentId, ref, patch }) => (ref ? `${agentId} (changes on ${ref}${patch ? `, own change as patch ${patch}` : ""})` : `${agentId} (no changes)`)).join(", ")}.`,
 				]
 			: []),
 		...report.kept.map(({ agentId, error }) => `Kept orphaned subagent worktree ${agentId}: ${error}`),

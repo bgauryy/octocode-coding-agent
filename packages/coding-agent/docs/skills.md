@@ -102,6 +102,10 @@ Skills discovered under `.claude/skills` and configured Claude plugin skills use
 
 Set `disable-model-invocation: true` to omit a skill from the model’s advertised skill list. This does not prevent arbitrary file reads. Set `user-invocable: false` to hide its user commands and prevent direct or qualified command expansion while retaining model discovery. The `enableSkillCommands` setting controls whether skill commands appear in editor autocomplete; `/help` can still find them, and manually entered direct and `/skill:name` commands still work. RPC `get_commands` also retains loaded skills when interactive suggestions are disabled.
 
+## Name several skills with `/`
+
+A `/` at the start of the input is a command: `/pdf-tools extract report.pdf` loads that skill with its arguments. Later in the input, `/name` or `/skill:name` names a skill the way `$name` does (next section), so one request can name several: `review this with /pdf-tools and /code-review`. Each skill loads once, also when the leading command names it again. A token counts only when `/` starts it (after a space, an opening bracket or a quote) and neither a name character, `/` nor `.` plus text follows the name: paths such as `/tmp/x`, `src/a` or `/notes.md` never match, and unknown names stay plain text. Claude skills, whose bodies take argument placeholders, load only as the leading command.
+
 ## Select skills with Codex mentions
 
 For a loaded native or Codex `SKILL.md`, write `$pdf-tools` anywhere in your request to include its full instructions. A configured Codex plugin uses its qualified name, such as `$my-plugin:pdf-tools`. Claude skills and loose Markdown resources retain their existing command behavior.

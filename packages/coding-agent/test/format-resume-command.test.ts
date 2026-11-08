@@ -55,7 +55,7 @@ describe("formatResumeCommand", () => {
 		const sessionFile = createTempFile();
 		const sessionManager = createSessionManager({ sessionFile, sessionId: "test-session" });
 
-		expect(formatResumeCommand(sessionManager)).toBe(`${APP_NAME} --session test-session`);
+		expect(formatResumeCommand(sessionManager)).toBe(`${APP_NAME} --resume test-session`);
 	});
 
 	it("includes unquoted safe session dirs for non-default session dirs", () => {
@@ -69,7 +69,7 @@ describe("formatResumeCommand", () => {
 		});
 
 		expect(formatResumeCommand(sessionManager)).toBe(
-			`${APP_NAME} --session-dir /tmp/custom-octocode-sessions --session test-session`,
+			`${APP_NAME} --session-dir /tmp/custom-octocode-sessions --resume test-session`,
 		);
 	});
 
@@ -84,7 +84,7 @@ describe("formatResumeCommand", () => {
 		});
 
 		expect(formatResumeCommand(sessionManager)).toBe(
-			`${APP_NAME} --session-dir '/tmp/custom octocode sessions' --session test-session`,
+			`${APP_NAME} --session-dir '/tmp/custom octocode sessions' --resume test-session`,
 		);
 	});
 
@@ -99,7 +99,7 @@ describe("formatResumeCommand", () => {
 		});
 
 		expect(formatResumeCommand(sessionManager)).toBe(
-			`${APP_NAME} --session-dir '/tmp/custom octocode'\\''s sessions' --session test-session`,
+			`${APP_NAME} --session-dir '/tmp/custom octocode'\\''s sessions' --resume test-session`,
 		);
 	});
 

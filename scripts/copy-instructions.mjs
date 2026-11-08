@@ -2,7 +2,8 @@
 /**
  * Copy the Markdown prompt tree of `packages/coding-agent/src/octocode/instructions/` (policy, lean, subagent, system,
  * workflows and roles) to where the package or a staged binary reads it (`getInstructionsDir` in `src/config.ts`).
- * Only the prompt files ship: the folder's TypeScript is compiled separately and `README.md` is for readers.
+ * Only the prompt files ship: the folder's TypeScript is compiled separately, and `README.md` and `final/` (the generated
+ * final prompts, `generate:prompts`) are for readers.
  *
  * Usage: node scripts/copy-instructions.mjs <source-dir> <destination-dir>
  */
@@ -10,10 +11,13 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** The prompt folders under `source`: every directory. */
+/** Folders under `source` written for readers, never read at runtime. */
+const READER_FOLDERS = new Set(["final"]);
+
+/** The prompt folders under `source`: every directory but the reader-only ones. */
 function instructionFolders(source) {
 	return readdirSync(source, { withFileTypes: true })
-		.filter((entry) => entry.isDirectory())
+		.filter((entry) => entry.isDirectory() && !READER_FOLDERS.has(entry.name))
 		.map((entry) => entry.name);
 }
 

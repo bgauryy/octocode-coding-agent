@@ -28,6 +28,8 @@ export interface MarkdownTheme {
 	code: (text: string) => string;
 	codeBlock: (text: string) => string;
 	codeBlockBorder: (text: string) => string;
+	/** Styles the language label row above a code block (default: `codeBlockBorder`). */
+	codeBlockLabel?: (text: string) => string;
 	quote: (text: string) => string;
 	quoteBorder: (text: string) => string;
 	hr: (text: string) => string;
@@ -37,6 +39,8 @@ export interface MarkdownTheme {
 	strikethrough: (text: string) => string;
 	underline: (text: string) => string;
 	highlightCode?: (code: string, lang?: string) => string[];
+	/** Styles the bar and label of a GitHub alert (`> [!WARNING]`) in the kind's color (default: `quoteBorder`). */
+	alert?: (kind: "note" | "tip" | "important" | "warning" | "caution", text: string) => string;
 	/** Prefix applied to each rendered code block line (default: "  ") */
 	codeBlockIndent?: string;
 }

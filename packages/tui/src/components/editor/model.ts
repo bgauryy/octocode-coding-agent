@@ -182,12 +182,12 @@ export class EditorModel implements EditorAutocompleteHost {
 		this.notifyChange();
 	}
 
-	// Slash menu only allowed on the first line of the editor
+	// The command menu belongs to the first line of the input.
 	private isSlashMenuAllowed(): boolean {
 		return this.state.cursorLine === 0;
 	}
 
-	// Helper method to check if cursor is at start of message (for slash command detection)
+	/** True right after a `/` typed at the start of the input (the command menu). */
 	isAtStartOfMessage(): boolean {
 		if (!this.isSlashMenuAllowed()) return false;
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -195,7 +195,18 @@ export class EditorModel implements EditorAutocompleteHost {
 		return beforeCursor.trim() === "" || beforeCursor.trim() === "/";
 	}
 
+	/** True right after a `/` typed at a token start anywhere else (a line start or after whitespace): the skill menu. */
+	isAtSkillMentionStart(): boolean {
+		const currentLine = this.state.lines[this.state.cursorLine] || "";
+		return /(?:^|\s)\/$/.test(currentLine.slice(0, this.state.cursorCol));
+	}
+
 	isInSlashCommandContext(textBeforeCursor: string): boolean {
 		return this.isSlashMenuAllowed() && textBeforeCursor.trimStart().startsWith("/");
+	}
+
+	/** True while the text before the cursor ends in a `/name` token that follows whitespace or a line start. */
+	isInSkillMentionContext(textBeforeCursor: string): boolean {
+		return /(?:^|\s)\/[^\s/]*$/.test(textBeforeCursor);
 	}
 }

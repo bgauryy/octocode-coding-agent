@@ -175,7 +175,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				.map((entry) => ({ entry })),
 			...registered.servers,
 		];
-		for (const server of state.servers) server.unselected = isEnabled(server) && !isSelected(state.api, server.entry);
+		for (const server of state.servers)
+			server.unselected = isEnabled(server) && !isSelected(state.api, server.entry, state.taskNamed);
 		state.emitChange();
 		const enabled = state.servers.filter((server) => isEnabled(server) && !server.unselected);
 		if (enabled.length === 0) {

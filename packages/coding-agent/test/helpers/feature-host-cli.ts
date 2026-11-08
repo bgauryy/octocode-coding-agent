@@ -45,7 +45,14 @@ export function createSandbox(extraEnv: Record<string, string> = {}): Sandbox {
 		...extraEnv,
 	};
 	trustFolder(project, env);
-	return { directory, project, agentDir, env, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
+	return {
+		directory,
+		project,
+		agentDir,
+		env,
+		// A child's last write can land while the tree is removed on a loaded machine (ENOTEMPTY): remove again shortly.
+		cleanup: () => rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+	};
 }
 
 /** Writes the user's global `settings.json`. */

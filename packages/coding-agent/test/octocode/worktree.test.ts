@@ -70,15 +70,18 @@ describe("isolated subagent worktrees", () => {
 		expect(fs.existsSync(path.join(worktreesDir(dir, home), "snapshot-filter.json"))).toBe(false);
 	});
 
-	it("keeps the worktree when a worker edit of an untracked baseline cannot be exported safely", async () => {
+	it("keeps the child's head as the ref and its patch on disk when a worker edit of an untracked baseline does not apply", async () => {
 		const dir = repo();
 		fs.writeFileSync(path.join(dir, "new.txt"), "parent only\n");
 		const worktree = await createWorktree(dir, "snapshot-conflict", tmp(), true);
 		fs.writeFileSync(path.join(worktree.path, "new.txt"), "worker edit\n");
-		await expect(finishWorktree(worktree)).rejects.toThrow(/worktree is kept/);
-		expect(fs.existsSync(worktree.path)).toBe(true);
+		const result = await finishWorktree(worktree);
+		expect(result.ref).toBe("refs/octocode/snapshot-conflict");
+		expect(fs.existsSync(worktree.path)).toBe(false);
+		expect(git(dir, "show", `${result.ref}:new.txt`)).toBe("worker edit");
+		expect(fs.readFileSync(result.conflict!.patch, "utf8")).toContain("+worker edit");
 		expect(fs.readFileSync(path.join(dir, "new.txt"), "utf8")).toBe("parent only\n");
-		expect(await pendingRefs(dir)).toEqual([]);
+		expect(await pendingRefs(dir)).toEqual(["snapshot-conflict"]);
 	});
 
 	it("rebases a nonoverlapping worker edit to a tracked dirty file without exporting parent lines", async () => {

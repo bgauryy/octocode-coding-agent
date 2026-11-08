@@ -50,7 +50,7 @@ export async function holdFailedRun(
 	if (held.value || live > 0) {
 		const id = ctx.sessionManager.getSessionId();
 		stderr(
-			`The run failed${live > 0 ? `, stopping ${live} running subagents` : " after its subagents finished"}. Session ${id}; continue it with: octocode --session ${id}\n`,
+			`The run failed${live > 0 ? `, stopping ${live} running subagents` : " after its subagents finished"}. Session ${id}; continue it with: octocode --resume ${id}\n`,
 		);
 	}
 	return undefined;

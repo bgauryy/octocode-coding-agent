@@ -123,7 +123,7 @@ describe("auto session titles", () => {
 		const text = context.messages[0].content[0].text as string;
 		expect(text).toContain("at most 6 words");
 		expect(text).toContain("Do not answer the request");
-		expect(text).toContain("Keep the user's own key words");
+		expect(text).toContain("keep the user's key words");
 		expect(text).toContain("<request>\nthe login page redirects forever\n</request>");
 		expect(context.tools ?? []).toEqual([]);
 		expect(request.reasoning).toBeUndefined();

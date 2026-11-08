@@ -122,6 +122,22 @@ it("preserves embedded original text and injects full raw skill documents once i
 	}
 });
 
+it.each([
+	["Review this with /alpha and /skill:beta, then /alpha again.", 1, 1],
+	["/alpha check it with /beta", 1, 1],
+	["Read /tmp/alpha and src/beta", 0, 0],
+])("loads skills named by /name mid-input once each; a leading /name stays the command: %s", async (prompt, a, b) => {
+	const f = await fixture();
+	try {
+		const result = await request(f, prompt);
+		expect(result.text.match(/BODY_alpha_0/g) ?? []).toHaveLength(a);
+		expect(result.text.match(/BODY_beta_1/g) ?? []).toHaveLength(b);
+		if (prompt.startsWith("/alpha")) expect(result.text).toContain('<skill name="alpha"');
+	} finally {
+		f.cleanup();
+	}
+});
+
 it.each(["Use `$alpha`.", "```text\n$alpha\n```", "Use \\$alpha.", "Use [$alpha]().", "Use $alpha.suffix."])(
 	"matches source raw-text mention syntax: %s",
 	async (prompt) => {

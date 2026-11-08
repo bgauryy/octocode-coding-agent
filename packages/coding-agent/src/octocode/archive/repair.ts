@@ -1,5 +1,5 @@
-import { createInterface } from "node:readline";
 import fs from "node:fs";
+import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
 import type { SessionHeader, CompactionEntry } from "../../core/session-manager.ts";
 import { type AgentDb, sessions, transcripts, workspaces } from "../../../../db/src/api.ts";
@@ -9,10 +9,18 @@ import { archiveFolder } from "../shared/archive.ts";
 import { parseRecordHeader } from "../shared/archive/record.ts";
 import { saveCompaction } from "./summaries.ts";
 
+const READ_CHUNK = 64 * 1024;
+
+/**
+ * The header and compaction entries of one transcript, read through the descriptor opened without following a link.
+ * Reads go straight through the handle: a stream around a FileHandle can emit an error (an abort, a read failure)
+ * while nothing listens, which ends the process, and leaves the handle's release to the stream's own close.
+ */
 async function transcriptCompactions(
 	file: string,
 	signal?: AbortSignal,
 ): Promise<{ header: SessionHeader; entries: CompactionEntry[] } | undefined> {
+	signal?.throwIfAborted();
 	let handle: fs.promises.FileHandle;
 	try {
 		handle = await fs.promises.open(
@@ -23,32 +31,38 @@ async function transcriptCompactions(
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
 		throw error;
 	}
-	const stream = fs.createReadStream(file, { fd: handle, encoding: "utf8", signal, autoClose: false });
-	const lines = createInterface({ input: stream, crlfDelay: Infinity });
-	let header: SessionHeader | undefined;
-	const entries: CompactionEntry[] = [];
 	try {
 		if (!(await handle.stat()).isFile()) return undefined;
-		for await (const line of lines) {
-			signal?.throwIfAborted();
-			if (!line.trim()) continue;
+		let header: SessionHeader | undefined;
+		const entries: CompactionEntry[] = [];
+		/** False once the first record is not a session header: the file is not a transcript. */
+		const take = (line: string): boolean => {
+			if (!line.trim()) return true;
 			const value = JSON.parse(line) as Record<string, unknown>;
 			if (!header) {
-				if (value.type !== "session" || typeof value.id !== "string" || typeof value.cwd !== "string") return undefined;
+				if (value.type !== "session" || typeof value.id !== "string" || typeof value.cwd !== "string") return false;
 				header = value as unknown as SessionHeader;
 			} else if (value.type === "compaction") {
 				if (typeof value.id !== "string" || typeof value.summary !== "string" || typeof value.timestamp !== "string")
 					throw new Error(`Invalid compaction entry in ${file}`);
 				entries.push(value as unknown as CompactionEntry);
 			}
+			return true;
+		};
+		const decoder = new StringDecoder("utf8");
+		const buffer = Buffer.allocUnsafe(READ_CHUNK);
+		let pending = "";
+		for (;;) {
+			signal?.throwIfAborted();
+			const { bytesRead } = await handle.read(buffer, 0, READ_CHUNK, null);
+			if (bytesRead === 0) break;
+			const lines = (pending + decoder.write(buffer.subarray(0, bytesRead))).split("\n");
+			pending = lines.pop() ?? "";
+			for (const line of lines) if (!take(line)) return undefined;
 		}
+		if (!take(pending + decoder.end())) return undefined;
 		return header ? { header, entries } : undefined;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-		throw error;
 	} finally {
-		lines.close();
-		stream.destroy();
 		await handle.close();
 	}
 }

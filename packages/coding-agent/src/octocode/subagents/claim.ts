@@ -147,6 +147,8 @@ export interface AgentRuns {
 	read: ReadReports;
 	/** Subagents running now (foreground and background), by name. */
 	running: Map<string, undefined>; // The ids of the running subagents (a map because the team session reads it as one).
+	/** The backlog item each child was started for (`agent` `item`), by name; an entry of an ended child is dropped when read (`idle-items.ts`). */
+	items: Map<string, string>;
 	/** Their slots under the limit, taken before the spawn ask and given back by `Run.release`. */
 	slots: Slots;
 	/** Called when a background run starts or ends: the footer counts them while the agents panel cannot show them. */

@@ -1,25 +1,34 @@
-import hljs from "highlight.js/lib/core.js";
-import bash from "highlight.js/lib/languages/bash.js";
-import c from "highlight.js/lib/languages/c.js";
-import cpp from "highlight.js/lib/languages/cpp.js";
-import csharp from "highlight.js/lib/languages/csharp.js";
-import dart from "highlight.js/lib/languages/dart.js";
-import go from "highlight.js/lib/languages/go.js";
-import groovy from "highlight.js/lib/languages/groovy.js";
-import java from "highlight.js/lib/languages/java.js";
-import javascript from "highlight.js/lib/languages/javascript.js";
-import json from "highlight.js/lib/languages/json.js";
-import kotlin from "highlight.js/lib/languages/kotlin.js";
-import lua from "highlight.js/lib/languages/lua.js";
-import nix from "highlight.js/lib/languages/nix.js";
-import perl from "highlight.js/lib/languages/perl.js";
-import php from "highlight.js/lib/languages/php.js";
-import python from "highlight.js/lib/languages/python.js";
-import ruby from "highlight.js/lib/languages/ruby.js";
-import rust from "highlight.js/lib/languages/rust.js";
-import scala from "highlight.js/lib/languages/scala.js";
-import swift from "highlight.js/lib/languages/swift.js";
-import typescript from "highlight.js/lib/languages/typescript.js";
+import hljs from "highlight.js/lib/core";
+import bash from "highlight.js/lib/languages/bash";
+import c from "highlight.js/lib/languages/c";
+import cpp from "highlight.js/lib/languages/cpp";
+import csharp from "highlight.js/lib/languages/csharp";
+import dart from "highlight.js/lib/languages/dart";
+import go from "highlight.js/lib/languages/go";
+import groovy from "highlight.js/lib/languages/groovy";
+import java from "highlight.js/lib/languages/java";
+import css from "highlight.js/lib/languages/css";
+import diff from "highlight.js/lib/languages/diff";
+import dockerfile from "highlight.js/lib/languages/dockerfile";
+import ini from "highlight.js/lib/languages/ini";
+import makefile from "highlight.js/lib/languages/makefile";
+import markdown from "highlight.js/lib/languages/markdown";
+import sql from "highlight.js/lib/languages/sql";
+import xml from "highlight.js/lib/languages/xml";
+import yaml from "highlight.js/lib/languages/yaml";
+import javascript from "highlight.js/lib/languages/javascript";
+import json from "highlight.js/lib/languages/json";
+import kotlin from "highlight.js/lib/languages/kotlin";
+import lua from "highlight.js/lib/languages/lua";
+import nix from "highlight.js/lib/languages/nix";
+import perl from "highlight.js/lib/languages/perl";
+import php from "highlight.js/lib/languages/php";
+import python from "highlight.js/lib/languages/python";
+import ruby from "highlight.js/lib/languages/ruby";
+import rust from "highlight.js/lib/languages/rust";
+import scala from "highlight.js/lib/languages/scala";
+import swift from "highlight.js/lib/languages/swift";
+import typescript from "highlight.js/lib/languages/typescript";
 import { decodeHtmlEntityAt } from "./html.ts";
 
 const eagerLanguages = {
@@ -44,6 +53,15 @@ const eagerLanguages = {
 	groovy,
 	perl,
 	lua,
+	yaml,
+	sql,
+	xml,
+	css,
+	diff,
+	markdown,
+	ini,
+	dockerfile,
+	makefile,
 };
 
 for (const [name, language] of Object.entries(eagerLanguages)) {
@@ -55,7 +73,7 @@ let allLanguagesPromise: Promise<void> | undefined;
 export function loadAllHighlightLanguages(): Promise<void> {
 	allLanguagesPromise ??= new Promise((resolve) => {
 		setImmediate(() => {
-			void import("highlight.js/lib/index.js").then(
+			void import("highlight.js").then(
 				() => resolve(),
 				() => {
 					// Eager languages and plaintext fallback remain available.
@@ -87,13 +105,15 @@ function getScopeFromSpanTag(tag: string): string | undefined {
 		return undefined;
 	}
 
-	for (const className of classValue.split(/\s+/)) {
-		if (className.startsWith(HIGHLIGHT_CLASS_PREFIX)) {
-			return className.slice(HIGHLIGHT_CLASS_PREFIX.length);
-		}
+	// highlight.js 11 adds modifier classes after the scope (`hljs-title function_`): they refine it to `title.function`.
+	const classes = classValue.split(/\s+/);
+	const base = classes.find((className) => className.startsWith(HIGHLIGHT_CLASS_PREFIX));
+	if (!base) {
+		return undefined;
 	}
-
-	return undefined;
+	const scope = base.slice(HIGHLIGHT_CLASS_PREFIX.length);
+	const modifier = classes.find((className) => className !== base && className.endsWith("_"));
+	return modifier ? `${scope}.${modifier.slice(0, -1)}` : scope;
 }
 
 function getScopeFormatter(scope: string, theme: HighlightTheme): HighlightFormatter | undefined {
@@ -202,10 +222,63 @@ export function renderHighlightedHtml(html: string, theme: HighlightTheme = {}):
 	return output;
 }
 
+/** Fence names models write that highlight.js does not register as aliases, mapped to the language that fits. */
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+	console: "bash",
+	shell: "bash",
+	shellsession: "bash",
+	zsh: "bash",
+	sh: "bash",
+	yml: "yaml",
+	jsonc: "json",
+	json5: "json",
+	patch: "diff",
+	jsx: "javascript",
+	tsx: "typescript",
+	html: "xml",
+	svg: "xml",
+	docker: "dockerfile",
+	make: "makefile",
+	md: "markdown",
+};
+
+/**
+ * The registered highlight.js language for a fence info string or file language name: its first word, lower-cased, with
+ * extras such as `title=x`, `{1,3}` or `,linenos` dropped. Undefined when no language fits.
+ */
+export function resolveLanguage(name: string | undefined): string | undefined {
+	const first = name
+		?.trim()
+		.split(/[\s{,]/, 1)[0]
+		?.toLowerCase();
+	if (!first) {
+		return undefined;
+	}
+	const mapped = LANGUAGE_ALIASES[first] ?? first;
+	return hljs.getLanguage(mapped) ? mapped : undefined;
+}
+
+/** Highlighting is skipped above these sizes: hljs runs synchronously on every render of a growing block. */
+const MAX_HIGHLIGHT_LINES = 2000;
+const MAX_HIGHLIGHT_BYTES = 256 * 1024;
+const MAX_HIGHLIGHT_LINE_BYTES = 4096;
+
+/** Whether `code` is small enough to highlight: at most 2000 lines, 256 KB, and no line over 4 KiB. */
+export function isHighlightable(code: string): boolean {
+	if (code.length > MAX_HIGHLIGHT_BYTES || Buffer.byteLength(code) > MAX_HIGHLIGHT_BYTES) {
+		return false;
+	}
+	const lines = code.split("\n");
+	return (
+		lines.length <= MAX_HIGHLIGHT_LINES && lines.every((line) => Buffer.byteLength(line) <= MAX_HIGHLIGHT_LINE_BYTES)
+	);
+}
+
 export function highlight(code: string, options: HighlightOptions = {}): string {
-	const html = options.language
+	const language = options.language === undefined ? undefined : (resolveLanguage(options.language) ?? options.language);
+	const html = language
 		? hljs.highlight(code, {
-				language: options.language,
+				language,
 				ignoreIllegals: options.ignoreIllegals,
 			}).value
 		: hljs.highlightAuto(code, options.languageSubset).value;
@@ -213,5 +286,5 @@ export function highlight(code: string, options: HighlightOptions = {}): string 
 }
 
 export function supportsLanguage(name: string): boolean {
-	return hljs.getLanguage(name) !== undefined;
+	return resolveLanguage(name) !== undefined;
 }

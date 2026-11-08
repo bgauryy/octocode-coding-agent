@@ -39,6 +39,20 @@ describe("awaiting", () => {
 		expect(long.title).not.toContain("second line");
 	});
 
+	it("sends the whole question beside the one-line title, including a card's own question", () => {
+		const multi = awaitingFor({
+			kind: "input",
+			title: "Which branch?\nIt must be pushed.\nSecret sk-ant-api03-abcdefghijklmnopqrstuvwx",
+		});
+		expect(multi.title).toBe("Which branch?");
+		expect(multi.question).toContain("It must be pushed.");
+		expect(multi.question).not.toContain("abcdefghijklmnopqrstuvwx");
+		const ask = { question: "Ship it?\nAfter the tests.", options: [{ label: "Yes" }, { label: "No" }] };
+		const card = awaitingFor({ kind: "select", id: "q", title: "Parent asks:\nShip it?", options: ["Yes", "No"], ask });
+		expect(card.question).toBe("Ship it?\nAfter the tests.");
+		expect(awaitingFor({ kind: "select", title: "One line" }).question).toBeUndefined();
+	});
+
 	it("publishes a blocking dialog while the run is active and clears it when the dialog closes", async () => {
 		const { service, fake } = setup();
 		const running = fakeCtx({ cwd: "/x", idle: false });

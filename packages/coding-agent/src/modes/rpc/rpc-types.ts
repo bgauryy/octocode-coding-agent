@@ -15,6 +15,7 @@ import type {
 	RunOutcome,
 	SessionStats,
 } from "../../core/agent-session.ts";
+import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionUIAskView, ExtensionUIPermissionRequest } from "../../core/features/types.ts";
@@ -262,10 +263,11 @@ export type RpcExtensionUIRequest =
 			title: string;
 			options: string[];
 			timeout?: number;
+			/** A permission prompt sent to a client without `--rpc-ask`: the identity of the call and which `options` allow it once or refuse it. */
 			permission?: ExtensionUIPermissionRequest;
-			/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
+			/** The dialog decides whether to allow an action: show it as an approval. Set on a permission prompt sent to a client without `--rpc-ask`. */
 			approval?: boolean;
-			/** The structured view a terminal may draw (`ExtensionUIDialogOptions.ask`); its labels are `options`. Clients may ignore it. */
+			/** The permission prompt's card, a terminal may draw it; its labels are `options`. Clients may ignore it. */
 			ask?: ExtensionUIAskView;
 	  }
 	| {
@@ -275,8 +277,6 @@ export type RpcExtensionUIRequest =
 			title: string;
 			message: string;
 			timeout?: number;
-			/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
-			approval?: boolean;
 	  }
 	| {
 			type: "extension_ui_request";
@@ -287,6 +287,22 @@ export type RpcExtensionUIRequest =
 			timeout?: number;
 	  }
 	| { type: "extension_ui_request"; id: string; method: "editor"; title: string; prefill?: string }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			/**
+			 * A batch of typed questions, sent only to a client that started the process with `--rpc-ask`. Answer with an
+			 * `extension_ui_response` carrying `replies`: one `Reply` per question id. A client that did not declare `ask` never
+			 * sees this method; it gets the same questions as `select`, `confirm` and `input`.
+			 */
+			method: "ask";
+			questions: Question[];
+			/** A question here is an `approval` (a permission prompt): show it as one. Repeats the questions' types. */
+			approval?: boolean;
+			/** A subagent's one approval: the permission header line its parent reads to answer without a dialog. Never shown. */
+			header?: string;
+			timeout?: number;
+	  }
 	| {
 			type: "extension_ui_request";
 			id: string;
@@ -331,6 +347,7 @@ export interface RpcExtensionUIDismiss {
 export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }
+	| { type: "extension_ui_response"; id: string; replies: Reply[] }
 	| { type: "extension_ui_response"; id: string; cancelled: true };
 
 /** Extension failure already emitted on the RPC wire alongside session events. */

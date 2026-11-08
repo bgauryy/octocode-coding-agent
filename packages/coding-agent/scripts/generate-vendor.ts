@@ -11,8 +11,8 @@ const vendorDirectory = resolve(packageDirectory, "src/core/export-html/vendor")
 const require = createRequire(import.meta.url);
 
 /**
- * `marked` is a declared dependency; `highlight.js-browser` is the same package pinned to the 11.x line the
- * browser export needs (the terminal highlighter uses `highlight.js` 10.x).
+ * `marked` is a declared dependency; `highlight.js-browser` is an alias of `highlight.js` at the same 11.x version the
+ * terminal highlighter uses, so the export and the terminal share one copy.
  */
 const HIGHLIGHT_PACKAGE = "highlight.js-browser";
 

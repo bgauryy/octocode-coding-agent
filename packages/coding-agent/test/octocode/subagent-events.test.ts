@@ -230,6 +230,8 @@ describe("reduceEvent", () => {
 			text: "Reading the file",
 			stopReason: "toolUse",
 			errorMessage: undefined,
+			waiting: false,
+			reminder: false,
 		});
 
 		const done = reduce(state, reply("stop", "Done"), NOW + 7);
@@ -442,5 +444,53 @@ describe("reduceEvent: model requests", () => {
 		const state = newChildState();
 		reduce(state, reply("toolUse"));
 		expect(newChildState().requests).toBe(0);
+	});
+});
+
+describe("reduceEvent: model progress", () => {
+	const notify = { type: "extension_ui_request", id: "n", method: "notify", message: "hello", notifyType: "info" };
+
+	it("moves on a request, a streamed reply, a tool call and a compaction, never on a notify or an unknown record", () => {
+		const state = newChildState();
+		expect(state.progressAt).toBe(0);
+		reduce(state, notify, 1_000);
+		reduce(state, { type: "heartbeat" }, 2_000);
+		expect(state.progressAt).toBe(0);
+		reduce(state, { type: "message_update", assistantMessageEvent: { type: "text_delta" } }, 3_000);
+		expect(state.progressAt).toBe(3_000);
+		reduce(state, { type: "tool_execution_start", toolName: "bash", args: {} }, 4_000);
+		expect(state.progressAt).toBe(4_000);
+		reduce(state, notify, 5_000);
+		expect(state.progressAt).toBe(4_000);
+		reduce(state, reply("stop"), 6_000);
+		expect(state.progressAt).toBe(6_000);
+		reduce(state, { type: "compaction_start" }, 7_000);
+		expect(state.progressAt).toBe(7_000);
+	});
+
+	it("knows a call or background job that declared its own timeout, until that call or job ends", () => {
+		const state = newChildState();
+		reduce(state, { type: "tool_execution_start", toolName: "bash", args: { timeout: 1_800 } }, 10_000);
+		expect(state.declaredUntil).toBe(10_000 + 1_800_000);
+		reduce(state, { type: "tool_execution_end", toolName: "bash", isError: false, result: { content: [] } }, 20_000);
+		expect(state.declaredUntil).toBe(0);
+		reduce(state, { type: "tool_execution_start", toolName: "bash", args: { timeout: 900 } }, 30_000);
+		reduce(state, { type: "tool_execution_end", toolName: "bash", isError: false, result: { content: [] } }, 31_000);
+		expect(state.declaredUntil).toBe(0);
+
+		reduce(
+			state,
+			{ type: "tool_execution_start", toolName: "bash", args: { background: true, timeout: 3_600 } },
+			40_000,
+		);
+		expect(state.jobsUntil).toBe(40_000 + 3_600_000);
+		reduce(state, { type: "tool_execution_end", toolName: "bash", isError: false, result: { content: [] } }, 41_000);
+		expect(state.jobsUntil).toBe(40_000 + 3_600_000);
+		reduce(
+			state,
+			{ type: "message_end", message: { role: "custom", customType: JOB_TYPE, content: "Background bash job ended" } },
+			50_000,
+		);
+		expect(state.jobsUntil).toBe(0);
 	});
 });

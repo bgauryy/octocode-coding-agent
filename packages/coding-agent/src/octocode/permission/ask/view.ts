@@ -25,6 +25,12 @@ interface Labels {
 	noteTitle: string;
 }
 
+/** A system line of the card as a note: its `▸` marker (and indent) dropped, `risk:` drawn as a warning. */
+export const systemNote = (line: string): { text: string; tone: "muted" | "warning" } => {
+	const text = line.replace(/^\s*▸ /, "");
+	return { text, tone: text.startsWith("risk:") ? "warning" : "muted" };
+};
+
 /**
  * The prompt as an ask card: the title as its question, a message's sender as metadata and its text as a collapsible body
  * (`request.view`), or else the targets as a body that never collapses (nothing runs that was not on screen); the effect
@@ -44,10 +50,7 @@ export function permissionView(
 		[labels.deny]: DESCRIPTIONS.deny,
 		[labels.note]: DESCRIPTIONS.note,
 	};
-	const lines = cardLines(request, mode, "").map((line) => {
-		const text = line.replace(/^▸ /, "");
-		return { text, tone: text.startsWith("risk:") ? ("warning" as const) : ("muted" as const) };
-	});
+	const lines = cardLines(request, mode, "").map(systemNote);
 	const notes = lines.filter((note) => !note.text.startsWith(AGENT_SAYS));
 	const body = request.view
 		? { text: request.view.body, collapsible: true, previewLines: TARGET_PREVIEW }

@@ -1,5 +1,4 @@
 import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "../../autocomplete/types.ts";
-import { isWhitespaceChar } from "../../utils/chars.ts";
 import { SelectList } from "../select-list.ts";
 import {
 	ATTACHMENT_AUTOCOMPLETE_DEBOUNCE_MS,
@@ -9,6 +8,16 @@ import {
 	getBestAutocompleteMatchIndex,
 	SLASH_COMMAND_SELECT_LIST_LAYOUT,
 } from "./autocomplete-patterns.ts";
+import {
+	findAtQuery,
+	findTokenStart,
+	isDirectoryItem,
+	isInsideToken,
+	listOptions,
+	mergeTriggerCharacters,
+	startProgressTicker,
+	type DismissedToken,
+} from "./autocomplete-token.ts";
 import type { EditorLastAction, EditorState, EditorTheme } from "./types.ts";
 
 /** Editor state and operations the autocomplete controller reads and calls live. */
@@ -40,6 +49,11 @@ export class EditorAutocomplete {
 	private autocompleteRequestTask: Promise<void> = Promise.resolve();
 	private autocompleteStartToken: number = 0;
 	private autocompleteRequestId: number = 0;
+	private autocompletePending = false;
+	private stopIndexing?: () => void;
+	private dismissed?: DismissedToken;
+	/** True while the list is a placeholder for a file index that is still building. */
+	autocompleteIndexing = false;
 
 	private readonly host: EditorAutocompleteHost;
 	private readonly theme: EditorTheme;
@@ -56,12 +70,15 @@ export class EditorAutocomplete {
 	}
 
 	// Autocomplete methods
-	private createAutocompleteList(
-		prefix: string,
-		items: Array<{ value: string; label: string; description?: string }>,
-	): SelectList {
+	private createAutocompleteList(prefix: string, items: AutocompleteItem[], emptyText?: string): SelectList {
 		const layout = prefix.startsWith("/") ? SLASH_COMMAND_SELECT_LIST_LAYOUT : undefined;
-		const list = new SelectList(items, this.autocompleteMaxVisible, this.theme.selectList, layout);
+		const list = new SelectList(
+			items,
+			this.autocompleteMaxVisible,
+			this.theme.selectList,
+			layout,
+			listOptions(prefix, emptyText),
+		);
 		list.onSelect = (selected) => this.acceptCompletion(selected);
 		return list;
 	}
@@ -71,6 +88,7 @@ export class EditorAutocomplete {
 		if (!this.autocompleteProvider) return false;
 		this.host.pushUndoSnapshot();
 		this.host.lastAction = null;
+		this.dismissed = undefined;
 		const result = this.autocompleteProvider.applyCompletion(
 			this.host.state.lines,
 			this.host.state.cursorLine,
@@ -86,10 +104,13 @@ export class EditorAutocomplete {
 
 	/** Inserts the chosen item, closes the list and continues with the next slash-command argument. */
 	acceptCompletion(item: AutocompleteItem): void {
+		const drillIn = this.autocompletePrefix.startsWith("@") && isDirectoryItem(item);
 		if (!this.insertCompletion(item, this.autocompletePrefix)) return;
 		this.cancelAutocomplete();
 		this.host.notifyChange();
-		this.continueCommandCompletion();
+		// A directory in an @ list opens its children at once.
+		if (drillIn) this.tryTriggerAutocomplete(true);
+		else this.continueCommandCompletion();
 	}
 
 	continueCommandCompletion(): void {
@@ -103,6 +124,7 @@ export class EditorAutocomplete {
 
 	handleTabCompletion(): void {
 		if (!this.autocompleteProvider) return;
+		this.dismissed = undefined;
 
 		const currentLine = this.host.state.lines[this.host.state.cursorLine] || "";
 		const beforeCursor = currentLine.slice(0, this.host.state.cursorCol);
@@ -124,6 +146,7 @@ export class EditorAutocomplete {
 
 	private requestAutocomplete(options: { force: boolean; explicitTab: boolean }): void {
 		if (!this.autocompleteProvider) return;
+		if (!options.force && !options.explicitTab && this.isDismissed()) return;
 
 		if (options.force) {
 			const shouldTrigger =
@@ -140,6 +163,7 @@ export class EditorAutocomplete {
 
 		this.cancelAutocompleteRequest();
 		const startToken = ++this.autocompleteStartToken;
+		this.autocompletePending = true;
 
 		const debounceMs = this.getAutocompleteDebounceMs(options);
 		if (debounceMs > 0) {
@@ -173,7 +197,9 @@ export class EditorAutocomplete {
 
 			try {
 				await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options);
+				this.settleRequest(startToken);
 			} catch {
+				this.settleRequest(startToken);
 				// A failed provider call yields no suggestions. The task must still settle: every later request awaits it,
 				// so a rejection here would end autocomplete for the editor's lifetime.
 				if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) return;
@@ -186,13 +212,7 @@ export class EditorAutocomplete {
 	}
 
 	private setAutocompleteTriggerCharacters(triggerCharacters: string[]): void {
-		const next = [...DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS];
-		for (const character of triggerCharacters) {
-			if (character.length !== 1 || character === "/" || isWhitespaceChar(character) || next.includes(character)) {
-				continue;
-			}
-			next.push(character);
-		}
+		const next = mergeTriggerCharacters(triggerCharacters);
 		this.autocompleteTriggerCharacters = next;
 		this.autocompleteTriggerPattern = buildTriggerPattern(next);
 		this.autocompleteDebouncePattern = buildDebouncePattern(next);
@@ -218,12 +238,15 @@ export class EditorAutocomplete {
 	): Promise<void> {
 		if (!this.autocompleteProvider) return;
 
-		const suggestions = await this.autocompleteProvider.getSuggestions(
+		const request = this.autocompleteProvider.getSuggestions(
 			this.host.state.lines,
 			this.host.state.cursorLine,
 			this.host.state.cursorCol,
 			{ signal: controller.signal, force: options.force },
 		);
+		this.showIndexingProgress();
+		const suggestions = await request;
+		this.stopIndexingProgress();
 
 		if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) {
 			return;
@@ -232,7 +255,7 @@ export class EditorAutocomplete {
 		this.autocompleteAbort = undefined;
 
 		if (!suggestions || !Array.isArray(suggestions.items) || suggestions.items.length === 0) {
-			this.cancelAutocomplete();
+			this.showEmptyOrClose();
 			this.host.requestRender();
 			return;
 		}
@@ -265,6 +288,7 @@ export class EditorAutocomplete {
 	}
 
 	private applyAutocompleteSuggestions(suggestions: AutocompleteSuggestions, state: "regular" | "force"): void {
+		this.autocompleteIndexing = false;
 		this.autocompletePrefix = suggestions.prefix;
 		this.autocompleteList = this.createAutocompleteList(suggestions.prefix, suggestions.items);
 
@@ -276,7 +300,73 @@ export class EditorAutocomplete {
 		this.autocompleteState = state;
 	}
 
+	/** Ends the pending flag when `startToken` is still the newest request. */
+	private settleRequest(startToken: number): void {
+		if (startToken === this.autocompleteStartToken) this.autocompletePending = false;
+	}
+
+	/** True from a trigger until its suggestions arrive: Esc then cancels the request, not the agent. */
+	hasPendingRequest(): boolean {
+		return this.autocompletePending;
+	}
+
+	/** True while the cursor is still inside the token the user closed with Esc; clears the mark once it left. */
+	isDismissed(): boolean {
+		if (this.dismissed && !isInsideToken(this.dismissed, this.host.state)) this.dismissed = undefined;
+		return this.dismissed !== undefined;
+	}
+
+	/** Replaces the list with a row-less `@` list that shows `emptyText` (no match, or index progress). */
+	private showPlaceholder(query: string, indexing: boolean, emptyText?: string): void {
+		this.autocompleteIndexing = indexing;
+		this.autocompletePrefix = `@${query}`;
+		this.autocompleteList = this.createAutocompleteList(this.autocompletePrefix, [], emptyText);
+		this.autocompleteState = "regular";
+	}
+
+	/** No suggestions: an `@` token keeps a "no files" row open; anything else closes the list. */
+	private showEmptyOrClose(): void {
+		const query = findAtQuery(this.host.state, this.autocompleteTriggerPattern);
+		if (query === null) this.cancelAutocomplete();
+		else this.showPlaceholder(query, false);
+	}
+
+	/** While the provider builds its file index, shows "Indexing… N files" and refreshes it until the request ends. */
+	private showIndexingProgress(): void {
+		const status = this.autocompleteProvider?.indexingStatus?.();
+		const query = findAtQuery(this.host.state, this.autocompleteTriggerPattern);
+		if (!status || this.autocompleteList || query === null) return;
+		this.showPlaceholder(query, true, status);
+		this.host.requestRender();
+		this.stopIndexing = startProgressTicker(
+			() => (this.autocompleteIndexing ? this.autocompleteProvider?.indexingStatus?.() : null),
+			(text) => {
+				this.autocompleteList?.setEmptyText(text);
+				this.host.requestRender();
+			},
+		);
+	}
+
+	private stopIndexingProgress(): void {
+		this.stopIndexing?.();
+		this.stopIndexing = undefined;
+	}
+
+	/** Esc: closes the list, cancels a pending request and keeps the token closed until the cursor leaves it. */
+	dismissAutocomplete(): void {
+		const token = findTokenStart(this.host.state, this);
+		this.cancelAutocomplete();
+		this.dismissed = token ?? undefined;
+	}
+
+	/** Forgets a dismissed token: a new trigger character was typed. */
+	clearDismissal(): void {
+		this.dismissed = undefined;
+	}
+
 	private cancelAutocompleteRequest(): void {
+		this.autocompletePending = false;
+		this.stopIndexingProgress();
 		this.autocompleteStartToken += 1;
 		if (this.autocompleteDebounceTimer) {
 			clearTimeout(this.autocompleteDebounceTimer);
@@ -288,6 +378,7 @@ export class EditorAutocomplete {
 
 	private clearAutocompleteUi(): void {
 		this.autocompleteState = null;
+		this.autocompleteIndexing = false;
 		this.autocompleteList = undefined;
 		this.autocompletePrefix = "";
 	}

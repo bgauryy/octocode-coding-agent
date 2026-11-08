@@ -1,94 +1,26 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
+import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { withDialog } from "../shared/locks.ts";
+import type { ExtensionAPI } from "../../core/features/index.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../theme/status.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { showAskDialog } from "./dialog.ts";
 import { clip, plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { answerLine } from "../shared/ask-answer.ts";
-import { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
-import { type AskView, isRecommended, takeWriteIn } from "../shared/ask-view.ts";
+import { ask } from "./ask.ts";
+import { askUserResult } from "./decode.ts";
+import type { AskQuestion, AskResult } from "./dialog/answers.ts";
+import { fromAskUser } from "./question.ts";
 
-/** The most options one question offers (the schema asks for 2-4); the UI adds the write-in. */
-const MAX_OPTIONS = 6;
+/** The most options one question offers; the UI adds the write-in. The schema, the description and the code all use it. */
+const MAX_OPTIONS = 4;
+/** The most questions one call asks (the result renderer lays out this many). */
+const MAX_QUESTIONS = 4;
+/** What a question asks for: free text, one option, or several. */
+const QUESTION_TYPES = ["text", "choice", "multi"] as const;
 /** An option the UI already offers as its write-in row. */
 const OTHER = /^\s*(other|something else)\b/i;
-
-/** RPC hosts have dialogs but no custom TUI components: fall back to select/input per question. */
-async function askWithDialogs(
-	ctx: ExtensionContext,
-	questions: AskQuestion[],
-	signal?: AbortSignal,
-): Promise<AskResult> {
-	const answers: AskResult["answers"] = [];
-	const options = signal ? { signal } : undefined;
-	const cancelled = (): AskResult => ({
-		answers,
-		cancelled: true,
-		...(signal?.aborted ? { reason: "aborted" as const } : {}),
-	});
-	for (const q of questions) {
-		if (signal?.aborted) return cancelled();
-		if (q.options.length === 0) {
-			let typed: string | undefined;
-			do {
-				typed = (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))?.trim();
-				if (signal?.aborted || typed === undefined) return cancelled();
-			} while (!typed);
-			answers.push(answerOf(q.question, [], typed));
-			continue;
-		}
-		// Numbered identities distinguish duplicate labels and labels named after UI actions.
-		const labels = q.options.map((option, index) =>
-			sanitizeTerminalText(`${index + 1}. ${option.label}${option.description ? ` — ${option.description}` : ""}`),
-		);
-		// Multi-select: pick one option per round until Done (or every option is picked), as the TUI's toggles.
-		const chosen = new Set<number>();
-		let typed: string | undefined;
-		for (;;) {
-			const remaining = labels.filter((_, index) => !chosen.has(index));
-			const extra = q.multiSelect && chosen.size > 0 ? [SUBMIT_PICKS, TYPE_OWN] : [TYPE_OWN];
-			const selected = [...chosen].map((index) => q.options[index].label).join(", ");
-			const title = q.multiSelect
-				? `${q.question} (choose one or more, then ${SUBMIT_PICKS}${selected ? `; selected: ${selected}` : ""})`
-				: q.question;
-			const choices = [...remaining, ...extra];
-			// The same question as a card for a terminal that draws one (a parent showing this subagent's question).
-			const view: AskView = {
-				question: sanitizeTerminalText(q.forwarded?.ask ?? q.question),
-				...(q.forwarded ? { body: { label: q.forwarded.label, text: q.forwarded.text, collapsible: true } } : {}),
-				options: choices.map((label) => ({ label, ...(isRecommended(label) ? { recommended: true } : {}) })),
-				writeIn: { label: TYPE_OWN, title: sanitizeTerminalText(q.question) },
-			};
-			const picked = await ctx.ui.select(sanitizeTerminalText(title), choices, { ...options, ask: view });
-			if (signal?.aborted || picked === undefined) return cancelled();
-			if (picked === TYPE_OWN) {
-				// An empty answer is no answer, as in the TUI dialog. A card's inline write-in already holds the text.
-				typed = (
-					takeWriteIn(view) ?? (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))
-				)?.trim();
-				if (signal?.aborted) return cancelled();
-				if (!typed) {
-					typed = undefined;
-					continue;
-				}
-				break;
-			}
-			if (picked === SUBMIT_PICKS) break;
-			const index = labels.indexOf(picked);
-			if (index < 0 || chosen.has(index)) return cancelled();
-			chosen.add(index);
-			if (!q.multiSelect || chosen.size === labels.length) break;
-		}
-		const picks = q.options.flatMap((option, index) => (chosen.has(index) ? [option.label] : []));
-		answers.push(answerOf(q.question, picks, typed));
-	}
-	return { answers, cancelled: false };
-}
 
 export function formatAnswers(result: AskResult): string {
 	const answered = result.answers.map(answerLine);
@@ -118,7 +50,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 			promptSnippet: renderInstruction("tools/ask-user/snippet.md"),
 			description:
 				"Put one or more questions to the user and get the answers this turn; use it instead of ending a reply or report with a question. Batch related, self-contained questions. " +
-				"Decisions: 2-4 options (none for free text), each clear on its own, the recommendation your evidence and project instructions support, first, labelled ' (Recommended)'; the UI adds a write-in, so never add \"Other\".",
+				`Decisions: 2-${MAX_OPTIONS} options (none for free text), each clear on its own, the recommendation your evidence and project instructions support, first, labelled ' (Recommended)'; the UI adds a write-in, so never add "Other". At most ${MAX_QUESTIONS} questions.`,
 			parameters: Type.Object({
 				forward: Type.Optional(
 					Type.Number({
@@ -127,7 +59,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				),
 				questions: Type.Array(
 					Type.Object({
-						question: Type.String({ description: "One sentence; context goes in your reply first" }),
+						question: Type.String({ description: "One short sentence" }),
 						header: Type.Optional(
 							Type.String({
 								description: "Tab label, ~12 characters shown",
@@ -136,7 +68,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 						options: Type.Optional(
 							Type.Array(
 								Type.Object({
-									label: Type.String({ description: "Concise answer label" }),
+									label: Type.String({ description: "A few words" }),
 									description: Type.Optional(
 										Type.String({
 											description: "Its distinguishing effect or trade-off",
@@ -145,23 +77,22 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 								}),
 							),
 						),
-						multiSelect: Type.Optional(
-							Type.Boolean({
-								description: "true: the user may pick several",
-							}),
+						type: Type.Optional(
+							StringEnum(QUESTION_TYPES, { description: "multi: pick several; default choice, text without options" }),
 						),
 					}),
 				),
 			}),
 			async execute(_id, params, signal, _onUpdate, ctx) {
-				// multiSelect means nothing without options: a free-text question opens its editor directly.
+				// `type` text, or no options, is a free-text question that opens its editor directly; multi means nothing without options.
 				let skippedOptions = 0;
 				const dropped = { duplicate: 0, other: 0, over: 0 };
-				const questions: AskQuestion[] = params.questions
+				const asked = params.questions.slice(0, MAX_QUESTIONS);
+				const questions: AskQuestion[] = asked
 					.filter((q) => q.question.trim())
 					.map((q) => {
-						const labelled = (q.options ?? []).filter((option) => option.label.trim());
-						skippedOptions += (q.options?.length ?? 0) - labelled.length;
+						const labelled = q.type === "text" ? [] : (q.options ?? []).filter((option) => option.label.trim());
+						skippedOptions += q.type === "text" ? 0 : (q.options?.length ?? 0) - labelled.length;
 						const seen = new Set<string>();
 						const options = labelled.filter((option) => {
 							// Identical options only: a repeated label with its own description stays, told apart by its number.
@@ -173,10 +104,10 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 							return false;
 						});
 						return {
-							...q,
+							question: q.question,
 							options,
 							...(q.header ? { header: clip(q.header, 12) } : {}),
-							...(options.length ? {} : { multiSelect: false }),
+							...(options.length > 0 && q.type === "multi" ? { multiSelect: true } : {}),
 						};
 					});
 				if (questions.length === 0) throw new Error("Ask at least one question with text.");
@@ -193,19 +124,19 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 						},
 					};
 				}
-				const result: AskResult = signal?.aborted
-					? { answers: [], cancelled: true, reason: "aborted" }
-					: !ctx.hasUI
-						? { answers: [], cancelled: true, reason: "unavailable" }
-						: await withDialog(
-								() =>
-									ctx.mode === "tui" ? showAskDialog(ctx, questions, signal) : askWithDialogs(ctx, questions, signal),
-								signal,
-							);
+				const asking = fromAskUser(questions);
+				const result: AskResult = askUserResult(asking, await ask(ctx, asking, signal ? { signal } : {}));
 				// Empty questions and options are not asked: say how many, so a missing answer is not mistaken for a skipped one.
-				const skippedQuestions = params.questions.length - questions.length;
+				const skippedQuestions = asked.length - questions.length;
+				const overQuestions = params.questions.length - asked.length;
 				const skipped = [
 					skippedQuestions > 0 && plural(skippedQuestions, "empty question"),
+					overQuestions > 0 &&
+						plural(
+							overQuestions,
+							`question past the first ${MAX_QUESTIONS}`,
+							`questions past the first ${MAX_QUESTIONS}`,
+						),
 					skippedOptions > 0 && plural(skippedOptions, "option with an empty label", "options with an empty label"),
 					dropped.duplicate > 0 && plural(dropped.duplicate, "duplicate option"),
 					dropped.other > 0 && `${plural(dropped.other, '"Other" option')} (the UI adds a write-in)`,

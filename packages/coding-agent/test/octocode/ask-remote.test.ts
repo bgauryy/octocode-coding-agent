@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ExtensionUIContext } from "../../src/core/features/types.ts";
 import { UIPromptTracker } from "../../src/core/features/runner/ui-prompt.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { showAskDialog } from "../../src/octocode/ask/dialog.ts";
+import { showAskDialog } from "./ask-dialog-helper.ts";
 import type { AskQuestion } from "../../src/octocode/ask/dialog/answers.ts";
 import { awaitingFor } from "../../src/octocode/ui/awaiting.ts";
 import { fakeCtx, theme } from "./fake-host.ts";

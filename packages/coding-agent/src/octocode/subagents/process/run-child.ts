@@ -3,12 +3,10 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { getCliInvocation } from "../../../config.ts";
 import { writeRolePrompt } from "../../instructions/role.ts";
-import { shortPath } from "../../shared/format.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { stopTree } from "../../shared/process.ts";
 import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
 import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../../../utils/shell.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { settleWithin } from "../../shared/util.ts";
 import {
 	type ChildEffect,
@@ -18,28 +16,25 @@ import {
 	reduceEvent,
 	type WatchdogLimits,
 } from "../events.ts";
-import { budgetOutcome, RequestBudget } from "../budget.ts";
+import { RequestBudget } from "../budget.ts";
+import { heartbeatDue, SETTLED_EXIT_MS } from "../liveness.ts";
 import { requestBudgetHistory } from "../budget-history.ts";
 import type { AgentProfile } from "../profiles.ts";
 import { ChildRelay, type RelayHost } from "../relay.ts";
 import { ReportTracker } from "../report.ts";
-import { unavailableResult } from "../result-schema.ts";
 import { type Identity, subagentProcessEnv, writeNonceFile } from "./env.ts";
 import { prepareChildResourceFiles, removeChildResourceFiles, type ChildResourceFiles } from "./handoff-files.ts";
 import {
 	ABORT_SETTLE_MS,
 	EXIT_GRACE_MS,
-	exitReason,
-	LOAD_ERROR,
 	MAX_EVENT_BYTES,
-	noAnswerError,
-	StartupError,
 	SUBAGENT_STOP_GRACE_MS,
 	type SubagentOutcome,
 	USER_STOP,
 	USER_STOP_GRACE_MS,
 	WATCHDOG,
 } from "./outcome.ts";
+import { concludeRun } from "./conclusion.ts";
 import { leftBehind } from "./left-behind.ts";
 import { startGate } from "../rate-gate.ts";
 import { reportDir } from "./session.ts";
@@ -133,6 +128,22 @@ export async function runChild(
 				onExit = resolve;
 				return undefined;
 			});
+			/**
+			 * A settled child told to leave exits within `SETTLED_EXIT_MS`, or its process tree is stopped and its report
+			 * delivered: its own busy deadline (25 minutes or more) is for a child that has not answered.
+			 */
+			let exitDeadline: NodeJS.Timeout | undefined;
+			let leftLate = false;
+			const leave = () => {
+				closeInput();
+				if (exitDeadline || !report.hasReport) return;
+				exitDeadline = setTimeout(() => {
+					if (finished) return;
+					leftLate = true;
+					stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS).catch(() => undefined);
+				}, SETTLED_EXIT_MS);
+				exitDeadline.unref();
+			};
 			const stop = async (graceMs: number): Promise<void> => {
 				if (state.running && send({ type: "abort" })) await settleWithin(settledEvent, ABORT_SETTLE_MS);
 				closeInput();
@@ -174,12 +185,25 @@ export async function runChild(
 				onWaiting: (waiting) => {
 					const now = Date.now();
 					if (waiting) waitingSince = now;
-					else watchdog.waited(now - waitingSince, now);
+					else {
+						watchdog.waited(now - waitingSince, now);
+						stamp(now);
+					}
 					host?.awaitingApproval?.(identity.id, waiting);
 					progress({ usage: state.usage, waiting });
 				},
 			});
-			const watchdog = new ChildWatchdog(state, limits, () => Boolean(streamFailure) || relay.open > 0, abort);
+			// The row's "last progress": a model or tool event, the end of a wait for the user, or a heartbeat inside declared long work. A stdout byte is none.
+			const stamp = (at: number) => host?.output?.(identity.id, at);
+			const watchdog = new ChildWatchdog(
+				state,
+				limits,
+				() => Boolean(streamFailure) || relay.open > 0,
+				abort,
+				(now, resumed) => {
+					if (resumed ? state.running : heartbeatDue(state, now, relay.open > 0)) stamp(now);
+				},
+			);
 			watchdog.start();
 			// Progress is display only: a failure there (a screenshot write, a stale render) must not throw out of the stream handler.
 			const progress: typeof onProgress = (update) => {
@@ -191,7 +215,10 @@ export async function runChild(
 			};
 			const handleLine = (line: string) => {
 				const event = parseEvent(line);
-				if (event) for (const effect of reduceEvent(state, event, limits, Date.now())) perform(effect);
+				if (!event) return;
+				const before = state.progressAt;
+				for (const effect of reduceEvent(state, event, limits, Date.now())) perform(effect);
+				if (state.progressAt !== before) stamp(state.progressAt);
 			};
 			const perform = (effect: ChildEffect) => {
 				switch (effect.kind) {
@@ -203,7 +230,7 @@ export async function runChild(
 						streamFailure = new Error(effect.message);
 						return abort();
 					case "close":
-						return closeInput();
+						return leave();
 					case "settled":
 						// Octocode can abort after a normal reply or between tools without an aborted assistant message.
 						// A watchdog stopping shutdown after an answer still preserves that completed report.
@@ -216,18 +243,18 @@ export async function runChild(
 								if (state.running) cancelled = false;
 								else {
 									onSettled?.();
-									closeInput();
+									leave();
 								}
 							}, INTERRUPT_FOLLOW_UP_MS);
 							return;
 						}
 						host?.budgets?.remove(identity.id, budget);
 						onSettled?.();
-						return closeInput();
+						return leave();
 					case "incoming":
 						return report.incoming(effect.role, effect.job, effect.quiet);
 					case "answer":
-						return report.answer(effect.text, effect.stopReason, effect.errorMessage);
+						return report.answer(effect.text, effect.stopReason, effect.errorMessage, effect.waiting, effect.reminder);
 					case "request":
 						return budget.onReply(effect.count, effect.continues);
 					case "responding":
@@ -237,7 +264,6 @@ export async function runChild(
 			child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
 				if (streamFailure) return;
 				watchdog.activeAt = Date.now();
-				host?.output?.(identity.id, watchdog.activeAt);
 				let start = 0;
 				while (start < chunk.length) {
 					const newline = chunk.indexOf("\n", start);
@@ -269,6 +295,7 @@ export async function runChild(
 				relay.cancelAll();
 				watchdog.stop();
 				clearTimeout(exitGrace);
+				clearTimeout(exitDeadline);
 				clearTimeout(followUp);
 				signal?.removeEventListener("abort", abort);
 				return true;
@@ -294,7 +321,9 @@ export async function runChild(
 				if (stopped) void stopped.then(() => conclude(code, exitSignal));
 				else conclude(code, exitSignal);
 			};
-			const conclude = (code: number | null, exitSignal: NodeJS.Signals | null) => {
+			const conclude = (exitCode: number | null, exitSignal: NodeJS.Signals | null) => {
+				// A child stopped after it settled and delivered its report did not fail by leaving late.
+				const code = leftLate && report.hasReport ? 0 : exitCode;
 				// Until here the exit hook also reaches what the child left in its group.
 				if (trackedPid) untrackDetachedChildPid(trackedPid);
 				for (const stream of [child.stdout, child.stderr]) stream.destroy();
@@ -303,67 +332,23 @@ export async function runChild(
 				stderr.close();
 				const saved = savedNotices(state, outputDir);
 				if (saved) progress({ usage: state.usage, notices: saved });
-				const {
-					text: finalText,
-					body: lastProgress,
-					pointer,
-					error,
-					answered,
-					outcome,
-					outcomeSource,
-					structured,
-					reportArtifact,
-				} = report.result();
-				startGate.noteFailure(error);
-				if (streamFailure) reject(streamFailure);
-				// A child stopped while settling after its answer still delivers that answer.
-				else if (watchdog.stalled && !answered) reject(watchdog.stalled);
-				else if (signal?.aborted && !answered) reject(new Error("Subagent cancelled"));
-				else if (budget.stopped !== undefined)
-					resolve(budgetOutcome(budget.stopped, budget.limits, identity, lastProgress, state.usage));
-				// The child's report (already shown with visible escapes by `Report`) and stderr are untrusted text headed for the model and the terminal. A crash before any
-				// final answer is a failure even when the child narrated progress first: narration is not a report.
-				else if (code !== 0 && !answered && !state.turnSeen) {
-					// Exited before its first model turn: a short cause and where the whole stderr is, not its tail.
-					const reason = stderr.firstError();
-					const file = stderr.save();
-					reject(
-						new StartupError(
-							`Subagent failed (startup): ${exitReason(code, exitSignal)} before its first model turn${reason ? `: ${reason}` : ""}${file ? `\nFull stderr: ${shortPath(file)}` : ""}`,
-							LOAD_ERROR.test(stderr.text()) && state.toolsRunning === 0,
-							reason,
-							file,
-						),
-					);
-				} else if (code !== 0 && !answered) {
-					// The progress text is already the report preview (bounded, with its own trim note); the pointer to the saved report is always kept.
-					const last = finalText
-						? `\nLast progress: ${lastProgress.trim()}${pointer ? `\n${visibleControls(pointer)}` : ""}`
-						: "";
-					reject(new Error(`Subagent ${exitReason(code, exitSignal)}: ${stderr.text()}${last}`));
-				} else {
-					// A child that aborted itself (its compaction kept thrashing, say) says why in its last error notice.
-					const failure = cancelled
-						? state.notices.lastError
-							? `Subagent stopped: ${state.notices.lastError}`
-							: "Subagent cancelled before its run settled"
-						: (error ?? (answered ? undefined : noAnswerError(state.notices.lastError)));
-					resolve({
-						text: finalText,
-						...(reportArtifact ? { reportArtifact } : {}),
-						...(identity.resultContract
-							? {
-									structured:
-										signal?.aborted || code !== 0 || failure
-											? unavailableResult(identity.resultContract)
-											: (structured ?? unavailableResult(identity.resultContract)),
-								}
-							: {}),
-						usage: state.usage,
-						...(outcome ? { outcome, outcomeSource } : {}),
-						...(failure ? { error: failure } : {}),
-					});
-				}
+				const result = report.result();
+				startGate.noteFailure(result.error);
+				const end = concludeRun({
+					report: result,
+					code,
+					exitSignal,
+					streamFailure,
+					stalled: watchdog.stalled,
+					aborted: signal?.aborted === true,
+					cancelled,
+					budget,
+					identity,
+					state,
+					stderr,
+				});
+				if ("reject" in end) reject(end.reject);
+				else resolve(end.resolve);
 			};
 			// Install cleanup before invoking a callback that can fail (for example, recording worktree ownership).
 			try {
@@ -372,7 +357,10 @@ export async function runChild(
 				streamFailure = error instanceof Error ? error : new Error(String(error));
 				abort();
 			}
-			if (!streamFailure) send({ type: "prompt", message: budget.prompt(task) });
+			if (!streamFailure) {
+				stamp(Date.now());
+				send({ type: "prompt", message: budget.prompt(task) });
+			}
 		});
 	} finally {
 		try {

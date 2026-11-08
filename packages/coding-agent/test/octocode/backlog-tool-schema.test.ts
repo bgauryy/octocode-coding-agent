@@ -1,45 +1,52 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
-import { acceptTargetShorthand, entityFields, linkInput } from "../../src/octocode/backlog/tool-schema.ts";
+import { entityFields, legacyEntityFields, linkInput } from "../../src/octocode/backlog/tool-schema.ts";
 
 const parameters = Type.Object(entityFields(false), { additionalProperties: false });
+const subagentParameters = Type.Object(entityFields(true), { additionalProperties: false });
+// What a call may carry: the declaration plus the fields older callers still send.
+const validation = Type.Object({ ...entityFields(false), ...legacyEntityFields }, { additionalProperties: false });
 const completion = {
 	summary: "Done",
-	files: [{ path: "src/a.ts", role: "changed" }],
-	verification: { status: "passed", summary: "Tests passed" },
+	files: ["src/a.ts"],
+	verification: "Tests passed",
 };
 
 describe("backlog entity schema", () => {
-	it("types every completion field the store accepts", () => {
-		const ok = { ...completion, lesson: "Reuse X", operationKey: "k", replaces: 3 };
-		expect(Value.Check(parameters, { completion: ok })).toBe(true);
-		expect(Value.Check(parameters, { completion })).toBe(true);
+	it("declares the light completion and no links, for every role", () => {
+		for (const declared of [parameters, subagentParameters]) {
+			expect(Object.keys(declared.properties)).not.toContain("links");
+			expect(Value.Check(declared, { completion })).toBe(true);
+			expect(Value.Check(declared, { completion: { ...completion, lesson: "Reuse X", replaces: 3 } })).toBe(true);
+		}
 	});
 
 	it.each([
-		["a file role outside the enum", { ...completion, files: [{ path: "a", role: "edited" }] }],
-		["a file without a path", { ...completion, files: [{ role: "changed" }] }],
-		["a verification status outside the enum", { ...completion, verification: { status: "ok", summary: "s" } }],
-		["a verification without a summary", { ...completion, verification: { status: "passed" } }],
+		["a file that is not a path", { ...completion, files: [{ path: "a", role: "changed" }] }],
+		["a verification object", { ...completion, verification: { status: "passed", summary: "s" } }],
+		["a missing verification", { summary: "Done" }],
 		["a non-numeric replaces", { ...completion, replaces: "C1" }],
 		["an unknown key", { ...completion, notes: "x" }],
-	])("refuses %s", (_name, bad) => {
+	])("refuses %s in the declared shape", (_name, bad) => {
 		expect(Value.Check(parameters, { completion: bad })).toBe(false);
 	});
 
-	it("declares a link as a string target or a typed resource, and validates a legacy object target", () => {
+	it("still accepts links and the stored completion shape when validating a call", () => {
+		const stored = {
+			...completion,
+			files: [{ path: "src/a.ts", role: "changed" }],
+			verification: { status: "passed", summary: "s" },
+		};
+		expect(Value.Check(validation, { completion: stored })).toBe(true);
+		expect(Value.Check(validation, { completion: { summary: "only" } })).toBe(true);
 		const link = (fields: unknown) => ({ links: [{ relation: "evidence", ...(fields as object) }] });
 		const resource = { resource: "reports", namespace: "n", id: "r1" };
-		expect(Value.Check(parameters, link({ target: "src/a.ts" }))).toBe(true);
-		expect(Value.Check(parameters, link({ resource }))).toBe(true);
-		expect(Value.Check(parameters, link({ resource: { ...resource, id: undefined } }))).toBe(false);
-		expect(Value.Check(parameters, link({ resource: { ...resource, resource: "files" } }))).toBe(false);
-		expect(Value.Check(parameters, link({ target: { resource: "files", path: "src/a.ts" } }))).toBe(false);
-		const validation = acceptTargetShorthand(parameters);
 		expect(Value.Check(validation, link({ target: "src/a.ts" }))).toBe(true);
+		expect(Value.Check(validation, link({ resource }))).toBe(true);
 		expect(Value.Check(validation, link({ target: { resource: "files", path: "src/a.ts" } }))).toBe(true);
 		expect(Value.Check(validation, link({ target: null, resource }))).toBe(true);
+		expect(Value.Check(parameters, link({ target: "src/a.ts" }))).toBe(false);
 	});
 
 	describe("linkInput", () => {
@@ -74,11 +81,5 @@ describe("backlog entity schema", () => {
 				/links\[2\] needs exactly one of target .*; it has neither\./,
 			);
 		});
-	});
-
-	it("leaves the declared parameters unchanged when building the validation copy", () => {
-		const before = JSON.stringify(parameters);
-		acceptTargetShorthand(parameters);
-		expect(JSON.stringify(parameters)).toBe(before);
 	});
 });

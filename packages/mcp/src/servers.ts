@@ -64,7 +64,7 @@ interface McpServerConfigBase {
 	toolExposure?: Record<string, McpExposure>;
 	/** Set to false to keep the entry without connecting. Default: true. */
 	enabled?: boolean;
-	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. */
+	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. Startup (`initialize`) that times out is retried once at twice the timeout. */
 	timeout?: number;
 	/**
 	 * Bare tool names (no namespace) by role (`roles.ts`). Roles from a project-scope entry count only when the project

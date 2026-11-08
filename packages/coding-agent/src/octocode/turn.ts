@@ -33,11 +33,9 @@ export function registerTurnSetup(
 	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 
-	/** Whether a person can answer `askUser`; read once, so the cached prompt never changes during a session. */
-	let hasUI: boolean | undefined;
-
 	api.on("before_agent_start", async (event, ctx) => {
-		hasUI ??= ctx.hasUI;
+		// Read each turn: the prompt changes only when a person attaches or leaves, not on its own.
+		const hasUI = ctx.hasUI;
 		const selected = event.systemPromptOptions.selectedTools ?? api.getActiveTools();
 		const servers = getMcpSessionStatus(api.events);
 		const roles = currentToolRoles().research;

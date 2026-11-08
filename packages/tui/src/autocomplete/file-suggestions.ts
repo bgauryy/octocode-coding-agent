@@ -177,6 +177,7 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 			suggestions.push({
 				value,
 				label: name + (isDirectory ? "/" : ""),
+				kind: isDirectory ? "directory" : "file",
 			});
 		}
 
@@ -194,28 +195,4 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 		// Directory doesn't exist or not accessible
 		return [];
 	}
-}
-
-// Score an entry against the query (higher = better match)
-// isDirectory adds bonus to prioritize folders
-export function scoreEntry(filePath: string, query: string, isDirectory: boolean): number {
-	const fileName = basename(filePath);
-	const lowerFileName = fileName.toLowerCase();
-	const lowerQuery = query.toLowerCase();
-
-	let score = 0;
-
-	// Exact filename match (highest)
-	if (lowerFileName === lowerQuery) score = 100;
-	// Filename starts with query
-	else if (lowerFileName.startsWith(lowerQuery)) score = 80;
-	// Substring match in filename
-	else if (lowerFileName.includes(lowerQuery)) score = 50;
-	// Substring match in full path
-	else if (filePath.toLowerCase().includes(lowerQuery)) score = 30;
-
-	// Directories get a bonus to appear first
-	if (isDirectory && score > 0) score += 10;
-
-	return score;
 }

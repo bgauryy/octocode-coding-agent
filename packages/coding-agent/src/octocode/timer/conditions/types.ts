@@ -32,6 +32,8 @@ export interface ConditionDeps {
 	context(): ExtensionContext | undefined;
 	/** The state of backlog item `ref` in the session's workspace (`closed` for an item closed without completion), or undefined. */
 	item(ref: string): string | undefined;
+	/** The `dependsOn` items of backlog item `ref` that are missing or not done (closed counts as done). */
+	blockers(ref: string): string[] | undefined;
 	/** Why the agent `name` ended (`completed`, `failed`…), or undefined while it has not. */
 	agentEnd(name: string): { reason: string; detail?: string } | undefined;
 	/** Calls `poke` whenever the shared database file changes (any process wrote); returns the unsubscribe. */

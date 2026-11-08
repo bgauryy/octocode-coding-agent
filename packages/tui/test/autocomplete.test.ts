@@ -1,10 +1,11 @@
 import assert from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it, test } from "node:test";
 import { CombinedAutocompleteProvider } from "../src/autocomplete.ts";
+import { resetFileIndexCache } from "../src/autocomplete/file-index.ts";
 
 const resolveFdPath = (): string | null => {
 	const command = process.platform === "win32" ? "where" : "which";
@@ -25,6 +26,8 @@ type FolderStructure = {
 const setupFolder = (baseDir: string, structure: FolderStructure = {}): void => {
 	const dirs = structure.dirs ?? [];
 	const files = structure.files ?? {};
+	// The @ file index is cached for 10 s; a test that changes the tree needs a fresh one.
+	resetFileIndexCache();
 
 	dirs.forEach((dir) => {
 		mkdirSync(join(baseDir, dir), { recursive: true });
@@ -837,4 +840,90 @@ test("path arguments complete inside slash commands, including spaces", async ()
 	} finally {
 		rmSync(folder, { recursive: true, force: true });
 	}
+});
+
+describe("@ file picker index", { skip: process.platform === "win32" }, () => {
+	let rootDir = "";
+	let baseDir = "";
+
+	beforeEach(() => {
+		rootDir = mkdtempSync(join(tmpdir(), "octocode-autocomplete-index-"));
+		baseDir = join(rootDir, "cwd");
+		mkdirSync(baseDir, { recursive: true });
+		resetFileIndexCache();
+	});
+
+	afterEach(() => {
+		resetFileIndexCache();
+		rmSync(rootDir, { recursive: true, force: true });
+	});
+
+	test("ranks editor-component.ts first for @edtcmp among more than 100 earlier entries", async () => {
+		const files: Record<string, string> = {};
+		for (let i = 0; i < 150; i++) files[`aaa/edit-data-test-cache-map-pool-${i}.ts`] = "x";
+		files["src/components/editor-component.ts"] = "x";
+		setupFolder(baseDir, { files });
+
+		const provider = new CombinedAutocompleteProvider([], baseDir, null);
+		const result = await getSuggestions(provider, ["@edtcmp"], 0, "@edtcmp".length);
+
+		assert.ok(result);
+		assert.strictEqual(result.items[0].value, "@src/components/editor-component.ts");
+		assert.strictEqual(result.items[0].kind, "file");
+		assert.strictEqual(result.items[0].label, "editor-component.ts");
+		assert.deepStrictEqual(result.items[0].matches?.map((index) => result.items[0].label[index]).join(""), "edtcmp");
+		assert.ok(result.items.length <= 50);
+	});
+
+	test("lists tracked and untracked files through git when fd is not available", async () => {
+		spawnSync("git", ["init", "-q"], { cwd: baseDir });
+		setupFolder(baseDir, {
+			files: { "src/tracked.ts": "x", "src/new.ts": "x", "ignored.log": "x", ".gitignore": "*.log\n" },
+		});
+		spawnSync("git", ["add", "src/tracked.ts"], { cwd: baseDir });
+
+		const provider = new CombinedAutocompleteProvider([], baseDir, null);
+		const result = await getSuggestions(provider, ["@ts"], 0, 3);
+
+		const values = result?.items.map((item) => item.value) ?? [];
+		assert.ok(values.includes("@src/tracked.ts"), values.join());
+		assert.ok(values.includes("@src/new.ts"), values.join());
+		assert.ok(!values.some((value) => value.includes("ignored.log")));
+		const empty = await getSuggestions(provider, ["@"], 0, 1);
+		assert.deepStrictEqual(
+			empty?.items.map((item) => item.value),
+			["@src/", "@.gitignore"],
+		);
+	});
+
+	test("a second @ within the refresh window does not spawn fd", async () => {
+		const log = join(rootDir, "spawns.log");
+		const fd = join(rootDir, "fd");
+		writeFileSync(fd, `#!/bin/sh\necho spawned >> "${log}"\nprintf 'src/\\nsrc/main.ts\\n'\n`);
+		chmodSync(fd, 0o755);
+		const provider = new CombinedAutocompleteProvider([], baseDir, fd);
+
+		const first = await getSuggestions(provider, ["@main"], 0, 5);
+		const second = await getSuggestions(provider, ["@mai"], 0, 4);
+
+		assert.deepStrictEqual(
+			first?.items.map((item) => item.value),
+			["@src/main.ts"],
+		);
+		assert.deepStrictEqual(
+			second?.items.map((item) => item.value),
+			["@src/main.ts"],
+		);
+		assert.strictEqual(readFileSync(log, "utf-8").split("\n").filter(Boolean).length, 1);
+	});
+
+	test("scoped @src/ queries fuzzy-match inside that directory using the index", async () => {
+		setupFolder(baseDir, { files: { "src/editor-component.ts": "x", "other/editor-component.ts": "x" } });
+		const provider = new CombinedAutocompleteProvider([], baseDir, null);
+		const result = await getSuggestions(provider, ["@src/edtcmp"], 0, 11);
+		assert.deepStrictEqual(
+			result?.items.map((item) => item.value),
+			["@src/editor-component.ts"],
+		);
+	});
 });

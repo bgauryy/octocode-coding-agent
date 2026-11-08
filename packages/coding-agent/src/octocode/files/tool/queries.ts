@@ -14,7 +14,7 @@ const QuerySchema = Type.Object({
 		type: "string",
 		enum: ["edit", "write", "delete"],
 		description:
-			"edit: exact replacements; write: create/replace; delete: irreversible, only when the task requires it",
+			"edit: exact replacements; write: create or replace; delete: irreversible, only when the task requires it",
 	}),
 	path: Type.String({ description: "Absolute path or relative to cwd" }),
 	edits: Type.Optional(
@@ -37,7 +37,7 @@ const QuerySchema = Type.Object({
 				),
 			}),
 			{
-				description: "edit: replacements, each matched against the original content; none may overlap",
+				description: "edit: replacements matched against the original content; none may overlap",
 			},
 		),
 	),

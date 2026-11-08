@@ -117,6 +117,11 @@ export async function startWorkspaceWeb(
 	const unsubscribe = workspace?.subscribe(workspaceUpdates);
 	const server = http.createServer((req, res) => {
 		const reply = (status: number, body: unknown) => {
+			// A failure after the answer went out must not write headers again: that throws inside the rejection handler.
+			if (res.headersSent) {
+				res.end();
+				return;
+			}
 			res.writeHead(status, {
 				"content-type": "application/json",
 				"cache-control": "no-store",

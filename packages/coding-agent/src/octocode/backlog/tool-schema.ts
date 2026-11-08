@@ -1,9 +1,9 @@
 import { type TSchema, Type } from "typebox";
 import { StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
-import { CloseInputSchema, type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { BacklogError, parseRef } from "./item.ts";
-import type { CompletionArgument } from "./completion-key.ts";
 
 /**
  * A link as the model may write it: `target` is a path, URL or item id (or, from older callers, a reference object);
@@ -19,116 +19,87 @@ export interface LinkArgument {
 /**
  * The entity fields as the model sees them. Every nested shape is typed with closed objects, so the model sees the exact
  * keys and a provider's strict tool mode can constrain them. The store still validates each field against the strict
- * `EntityFieldsSchema` (which names the failing path). A link's `target` is a plain string because strict mode cannot
- * union a string with an object; `acceptTargetShorthand` also lets validation take an object target.
+ * `EntityFieldsSchema` (which names the failing path).
+ *
+ * Three fields are accepted but not declared (`legacyEntityFields`): `links`, which older sessions and RPC callers send
+ * (a path or URL in `evidence` becomes a link), `version` (an optimistic-lock check no recorded call ever needed; `get`
+ * shows it), and the stored form of `completion`.
  */
-const LinkField = Type.Unsafe<LinkArgument[]>({
+const LegacyLinkField = Type.Unsafe<LinkArgument[]>({
 	type: "array",
-	description: "Replaces all the item's links. Give each link target or resource, not both.",
 	items: {
 		type: "object",
 		required: ["relation"],
 		properties: {
 			relation: { type: "string", enum: ["related", "derived_from", "evidence", "output"] },
-			target: { type: "string", description: "A repository path, URL or item id" },
-			resource: {
-				type: "object",
-				description: "For a session, message, report, memory or artifact",
-				required: ["resource", "namespace", "id"],
-				properties: {
-					resource: { type: "string", enum: ["sessions", "messages", "reports", "memories", "artifacts"] },
-					namespace: { type: "string" },
-					id: { type: "string" },
-				},
-				additionalProperties: false,
-			},
+			// A path, URL or item id; older callers send a reference object.
+			target: { type: ["string", "object", "null"] },
+			resource: { type: ["object", "null"] },
 		},
 		additionalProperties: false,
 	},
 });
 
-const completion = Type.Optional(
-	Type.Unsafe<CompletionArgument>({
-		type: "object",
-		required: ["summary", "files", "verification"],
-		properties: {
-			summary: { type: "string" },
-			files: {
-				type: "array",
-				items: {
-					type: "object",
-					required: ["path", "role"],
-					properties: {
-						path: { type: "string", description: "Repository-relative, no `..`" },
-						role: { type: "string", enum: ["changed", "reviewed", "produced"] },
-					},
-					additionalProperties: false,
-				},
-			},
-			verification: {
-				type: "object",
-				required: ["status", "summary"],
-				properties: {
-					status: {
-						type: "string",
-						enum: ["passed", "failed", "not_run", "not_applicable"],
-						description: "Close only on passed/not_applicable; else stay ongoing with a note.",
-					},
-					summary: { type: "string" },
-				},
-				additionalProperties: false,
-			},
-			lesson: { type: "string", description: "What to reuse next time" },
-			operationKey: { type: "string", description: "Retry key; omit and one is derived from the content" },
-			replaces: {
-				type: "integer",
-				description: "Id of the done item's completion to correct; omit for the latest",
-			},
-		},
-		additionalProperties: false,
-		description: "update with state done: the result.",
-	}),
-);
+/**
+ * What a call may carry beyond the declaration: `links`, and `completion` in either shape, which `completionInput`
+ * checks so a missing key is named in plain words instead of a schema path.
+ */
+export const legacyEntityFields = {
+	links: Type.Optional(LegacyLinkField),
+	version: Type.Optional(Type.Integer()),
+	completion: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object" })),
+};
 
-/** The fields one `updates` entry may carry: a single update's id, version, state, note, goal, why and completion. */
-export const UPDATE_ENTRY_KEYS: readonly string[] = [
-	"id",
-	"version",
-	"state",
-	"note",
-	"goal",
-	"why",
-	"completion",
-	"close",
-];
-
-/** `updates`: several single updates in one call, each with its own id and version (shapes as the top-level fields). */
-export function updatesField(state: TSchema) {
-	const { completion: done } = entityFields(false);
+/** The completion as the model writes it: one sentence of verification and a list of paths (`completionInput` maps it to the stored shape). */
+function completionField() {
 	return Type.Optional(
-		Type.Array(
-			Type.Object(
-				{
-					id: Type.String(),
-					version: Type.Optional(Type.Integer()),
-					state: Type.Optional(state),
-					note: Type.Optional(Type.String()),
-					goal: Type.Optional(Type.String()),
-					why: Type.Optional(Type.String()),
-					completion: done,
-					close: Type.Optional(CloseInputSchema),
+		Type.Unsafe<Record<string, unknown>>({
+			type: "object",
+			required: ["summary", "verification"],
+			properties: {
+				summary: { type: "string" },
+				verification: {
+					type: "string",
+					description: 'What ran and its result; start "not applicable" if nothing ran',
 				},
-				{ additionalProperties: false },
-			),
-			{
-				description: "update: instead of id, several entries applied in order; a refused entry does not stop the rest",
+				files: { type: "array", items: { type: "string" }, description: "Paths changed" },
+				lesson: { type: "string", description: "Reuse next time" },
+				replaces: { type: "integer", description: "Completion id to correct" },
 			},
-		),
+			additionalProperties: false,
+			description: "update to done: the result",
+		}),
 	);
 }
 
-/** The fields one `items` entry may carry: an add's descriptive fields; the rest (type, parent, links) go beside `items`. */
-export const ITEM_ENTRY_KEYS: readonly string[] = [
+const completion = completionField();
+
+/**
+ * The fields one `updates` entry may carry: a single update's own (id, version, completion, close) plus every item field
+ * (`ITEM_ENTRY_FIELDS`), so a row can set a parent, paths or dependsOn as a single update does.
+ */
+export const UPDATE_ENTRY_KEYS: readonly string[] = ["id", "version", "completion", "close"];
+
+/**
+ * `updates`: several single updates in one call, each with its own id and version. Entries are plain objects here, like
+ * `items`: `checkedEntry` checks each against the single update's own schema, so the shapes are declared once.
+ */
+export function updatesField() {
+	return Type.Optional(
+		Type.Unsafe<Array<Record<string, unknown>>>({
+			type: "array",
+			items: { type: "object" },
+			description:
+				"update: several entries instead of id, each with update's fields (id, state, note, completion, …); a refused entry does not stop the rest",
+		}),
+	);
+}
+
+/**
+ * Every field an `items` entry may carry: the single add's fields, so a per-item `type`, parent, links, origin or note
+ * works as well as a default beside `items`. Update-only fields (`version`, `close`, `completion`) are refused.
+ */
+export const ITEM_ENTRY_FIELDS: readonly string[] = [
 	"title",
 	"goal",
 	"why",
@@ -138,11 +109,32 @@ export const ITEM_ENTRY_KEYS: readonly string[] = [
 	"state",
 	"priority",
 	"tags",
+	"type",
+	"parentId",
+	"dependsOn",
+	"links",
+	"from",
+	"note",
 ];
+
+/** The states a subagent may set: claiming and closing items its coordinator holds. */
+const SUBAGENT_STATES = ["ongoing", "done"] as const;
+
+/** The `state` field: an epic's state is derived, so the full tool tells models to claim its items instead. */
+export function stateField(subagent: boolean) {
+	return Type.Optional(
+		subagent
+			? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
+			: StringEnum(STATES, {
+					description:
+						"add: initial (default backlog); update: new. An epic follows its items: claim those, then set it done",
+				}),
+	);
+}
 
 /**
  * `items`: several adds in one call; fields given beside `items` are defaults for every entry. Entries are plain objects
- * here, so the declaration stays small on every request: `addEntry` checks each against the single add's own schema.
+ * here, so the declaration stays small on every request: `checkedEntry` checks each against the single add's own schema.
  */
 export function itemsField() {
 	return Type.Optional(
@@ -154,17 +146,21 @@ export function itemsField() {
 	);
 }
 
-/** One `items` entry checked like a single add's arguments (names, types, enums), so a bad entry is refused on its own row. */
-export function addEntry(parameters: TSchema, entry: Record<string, unknown>): Record<string, unknown> {
+/** One `items` or `updates` entry checked like a single call's arguments (names, types, enums), so a bad entry is refused on its own row. */
+export function checkedEntry(
+	parameters: TSchema,
+	entry: Record<string, unknown>,
+	op: "add" | "update",
+): Record<string, unknown> {
 	let checked: Record<string, unknown>;
 	try {
 		checked = validateToolArguments(
 			{ name: "backlog", description: "", parameters },
 			{
 				type: "toolCall",
-				id: "items",
+				id: op,
 				name: "backlog",
-				arguments: { ...entry, op: "add", reason: "items" },
+				arguments: { ...entry, op, reason: op },
 			},
 		);
 	} catch (error) {
@@ -180,20 +176,7 @@ export function addEntry(parameters: TSchema, entry: Record<string, unknown>): R
 }
 
 /**
- * The declared parameters with each link `target` also accepting a reference object, as older transcripts and SDK
- * callers write it (`linkInput` maps it). The model is shown the strict string form; this copy only validates the call.
- */
-export function acceptTargetShorthand<T extends object>(parameters: T): T {
-	const copy = structuredClone(parameters) as {
-		properties?: { links?: { items?: { properties?: { target?: object } } } };
-	};
-	const properties = copy.properties?.links?.items?.properties;
-	if (properties?.target) properties.target = { type: ["string", "object", "null"] };
-	return copy as T;
-}
-
-/**
- * A subagent changes item state, notes and completion (and `add` takes a type and links), so it sees only those
+ * A subagent changes item state, notes and completion (and `add` takes a type), so it sees only those
  * fields, plus `parentId` and `dependsOn` as list filters only: it cannot write hierarchy or dependencies, and the
  * store refuses them on add and update with an error naming them (`writes.ts`). The parameter type stays the full shape.
  */
@@ -208,21 +191,15 @@ export function entityFields(subagent: boolean) {
 				description: "prerequisite item IDs; [] clears. list: items needing any",
 			}),
 		),
-		links: Type.Optional(LinkField),
 		completion,
-		version: Type.Optional(
-			Type.Integer({
-				description: "update: the version get showed; a changed item refuses the edit. Omit, never guess",
-			}),
-		),
 	};
 	if (!subagent) return full;
-	const { type, links, completion: done, version } = full;
+	const { type, completion: done } = full;
 	const listOnly = {
 		parentId: Type.Optional(Type.String({ description: "list only: items under this epic" })),
 		dependsOn: Type.Optional(Type.Array(Type.String(), { description: "list only: items needing any of these" })),
 	};
-	return { type, ...listOnly, links, completion: done, version } as unknown as typeof full;
+	return { type, ...listOnly, completion: done } as unknown as typeof full;
 }
 
 /**

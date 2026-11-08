@@ -1,9 +1,8 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import type { BacklogTask, WorkLink } from "@octocodeai/octocode-contracts/backlogs";
+import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import { type AgentDb, backlog } from "../../../../db/src/api.ts";
-import { BacklogStore, type Item } from "../backlog/store.ts";
+import { BacklogStore } from "../backlog/store.ts";
 import { taskLine } from "../backlog/task-format.ts";
-import { formatAgo } from "../shared/format.ts";
 import { contentText, HOUR_MS, MINUTE_MS } from "../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { flatLine, type SessionExtra, shownLine } from "./store.ts";
@@ -53,59 +52,30 @@ export interface BriefInput {
 	now?: number;
 }
 
-/** Ongoing items the brief describes; the rest are named by number only. */
-const MAX_ITEMS = 3;
+/** Ongoing items the brief lists, one line each; the rest are named by number only. */
+const MAX_ITEMS = 8;
 /** More numbers than this are counted. */
 const MAX_NAMED = 10;
 /** Open tasks the brief lists, and the characters each may take. */
 const MAX_TASKS = 8;
 const TASK_CHARS = 160;
-/** Characters kept of each field of a described item (a cut ends in `…`), so one item stays under 1,200. */
-const FIELD_CHARS = { title: 120, goal: 240, why: 160, paths: 160, links: 200, note: 160 } as const;
-/** The newest notes (the agent's notes and the user's comments) shown per item. */
-const NOTES = 2;
+/** Characters kept of a described item's title and goal and of a step's reason (a cut ends in `…`). */
+const FIELD_CHARS = { title: 100, goal: 120, why: 160 } as const;
 /** Characters kept of the latest user request. */
 const REQUEST_CHARS = 400;
 
-/** A link target as a reader writes it: a path, item id or URL; other resources as `resource:namespace/id`. */
-function linkTarget(target: WorkLink["target"]): string {
-	if (target.resource === "files") return target.path;
-	if (target.resource === "backlogs") return target.id;
-	if (target.resource === "external") return target.url;
-	return `${target.resource}:${target.namespace}/${target.id}`;
-}
-
-/** One item: its ref and title, then one indented line per non-empty field and per recent note, each capped. */
-function itemLines(item: Item, notes: ReadonlyArray<{ at: number; text: string }>, now: number): string[] {
-	const lines = [`- ${item.ref} ${shownLine(item.title, FIELD_CHARS.title)}`];
-	const links = [
-		...item.dependsOn.map((ref) => `depends_on ${ref.id}`),
-		...item.links.map((link) => `${link.relation} ${linkTarget(link.target)}`),
-	];
-	const fields: Array<[string, string, number]> = [
-		["goal", item.goal, FIELD_CHARS.goal],
-		["why", item.why, FIELD_CHARS.why],
-		["paths", item.paths.join(", "), FIELD_CHARS.paths],
-		["links", links.join("; "), FIELD_CHARS.links],
-		...notes.map((note): [string, string, number] => [`note ${formatAgo(now - note.at)}`, note.text, FIELD_CHARS.note]),
-	];
-	for (const [label, text, max] of fields) if (flatLine(text)) lines.push(`  ${label}: ${shownLine(text, max)}`);
-	return lines;
-}
-
 /**
- * This session's ongoing backlog items, most important first, for the reorient brief: a header, then the first
- * `MAX_ITEMS` with goal, why, paths, links and their last `NOTES` notes, each field capped, and the numbers of the
- * rest. Empty when the session holds none.
+ * This session's ongoing backlog items, most important first, for the reorient brief: a header, then one line per
+ * item (ref, title, goal) for the first `MAX_ITEMS` and the numbers of the rest. `backlog get` shows everything else.
+ * Empty when the session holds none.
  */
-export function ongoingBrief(agent: AgentDb, repoKey: string, sessionId: string, now = Date.now()): string[] {
+export function ongoingBrief(agent: AgentDb, repoKey: string, sessionId: string): string[] {
 	const rows = backlog.ongoingItems(agent.db, repoKey, sessionId);
 	if (rows.length === 0) return [];
-	const store = new BacklogStore(() => agent, repoKey);
 	const lines = [renderInstruction("notices/resume/ongoing-items.md")];
 	for (const row of rows.slice(0, MAX_ITEMS)) {
-		const item = store.get(row.seq);
-		if (item) lines.push(...itemLines(item, store.comments(item.ref).slice(-NOTES), now));
+		const goal = flatLine(row.goal) ? ` — goal: ${shownLine(row.goal, FIELD_CHARS.goal)}` : "";
+		lines.push(`- B${row.seq} ${shownLine(row.title, FIELD_CHARS.title)}${goal}`);
 	}
 	const rest = rows.slice(MAX_ITEMS).map((row) => `B${row.seq}`);
 	if (rest.length > 0)
@@ -128,7 +98,7 @@ function stepCounts(open: readonly BacklogTask[]): string {
 
 /**
  * The open steps (tasks, `T<n>`) this session tracks, its own and those under the items it holds, for the reorient
- * brief: a header with the count per item and a `steps list` hint, then up to `MAX_TASKS` one-line steps and the count
+ * brief: a header with the count per item, then up to `MAX_TASKS` one-line steps and the count
  * of the rest. Empty when there are none.
  */
 export function openTasksBrief(agent: AgentDb, repoKey: string, sessionId: string): string[] {
@@ -240,18 +210,18 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 		facts.unshift(renderInstruction("notices/resume/unreported.md", { work: input.unreported.join("; ") }));
 	if (input.unanswered?.length)
 		facts.unshift(renderInstruction("notices/resume/unanswered.md", { calls: input.unanswered.join("; ") }));
-	const ongoing = ongoingBrief(agent, input.repoKey, input.sessionId, now);
+	const ongoing = ongoingBrief(agent, input.repoKey, input.sessionId);
 	if (ongoing.length > 0) facts.push(ongoing.join("\n"));
 	const openTasks = openTasksBrief(agent, input.repoKey, input.sessionId);
 	if (openTasks.length > 0) facts.push(openTasks.join("\n"));
-	const todo = backlog.todoCount(agent.db, input.repoKey);
+	const { todo, backlog: proposed } = new BacklogStore(() => agent, input.repoKey).counts().items;
 	const away = now - input.lastActive;
 	if (facts.length === 0 && away <= LONG_AWAY_MS) return undefined;
 	if (input.request)
 		facts.push(
 			renderInstruction("notices/resume/last-request.md", { newPrompt: input.newPrompt, request: input.request }),
 		);
-	if (todo > 0) facts.push(renderInstruction("notices/resume/backlog-todo.md", { count: todo, several: todo !== 1 }));
+	if (todo + proposed > 0) facts.push(renderInstruction("notices/resume/backlog-todo.md", { todo, proposed }));
 	if (git.dirty > 0)
 		facts.push(renderInstruction("notices/resume/uncommitted.md", { count: git.dirty, several: git.dirty !== 1 }));
 	const [first, ...rest] = facts;

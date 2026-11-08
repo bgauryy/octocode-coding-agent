@@ -52,6 +52,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	addMessageToChat: chatMessages.addMessageToChat,
 	applyFullscreenScrollbarSetting: display.applyFullscreenScrollbarSetting,
 	applyRuntimeSettings: sessionBinding.applyRuntimeSettings,
+	backgroundError: crashReporting.backgroundError,
 	bindCurrentSessionExtensions: sessionBinding.bindCurrentSessionExtensions,
 	buildScopeGroups: resourceGroups.buildScopeGroups,
 	checkForPackageUpdates: startupChecks.checkForPackageUpdates,

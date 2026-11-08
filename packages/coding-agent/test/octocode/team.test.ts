@@ -399,7 +399,7 @@ describe("collaboration prompt", () => {
 			"own user communication, approvals and integration.",
 		);
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
-			"Treat a report as a claim: check the result your next step depends on.",
+			"A report is a claim: read its `Noticed` line first and check what your next step depends on.",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(

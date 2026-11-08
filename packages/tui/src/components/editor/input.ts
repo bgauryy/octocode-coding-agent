@@ -92,16 +92,38 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
+	// Clears an Esc dismissal once the cursor has left its token (before this key can reopen the list).
+	editor.autocomplete.isDismissed();
+
+	// Esc while a request is pending (no list yet) cancels the request and keeps the text.
+	if (kb.matches(data, "tui.select.cancel") && editor.autocomplete.hasPendingRequest()) {
+		editor.autocomplete.dismissAutocomplete();
+		return;
+	}
+
 	// Handle autocomplete mode
 	if (editor.autocomplete.autocompleteState && editor.autocomplete.autocompleteList) {
 		if (kb.matches(data, "tui.select.cancel")) {
-			editor.autocomplete.cancelAutocomplete();
+			editor.autocomplete.dismissAutocomplete();
 			return;
 		}
 
 		if (kb.matches(data, "tui.select.up") || kb.matches(data, "tui.select.down")) {
 			editor.autocomplete.autocompleteList.handleInput(data);
 			return;
+		}
+		if (matchesKey(data, "ctrl+p") || matchesKey(data, "ctrl+n")) {
+			editor.autocomplete.autocompleteList.moveSelection(matchesKey(data, "ctrl+p") ? -1 : 1);
+			return;
+		}
+
+		// Right on a directory in an @ list drills into it.
+		if (kb.matches(data, "tui.editor.cursorRight") && editor.autocomplete.autocompletePrefix.startsWith("@")) {
+			const selected = editor.autocomplete.autocompleteList.getSelectedItem();
+			if (selected && (selected.kind === "directory" || selected.label.endsWith("/"))) {
+				editor.autocomplete.acceptCompletion(selected);
+				return;
+			}
 		}
 
 		if (kb.matches(data, "tui.input.tab")) {
@@ -112,8 +134,16 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 
 		if (kb.matches(data, "tui.select.confirm")) {
 			const selected = editor.autocomplete.autocompleteList.getSelectedItem();
-			if (selected && editor.autocomplete.insertCompletion(selected, editor.autocomplete.autocompletePrefix)) {
-				if (editor.autocomplete.autocompletePrefix.startsWith("/")) {
+			// An @ list that is still indexing has nothing to insert yet; Enter must not send the half-typed prompt.
+			if (!selected && editor.autocomplete.autocompleteIndexing) return;
+			const { cursorLine, cursorCol, lines } = editor.state;
+			const prefix = editor.autocomplete.autocompletePrefix;
+			const atInputStart = cursorLine === 0 && (lines[0] || "").slice(0, cursorCol - prefix.length).trim() === "";
+			const midInputSkill =
+				!atInputStart && editor.isInSkillMentionContext((lines[cursorLine] || "").slice(0, cursorCol));
+			if (selected && editor.autocomplete.insertCompletion(selected, prefix)) {
+				// A command (or its `/path` argument) runs; a skill named mid-input only inserts.
+				if (prefix.startsWith("/") && !midInputSkill) {
 					editor.autocomplete.cancelAutocomplete();
 					// Fall through to submit
 				} else {

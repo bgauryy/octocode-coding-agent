@@ -35,15 +35,15 @@ afterEach(() => {
 });
 
 describe("lean profiles", () => {
-	it("run their own tools plus bash, agent and steps by default, without the specialist floor", () => {
+	it("run their own tools plus bash, agent and timer by default, without the specialist floor", () => {
 		const lean = parseProfile("lean", "---\nlean: true\n---\nDo the task.");
-		expect(lean).toMatchObject({ lean: true, tools: "bash,agent,steps,file,timer" });
-		expect(profileTools(lean)).toBe("bash,agent,steps,file,timer");
+		expect(lean).toMatchObject({ lean: true, tools: "bash,agent,file,timer" });
+		expect(profileTools(lean)).toBe("bash,agent,file,timer");
 		expect(profileReach(lean)).toEqual(["file.workspace", "shell"]);
 		const cli = parseProfile("cli", "---\nlean: true\ntools: bash\n---\n");
-		expect(profileTools(cli)).toBe("bash,agent,steps,timer");
+		expect(profileTools(cli)).toBe("bash,agent,timer");
 		// A list that omits the floor gets it; one that names it is not repeated; archive and MCP never join.
-		expect(profileTools(parseProfile("r", "---\nlean: true\ntools: read\n---\n"))).toBe("read,bash,agent,steps,timer");
+		expect(profileTools(parseProfile("r", "---\nlean: true\ntools: read\n---\n"))).toBe("read,bash,agent,timer");
 		expect(profileTools(parseProfile("s", "---\nlean: true\ntools: steps,bash,agent\n---\n"))).toBe(
 			"steps,bash,agent,timer",
 		);
@@ -57,7 +57,7 @@ describe("lean profiles", () => {
 	it("start without MCP or extensions and mark the child lean", () => {
 		const lean = parseProfile("lean", "---\nlean: true\n---\n");
 		const args = buildAgentArgs(lean, undefined, session, []);
-		expect(args).toEqual(expect.arrayContaining(["--no-mcp", "--tools", "bash,agent,steps,file,timer"]));
+		expect(args).toEqual(expect.arrayContaining(["--no-mcp", "--tools", "bash,agent,file,timer"]));
 		expect(args).not.toContain("builtin:mcp");
 		expect(args).not.toContain("--no-extensions");
 		expect(buildAgentArgs(undefined, undefined, session, [])).not.toContain("--no-mcp");

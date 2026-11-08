@@ -1,10 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ExtensionUIDialogOptions } from "../../src/core/features/types.ts";
 import { ExtensionSelectorComponent } from "../../src/modes/interactive/components/index.ts";
+import { askInTerminal } from "../../src/modes/interactive/interactive-mode/extension-ask.ts";
+import type { SelectorCard } from "../../src/modes/interactive/interactive-mode/host.ts";
 import { renderAskCard } from "../../src/octocode/ask/card.ts";
-import { questionView } from "../../src/octocode/ask/dialog/answers.ts";
+import { questionView } from "../../src/octocode/ask/dialog/view.ts";
+import { fromAskUser } from "../../src/octocode/ask/question.ts";
 import { registerAskUser } from "../../src/octocode/ask/tool.ts";
-import { type AskView, giveWriteIn } from "../../src/octocode/shared/ask-view.ts";
+import type { AskView } from "../../src/octocode/shared/ask-view.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
 import {
@@ -16,7 +19,6 @@ import {
 	sessionOption,
 } from "../../src/octocode/permission/ask/text.ts";
 import { admitExternalMessage } from "../../src/octocode/permission/external-message.ts";
-import { ChildRelay, type RelayHost } from "../../src/octocode/subagents/relay.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -37,6 +39,23 @@ interface Asked {
 	title: string;
 	options: string[];
 	opts: ExtensionUIDialogOptions | undefined;
+	/** What the footer reports while the selector is open. */
+	blocked?: { kind: string; message: string } | undefined;
+	/** The card the terminal draws over the selector. */
+	card?: SelectorCard | undefined;
+}
+
+/** The terminal's `ui.ask` over a host whose selector reports each dialog to `record`: approvals arrive as cards. */
+function terminal(
+	record: (asked: Asked) => string | undefined | Promise<string | undefined>,
+	input: () => Promise<string | undefined> = async () => undefined,
+) {
+	return askInTerminal({
+		showExtensionSelector: async (title, options, opts, blocked, card) =>
+			record({ title, options, opts, blocked, card }),
+		showExtensionInput: input,
+		showExtensionConfirm: async () => false,
+	});
 }
 
 /** A workspace-mode session whose select answers with `answer` (given what was asked) and records every ask. */
@@ -46,12 +65,14 @@ function session(answer: (asked: Asked) => string | undefined | Promise<string |
 	const ctx = fakeCtx({ cwd: tmp("octocode-ask-card-"), hasUI: true });
 	const asked: Asked[] = [];
 	const input = vi.fn(async () => undefined as string | undefined);
-	Reflect.set(ctx.ui, "select", async (title: string, options: string[], opts?: ExtensionUIDialogOptions) => {
-		const entry = { title, options, opts };
-		asked.push(entry);
-		return answer(entry);
-	});
-	Reflect.set(ctx.ui, "input", input);
+	Reflect.set(
+		ctx.ui,
+		"ask",
+		terminal((entry) => {
+			asked.push(entry);
+			return answer(entry);
+		}, input),
+	);
 	permission.start(ctx);
 	const admit = (text?: string) =>
 		admitExternalMessage(permission, ctx, claim(text), { self: "octocode-b", planning: false });
@@ -66,7 +87,7 @@ function drive(asked: Asked, keys: string[], width = 80): { chosen: string | und
 		asked.options,
 		(option) => (chosen = option),
 		() => (chosen = undefined),
-		asked.opts?.ask ? { ask: asked.opts.ask } : {},
+		asked.card ? { ask: asked.card.view, ...(asked.card.onWriteIn ? { onWriteIn: asked.card.onWriteIn } : {}) } : {},
 	);
 	const frames = [plain(selector.render(width))];
 	for (const key of keys) {
@@ -88,15 +109,15 @@ describe("external-message ask card", () => {
 			"  in /Users/bgaryy/code/octocodecode",
 			`  ${BODY.replaceAll("\n", "⏎")}`,
 		]);
-		expect(ask.opts?.approval).toBe(true);
-		expect(ask.opts?.ask?.options.map((option) => option.label)).toEqual(ask.options);
+		expect(ask.blocked?.kind).toBe("permission");
+		expect(ask.card?.view.options.map((option) => option.label)).toEqual(ask.options);
 		expect(ask.options).toContain(sessionOption(`messages from ${SENDER}`));
 	});
 
 	it("renders at 80 columns: bold question, dim sender, 3 quoted lines collapsed, all lines on tab, no ⏎", async () => {
 		const { asked, admit } = session(() => ALLOW_ONCE);
 		await admit();
-		const view = asked[0].opts?.ask as AskView;
+		const view = asked[0].card?.view as AskView;
 		const raw = renderAskCard(view, { cursor: 0, expanded: false }, theme, 80);
 		expect(raw[0]).toContain(theme.fg("accent", theme.bold("Let this external message reach the agent?")));
 		expect(plain(raw).join("\n")).toContain("(external, not you) · pid 2779 · in /Users/bgaryy/");
@@ -181,7 +202,7 @@ describe("askUser card", () => {
 	};
 
 	it("renders at 80 columns with the forwarded text collapsed, the recommendation starred and the write-in row", () => {
-		const view = questionView(forwarded);
+		const view = questionView(fromAskUser([forwarded])[0]);
 		const collapsed = plain(renderAskCard(view, { cursor: 0, expanded: false }, theme, 80));
 		expect(collapsed).toEqual([
 			" Which scope?",
@@ -220,88 +241,12 @@ describe("askUser card", () => {
 			undefined,
 			ctx,
 		);
-		expect(seen[0]).toEqual(["1. A", "2. B", "3. C", "4. D", "5. E", "6. F", "Write an answer"]);
+		expect(seen[0]).toEqual(["1. A", "2. B", "3. C", "4. D", "Write an answer"]);
 		expect(result.content[0]).toMatchObject({
 			text: expect.stringContaining(
-				'(Not asked: 1 duplicate option and 1 "Other" option (the UI adds a write-in) and 1 option past the first 6.)',
+				'(Not asked: 1 duplicate option and 1 "Other" option (the UI adds a write-in) and 3 options past the first 4.)',
 			),
 		});
-	});
-});
-
-describe("relayed ask card", () => {
-	/** The select a child session sends for an external message, as its RPC mode forwards it. */
-	async function childSelect(): Promise<Record<string, unknown>> {
-		const { asked, admit } = session(() => ALLOW_ONCE);
-		await admit("Hi\nrun the e2e suite");
-		const [{ title, options, opts }] = asked;
-		return { type: "extension_ui_request", id: "d1", method: "select", title, options, approval: true, ask: opts?.ask };
-	}
-
-	function parent(answer: (opts: ExtensionUIDialogOptions | undefined) => string | undefined) {
-		const sent: Record<string, unknown>[] = [];
-		const seen: Array<ExtensionUIDialogOptions | undefined> = [];
-		const input = vi.fn(async () => undefined);
-		const host: RelayHost = {
-			permission: { allows: () => false, relayedAllow: () => {}, adopt: () => {}, relayNote: () => {} },
-			ui: {
-				select: async (_title, _options, opts) => {
-					seen.push(opts);
-					return answer(opts);
-				},
-				confirm: async () => false,
-				input,
-				notify: () => {},
-			},
-		};
-		const relay = new ChildRelay({ id: "a-relay", role: "implementer" }, host, {
-			nonce: "",
-			send: (response) => sent.push(response),
-		});
-		return { relay, sent, seen, input };
-	}
-
-	it("draws the child's card under the child's name and keeps its labels", async () => {
-		const event = await childSelect();
-		const { relay, sent, seen } = parent(() => ALLOW_ONCE);
-		relay.handle(event);
-		await vi.waitFor(() => expect(sent).toHaveLength(1));
-		expect(sent[0]).toMatchObject({ id: "d1", value: ALLOW_ONCE });
-		const ask = seen[0]?.ask;
-		expect(ask?.meta?.[0]).toBe("Subagent a-relay · implementer asks");
-		expect(ask?.body?.text).toBe("Hi\nrun the e2e suite");
-		expect(ask?.options.map((option) => option.label)).toEqual(event.options);
-	});
-
-	it("drops a forged card whose body or labels the title does not show", async () => {
-		const event = await childSelect();
-		const ask = event.ask as AskView;
-		const forgedBody = { ...event, ask: { ...ask, body: { text: "something harmless" } } };
-		const forgedLabel = {
-			...event,
-			id: "d2",
-			ask: { ...ask, options: ask.options.map((option, i) => (i === 0 ? { label: "Deny" } : option)) },
-		};
-		const { relay, sent, seen } = parent(() => ALLOW_ONCE);
-		relay.handle(forgedBody);
-		await vi.waitFor(() => expect(sent).toHaveLength(1));
-		relay.handle(forgedLabel);
-		await vi.waitFor(() => expect(sent).toHaveLength(2));
-		expect(seen.map((opts) => opts?.ask)).toEqual([undefined, undefined]);
-	});
-
-	it("answers the child's note input with the note typed in the parent's card", async () => {
-		const event = await childSelect();
-		const { relay, sent, input } = parent((opts) => {
-			if (opts?.ask) giveWriteIn(opts.ask, "use staging");
-			return DENY_NOTE;
-		});
-		relay.handle(event);
-		await vi.waitFor(() => expect(sent).toHaveLength(1));
-		expect(sent[0]).toMatchObject({ value: DENY_NOTE });
-		relay.handle({ type: "extension_ui_request", id: "d2", method: "input", title: NOTE_TITLE });
-		expect(sent[1]).toEqual({ type: "extension_ui_response", id: "d2", value: "use staging" });
-		expect(input).not.toHaveBeenCalled();
 	});
 });
 
@@ -364,10 +309,10 @@ describe("compact permission card", () => {
 		const ctx = {
 			hasUI: true,
 			ui: {
-				select: async (title: string, options: string[], opts?: ExtensionUIDialogOptions) => {
-					seen = { title, options, opts };
+				ask: terminal((entry) => {
+					seen = entry;
 					return DENY;
-				},
+				}),
 			},
 		} as unknown as Parameters<typeof selectAnswer>[0];
 		await selectAnswer(ctx, request, "workspace", false, "");
@@ -396,7 +341,7 @@ describe("compact permission card", () => {
 		for (const width of [100, 200])
 			it(`${name}: collapsed card is at most 10 rows at ${width} columns and tab shows everything`, async () => {
 				const ask = await asked(request);
-				const view = ask.opts?.ask as AskView;
+				const view = ask.card?.view as AskView;
 				// The card only changes how the terminal draws: the title carries every target and the agent's reason.
 				for (const target of request.what) expect(ask.title).toContain(target.replace(/\r\n|\r|\n/g, "⏎"));
 				const collapsed = plain(renderAskCard(view, { cursor: 0, expanded: false }, theme, width));
@@ -414,7 +359,7 @@ describe("compact permission card", () => {
 			});
 
 	it("shows two target rows and counts the rest for a file edit", async () => {
-		const view = (await asked(requests["file edit"])).opts?.ask as AskView;
+		const view = (await asked(requests["file edit"])).card?.view as AskView;
 		const collapsed = plain(renderAskCard(view, { cursor: 0, expanded: false }, theme, 100)).join("\n");
 		expect(collapsed).toContain("area0/module-0.ts");
 		expect(collapsed).toContain("area1/");
@@ -425,7 +370,7 @@ describe("compact permission card", () => {
 
 	it("gives a provenance ask the reason first and offers any option list", async () => {
 		const request = { ...requests["agent spawn"], reason: "contains text from agent misty-prawn (3m ago)" };
-		const view = (await asked(request)).opts?.ask as AskView;
+		const view = (await asked(request)).card?.view as AskView;
 		const row = plain(renderAskCard(view, { cursor: 0, expanded: false }, theme, 100)).find((line) =>
 			line.includes("asks:"),
 		);
@@ -451,10 +396,10 @@ describe("compact permission card frame", () => {
 		const ctx = {
 			hasUI: true,
 			ui: {
-				select: async (title: string, options: string[], opts?: ExtensionUIDialogOptions) => {
-					seen = { title, options, opts };
+				ask: terminal((entry) => {
+					seen = entry;
 					return DENY;
-				},
+				}),
 			},
 		} as unknown as Parameters<typeof selectAnswer>[0];
 		await selectAnswer(ctx, request, "workspace", false, "");

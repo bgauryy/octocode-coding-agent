@@ -1,15 +1,15 @@
 import { currentToolRoles } from "../../../../mcp/src/roles.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 
-/** Every child can save files, communicate, track steps, wait with timers and recover history; local research is added separately. */
-export const CORE_TOOLS = ["file", "agent", "steps", "timer", "archive"] as const;
+/** Every child can save files, communicate, wait with timers and recover history; local research is added separately. `steps` comes only from a profile that lists it. */
+export const CORE_TOOLS = ["file", "agent", "timer", "archive"] as const;
 /**
  * Every child, lean and read-only ones included, can run commands (`read-only-role.ts` still refuses a read-only role's
  * mutations). Not in `CORE_TOOLS`: a profile may replace `bash` with another shell tool such as `powershell`.
  */
 export const SHELL_TOOLS = ["bash"] as const;
-/** What a lean child keeps besides its own list: commands, the means to message its parent, track steps and wait. */
-export const LEAN_FLOOR = [...SHELL_TOOLS, "agent", "steps", "timer"] as const;
+/** What a lean child keeps besides its own list: commands, the means to message its parent, and wait. */
+export const LEAN_FLOOR = [...SHELL_TOOLS, "agent", "timer"] as const;
 /**
  * Tools every child gets by default, unlike `CORE_TOOLS` a profile may remove them (`excludeTools` or a `-` entry):
  * `skill` loads a listed skill by name, and stays out of requests while the child has none.

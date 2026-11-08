@@ -87,12 +87,13 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 	)
 		throw new Error("A worktree commit includes private workspace state under .octocode/code");
 	await rejectNestedRepositories(worktree.repo, worktree.snapshot ?? base, head);
-	const delta = worktree.snapshot
+	const { commit, conflict } = worktree.snapshot
 		? await workerDeltaCommit(worktree.repo, base, worktree.snapshot, head, worktree.agentId)
-		: head;
-	if (delta === base) return {};
-	const ref = await saveWorkerRef(worktree.repo, `${REF_PREFIX}${worktree.agentId}`, delta);
-	return { ref, stat: await git(worktree.repo, ["diff", ...PLAIN_DIFF, "--stat", base, delta]) };
+		: { commit: head, conflict: undefined };
+	if (commit === base) return {};
+	const ref = await saveWorkerRef(worktree.repo, `${REF_PREFIX}${worktree.agentId}`, commit);
+	const stat = await git(worktree.repo, ["diff", ...PLAIN_DIFF, "--stat", base, commit]);
+	return conflict ? { ref, stat, conflict } : { ref, stat };
 }
 
 async function removeWorktree(worktree: Pick<Worktree, "repo" | "path">): Promise<void> {
@@ -108,5 +109,7 @@ async function removeWorktree(worktree: Pick<Worktree, "repo" | "path">): Promis
 export function isolationReport(agentId: string, result: WorktreeResult | { error: string }): string {
 	if ("error" in result) return `\n\nIsolated worktree for ${agentId} could not be saved: ${result.error}`;
 	if (!result.ref) return `\n\nIsolated run ${agentId} changed no files.`;
+	if (result.conflict)
+		return `\n\nIsolated changes are saved on ${result.ref}, but they did not apply to the commit the run started from: ${result.conflict.reason}\nThe ref is the child's own head, built on a snapshot of the parent's uncommitted files, so its diff includes those edits:\n${result.stat}\nIts own change is the patch ${result.conflict.patch}. Merging ${result.ref} may conflict: resolve it, or apply the patch by hand (\`git apply --3way\`). Merge with \`agent\` type \`coordinate\`, action \`merge\`, subagent \`${result.ref.slice(REF_PREFIX.length)}\`; it lists the conflicting files and leaves the ref.`;
 	return `\n\nIsolated changes are on ${result.ref}, not in this tree:\n${result.stat}\nMerge with \`agent\` type \`coordinate\`, action \`merge\`, subagent \`${result.ref.slice(REF_PREFIX.length)}\` (the user: \`/agents merge ${result.ref.slice(REF_PREFIX.length)}\`), not \`git merge\`: it checks reservations, removes the ref and notes the merge on the item.`;
 }

@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { checkedReplies, type Question, type Reply } from "@octocodeai/octocode-contracts";
 import type {
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
@@ -6,6 +7,8 @@ import type {
 	WorkingIndicatorOptions,
 } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
+import { type DialogUi, degrade } from "../../../octocode/ask/degrade.ts";
+import { plainTitle, viewOf } from "../../../octocode/ask/question.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
 import type {
 	RpcExtensionUIDismiss,
@@ -28,11 +31,12 @@ function createDialogPromise<T>(
 	output: RpcOutput,
 	pendingExtensionRequests: PendingExtensionRequests,
 	opts: ExtensionUIDialogOptions | undefined,
-	defaultValue: T,
+	defaultValue: T | (() => T),
 	request: Record<string, unknown>,
 	parseResponse: (response: RpcExtensionUIResponse) => T,
 ): Promise<T> {
-	if (opts?.signal?.aborted) return Promise.resolve(defaultValue);
+	const dismissed = (): T => (typeof defaultValue === "function" ? (defaultValue as () => T)() : defaultValue);
+	if (opts?.signal?.aborted) return Promise.resolve(dismissed());
 
 	const id = crypto.randomUUID();
 	return new Promise((resolve, reject) => {
@@ -47,7 +51,7 @@ function createDialogPromise<T>(
 		const dismiss = () => {
 			cleanup();
 			output({ type: "extension_ui_dismiss", id } satisfies RpcExtensionUIDismiss);
-			resolve(defaultValue);
+			resolve(dismissed());
 		};
 		opts?.signal?.addEventListener("abort", dismiss, { once: true });
 
@@ -66,13 +70,94 @@ function createDialogPromise<T>(
 	});
 }
 
+/** What a client's process was started with that changes what it is sent. */
+interface RpcUiOptions {
+	/** `--rpc-ask`: the client answers `ask` requests, so `ui.ask` exists; otherwise questions reach it as select, confirm and input. */
+	ask?: boolean;
+}
+
+const cancelledAll = (questions: readonly Question[], cancelled: "declined" | "aborted" | "timeout"): Reply[] =>
+	questions.map((question) => ({ id: question.id, cancelled }));
+
+/**
+ * `ui.ask` over the RPC protocol: one `ask` request carries the batch, the client's `replies` are checked against the
+ * questions (a reply that does not fit is not guessed at: every question is declined), a `cancelled` response declines, and a
+ * dialog the host closes (abort, timeout) answers `aborted` or `timeout`. A subagent's approval also sends its permission
+ * `header` (`AskOptions.header`), the parent's way to answer it without a dialog (see `subagents/relay.ts`).
+ */
+const rpcAsk =
+	(output: RpcOutput, pending: PendingExtensionRequests): NonNullable<ExtensionUIContext["ask"]> =>
+	(questions, opts) =>
+		createDialogPromise<Reply[]>(
+			output,
+			pending,
+			opts,
+			() => cancelledAll(questions, opts?.signal?.aborted ? "aborted" : "timeout"),
+			{
+				method: "ask",
+				questions,
+				...(questions.some((question) => question.type === "approval") ? { approval: true } : {}),
+				...(opts?.header ? { header: opts.header } : {}),
+				...(opts?.timeout ? { timeout: opts.timeout } : {}),
+			},
+			(response) =>
+				"replies" in response
+					? (checkedReplies(questions, response.replies) ?? cancelledAll(questions, "declined"))
+					: cancelledAll(questions, "declined"),
+		);
+
 /**
  * Create an extension UI context that uses the RPC protocol.
  */
 export const createExtensionUIContext = (
 	output: RpcOutput,
 	pendingExtensionRequests: PendingExtensionRequests,
-): ExtensionUIContext => ({
+	options: RpcUiOptions = {},
+): ExtensionUIContext => {
+	const ui = dialogContext(output, pendingExtensionRequests);
+	return {
+		...ui,
+		// A client that did not declare `ask` gets the questions as select, confirm and input requests, as it always has.
+		ask: options.ask
+			? rpcAsk(output, pendingExtensionRequests)
+			: (questions, opts) => degrade(wireDialogs(output, pendingExtensionRequests, ui), questions, opts),
+	};
+};
+
+/** The dialogs a client without `ask` answers, and an approval as the `select` request that says it is one. */
+const wireDialogs = (
+	output: RpcOutput,
+	pending: PendingExtensionRequests,
+	ui: Pick<ExtensionUIContext, "select" | "confirm" | "input">,
+): DialogUi => ({
+	...ui,
+	approve: async (question, dialog) => {
+		const options = question.options ?? [];
+		const allowOnce = options.find((option) => option.role === "allow_once");
+		const deny = options.find((option) => option.role === "deny");
+		const label = await createDialogPromise<string | undefined>(
+			output,
+			pending,
+			dialog,
+			undefined,
+			{
+				method: "select",
+				title: plainTitle(question),
+				options: options.map((option) => option.label),
+				timeout: dialog.timeout,
+				approval: true,
+				ask: viewOf(question),
+				...(allowOnce && deny && question.approval
+					? { permission: { ...question.approval, allowOnce: allowOnce.label, rejectOnce: deny.label } }
+					: {}),
+			},
+			(r) => ("cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined),
+		);
+		return label === undefined ? undefined : { label };
+	},
+});
+
+const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExtensionRequests): ExtensionUIContext => ({
 	select: (title, options, opts) =>
 		createDialogPromise(
 			output,
@@ -84,9 +169,6 @@ export const createExtensionUIContext = (
 				title,
 				options,
 				timeout: opts?.timeout,
-				...(opts?.permission ? { permission: opts.permission } : {}),
-				...(opts?.approval ? { approval: true } : {}),
-				...(opts?.ask ? { ask: opts.ask } : {}),
 			},
 			(r) => ("cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined),
 		),
@@ -97,7 +179,7 @@ export const createExtensionUIContext = (
 			pendingExtensionRequests,
 			opts,
 			false,
-			{ method: "confirm", title, message, timeout: opts?.timeout, ...(opts?.approval ? { approval: true } : {}) },
+			{ method: "confirm", title, message, timeout: opts?.timeout },
 			(r) => ("cancelled" in r && r.cancelled ? false : "confirmed" in r ? r.confirmed : false),
 		),
 

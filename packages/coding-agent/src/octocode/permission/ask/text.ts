@@ -1,7 +1,7 @@
 import { PERMISSION_ENV } from "../../../../../common/src/env.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { clipText } from "../../shared/util.ts";
-import { auditLines, cardLines, foldLines, NO_REASON, transcriptPurpose } from "../effect.ts";
+import { auditLines, NO_REASON, transcriptPurpose } from "../effect.ts";
 import { permissionHeader } from "../header.ts";
 import {
 	type ActionClass,
@@ -18,7 +18,10 @@ import {
 import type { PermissionRequest } from "../request.ts";
 import { grantableSource } from "../provenance/grant.ts";
 import type { Answer, Asker } from "./types.ts";
-import { takeWriteIn } from "../../shared/ask-view.ts";
+import type { OptionRole } from "@octocodeai/octocode-contracts";
+import { ask } from "../../ask/ask.ts";
+import { permissionAnswer } from "../../ask/decode.ts";
+import { approvalQuestion } from "../../ask/question.ts";
 import { permissionView } from "./view.ts";
 
 export const ALLOW_ONCE = "Allow once";
@@ -96,64 +99,61 @@ export async function selectAnswer(
 	relay: boolean,
 	nonce: string,
 ): Promise<Answer> {
-	const options = {
-		...(request.signal ? { signal: request.signal } : {}),
-		approval: true,
-		permission: {
-			toolCallId: request.invocation?.toolCallId ?? request.toolCallId,
-			toolName: request.invocation?.toolName,
-			action: request.action,
-			targets: [...request.what],
-			allowOnce: ALLOW_ONCE,
-			rejectOnce: DENY,
-		},
-	};
 	const forcing = forcingReasons(mode, request);
 	const forced = forcing.length > 0;
 	const kind = !forced && request.action && !request.also?.length ? kindOption(request.action) : undefined;
 	// A forced ask has no session answer, but the one a subagent's text names: that source for this session.
 	const grant = forced ? grantableSource(request, forcing) : request.grant;
-	const choices = [
-		ALLOW_ONCE,
-		...(grant ? [sessionOption(grant.label)] : []),
-		...(kind ? [kind] : []),
-		DENY,
-		DENY_NOTE,
-	];
-	// A relayed child leads with the one-line header its parent reads to answer without a dialog (never shown).
-	const head =
+	const session = grant ? sessionOption(grant.label) : undefined;
+	const choices = [ALLOW_ONCE, ...(session ? [session] : []), ...(kind ? [kind] : []), DENY, DENY_NOTE];
+	// A relayed child sends the one-line header its parent reads to answer without a dialog (never shown).
+	const header =
 		relay && nonce !== "" && request.action
-			? `${permissionHeader({ action: request.action, also: [...(request.also ?? [])], reasons: [...new Set(request.reasons)], options: choices, what: auditLines(request.what), nonce })}\n`
-			: "";
-	// The terminal draws the same prompt as a card; the title stays the wire text every other host and the relay read.
-	const ask = permissionView(request, mode, choices, {
-		allowOnce: ALLOW_ONCE,
-		...(grant ? { session: sessionOption(grant.label) } : {}),
-		...(kind ? { kind } : {}),
-		deny: DENY,
-		note: DENY_NOTE,
-		noteTitle: NOTE_TITLE,
+			? permissionHeader({
+					action: request.action,
+					also: [...(request.also ?? [])],
+					reasons: [...new Set(request.reasons)],
+					options: choices,
+					what: auditLines(request.what),
+					nonce,
+				})
+			: undefined;
+	// What each choice means to the engine, by the role it carries: the answer is decoded by role, never by label. A label
+	// two choices share (a kind grant named like the session grant) means the session answer, as it always has.
+	const roles: Record<string, OptionRole> = {
+		[ALLOW_ONCE]: "allow_once",
+		...(kind ? { [kind]: "allow_kind" as const } : {}),
+		...(session ? { [session]: "allow_session" as const } : {}),
+		[DENY]: "deny",
+		[DENY_NOTE]: "deny_note",
+	};
+	const toolCallId = request.invocation?.toolCallId ?? request.toolCallId;
+	const toolName = request.invocation?.toolName;
+	const question = approvalQuestion({
+		id: "permission",
+		// The terminal draws the prompt as a card; every other host shows its plain text.
+		view: permissionView(request, mode, choices, {
+			allowOnce: ALLOW_ONCE,
+			...(session ? { session } : {}),
+			...(kind ? { kind } : {}),
+			deny: DENY,
+			note: DENY_NOTE,
+			noteTitle: NOTE_TITLE,
+		}),
+		roles,
+		approval: {
+			...(toolCallId ? { toolCallId } : {}),
+			...(toolName ? { toolName } : {}),
+			...(request.action ? { action: request.action } : {}),
+			targets: [...request.what],
+		},
 	});
-	const choice = await ctx.ui.select(`${head}${describeRequest(request, mode)}`, choices, { ...options, ask });
-	if (choice === undefined) return undefined;
-	if (choice === ALLOW_ONCE) return "once";
-	if (grant && choice === sessionOption(grant.label)) return "session";
-	if (kind && choice === kind) return "kind";
-	if (choice === DENY) return "deny";
-	// A reply that matches no offered choice (an RPC client's own value) decides nothing.
-	if (choice !== DENY_NOTE) return undefined;
-	// The card's inline write-in already holds the note (Esc there returned to the choices); elsewhere a second dialog asks.
-	const note = takeWriteIn(ask) ?? (await ctx.ui.input(NOTE_TITLE, "what to do instead", options));
-	return note === undefined ? undefined : note.trim() ? { deny: note.trim() } : "deny";
-}
-
-/**
- * The dialog text: the question, what exactly, the effect card, then what the agent says. Model text is sanitized;
- * what the user approves (the command, path, URL or arguments) is shown whole, each target on one line with its line
- * breaks shown as `⏎`, so agent text cannot forge a `▸` line and nothing runs that was not on screen.
- */
-function describeRequest(request: PermissionRequest, mode: PermissionMode): string {
-	return [request.title, ...request.what.map((line) => `  ${foldLines(line)}`), ...cardLines(request, mode)].join("\n");
+	const [reply] = await ask(ctx, [question], {
+		...(request.signal ? { signal: request.signal } : {}),
+		...(header ? { header } : {}),
+	});
+	// A reply that picks no offered choice (an RPC client's own value) decides nothing.
+	return permissionAnswer(question, reply);
 }
 
 export function headlessMessage(request: PermissionRequest, mode: PermissionMode, isSubagent: boolean): string {

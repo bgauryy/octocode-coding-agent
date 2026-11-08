@@ -72,7 +72,7 @@ describe("two sessions", () => {
 
 		// The section is there, and no name enters the prompt: a process name in the cached block would rewrite it per process.
 		const system = requestsOf(endpoint, aStarts)[0]?.system ?? "";
-		expect(system).toContain("only you reach other Octocode processes");
+		expect(system).toContain("Only you reach other Octocode processes");
 		expect(system).not.toContain(a.name);
 		// No shell call in either direction: `agent` `message` carried both.
 		for (const steps of [aStarts, bHears])
@@ -360,7 +360,7 @@ describe("the paths the protocol keeps", () => {
 		const declared = JSON.stringify(requestsOf(endpoint, child)[0]?.declarations.agent ?? "");
 		expect(declared).not.toContain("linked worktree");
 		expect(declared).not.toContain("another Octocode process");
-		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("only you reach other Octocode processes");
+		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("Only you reach other Octocode processes");
 		await until(
 			() => endpoint.requests.some((request) => JSON.stringify(request.messages).includes("hello from the child")),
 			"the parent reading it",

@@ -1,4 +1,12 @@
-import { GLYPH, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	animationClock,
+	GLYPH,
+	MOTION,
+	SEPARATOR,
+	SPINNER,
+	truncateToWidth,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../theme/theme.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
@@ -12,6 +20,12 @@ import type { WorkRow } from "../shared/running-work.ts";
 import { needsAttention, type PanelEntry, panelState } from "./panel-state.ts";
 
 const MAX_ROWS = 6;
+
+/** The mark of a running work row: the spinner frame the agents' marks use for `now`, a still dot in reduced motion. */
+const workMark = (now: number): string =>
+	animationClock.isReducedMotion()
+		? GLYPH.live
+		: SPINNER.braille[Math.floor(now / MOTION.spinnerMs) % SPINNER.braille.length];
 
 /** How much each agent shows, from most to least: its rows and every message line; its rows and the lines that wait on the user; one row each with those lines; one row each. */
 const TIERS = [
@@ -85,7 +99,7 @@ export function widgetLines(
 		now,
 		theme,
 		width,
-		{ live: GLYPH.live, waiting: GLYPH.waiting },
+		{ live: workMark(now), waiting: animationClock.isReducedMotion() ? GLYPH.waiting : workMark(now) },
 		budget === undefined ? undefined : others.length > 0 && selfId ? Math.max(1, budget - 3) : budget,
 		precise,
 	);

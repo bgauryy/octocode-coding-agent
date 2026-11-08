@@ -319,7 +319,7 @@ export async function main(args: string[]) {
 
 	if (appMode === "rpc") {
 		printTimings();
-		await runRpcMode(runtime, { noDialogs: parsed.noDialogs });
+		await runRpcMode(runtime, { noDialogs: parsed.noDialogs, rpcAsk: parsed.rpcAsk });
 	} else if (appMode === "interactive") {
 		const interactiveMode = new InteractiveMode(runtime, {
 			startupDiagnostics,

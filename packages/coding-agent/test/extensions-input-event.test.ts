@@ -116,6 +116,18 @@ describe("Input Event", () => {
 		expect(errs).toContain("boom");
 	});
 
+	it("keeps a handler failure contained when an error reporter throws, and still runs the other reporters", async () => {
+		const r = await createRunner(`export default p => p.on("input", async () => { throw new Error("boom"); });`);
+		const errs: string[] = [];
+		r.onError(() => {
+			throw new Error("reporter torn down");
+		});
+		r.onError((e) => errs.push(e.error));
+		const result = await r.emitInput("x", undefined, "interactive");
+		expect(result.action).toBe("continue");
+		expect(errs).toEqual(["boom"]);
+	});
+
 	it("hasHandlers returns correct value", async () => {
 		let r = await createRunner();
 		expect(r.hasHandlers("input")).toBe(false);

@@ -1,1 +1,1 @@
-Run builds, tests, git, formatters and platform CLIs; move, copy, archive and unpack files; filter a command's own output. Change file contents with `file`
+Run builds, tests, git and platform CLIs; move or unpack files. Edit files with `file`

@@ -184,6 +184,24 @@ describe("the file tool and plain bash prints", () => {
 		expect(await change({ type: "write", content: "replaced\n" })).toMatchObject({ ok: true });
 	});
 
+	it.each([[undefined], [MCP_READER]])(
+		"tells a delete that ran beside a bash read of the file that the read counts after it finishes (%#)",
+		async (reader) => {
+			const { file, bash, change } = setup(reader);
+			// One assistant message runs its calls in parallel: `file` checks before the sibling `bash` reports its result.
+			const refused = await change({ type: "delete" });
+			expect(refused.ok).toBe(false);
+			expect(refused.message).toMatch(/was not read in this session/);
+			expect(refused.message).toMatch(
+				/neither does one made by a parallel call of this message until that call finishes: read first, then call `file` again in a later message/,
+			);
+			expect(fs.existsSync(file)).toBe(true);
+			await bash("sed -n '1,200p' a.txt");
+			expect(await change({ type: "delete" })).toMatchObject({ ok: true });
+			expect(fs.existsSync(file)).toBe(false);
+		},
+	);
+
 	it("asks for a new read once the file changed after the bash read", async () => {
 		const { file, bash, change } = setup();
 		await bash("cat a.txt");

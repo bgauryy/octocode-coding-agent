@@ -18,13 +18,13 @@ export function agentToolSpec() {
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"Skills the child needs: one named only in the task text is rarely loaded. Omit for profile skills or the loaded catalog; [] for none.",
+						"Skills the child needs (one named only in the task text is rarely loaded). Omit: the profile's or the loaded catalog; []: none.",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"MCP servers the child gets: these configured servers plus any its profile names; other servers stay out. Omit for the profile's servers and the session's; [] for the profile's own only. An unknown or disabled name refuses the task.",
+						"MCP servers the child gets, plus its profile's; others stay out. Omit: the profile's and the session's; []: the profile's only. An unknown or disabled name refuses the task.",
 				}),
 			),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
@@ -34,23 +34,24 @@ export function agentToolSpec() {
 			}),
 			item: Type.Optional(
 				Type.String({
-					description: "Backlog item you hold (ongoing); the child may update only it, and its report is noted there.",
+					description:
+						"Backlog item you hold (ongoing), or an unheld todo/backlog one with goal and why, which the call claims for you: the child may update only it; its report is noted there.",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Finished or stopped child id from this session: continues its saved conversation, with its profile, on this task; with model, on that route. An isolated child cannot resume: start a new one with recovery context.",
+						"Id of a finished or stopped child of this session: continues its conversation on this task (with model, on that route). An isolated child cannot resume: start a new one with recovery context.",
 				}),
 			),
 			profile: Type.Optional(
 				Type.String({
-					description: "Profile name; omit for general-purpose",
+					description: "Profile name; omit: general-purpose",
 				}),
 			),
 			headless: Type.Optional(
 				Type.Boolean({
-					description: "Browser: true headless (default); false visible with persistent logins",
+					description: "Browser: true: headless (default); false: visible, with persistent logins",
 				}),
 			),
 			model: Type.Optional(
@@ -64,7 +65,7 @@ export function agentToolSpec() {
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
 					description:
-						"JSON Schema for the child's final JSON result (verdict in details). Supported keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
+						"JSON Schema for the child's final JSON result (verdict in details). Keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
 				}),
 			),
 			background: Type.Optional(
@@ -75,19 +76,19 @@ export function agentToolSpec() {
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
-						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. Land them with `coordinate` action `merge`, not git merge.",
+						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. Land them with coordinate `merge`, not git merge.",
 				}),
 			),
 			workingCopy: Type.Optional(
 				Type.Boolean({
 					description:
-						"With isolate: start from a snapshot of tracked and non-ignored untracked files; conflicts keep the worktree.",
+						"With isolate: start from a snapshot of tracked and untracked non-ignored files; conflicts keep the worktree.",
 				}),
 			),
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						'Files, or "dir/" for a tree, the child will edit: reserved for it from start to report, so you need no lock or unlock. A path held by another child of this session queues the start until it reports; any other holder refuses it. No effect with isolate or a read-only profile.',
+						'Files or "dir/" the child will edit, reserved for it until it reports (no lock needed). A path held by a sibling child queues the start; any other holder refuses it. No effect with isolate or a read-only profile.',
 				}),
 			),
 			// The `agent` call's own reason (`octocode/agent-tool.ts` passes it to a type that declares one): the child's why.

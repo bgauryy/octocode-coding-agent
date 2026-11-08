@@ -1,6 +1,6 @@
 # Instructions: the model-facing prompt text
 
-Every sentence the model reads from Octocode itself lives in this folder as Markdown, except the text that belongs to a tool or to the MCP server (see [Where the rest lives](#where-the-rest-lives)). Browse the folder to read it; read `.octocode/tmp/agent-prompts/`, which every build writes, to see the full context each agent receives.
+Every sentence the model reads from Octocode itself lives in this folder as Markdown, except the text that belongs to a tool or to the MCP server (see [Where the rest lives](#where-the-rest-lives)). Browse the folder to read it; read `.octocode/tmp/agent-prompts/`, which every build writes, to see the full context each agent receives. The committed, templated version of each agent's final prompt is in [`final/`](final/README.md).
 
 ```text
 instructions/

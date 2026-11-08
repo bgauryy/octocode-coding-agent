@@ -89,6 +89,8 @@ export class ModelRuntime implements Models {
 	private readonly availability: ModelAvailability;
 	private readonly credentialOperations: CredentialOperations;
 	private readonly registrations: ProviderRegistrations;
+	/** Why the last refresh a provider (un)registration started failed; shown by getError until one succeeds. */
+	private registrationRefreshError: string | undefined;
 
 	private constructor({
 		credentials,
@@ -111,7 +113,10 @@ export class ModelRuntime implements Models {
 			availability: this.availability,
 		});
 		this.registrations = new ProviderRegistrations(this.layers, this.availability, () => {
-			void this.refresh({ allowNetwork: false });
+			this.refresh({ allowNetwork: false }).then(
+				() => (this.registrationRefreshError = undefined),
+				(error: unknown) => (this.registrationRefreshError = error instanceof Error ? error.message : String(error)),
+			);
 		});
 		this.rebuildProviders();
 	}
@@ -193,6 +198,7 @@ export class ModelRuntime implements Models {
 		const errors = this.layers.getErrors();
 		const availabilityError = this.availability.availabilityError;
 		if (availabilityError) errors.push(`Availability refresh: ${availabilityError}`);
+		if (this.registrationRefreshError) errors.push(`Model refresh: ${this.registrationRefreshError}`);
 		return errors.length > 0 ? errors.join("\n\n") : undefined;
 	}
 

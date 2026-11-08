@@ -26,6 +26,10 @@ export interface SelectItem {
 	value: string;
 	label: string;
 	description?: string;
+	/** Indexes into `label` of characters to highlight (file and directory rows). */
+	matches?: number[];
+	/** `file` and `directory` rows draw the label with highlights and the description as a dim parent path. */
+	kind?: "file" | "directory" | "command";
 }
 
 export interface SelectListTheme {
@@ -34,7 +38,25 @@ export interface SelectListTheme {
 	description: (text: string) => string;
 	scrollInfo: (text: string) => string;
 	noMatch: (text: string) => string;
+	/** Matched label characters; defaults to the selected-text colour in bold. */
+	matchHighlight?: (text: string) => string;
+	/** Directory names; defaults to the plain colour. */
+	directory?: (text: string) => string;
+	/** The key hint; defaults to `scrollInfo`. */
+	hint?: (text: string) => string;
 }
+
+export interface SelectListOptions {
+	/** Row shown when no item matches; defaults to "No matching commands". */
+	emptyText?: string;
+	/** Dim key hint appended to the scroll-info row when the width allows. */
+	hint?: string;
+}
+
+const BOLD_ON = "\x1b[1m";
+const BOLD_OFF = "\x1b[22m";
+const bold = (text: string): string => `${BOLD_ON}${text}${BOLD_OFF}`;
+const HINT_SEPARATOR = "  ";
 
 export interface SelectListTruncatePrimaryContext {
 	text: string;
@@ -58,17 +80,30 @@ export class SelectList implements Component {
 	private maxVisible: number = 5;
 	private theme: SelectListTheme;
 	private layout: SelectListLayoutOptions;
+	private options: SelectListOptions;
 
 	public onSelect?: (item: SelectItem) => void;
 	public onCancel?: () => void;
 	public onSelectionChange?: (item: SelectItem) => void;
 
-	constructor(items: SelectItem[], maxVisible: number, theme: SelectListTheme, layout: SelectListLayoutOptions = {}) {
+	constructor(
+		items: SelectItem[],
+		maxVisible: number,
+		theme: SelectListTheme,
+		layout: SelectListLayoutOptions = {},
+		options: SelectListOptions = {},
+	) {
+		this.options = options;
 		this.items = items;
 		this.filteredItems = items;
 		this.maxVisible = maxVisible;
 		this.theme = theme;
 		this.layout = layout;
+	}
+
+	/** Replaces the empty-state row, e.g. with an indexing progress line. */
+	setEmptyText(text: string | undefined): void {
+		this.options = { ...this.options, emptyText: text };
 	}
 
 	setFilter(filter: string): void {
@@ -90,7 +125,7 @@ export class SelectList implements Component {
 
 		// If no items match filter, show message
 		if (this.filteredItems.length === 0) {
-			lines.push(this.theme.noMatch("  No matching commands"));
+			lines.push(this.theme.noMatch(`  ${toDisplayLine(this.options.emptyText ?? "No matching commands")}`));
 			return lines;
 		}
 
@@ -110,8 +145,13 @@ export class SelectList implements Component {
 		}
 
 		// Add scroll indicators if needed
-		if (startIndex > 0 || endIndex < this.filteredItems.length) {
-			const scrollText = `  (${this.selectedIndex + 1}/${this.filteredItems.length})`;
+		const scrolls = startIndex > 0 || endIndex < this.filteredItems.length;
+		const scrollText = scrolls ? `  (${this.selectedIndex + 1}/${this.filteredItems.length})` : "";
+		const hint = this.options.hint;
+		const hintText = hint ? (scrolls ? HINT_SEPARATOR : "  ") + hint : "";
+		if (hint && visibleWidth(scrollText + hintText) <= width - 2) {
+			lines.push((this.theme.hint ?? this.theme.scrollInfo)(scrollText + hintText));
+		} else if (scrolls) {
 			// Truncate if too long for terminal
 			lines.push(this.theme.scrollInfo(truncateToWidth(scrollText, width - 2, "")));
 		}
@@ -157,16 +197,9 @@ export class SelectList implements Component {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		// Up arrow - wrap to bottom when at top
-		if (kb.matches(keyData, "tui.select.up")) {
-			this.selectedIndex = this.selectedIndex === 0 ? this.filteredItems.length - 1 : this.selectedIndex - 1;
-			this.notifySelectionChange();
-		}
-		// Down arrow - wrap to top when at bottom
-		else if (kb.matches(keyData, "tui.select.down")) {
-			this.selectedIndex = this.selectedIndex === this.filteredItems.length - 1 ? 0 : this.selectedIndex + 1;
-			this.notifySelectionChange();
-		}
+		if (this.filteredItems.length === 0 && !kb.matches(keyData, "tui.select.cancel")) return;
+		if (kb.matches(keyData, "tui.select.up")) this.moveSelection(-1);
+		else if (kb.matches(keyData, "tui.select.down")) this.moveSelection(1);
 		// Enter
 		else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selectedItem = this.filteredItems[this.selectedIndex];
@@ -180,6 +213,14 @@ export class SelectList implements Component {
 				this.onCancel();
 			}
 		}
+	}
+
+	/** Moves the selection one row, wrapping at both ends. */
+	moveSelection(delta: -1 | 1): void {
+		const count = this.filteredItems.length;
+		if (count === 0) return;
+		this.selectedIndex = (this.selectedIndex + delta + count) % count;
+		this.notifySelectionChange();
 	}
 
 	private getVisibleRange(): { startIndex: number; endIndex: number } {
@@ -202,6 +243,9 @@ export class SelectList implements Component {
 	): string {
 		const prefix = isSelected ? `${GLYPH.cursor} ` : "  ";
 		const prefixWidth = visibleWidth(prefix);
+		if (item.kind === "file" || item.kind === "directory") {
+			return this.renderPathItem(item, isSelected, width, prefix, descriptionSingleLine);
+		}
 
 		if (descriptionSingleLine && width > 40) {
 			const effectivePrimaryColumnWidth = Math.max(1, Math.min(primaryColumnWidth, width - prefixWidth - 4));
@@ -230,6 +274,43 @@ export class SelectList implements Component {
 		}
 
 		return prefix + truncatedValue;
+	}
+
+	private renderPathItem(
+		item: SelectItem,
+		isSelected: boolean,
+		width: number,
+		prefix: string,
+		description: string | undefined,
+	): string {
+		const label = this.getDisplayValue(item);
+		const maxLabelWidth = Math.max(1, width - visibleWidth(prefix) - 2);
+		const shownLabel = truncateToWidth(label, maxLabelWidth, "");
+		const matched = new Set(label === (item.label || item.value) ? item.matches : []);
+		const plain = item.kind === "directory" && !isSelected ? (this.theme.directory ?? identity) : identity;
+		const highlight = isSelected ? bold : (this.theme.matchHighlight ?? ((t) => bold(this.theme.selectedText(t))));
+		let name = "";
+		let run = "";
+		let runMatched = false;
+		let offset = 0;
+		const flush = () => {
+			if (run) name += runMatched ? highlight(run) : plain(run);
+			run = "";
+		};
+		for (const char of shownLabel) {
+			const isMatch = matched.has(offset);
+			if (isMatch !== runMatched) flush();
+			runMatched = isMatch;
+			run += char;
+			offset += char.length;
+		}
+		flush();
+
+		const parent = description ? parentDirectory(description) : "";
+		const room = width - visibleWidth(prefix) - visibleWidth(shownLabel) - 4;
+		const parentText = parent && room > 3 ? `  ${truncateLeft(parent, room)}` : "";
+		if (isSelected) return this.theme.selectedText(`${prefix}${name}${parentText}`);
+		return prefix + name + (parentText ? this.theme.description(parentText) : "");
 	}
 
 	private getPrimaryColumnWidth(): number {
@@ -283,4 +364,24 @@ export class SelectList implements Component {
 		const item = this.filteredItems[this.selectedIndex];
 		return item || null;
 	}
+}
+
+const identity = (text: string): string => text;
+
+/** Parent directory of a `/`-separated display path, with a trailing slash; empty at the top level. */
+function parentDirectory(displayPath: string): string {
+	const trimmed = displayPath.replace(/\/+$/, "");
+	const slash = trimmed.lastIndexOf("/");
+	return slash === -1 ? "" : trimmed.slice(0, slash + 1);
+}
+
+/** Keeps the end of `text` (the nearest directories) when it does not fit. */
+function truncateLeft(text: string, maxWidth: number): string {
+	if (visibleWidth(text) <= maxWidth) return text;
+	let tail = "";
+	for (const char of Array.from(text).reverse()) {
+		if (visibleWidth(tail) + visibleWidth(char) > maxWidth - 1) break;
+		tail = char + tail;
+	}
+	return `…${tail}`;
 }

@@ -3,12 +3,19 @@
 import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import { McpClient, McpHttpError, McpSessionExpiredError, type StdioTransport } from "../client/index.ts";
+import {
+	McpClient,
+	McpHttpError,
+	McpSessionExpiredError,
+	McpTimeoutError,
+	type StdioTransport,
+} from "../client/index.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { hostIdentity, hostOutput } from "../host.ts";
 import { visibleControls } from "../../../common/src/sanitize.ts";
 import type { McpServerLog } from "../log.ts";
 import { cutText } from "../../../common/src/text.ts";
+import { firstLine } from "../../../common/src/clip.ts";
 
 const DEFAULT_TIMEOUT_SECONDS = 60;
 /** The default bound on one request of a server. */
@@ -17,6 +24,9 @@ export const DEFAULT_TIMEOUT_MS = DEFAULT_TIMEOUT_SECONDS * 1000;
 const STDERR_TAIL_CHARS = 2_000;
 /** Delays between attempts to connect to an HTTP server that failed with a transient error. */
 export const CONNECT_RETRY_DELAYS_MS = [250, 1_000];
+
+/** The factor of the one retry after a startup timeout: a server slow to answer under load gets longer. */
+const TIMEOUT_RETRY_FACTOR = 2;
 
 /** Failed connection attempts in a row that still retry at once; later ones wait, so a server that dies on start is not respawned for every call. */
 const FREE_CONNECT_FAILURES = 2;
@@ -52,6 +62,13 @@ export class ConnectBackoff {
 	}
 }
 
+/** The refusal of a connect attempt made during the pause after repeated failures (`ConnectBackoff`). */
+export function connectBackoffError(name: string, failures: number, error: string | undefined, waitMs: number): Error {
+	return new Error(
+		`MCP server "${name}" failed to connect ${failures} times in a row (${firstLine(error ?? "unknown error")}); it is not started again for ${Math.ceil(waitMs / 1000)}s. Restart it to try now.`,
+	);
+}
+
 /**
  * `disconnected`: the connection dropped (for example the stdio server exited); the next call
  * reconnects.
@@ -64,6 +81,26 @@ function isTransientError(error: unknown): boolean {
 		return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status !== 501);
 	}
 	return error instanceof TypeError;
+}
+
+/**
+ * Run `attempt(timeoutMs)`; when the server did not answer in time (`McpTimeoutError`), once more with
+ * `TIMEOUT_RETRY_FACTOR` times the bound after `onRetry()`. The bound is the server's `timeout` when it sets one, so
+ * that override still sets both attempts; any other failure, or a stop, throws at once.
+ */
+export async function retryAfterTimeout<T>(
+	timeoutMs: number,
+	signal: AbortSignal,
+	attempt: (timeoutMs: number) => Promise<T>,
+	onRetry: () => void,
+): Promise<T> {
+	try {
+		return await attempt(timeoutMs);
+	} catch (error) {
+		if (signal.aborted || !(error instanceof McpTimeoutError)) throw error;
+		onRetry();
+		return attempt(timeoutMs * TIMEOUT_RETRY_FACTOR);
+	}
 }
 
 /**

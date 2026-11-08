@@ -46,6 +46,7 @@ const deps = (own: Partial<ConditionDeps> = {}): ConditionDeps => ({
 	reservation: () => undefined,
 	context: () => undefined,
 	item: () => undefined,
+	blockers: () => undefined,
 	agentEnd: () => undefined,
 	watchDatabase: () => () => undefined,
 	roots: () => [root],
@@ -69,6 +70,8 @@ describe("the closed list of until conditions", () => {
 		expect(() => parseUntil({ file: { path: "a", glob: "*" } })).toThrow(/no field glob/);
 		expect(() => parseUntil({ file: { path: "a", is: "dir" } })).toThrow(/until.file.is/);
 		expect(() => parseUntil({ item: { ref: "B1", state: "lost" } })).toThrow(/until.item.state/);
+		expect(() => parseUntil({ item: { ref: " ", state: "done" } })).toThrow(/until.item.ref/);
+		expect(parseUntil({ item: { ref: "B1", state: "done" } })).toEqual({ kind: "item", ref: "B1", state: "done" });
 	});
 
 	it("limits port to loopback and valid numbers", () => {
@@ -146,6 +149,40 @@ describe("deterministic conditions", () => {
 			expect(outcome).toMatchObject({ met: false, refused: expect.stringContaining("outside the workspace") });
 		}
 		fs.rmSync(outside, { recursive: true, force: true });
+	});
+
+	it("item with several refs fires when any reaches the state and names it", async () => {
+		const input = { cwd: root, baseline: undefined };
+		const states: Record<string, string> = { B1: "ongoing", B2: "done" };
+		const parsed = parseUntil({ item: { ref: ["B1", "B2"], state: "done" } });
+		expect(parsed).toEqual({ kind: "item", ref: "B1,B2", state: "done" });
+		expect(parseUntil({ item: { ref: "B1, B2 B1", state: "done" } })).toEqual(parsed);
+		expect(await check({ item: (ref) => states[ref] })(parsed!, input)).toMatchObject({
+			met: true,
+			output: "B1 is ongoing. B2 is done.",
+		});
+		states.B2 = "todo";
+		expect(await check({ item: (ref) => states[ref] })(parsed!, input)).toMatchObject({ met: false });
+		expect(
+			await check({ item: (ref) => states[ref] })({ kind: "item", ref: "B1,B9", state: "done" }, input),
+		).toMatchObject({
+			refused: expect.stringContaining("no backlog item B9"),
+		});
+	});
+
+	it("item state ready fires once every dependsOn item is done or closed", async () => {
+		const input = { cwd: root, baseline: undefined };
+		const ready = parseUntil({ item: { ref: "B5", state: "ready" } })!;
+		let open = ["B2", "B3"];
+		const host = { item: () => "todo", blockers: () => open };
+		expect(await check(host)(ready, input)).toMatchObject({ met: false, output: "B5 waits on B2, B3." });
+		open = ["B3"];
+		expect(await check(host)(ready, input)).toMatchObject({ met: false });
+		open = [];
+		expect(await check(host)(ready, input)).toMatchObject({
+			met: true,
+			output: expect.stringContaining("B5 is ready"),
+		});
 	});
 
 	it("item, agent and unlocked read the host", async () => {

@@ -74,6 +74,11 @@ function storeOfRepo(): BacklogStore {
 }
 
 describe("task tool", () => {
+	it("registers without being declared by default: only a tool list that names it (a child's, /tools, a profile) turns it on", () => {
+		expect(setup().tools.get("steps").defaultActive).toBe(false);
+		expect(setup().tools.get("backlog").defaultActive).toBe(true);
+	});
+
 	it("adds, updates and lists session tasks, and get shows an item's tasks", async () => {
 		const t = setup();
 		// `why` is the task's stored reason; the call's own `reason` (every tool takes one) is the registry's, never stored.
@@ -200,7 +205,7 @@ describe("task tool", () => {
 		await t.backlog({ op: "add", title: "Child", parentId: "B1", state: "ongoing", ...READY });
 		for (const state of ["backlog", "todo"])
 			await expect(t.backlog({ op: "update", id: "B1", state })).rejects.toThrow(
-				/^B1 is an epic with items: its state follows them\./,
+				/^B1 is an epic with items: its state follows them \(1 of its 1 items are not done\) \(open: B2\)\./,
 			);
 		await t.backlog({ op: "update", id: "B2", state: "done", completion: completed() });
 		await t.backlog({ op: "update", id: "B1", state: "done", completion: completed() });
@@ -256,9 +261,7 @@ describe("task tool", () => {
 		const detail = await t.backlog({ op: "get", id: "B1" });
 		expect(detail).toContain("B1 [backlog p2 epic] Group");
 		expect(detail).toContain("State from its items: ongoing");
-		await expect(t.task({ op: "add", goal: "On an epic", item: "B1" })).rejects.toThrow(
-			/B1 is an epic: epics group items and hold no steps \(its open items: B2\)\. Pass one of its items as item, or omit item/,
-		);
+		expect(await t.task({ op: "add", goal: "On an epic", item: "B1" })).toContain("B1");
 	});
 
 	describe("as a subagent", () => {

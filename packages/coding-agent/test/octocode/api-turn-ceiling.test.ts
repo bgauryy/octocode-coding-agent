@@ -101,7 +101,7 @@ describe("with sessionApiTurnPermission set to workspace, a full session holds e
 	});
 
 	it("puts the external agent's request to the user, still under the ceiling while it runs", async () => {
-		const { client, permission, seen } = await boot({ hasUI: true, selects: ["1. Allow"] });
+		const { client, permission, seen } = await boot({ hasUI: true, selects: ["Allow"] });
 		await expect(client.call("external.call", CONNECT)).resolves.toEqual({ answer: "selected" });
 		expect(seen).toEqual([{ mode: "workspace", cap: "workspace" }]);
 		expect(permission.turnCap.active).toBeUndefined();
@@ -115,7 +115,7 @@ describe("with sessionApiTurnPermission set to workspace, a full session holds e
 	});
 
 	it("keeps the ceiling of a turn message.send started when an external call ends meanwhile", async () => {
-		const { client, permission } = await boot({ hasUI: true, selects: [ALLOW_ONCE, "1. Allow"] });
+		const { client, permission } = await boot({ hasUI: true, selects: [ALLOW_ONCE, "Allow"] });
 		await client.call("message.send", { text: "start" });
 		await vi.waitFor(() => expect(permission.turnCap.active).toBe("workspace"));
 		await client.call("external.call", CONNECT);

@@ -17,13 +17,15 @@ function fixture() {
 		if (request?.method !== "select") throw new Error("Expected select request");
 		return request;
 	};
+	/** The question reaches the host after the dialog lock is taken, so a request shows up a few ticks after the ask. */
+	const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 	const reply = (value: string) => {
 		const request = select();
 		const entry = pending.get(request.id);
 		if (!entry) throw new Error("Missing pending request");
 		entry.resolve({ type: "extension_ui_response", id: request.id, value });
 	};
-	return { ctx: { hasUI: true, ui }, pending, requests, select, reply };
+	return { ctx: { hasUI: true, ui }, pending, requests, select, settle, reply };
 }
 
 describe("permission metadata over RPC UI", () => {
@@ -46,6 +48,7 @@ describe("permission metadata over RPC UI", () => {
 			false,
 			"",
 		);
+		await f.settle();
 		const request = f.select();
 		expect(request.permission).toEqual({
 			toolCallId: "call-1",
@@ -86,6 +89,7 @@ describe("permission metadata over RPC UI", () => {
 			false,
 			"",
 		);
+		await f.settle();
 		expect(f.select().permission).toBeDefined();
 		controller.abort();
 		await expect(answer).resolves.toBeUndefined();
@@ -104,6 +108,7 @@ describe("permission metadata over RPC UI", () => {
 			[],
 			{ toolCallId: "file-1", toolName: "file" },
 		);
+		await f.settle();
 		expect(f.select().permission).toEqual({
 			toolCallId: "file-1",
 			toolName: "file",
@@ -113,14 +118,14 @@ describe("permission metadata over RPC UI", () => {
 			rejectOnce: "Reject all",
 		});
 		f.reply("Review one by one");
-		await Promise.resolve();
+		await f.settle();
 		expect(f.select().permission).toMatchObject({
 			targets: ["write new.ts"],
 			allowOnce: "Apply",
 			rejectOnce: "Reject",
 		});
 		f.reply("Apply");
-		await Promise.resolve();
+		await f.settle();
 		expect(f.select().permission?.targets).toEqual(["edit old.ts → moved.ts"]);
 		f.reply("Reject");
 		await expect(review).resolves.toEqual(new Map([[1, undefined]]));
@@ -140,15 +145,14 @@ describe("permission metadata over RPC UI", () => {
 			},
 			new AbortController().signal,
 		);
-		await Promise.resolve();
-		await Promise.resolve();
+		await f.settle();
 		const request = f.select();
-		expect(request.options).toEqual(["1. Proceed", "2. Stop"]);
+		expect(request.options).toEqual(["Proceed", "Stop"]);
 		expect(request.permission).toMatchObject({
 			toolCallId: "external-call",
 			toolName: "external",
-			allowOnce: "1. Proceed",
-			rejectOnce: "2. Stop",
+			allowOnce: "Proceed",
+			rejectOnce: "Stop",
 		});
 		f.reply(request.permission!.allowOnce);
 		await expect(decision).resolves.toEqual({ outcome: { outcome: "selected", optionId: "one" } });

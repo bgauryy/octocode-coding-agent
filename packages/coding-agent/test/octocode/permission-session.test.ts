@@ -114,6 +114,7 @@ describe("allow a whole kind of action for the session", () => {
 	it("lets the file review stop reviewing for the rest of the session", async () => {
 		const asked: string[][] = [];
 		const ctx = {
+			hasUI: true,
 			ui: {
 				select: async (_title: string, choices: string[]) => {
 					asked.push(choices);

@@ -116,7 +116,10 @@ export interface AgentSessionApi
 	hasExtensionHandlers(eventType: string): boolean;
 
 	/** Answer the dialog a run is blocked on (`awaiting.id`) for a client other than this mode's UI. */
-	answerDialog(id: string, answer: { choice?: string; text?: string }): { ok: true } | { ok: false; reason: string };
+	answerDialog(
+		id: string,
+		answer: { choice?: string; text?: string; replies?: unknown },
+	): { ok: true } | { ok: false; reason: string };
 
 	/**
 	 * Get the extension runner (for setting UI context and error handlers).

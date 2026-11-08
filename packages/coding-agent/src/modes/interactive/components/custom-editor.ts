@@ -2,6 +2,7 @@ import {
 	Editor,
 	type EditorOptions,
 	type EditorTheme,
+	matchesKey,
 	splitDoubleEscape,
 	type TUI,
 	visibleWidth,
@@ -27,6 +28,8 @@ export class CustomEditor extends Editor {
 	public onEscape?: () => void;
 	public onCtrlD?: () => void;
 	public onPasteImage?: () => void;
+	/** A complete bracketed paste arrives here first; a returned string is inserted in its place. */
+	public onPasteText?: (text: string) => string | undefined;
 	/** Handler for extension-registered shortcuts. Returns true if handled. */
 	public onExtensionShortcut?: (data: string) => boolean;
 	/** Up in an empty editor without autocomplete; return true to take it, false to browse prompt history as usual. */
@@ -94,11 +97,27 @@ export class CustomEditor extends Editor {
 		this.actionHandlers.set(action, handler);
 	}
 
+	/** The paste with its text replaced by `onPasteText`, when the read holds one whole bracketed paste. */
+	private rewriteBracketedPaste(data: string): string | undefined {
+		const start = "\x1b[200~";
+		const end = "\x1b[201~";
+		if (!this.onPasteText || !data.startsWith(start) || !data.endsWith(end)) return undefined;
+		const content = data.slice(start.length, -end.length);
+		if (content.includes(start) || content.includes(end)) return undefined;
+		const replacement = this.onPasteText(content);
+		return replacement === undefined ? undefined : `${start}${replacement}${end}`;
+	}
+
 	handleInput(data: string): void {
 		// Two Escapes that arrived in one read are two key presses, not Ctrl+Alt+[ (aborts and double-Esc need them).
 		const presses = splitDoubleEscape(data);
 		if (presses.length > 1) {
 			for (const press of presses) this.handleInput(press);
+			return;
+		}
+		const pasted = this.rewriteBracketedPaste(data);
+		if (pasted !== undefined) {
+			super.handleInput(pasted);
 			return;
 		}
 		// Check extension-registered shortcuts first
@@ -114,9 +133,9 @@ export class CustomEditor extends Editor {
 
 		// Check app keybindings first
 
-		// Escape/interrupt - only if autocomplete is NOT active
+		// Escape/interrupt - only if autocomplete is NOT active (a list or a pending request takes Esc first)
 		if (this.keybindings.matches(data, "app.interrupt")) {
-			if (!this.isShowingAutocomplete()) {
+			if (!this.isShowingAutocomplete() && !this.hasPendingAutocomplete()) {
 				// Use dynamic onEscape if set, otherwise registered handler
 				const handler = this.onEscape ?? this.actionHandlers.get("app.interrupt");
 				if (handler) {
@@ -137,6 +156,12 @@ export class CustomEditor extends Editor {
 				return;
 			}
 			// Fall through to editor handling for delete-char-forward when not empty
+		}
+
+		// An open list moves with Ctrl+P/Ctrl+N even though those cycle models by default.
+		if (this.isShowingAutocomplete() && (matchesKey(data, "ctrl+p") || matchesKey(data, "ctrl+n"))) {
+			super.handleInput(data);
+			return;
 		}
 
 		// Explicit history bindings take precedence over app actions while the editor is focused.

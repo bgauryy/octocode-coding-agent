@@ -2,6 +2,7 @@ import type { Token, Tokens } from "marked";
 import { renderLatex } from "../../latex.ts";
 import { wrapTextWithAnsi } from "../../utils/wrap.ts";
 import { visibleWidth } from "../../utils/width.ts";
+import { ALERT_LABELS, parseAlert } from "./alert.ts";
 import { renderInlineTokens } from "./inline.ts";
 import type { LatexToken } from "./parser.ts";
 import { renderTable } from "./table.ts";
@@ -12,6 +13,11 @@ function getStylePrefix(styleFn: (text: string) => string): string {
 	const styled = styleFn(sentinel);
 	const sentinelIndex = styled.indexOf(sentinel);
 	return sentinelIndex >= 0 ? styled.slice(0, sentinelIndex) : "";
+}
+
+/** Alert styling for a theme without an `alert` hook: the quote border color. */
+function alertFallback(host: MarkdownRenderHost): (kind: string, text: string) => string {
+	return (_kind, text) => host.theme.quoteBorder(text);
 }
 
 export function renderToken(
@@ -26,16 +32,18 @@ export function renderToken(
 	switch (token.type) {
 		case "heading": {
 			const headingLevel = token.depth;
-			const headingPrefix = `${"#".repeat(headingLevel)} `;
 
 			// Build a heading-specific style context so inline tokens (codespan, bold, etc.)
 			// restore heading styling after their own ANSI resets instead of falling back to
-			// the default text style.
+			// the default text style. No level shows its `#` markers: h1 is bold and underlined in the heading
+			// color, h2 bold in the heading color, h3 and deeper bold in the text color.
 			let headingStyleFn: (text: string) => string;
 			if (headingLevel === 1) {
 				headingStyleFn = (text: string) => host.theme.heading(host.theme.bold(host.theme.underline(text)));
-			} else {
+			} else if (headingLevel === 2) {
 				headingStyleFn = (text: string) => host.theme.heading(host.theme.bold(text));
+			} else {
+				headingStyleFn = (text: string) => host.theme.bold(text);
 			}
 
 			const headingStyleContext: InlineStyleContext = {
@@ -44,8 +52,7 @@ export function renderToken(
 			};
 
 			const headingText = renderInlineTokens(host, token.tokens ?? [], headingStyleContext);
-			const styledHeading = headingLevel >= 3 ? headingStyleFn(headingPrefix) + headingText : headingText;
-			lines.push(styledHeading);
+			lines.push(headingText);
 			if (nextTokenType && nextTokenType !== "space") {
 				lines.push(""); // Add spacing after headings (unless space token follows)
 			}
@@ -83,10 +90,14 @@ export function renderToken(
 
 		case "code": {
 			const indent = host.theme.codeBlockIndent ?? "  ";
-			lines.push(host.theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
+			// Only the first word of the info string names the language (```ts title=x); extras are dropped.
+			const lang = token.lang?.trim().split(/[\s{,]/, 1)[0];
+			if (lang) {
+				lines.push(indent + (host.theme.codeBlockLabel ?? host.theme.codeBlockBorder)(lang));
+			}
 			const sourceLines: string[] = token.text.split("\n");
 			const styledLines = host.theme.highlightCode
-				? host.theme.highlightCode(token.text, token.lang)
+				? host.theme.highlightCode(token.text, lang)
 				: sourceLines.map((codeLine) => host.theme.codeBlock(codeLine));
 			// A long code line wraps here rather than in render()'s final pass, so its continuation rows keep
 			// the block indent and the line's own indentation instead of starting at column 0.
@@ -106,7 +117,6 @@ export function renderToken(
 					lines.push(`${indent}${hang}${continuation}`);
 				}
 			}
-			lines.push(host.theme.codeBlockBorder("```"));
 			if (nextTokenType && nextTokenType !== "space") {
 				lines.push(""); // Add spacing after code blocks (unless space token follows)
 			}
@@ -128,7 +138,12 @@ export function renderToken(
 		}
 
 		case "blockquote": {
-			const quoteStyle = (text: string) => host.theme.quote(host.theme.italic(text));
+			// A GitHub alert (`> [!WARNING]`) gets a colored bar and a label row; its body keeps the text style.
+			const alert = parseAlert(token as Tokens.Blockquote);
+			const alertStyle = alert
+				? (text: string) => (host.theme.alert ?? alertFallback(host))(alert.kind, text)
+				: undefined;
+			const quoteStyle = alert ? (text: string) => text : (text: string) => host.theme.quote(host.theme.italic(text));
 			const quoteStylePrefix = getStylePrefix(quoteStyle);
 			const applyQuoteStyle = (line: string): string => {
 				if (!quoteStylePrefix) {
@@ -148,8 +163,11 @@ export function renderToken(
 				applyText: (text: string) => text,
 				stylePrefix: quoteStylePrefix,
 			};
-			const quoteTokens = token.tokens ?? [];
+			const quoteTokens = alert ? alert.tokens : (token.tokens ?? []);
 			const renderedQuoteLines: string[] = [];
+			if (alert && alertStyle) {
+				renderedQuoteLines.push(host.theme.bold(alertStyle(ALERT_LABELS[alert.kind])));
+			}
 			for (let i = 0; i < quoteTokens.length; i++) {
 				const quoteToken = quoteTokens[i];
 				const nextQuoteToken = quoteTokens[i + 1];
@@ -167,7 +185,7 @@ export function renderToken(
 				const styledLine = applyQuoteStyle(quoteLine);
 				const wrappedLines = wrapTextWithAnsi(styledLine, quoteContentWidth);
 				for (const wrappedLine of wrappedLines) {
-					lines.push(host.theme.quoteBorder("│ ") + wrappedLine);
+					lines.push((alertStyle ? alertStyle("┃ ") : host.theme.quoteBorder("│ ")) + wrappedLine);
 				}
 			}
 			if (nextTokenType && nextTokenType !== "space") {

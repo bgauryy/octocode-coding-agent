@@ -39,6 +39,8 @@ export interface Args {
 	noStdin?: boolean;
 	/** `--no-dialogs`: nobody answers RPC dialogs, so the session behaves as headless and asks get its refusal. */
 	noDialogs?: boolean;
+	/** `--rpc-ask`: the RPC client answers `ask` requests, so the session's UI offers `ask` (batches of typed questions). */
+	rpcAsk?: boolean;
 	export?: string;
 	noSkills?: boolean;
 	skills?: string[];
@@ -75,6 +77,8 @@ export interface FlagSpec {
 	 * optional: takes the next word only when it is not a flag or an @file.
 	 */
 	kind: "boolean" | "value" | "list" | "csv" | "optional";
+	/** optional only: when set, the next word is taken as the value only if this accepts it; otherwise it stays a message. */
+	takesNext?(word: string): boolean;
 	/** Value placeholder in help, e.g. `<name>`. */
 	arg?: string;
 	/** Allowed values; anything else is an error naming them. */

@@ -4,11 +4,13 @@
  *
  * Every tracked dialog gets an id. The mode's dialog (terminal, RPC host) and a remote answer race: the first answer
  * wins, and the loser is closed through the abort signal every dialog implementation honors. A remote `choice` must
- * be one of the dialog's own options, so an approval answered remotely is exactly one of the permission gate's
- * choices; a `confirm` takes "Yes" or "No"; an `input` takes text. Editor and custom dialogs have no remote shape.
+ * be one of the dialog's own options; a `confirm` takes "Yes" or "No"; an `input` takes text; an `ask` takes one checked
+ * reply per question, so an approval answered remotely is exactly one of the permission gate's options. Editor and
+ * custom dialogs have no remote shape.
  */
 
 import { randomUUID } from "node:crypto";
+import { checkedReplies, type Question } from "@octocodeai/octocode-contracts";
 import type { ExtensionUIAskView, ExtensionUIContext, ExtensionUIDialogOptions, UIPromptKind } from "../types.ts";
 import type { RunnerEmitEvent } from "./types.ts";
 
@@ -18,6 +20,8 @@ type UIPromptEvent = Extract<RunnerEmitEvent, { type: "ui_prompt_start" | "ui_pr
 export interface DialogAnswer {
 	choice?: string;
 	text?: string;
+	/** The replies to an `ask` dialog, one per question id (checked against the questions before they are taken). */
+	replies?: unknown;
 }
 
 /** Whether an answer was taken; a refusal names why (unknown dialog, not an offered choice, already answered). */
@@ -30,10 +34,12 @@ interface Pending {
 	title?: string;
 	options?: string[];
 	allowsText: boolean;
-	/** The dialog decides whether to allow an action (`ExtensionUIDialogOptions.approval`). */
+	/** An `ask` dialog with an `approval` question: it decides whether to allow an action. */
 	approval?: boolean;
-	/** The structured card the dialog draws (`ExtensionUIDialogOptions.ask`), reported so a client can draw it too. */
+	/** The structured card a custom dialog with a remote answer shape draws, reported so a client can draw it too. */
 	ask?: ExtensionUIAskView;
+	/** The typed questions an `ask` dialog shows, so a client can draw and answer them. */
+	questions?: Question[];
 	/** The dialog blocks work that goes on without the user (`ExtensionUIDialogOptions.blocking`). */
 	blocking?: boolean;
 	/** Settles the dialog with the remote answer's value; undefined when the dialog cannot be answered remotely. */
@@ -54,8 +60,28 @@ export class UIPromptTracker {
 	}
 
 	wrap(ui: ExtensionUIContext): ExtensionUIContext {
+		const hostAsk = ui.ask?.bind(ui);
 		return {
 			...ui,
+			// A host that draws questions itself: tracked so a remote client sees them and answers by reply.
+			...(hostAsk
+				? {
+						ask: (questions: Question[], opts?: Parameters<NonNullable<ExtensionUIContext["ask"]>>[1]) =>
+							this.tracked(
+								{
+									kind: "ask",
+									title: questions[0]?.question,
+									allowsText: false,
+									questions,
+									...(questions.some((question) => question.type === "approval") ? { approval: true } : {}),
+									...(opts?.blocking ? { blocking: true } : {}),
+								},
+								(signal) => hostAsk(questions, { ...opts, ...(signal ? { signal } : {}) }),
+								opts,
+								(answer) => checkedReplies(questions, answer.replies) ?? REFUSED,
+							),
+					}
+				: {}),
 			select: (title, options, opts) =>
 				this.tracked(
 					{
@@ -63,8 +89,7 @@ export class UIPromptTracker {
 						title,
 						options: [...options],
 						allowsText: false,
-						...(opts?.ask ? { ask: opts.ask } : {}),
-						...dialogFlags(opts, true),
+						...dialogFlags(opts),
 					},
 					(signal) => ui.select(title, options, { ...opts, signal }),
 					opts,
@@ -72,14 +97,14 @@ export class UIPromptTracker {
 				),
 			confirm: (title, message, opts) =>
 				this.tracked(
-					{ kind: "confirm", title, options: [...CONFIRM_OPTIONS], allowsText: false, ...dialogFlags(opts, true) },
+					{ kind: "confirm", title, options: [...CONFIRM_OPTIONS], allowsText: false, ...dialogFlags(opts) },
 					(signal) => ui.confirm(title, message, { ...opts, signal }),
 					opts,
 					(answer) => (answer.choice === "Yes" ? true : answer.choice === "No" ? false : REFUSED),
 				),
 			input: (title, placeholder, opts) =>
 				this.tracked(
-					{ kind: "input", title, allowsText: true, ...dialogFlags(opts, false) },
+					{ kind: "input", title, allowsText: true, ...dialogFlags(opts) },
 					(signal) => ui.input(title, placeholder, { ...opts, signal }),
 					opts,
 					(answer) => (typeof answer.text === "string" ? answer.text : REFUSED),
@@ -133,9 +158,11 @@ export class UIPromptTracker {
 		if (value === REFUSED) {
 			return {
 				ok: false,
-				reason: dialog.allowsText
-					? "This dialog takes text."
-					: `Answer with one of: ${(dialog.options ?? []).join(", ")}.`,
+				reason: dialog.questions
+					? "Answer with one reply per question, picking only the options it offers (picks), and text only where it takes text."
+					: dialog.allowsText
+						? "This dialog takes text."
+						: `Answer with one of: ${(dialog.options ?? []).join(", ")}.`,
 			};
 		}
 		dialog.settle(value);
@@ -165,6 +192,7 @@ export class UIPromptTracker {
 			...(dialog.allowsText ? { allowsText: true } : {}),
 			...(dialog.approval ? { approval: true } : {}),
 			...(dialog.ask ? { ask: dialog.ask } : {}),
+			...(dialog.questions ? { questions: dialog.questions } : {}),
 			...(dialog.blocking ? { blocking: true } : {}),
 			...(nested ? { nested: true } : {}),
 		});
@@ -226,23 +254,15 @@ export class UIPromptTracker {
 
 	private emitUIPromptEvent(event: UIPromptEvent): void {
 		queueMicrotask(() => {
-			void this.emit(event);
+			// Handler failures are already reported through emitError; nothing awaits this notification.
+			void this.emit(event).catch(() => undefined);
 		});
 	}
 }
 
-/**
- * What a dialog's options say about its role. `approval` counts for a choice or a confirmation only: the note a user
- * types after refusing is a question, even when its caller passes the permission dialog's options along.
- */
-function dialogFlags(
-	opts: ExtensionUIDialogOptions | undefined,
-	choice: boolean,
-): Pick<Pending, "approval" | "blocking"> {
-	return {
-		...(choice && opts?.approval ? { approval: true } : {}),
-		...(opts?.blocking ? { blocking: true } : {}),
-	};
+/** What a dialog's options say about it: whether it blocks work that goes on without the user. */
+function dialogFlags(opts: ExtensionUIDialogOptions | undefined): Pick<Pending, "blocking"> {
+	return opts?.blocking ? { blocking: true } : {};
 }
 
 /** The marker a parser returns for an answer the dialog cannot take. */

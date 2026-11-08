@@ -21,7 +21,11 @@ const FREE_FORM = new Map<string, string>([
 	// Batch entries are plain objects so every request stays small (about 150 characters instead of 550-700 for spelled-out
 	// entries, B218/B219); each entry is validated in code against the single call's own schema, so none goes unchecked.
 	["agent.tasks", "batch entries, each validated against the single task call's schema (agent-batch.ts)"],
-	["backlog.items", "batch entries, each validated against the single add's schema (addEntry in tool-schema.ts)"],
+	["backlog.items", "batch entries, each validated against the single add's schema (checkedEntry in tool-schema.ts)"],
+	[
+		"backlog.updates",
+		"batch entries, each validated against the single update's schema (checkedEntry in tool-schema.ts)",
+	],
 ]);
 
 type Node = Record<string, unknown>;

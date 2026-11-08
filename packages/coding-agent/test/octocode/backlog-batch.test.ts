@@ -44,6 +44,31 @@ const done = () => ({
 });
 
 describe("backlog schema", () => {
+	it("tells the model an epic follows its items", async () => {
+		const { tool } = await setup();
+		const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
+		expect(props.state?.description).toMatch(/epic follows its items.*claim those, then set it done/);
+	});
+
+	it("accepts type, parent and note on each items entry, as a single add does", async () => {
+		const { text } = await setup();
+		const out = await text({
+			op: "add",
+			why: "group work",
+			state: "ongoing",
+			items: [
+				{ title: "Group", goal: "group done", type: "epic" },
+				{ title: "Child", goal: "child done", parentId: "B4", note: "started" },
+			],
+		});
+		expect(out).toMatch(/^Added 2 of 2\./);
+		expect(out).not.toMatch(/Unknown items fields/);
+		expect(await text({ op: "get", id: "B4" })).toMatch(/epic/i);
+		await expect(text({ op: "update", id: "B4", state: "todo" })).rejects.toThrow(
+			/B4 is an epic with items: its state follows them \(1 of its 1 items are not done\) \(open: B5\).*list parentId B4/,
+		);
+	});
+
 	it("says add needs why, and refuses an add without it", async () => {
 		const { text, tool } = await setup();
 		const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
@@ -148,6 +173,13 @@ describe("backlog batch update", () => {
 		await expect(text({ op: "update", id: "B1", updates: [{ id: "B2", note: "x" }] })).rejects.toThrow(
 			/updates goes with/,
 		);
+	});
+
+	it("takes a single update's item fields in an entry", async () => {
+		const { text } = await setup();
+		const out = await text({ op: "update", updates: [{ id: "B2", priority: "p1", dependsOn: ["B1"] }] });
+		expect(out).not.toContain("refused");
+		expect(await text({ op: "get", id: "B2" })).toMatch(/p1/);
 	});
 
 	it("keeps the single update unchanged", async () => {

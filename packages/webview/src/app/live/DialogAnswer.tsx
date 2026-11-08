@@ -1,9 +1,10 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import type { ApplicationSnapshot, Reply } from "@octocodeai/octocode-contracts";
 import { type SubmitEvent, useId, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { DialogAnswerCard } from "./DialogAnswerCard.tsx";
+import { QuestionsAnswer } from "./QuestionsAnswer.tsx";
 import { useLive } from "./session.tsx";
 
 type Awaiting = NonNullable<ApplicationSnapshot["awaiting"]>;
@@ -32,10 +33,10 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 	const refusal = receipt?.status === "failed" ? (receipt.message ?? "The answer was not taken.") : "";
 	if (!awaiting.id || !connection) return null;
 	const dialogId = awaiting.id;
-	const send = async (answer: { choice: string } | { text: string }) => {
+	const send = async (answer: { choice: string } | { text: string } | { replies: Reply[] }) => {
 		if (pending) return;
 		const id = crypto.randomUUID();
-		setSent({ id, key: "choice" in answer ? answer.choice : "text" });
+		setSent({ id, key: "choice" in answer ? answer.choice : "replies" in answer ? "replies" : "text" });
 		setStatus("");
 		try {
 			const first = await connection.execute({
@@ -70,8 +71,17 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 					<span className="muted">{awaiting.kind === "approval" ? "Approval" : "Question"}</span> {awaiting.title}
 				</p>
 			) : null}
-			<DialogAnswerCard awaiting={awaiting} />
-			{awaiting.options?.length ? (
+			{awaiting.questions ? (
+				<QuestionsAnswer
+					questions={awaiting.questions}
+					disabled={!connected || pending !== undefined}
+					loading={pending === "replies"}
+					onSubmit={(replies) => void send({ replies })}
+				/>
+			) : (
+				<DialogAnswerCard awaiting={awaiting} />
+			)}
+			{!awaiting.questions && awaiting.options?.length ? (
 				<div className="dialog-answer-options">
 					{awaiting.options.map((option, index) => {
 						const info = awaiting.optionInfo?.[index];
@@ -94,7 +104,7 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 					})}
 				</div>
 			) : null}
-			{awaiting.allowsText ? (
+			{!awaiting.questions && awaiting.allowsText ? (
 				<form className="dialog-answer-text" onSubmit={submit}>
 					<input
 						aria-label="Your answer"

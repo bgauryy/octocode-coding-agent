@@ -31,7 +31,9 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 	// Off by default only where a selection names the server; a server started by hand outside the selection
 	// (`/mcp` enable) was chosen for this session, so its tools activate like any other. One a hook started stays
 	// unselected.
-	const defaultActive = isDefaultActive(entry) || (!state.findServer(server)?.unselected && !isSelected(api, entry));
+	const defaultActive =
+		isDefaultActive(entry, state.taskNamed) ||
+		(!state.findServer(server)?.unselected && !isSelected(api, entry, state.taskNamed));
 	const previous = serverTools.get(server) ?? new Set<string>();
 	const current = new Set<string>();
 	const owner = (tool: string) => `${server}\0${tool}`;

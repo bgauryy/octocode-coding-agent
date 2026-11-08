@@ -18,6 +18,7 @@ import { tmp } from "../helpers.ts";
 /** Conditions' host with nothing to read: a test sets only what it exercises. */
 const deps = (own: Pick<ConditionDeps, "reservation" | "context">): ConditionDeps => ({
 	item: () => undefined,
+	blockers: () => undefined,
 	agentEnd: () => undefined,
 	watchDatabase: () => () => undefined,
 	roots: (cwd) => [cwd],

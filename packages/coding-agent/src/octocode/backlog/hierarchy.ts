@@ -1,7 +1,7 @@
 import type { EntityInput } from "@octocodeai/octocode-contracts/backlogs";
 import { type Db, backlog, tasks } from "../../../../db/src/api.ts";
 import { type Item, BacklogError } from "./item.ts";
-import { getItem } from "./reads.ts";
+import { getItem, list } from "./reads.ts";
 
 /**
  * The depth rules: epic → item → task. An epic has no parent; an item's parent is an epic; tasks have no children (they
@@ -30,14 +30,25 @@ export function checkHierarchy(db: Db, repo: string, before: Item, input: Entity
 
 /**
  * An epic with items takes its state from them (`deriveEpicState`), so a direct move between backlog, todo and ongoing is
- * refused, as the board does. Closing it with its completion and reopening a closed one stay: the stored state matters
- * only then.
+ * refused, as the board does. Closing it (state done: the tool supplies the completion once its items are done, see
+ * `closingEpic`) and reopening a closed one stay: the stored state matters only then.
  */
-export function checkEpicState(db: Db, item: Item, input: { state?: string }): void {
+export function checkEpicState(db: Db, repo: string, item: Item, input: { state?: string }): void {
 	if (item.type !== "epic" || input.state === undefined || input.state === item.state) return;
-	if (input.state === "done" || item.state === "done" || !backlog.childStates(db, item.rowId).length) return;
+	const children = backlog.childStates(db, item.rowId);
+	if (input.state === "done" || item.state === "done" || !children.length) return;
+	const open = children.filter((state) => state !== "done").length;
+	const items = open ? `${open} of its ${children.length} items are not done` : `all ${children.length} items are done`;
+	const names = open
+		? list(db, repo, { parentId: item.ref, states: ["backlog", "todo", "ongoing", "closed"] }).items.map(
+				(child) => child.ref,
+			)
+		: [];
+	const named = names.length
+		? ` (open: ${names.slice(0, 5).join(", ")}${names.length > 5 ? `, +${names.length - 5} more` : ""})`
+		: "";
 	throw new BacklogError(
-		`${item.ref} is an epic with items: its state follows them. Change its items, or close it with a completion once they are done.`,
+		`${item.ref} is an epic with items: its state follows them (${items})${named}. Claim or update its items (list parentId ${item.ref}); once they are done, set the epic to done.`,
 	);
 }
 

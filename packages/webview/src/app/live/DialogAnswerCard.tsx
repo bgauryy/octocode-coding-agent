@@ -14,12 +14,14 @@ const PREVIEW_LINES = 3;
 export function DialogAnswerCard({ awaiting }: { awaiting: Awaiting }) {
 	const [expanded, setExpanded] = useState(false);
 	const { meta, body, details } = awaiting;
+	const question = awaiting.question?.trim();
 	const lines = body ? body.text.split(/\r\n|\r|\n/) : [];
 	const preview = body?.collapsible ? (body.previewLines ?? PREVIEW_LINES) : lines.length;
 	const hidden = expanded ? 0 : Math.max(0, lines.length - preview);
-	if (!meta?.length && !body && !details?.length) return null;
+	if (!question && !meta?.length && !body && !details?.length) return null;
 	return (
 		<div className="dialog-answer-card">
+			{question ? <p className="dialog-answer-question">{question}</p> : null}
 			{meta?.map((line) => (
 				<p className="muted dialog-answer-meta" key={line}>
 					{line}

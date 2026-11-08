@@ -366,6 +366,7 @@ describe("the work clock without motion", () => {
 
 describe("repainting the work clock", () => {
 	afterEach(() => {
+		animationClock.setReducedMotion(false);
 		vi.useRealTimers();
 	});
 
@@ -389,7 +390,34 @@ describe("repainting the work clock", () => {
 		return { work, view, team, ctx, mountView, repaints: () => repaints };
 	};
 
-	it("repaints once a minute while only a bash job runs, showing minutes, and stops when it ends", () => {
+	it("repaints every frame while a bash job and a timer run with the main agent idle: spinner, seconds, countdown; stops when they end", () => {
+		const { work, view, team, ctx, mountView, repaints } = setup();
+		work.set("bash", [{ ...bash, startedAt: NOW - 20_000 }]);
+		work.set("timer", [{ ...timer, dueAt: NOW + 30_000 }]);
+		const component = mountView();
+		const frame = () => component.render(100).join("\n");
+		expect(animationClock.isRunning()).toBe(true);
+		expect(frame()).toMatch(/20s\s*$/m);
+		expect(frame()).toMatch(/in 30s\s*$/m);
+		const before = repaints();
+		const first = frame().split("\n")[0];
+		vi.advanceTimersByTime(3_000);
+		expect(repaints()).toBeGreaterThan(before + 10);
+		expect(frame()).toMatch(/23s\s*$/m);
+		expect(frame()).toMatch(/in 27s\s*$/m);
+		expect(frame().split("\n")[0].slice(0, 3)).not.toBe(first.slice(0, 3));
+		work.set("bash", []);
+		work.set("timer", []);
+		expect(animationClock.isRunning()).toBe(false);
+		const after = repaints();
+		vi.advanceTimersByTime(5 * 60_000);
+		expect(repaints()).toBe(after);
+		view.stop(ctx);
+		team.stop();
+	});
+
+	it("repaints once a minute in reduced motion while only a bash job runs, showing minutes, and stops when it ends", () => {
+		animationClock.setReducedMotion(true);
 		const { work, view, team, ctx, mountView, repaints } = setup();
 		work.set("bash", [{ ...bash, startedAt: NOW - 20_000 }]);
 		const component = mountView();
@@ -415,7 +443,8 @@ describe("repainting the work clock", () => {
 		team.stop();
 	});
 
-	it("runs no clock for work without elapsed or remaining time, and none once idle", () => {
+	it("runs no clock in reduced motion for work without elapsed or remaining time, and none once idle", () => {
+		animationClock.setReducedMotion(true);
 		const { work, view, team, ctx, mountView, repaints } = setup();
 		view.setBackground(["general-1a2b"]);
 		mountView();

@@ -125,6 +125,24 @@ it("lets the user answer an answerable dialog from the page, and says so instead
 	);
 });
 
+it("draws the whole question of an awaiting dialog, every line", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	await view.session({
+		...running,
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: {
+			kind: "question",
+			title: "Which branch?",
+			question: "Which branch?\nIt must be pushed.",
+			id: "d9",
+			options: ["main", "dev"],
+			allowsText: false,
+		},
+	});
+	expect(document.querySelector(".dialog-answer-question")?.textContent).toBe("Which branch?\nIt must be pushed.");
+});
+
 it("draws the terminal ask card on an awaiting ask: metadata, folded body, details, option descriptions and write-in", async () => {
 	const view = controlView(activity());
 	await view.workspace();

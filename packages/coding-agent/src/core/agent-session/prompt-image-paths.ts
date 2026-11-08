@@ -26,6 +26,38 @@ const TOKEN = /(?:\\.|[^\s\\])+/g;
 const LEADING_PUNCTUATION = /^[(<[{"'`]+/;
 const TRAILING_PUNCTUATION = /[)>\]}"'`.,;:!?]+$/;
 
+/** Shell-style words: whitespace separates, quotes group, a backslash escapes the next character; undefined when a quote is left open. */
+export function splitPathWords(text: string): string[] | undefined {
+	const words: string[] = [];
+	let word = "";
+	let inWord = false;
+	let quote: string | undefined;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (quote) {
+			if (ch === quote) quote = undefined;
+			else if (ch === "\\" && quote === '"' && i + 1 < text.length) word += text[++i];
+			else word += ch;
+		} else if (ch === "'" || ch === '"') {
+			quote = ch;
+			inWord = true;
+		} else if (ch === "\\" && i + 1 < text.length) {
+			word += text[++i];
+			inWord = true;
+		} else if (/\s/.test(ch)) {
+			if (inWord) words.push(word);
+			word = "";
+			inWord = false;
+		} else {
+			word += ch;
+			inWord = true;
+		}
+	}
+	if (quote) return undefined;
+	if (inWord) words.push(word);
+	return words;
+}
+
 /**
  * Path-like spellings in the text in order of appearance: quoted spans, whole lines (a pasted file path may contain
  * unescaped spaces) and tokens with backslash escapes undone, each token also without surrounding punctuation.
@@ -47,11 +79,12 @@ function imagePathCandidates(text: string): string[] {
 		add(match.index, token);
 		add(match.index, token.replace(LEADING_PUNCTUATION, "").replace(TRAILING_PUNCTUATION, ""));
 	}
+	for (const word of splitPathWords(text) ?? []) add(text.indexOf(word), word);
 	found.sort((a, b) => a.index - b.index);
 	return [...new Set(found.map((entry) => entry.candidate))].slice(0, MAX_CANDIDATES);
 }
 
-function resolveCandidate(candidate: string, cwd: string): string | undefined {
+export function resolveCandidate(candidate: string, cwd: string): string | undefined {
 	if (!candidate.startsWith("file://")) return resolveUserFilePath(candidate, cwd);
 	try {
 		return fileURLToPath(candidate);

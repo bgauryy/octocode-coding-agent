@@ -16,6 +16,7 @@ type LifecycleHost = Pick<
 	| "clearExtensionTerminalInputListeners"
 	| "clearStatusIndicator"
 	| "disposeActiveSelector"
+	| "backgroundError"
 	| "emergencyTerminalExit"
 	| "footerDataProvider"
 	| "isInitialized"
@@ -152,12 +153,19 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 		host.signalCleanupHandlers.push(() => stream.off("error", terminalErrorHandler));
 	}
 
-	// Restore the terminal before the process dies on any uncaught throw.
+	// Restore the terminal before the process dies on an uncaught throw.
 	// Without this, an unhandled exception from extension code (or anywhere
 	// in Octocode) leaves the terminal in raw mode with no cursor.
-	const uncaughtExceptionHandler = (error: Error) => host.uncaughtCrash(error);
+	// backgroundError keeps the session for errors that tear no state (see crash-reporting.ts) and crashes for the rest.
+	const uncaughtExceptionHandler = (error: Error) => host.backgroundError("uncaughtException", error);
+	// Without a listener Node turns an unawaited rejection into an uncaught exception, ending the session.
+	const unhandledRejectionHandler = (reason: unknown) => host.backgroundError("unhandledRejection", reason);
 	process.prependListener("uncaughtException", uncaughtExceptionHandler);
-	host.signalCleanupHandlers.push(() => process.off("uncaughtException", uncaughtExceptionHandler));
+	process.prependListener("unhandledRejection", unhandledRejectionHandler);
+	host.signalCleanupHandlers.push(() => {
+		process.off("uncaughtException", uncaughtExceptionHandler);
+		process.off("unhandledRejection", unhandledRejectionHandler);
+	});
 }
 
 export function unregisterSignalHandlers(host: LifecycleHost): void {

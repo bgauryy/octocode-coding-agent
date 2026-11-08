@@ -117,7 +117,7 @@ describe("write rules live in the store", () => {
 		// The guideline leaves the completion fields to the description ("done needs completion") and the schema's `required`.
 		expect(t.tool.promptGuidelines.join("\n")).not.toContain(COMPLETION_GUIDANCE);
 		expect(t.tool.description).toContain("done needs completion");
-		expect(t.tool.parameters.properties.completion.required).toEqual(["summary", "files", "verification"]);
+		expect(t.tool.parameters.properties.completion.required).toEqual(["summary", "verification"]);
 		// A child's guideline names the one item it may update, sends follow-ups to its report and leaves the fields to the schema and the store error.
 		const child = setup({ isSubagent: true, parentSession: "p" }).tool;
 		const childGuideline = child.promptGuidelines.join("\n");

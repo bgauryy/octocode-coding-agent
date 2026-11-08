@@ -149,7 +149,7 @@ it("runs native tools and releases team resources across a real session reload",
 			await harness.session.prompt(`Write run-${run}.txt and retain its reservation.`);
 			expect(getAssistantTexts(harness).at(-1)).toBe(`completed ${run}`);
 			expect(harness.getPendingResponseCount()).toBe(0);
-			expect(prompts.at(-1)).toContain("## Manage running children");
+			expect(prompts.at(-1)).toContain("## Run children and use reports");
 			expect(getToolResult(harness, "file").isError).not.toBe(true);
 			expect(readFileSync(join(harness.tempDir, `run-${run}.txt`), "utf8")).toBe(`updated ${run}`);
 			expect(store.list()).toHaveLength(1);

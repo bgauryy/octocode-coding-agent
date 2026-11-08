@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { initTheme } from "../../src/theme/theme.ts";
+import { stripAnsi } from "../../src/utils/ansi.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/render.ts";
@@ -1538,7 +1539,8 @@ describe("file change rendering", () => {
 			})
 			.render(120)
 			.join("\n");
-		expect(expanded).toContain("added line 29");
+		// The diff is syntax-highlighted: its text, not its colors, is what shows each line.
+		expect(stripAnsi(expanded)).toContain("added line 29");
 		expect(expanded).not.toMatch(/diff lines/);
 	});
 

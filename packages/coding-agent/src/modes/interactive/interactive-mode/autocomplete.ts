@@ -212,6 +212,7 @@ export function getSlashCommands(
 			host.skillCommands.set(name, skill.filePath);
 			skillCommandList.push({
 				name,
+				skill: true,
 				description: prefixAutocompleteDescription(skill.description, skill.sourceInfo),
 			});
 		}

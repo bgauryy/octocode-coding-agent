@@ -256,7 +256,7 @@ describe("bash tool", () => {
 		expect(clamped.content[0].text).toContain("(timeout clamped to 3600 s; use background: true for longer)");
 		const plain = await tool.execute("t2", { command: "echo done", timeout: 3_600 }, undefined, undefined, ctx);
 		expect(plain.content[0].text).not.toMatch(/clamped/);
-		expect(tool.parameters.properties.timeout.description).toContain("at most 3600s");
+		expect(tool.parameters.properties.timeout.description).toContain("max 3600s");
 		expect(tool.parameters.properties.timeout).not.toHaveProperty("maximum");
 	});
 

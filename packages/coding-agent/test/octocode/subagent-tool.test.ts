@@ -300,7 +300,7 @@ describe("agent tool with a scripted child", () => {
 				"--model",
 				"faux/model:medium",
 				"--tools",
-				"read,bash,file,agent,steps,timer,archive,skill,mcp,mcp__*",
+				"read,bash,file,agent,timer,archive,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser,mcp__browser__*",
 			]),
@@ -1896,15 +1896,30 @@ vi.mock("../../src/config.ts", async (original) => ({
 describe("a child bound to a backlog item", () => {
 	const READY = { goal: "Expected result", why: "Required work" };
 
-	it("refuses an item this session does not hold, before any child is claimed", async () => {
+	it("claims an unheld item for the call, but refuses one another live session holds, before any child is claimed", async () => {
 		const s = setup();
 		const backlog = openBacklog(s.ctx, { isSubagent: false });
 		backlog.store.add({ ...READY, title: "work", state: "todo", createdBy: "user" });
-		await expect(s.run({ task: "report back", item: "B1" })).rejects.toThrow(
-			/B1 is todo, not held by this session: claim it \(ongoing\) first/,
+		backlog.store.add({ ...READY, title: "theirs", state: "todo", createdBy: "user" });
+		backlog.store.update("B2", { state: "ongoing" }, { id: "other-session" });
+		await expect(s.run({ task: "report back", item: "B2" })).rejects.toThrow(
+			/B2 is held by other-session, not by this session/,
 		);
 		await expect(s.run({ task: "report back", item: "B7" })).rejects.toThrow(/No backlog item B7/);
 		expect(s.control.running()).toEqual([]);
+		expect(backlog.store.get("B1")!.state).toBe("todo");
+		const result = await s.run({ task: "report back", item: "B1" });
+		expect(result.content[0].text as string).toContain("Claimed B1 for this session to delegate it.");
+		expect(backlog.store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
+	});
+
+	it("leaves an unheld item unclaimed when the call is refused after the item check (unknown profile, unknown mcp server)", async () => {
+		const s = setup();
+		const backlog = openBacklog(s.ctx, { isSubagent: false });
+		backlog.store.add({ ...READY, title: "work", state: "todo", createdBy: "user" });
+		await expect(s.run({ task: "report back", item: "B1", profile: "no-such-profile" })).rejects.toThrow();
+		await expect(s.run({ task: "report back", item: "B1", mcp: ["no-such-server"] })).rejects.toThrow();
+		expect(backlog.store.get("B1")).toMatchObject({ state: "todo" });
 		expect(backlog.store.noteCount(backlog.store.get("B1")!)).toBe(0);
 	});
 

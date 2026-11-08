@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { getToolListError } from "../../../core/settings-manager.ts";
 import { privateDir, sessionOutputDir } from "../../shared/home.ts";
 import { type AgentProfile, profileExcludes, profileSelectsBrowser, profileTools } from "../profiles.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../../common/src/mcp-names.ts";
@@ -44,10 +45,11 @@ export function buildAgentArgs(
 	skillPaths?: readonly string[],
 	/** The level of a child with no model to suffix (`ModelRoute.thinking`). */
 	thinking?: string,
-	/** Servers a task named: their tools join the selection (`Identity.mcpNamed`). */
+	/** Servers a task named (`Identity.mcpNamed`): a child that selects by allowlist gets their tools in it. */
 	namedServers: readonly string[] = [],
 ): string[] {
-	const args = ["--mode", "rpc", "--session-dir", session.dir, "--session-id", session.id];
+	// `--rpc-ask`: the parent's relay answers typed question batches (`ChildRelay`), so the child sends `ask`, not select/input.
+	const args = ["--mode", "rpc", "--rpc-ask", "--session-dir", session.dir, "--session-id", session.id];
 	// The built-in MCP feature serves Octocode's research tools and the user's own MCP servers: every specialist needs
 	// local research. A lean child runs without any MCP server, and so does every child of an operator's `--no-mcp`.
 	const operator = operatorLimits();
@@ -57,11 +59,15 @@ export function buildAgentArgs(
 	if (model) args.push("--model", model);
 	else if (thinking) args.push("--thinking", thinking);
 	const tools = profileTools(profile);
+	// A `+name` list takes exact names, so the child's MCP host selects a named server itself (`isSelected`, from the
+	// handoff file's `only`); only an allowlist needs the server's pattern in it.
 	const relative = tools.split(",").some((name) => /^[+-]/.test(name));
-	args.push(
-		"--tools",
-		[tools, ...namedServers.map((name) => `${relative ? "+" : ""}${mcpNamespace(name)}__*`)].join(","),
-	);
+	const selection = relative ? tools : [tools, ...namedServers.map((name) => `${mcpNamespace(name)}__*`)].join(",");
+	// The child refuses an invalid list at its own argument parsing, before its first turn: refuse the call instead.
+	const invalid = getToolListError(selection.split(","));
+	if (invalid)
+		throw new Error(`The tools of ${profile?.name ?? "this"} child are invalid (${invalid}); fix the profile's tools.`);
+	args.push("--tools", selection);
 	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
 	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`). The floor
 	// `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away.

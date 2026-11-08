@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { workspaceScratchDir } from "../shared/home.ts";
+import { octocodeTmpDir, workspaceScratchDir } from "../shared/home.ts";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { EXCLUDE_WORKSPACE_STATE, git, gitQuiet, type GitOptions } from "../shared/git.ts";
@@ -139,14 +139,36 @@ export async function validateSnapshot(
 	}
 }
 
-/** Rebase only snapshot-to-worker changes onto HEAD; conflicts keep the worktree for manual recovery. */
+/** What to save for a child that started from a working-copy snapshot. */
+export interface WorkerDelta {
+	/** The commit to put on the agent's ref: the child's changes on `base`, or on a conflict its own head, built on the snapshot. */
+	commit: string;
+	/** Set on a conflict: where the child's own patch (snapshot to head) was written, and why it did not apply to `base`. */
+	conflict?: { patch: string; reason: string };
+}
+
+/** Writes the child's patch where the user can read and apply it by hand; the agent id names it, so a rerun replaces its own earlier one. */
+function keepPatch(repo: string, agentId: string, patchFile: string): string {
+	const dir = path.join(octocodeTmpDir(repo), "isolate");
+	fs.mkdirSync(dir, { recursive: true });
+	const kept = path.join(dir, `${agentId}.patch`);
+	fs.copyFileSync(patchFile, kept);
+	return kept;
+}
+
+/**
+ * Moves only the snapshot-to-worker changes onto `base`. The patch applies to `base`, which lacks the parent's uncommitted
+ * edits, so a child that changed lines the parent had edited conflicts however still the main tree is. Its work is then
+ * kept as its own head commit (built on the snapshot, so the diff against `base` includes the parent's edits) and its
+ * patch is written to `.octocode/tmp/isolate/<agent>.patch`, so nothing is lost and the user resolves the conflict.
+ */
 export function workerDeltaCommit(
 	repo: string,
 	base: string,
 	snapshot: string,
 	head: string,
 	agentId: string,
-): Promise<string> {
+): Promise<WorkerDelta> {
 	return withIndex(repo, async (index, dir) => {
 		await git(repo, ["read-tree", base], onIndex(index));
 		// Git writes the patch itself: no output buffer caps the size of the child's change.
@@ -161,10 +183,14 @@ export function workerDeltaCommit(
 			"--",
 			EXCLUDE_WORKSPACE_STATE,
 		]);
-		await git(repo, ["apply", "--cached", "--3way", "--whitespace=nowarn", patchFile], onIndex(index));
+		try {
+			await git(repo, ["apply", "--cached", "--3way", "--whitespace=nowarn", patchFile], onIndex(index));
+		} catch (error) {
+			return { commit: head, conflict: { patch: keepPatch(repo, agentId, patchFile), reason: errorMessage(error) } };
+		}
 		const tree = await git(repo, ["write-tree"], onIndex(index));
-		if (tree === (await git(repo, ["rev-parse", `${base}^{tree}`]))) return base;
-		return git(
+		if (tree === (await git(repo, ["rev-parse", `${base}^{tree}`]))) return { commit: base };
+		const commit = await git(
 			repo,
 			[
 				...IDENTITY,
@@ -179,6 +205,7 @@ export function workerDeltaCommit(
 			],
 			onIndex(index),
 		);
+		return { commit };
 	});
 }
 

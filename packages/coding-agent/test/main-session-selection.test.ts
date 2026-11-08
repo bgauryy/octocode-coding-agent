@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../db/src/api.ts";
-import type { Args } from "../src/cli/args.ts";
+import { type Args, parseArgs } from "../src/cli/args.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createSessionManager } from "../src/main/session-manager.ts";
@@ -88,6 +88,21 @@ describe("session selection without a terminal", () => {
 		savedSession(elsewhere, "cccc1111-0000-4000-8000-000000000001");
 		const forked = await open({ print: true, fork: "cccc1111" });
 		expect(forked.getSessionId()).not.toBe("cccc1111-0000-4000-8000-000000000001");
+	});
+});
+
+describe("--resume <id>", () => {
+	it("opens the session named on the command line like --session, by id and by unique prefix", async () => {
+		const file = savedSession(project, "eeee1111-0000-4000-8000-000000000001");
+		expect(
+			(await open(parseArgs(["--resume", "eeee1111-0000-4000-8000-000000000001", "-p", "hi"]))).getSessionFile(),
+		).toBe(file);
+		expect((await open(parseArgs(["-r", "eeee1", "-p", "hi"]))).getSessionFile()).toBe(file);
+	});
+
+	it("reports an unknown id instead of opening the picker", async () => {
+		await expect(open(parseArgs(["--resume", "ffff9999", "-p", "hi"]))).rejects.toThrow("exit 1");
+		expect(errors.join("\n")).toContain("No session found matching 'ffff9999'");
 	});
 });
 

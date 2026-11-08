@@ -1,1 +1,1 @@
-{{count}} backlog item{{#if several}}s{{/if}} to do in this repository (backlog tool).
+Backlog of this repository: {{todo}} to do, {{proposed}} proposed (`backlog list`; proposed items need `states: ["backlog"]` to be listed alone).

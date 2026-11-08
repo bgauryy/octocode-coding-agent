@@ -540,19 +540,10 @@ describe("with another MCP server and Octocode disabled", () => {
 
 	it("keeps Octocode read, leaves MCP to Octocode, and drops the Octocode research line", async () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
-		for (const name of [
-			"read",
-			"file",
-			"bash",
-			"web",
-			"agent",
-			"askUser",
-			"backlog",
-			"steps",
-			"archive",
-			"mcp__echo__shout",
-		])
+		for (const name of ["read", "file", "bash", "web", "agent", "askUser", "backlog", "archive", "mcp__echo__shout"])
 			expect(turn.tools).toContain(name);
+		// `steps` is registered but not in the default list.
+		expect(turn.tools).not.toContain("steps");
 		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
 		expect(turn.tools).toContain("mcp");
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
@@ -943,7 +934,8 @@ describe("a subagent session with MCP enabled", () => {
 		expect(turn.toolContracts.find((tool) => tool.name === "backlog")?.parameters).toMatchObject({
 			properties: { op: { enum: ["list", "get", "add", "update"] } },
 		});
-		for (const name of ["agent", "backlog", "steps", "archive"]) expect(turn.tools).toContain(name);
+		for (const name of ["agent", "backlog", "archive"]) expect(turn.tools).toContain(name);
+		expect(turn.tools).not.toContain("steps");
 		expect(turn.systemPrompt).toContain("You are a subagent");
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();
 		const appPath = path.join(s.cwd, "app.ts");

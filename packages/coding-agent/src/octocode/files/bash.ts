@@ -186,8 +186,8 @@ export function registerBashTool(
 			label: "bash",
 			abortGraceMs: BASH_ABORT_GRACE_MS,
 			description:
-				"Run a command in the working directory. Foreground calls return combined output. " +
-				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. A timeout does not undo side effects: inspect the result before rerunning a command.\n\n${renderCliGuide(probeCliHost())}`,
+				"Run a command in the working directory. Foreground returns the combined output. " +
+				`Background (use it for builds, full test suites, servers, anything over a minute) returns a job id, pid and log path; completion arrives as a message. A foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. A timeout does not undo side effects: inspect the result before rerunning.\n\n${renderCliGuide(probeCliHost())}`,
 			// What the shell is for, then the work other tools own: code research goes to the declared search and read tools,
 			// content changes to `file` (checkpointed for /rewind). `sed` stays out of the list so it does not read as an editor.
 			promptSnippet: renderInstruction("tools/bash/snippet.md"),
@@ -212,7 +212,7 @@ export function registerBashTool(
 				command: Type.String({ description: "Command in the selected syntax" }),
 				timeout: Type.Optional(
 					Type.Number({
-						description: `Seconds before the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s. A background job has none unless given`,
+						description: `Seconds until the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, max ${MAX_FOREGROUND_TIMEOUT}s; a background job has none unless set`,
 					}),
 				),
 				maxOutputTokens: maxOutputTokensParameter,

@@ -98,7 +98,7 @@ describe("isolated children on one team", () => {
 		expect(listed).toMatch(/ · main · /);
 		expect(listed).toContain("(you) · implementer");
 		expect(listed).toMatch(/ · researcher · [^\n]*\n[^\n]*\n[^\n]*\n[^\n]*worktrees\//);
-		expect(listed).toMatch(/parent \S+\n/);
+		expect(listed).toMatch(/parent \S+ · worktree \S+\n/);
 
 		const sent = resultsOf(endpoint, implementer);
 		expect(sent).toMatch(/Queued message #1 for \S+ as a request/);

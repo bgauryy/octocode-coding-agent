@@ -221,9 +221,9 @@ describe("task ownership", () => {
 		).toThrow(/belong to session child-1/);
 	});
 
-	it("refuses tasks under an epic or a done item, and reopening a task of a done item", () => {
+	it("refuses tasks under a done item, and reopening a task of a done item", () => {
 		const epic = add("Epic", { type: "epic" });
-		expect(() => store.tasks.add({ goal: "x", item: epic.ref }, user)).toThrow(/is an epic/);
+		expect(store.tasks.add({ goal: "x", item: epic.ref }, user).ref).toMatch(/^T/);
 		const item = claimed();
 		const task = store.tasks.add({ goal: "Step", item: item.ref }, agent);
 		store.tasks.update(task.ref, { state: "done" }, agent);

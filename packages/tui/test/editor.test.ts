@@ -2351,7 +2351,9 @@ describe("Editor component", () => {
 					editor.handleInput("错");
 					t.mock.timers.tick(20);
 					await flushAutocomplete();
-					assert.strictEqual(editor.isShowingAutocomplete(), false);
+					// No match: the @ list stays open with a "no files" row instead of closing.
+					assert.strictEqual(editor.isShowingAutocomplete(), true);
+					assert.ok(editor.render(60).join("\n").includes("No files match"));
 					if (deletion === "\x1b[3~") editor.handleInput("\x1b[D");
 					editor.handleInput(deletion);
 					t.mock.timers.tick(20);

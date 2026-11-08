@@ -68,8 +68,8 @@ export function registerFileTool(
 				label: "File",
 				promptSnippet: renderInstruction("tools/file/snippet.md"),
 				description:
-					"Applies a batch of file changes; it does not read files. Pass queries (one object per change: type, path, edits or content) or a Codex-style patch string, not both; put a file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
-					"Read an existing file before a write or delete (a bash read counts only unpiped and unredirected; a write needs every line read); an edit needs no read when every oldText matches exactly, and a search tool's content rows count as a read of the lines they show. Writes/deletes refuse stale content. Paths outside the workspace need approval.",
+					"Applies a batch of file changes; it does not read files. Pass queries (one object per change: type, path, edits or content) or a Codex-style patch string, not both; put a file's replacements in one query. Queries continue after a failed item; a patch validates all first and stops at the first failure; neither rolls back. " +
+					"Read an existing file before a write or delete (a bash read counts only unpiped and unredirected; a write needs every line read). An edit needs no read when every oldText matches exactly; a search tool's content rows count as a read of the lines they show. A stale file refuses the write or delete. Paths outside the workspace need approval.",
 				promptGuidelines: renderInstruction("tools/file/guidelines.md").split("\n"),
 				parameters: Params,
 				prepareArguments: renameReasoning,

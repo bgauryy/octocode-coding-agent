@@ -66,7 +66,7 @@ export interface AgentProfile {
 }
 
 /** A lean profile's tools when its front matter names none. */
-const LEAN_DEFAULT_TOOLS = "bash,agent,steps,file";
+const LEAN_DEFAULT_TOOLS = "bash,agent,file";
 
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";

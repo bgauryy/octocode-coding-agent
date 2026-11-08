@@ -8,6 +8,8 @@ import {
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
+import { withAbort } from "./abort.ts";
+import { askClient } from "./ask.ts";
 import { advertiseCommands } from "./commands.ts";
 import { AcpEventProjector, type CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
@@ -65,6 +67,8 @@ export class AcpSession {
 	private readonly cancelTimeoutMs: number;
 	private readonly onTerminated: () => void;
 	private readonly summaryText: CompactionText;
+	/** The client advertised `elicitation.form`, so non-approval questions can be asked (`ask.ts`). */
+	private readonly elicitationForm: boolean;
 
 	constructor(
 		id: string,
@@ -73,8 +77,10 @@ export class AcpSession {
 		cancelTimeoutMs: number,
 		summaryText: CompactionText,
 		onTerminated: () => void = () => {},
+		elicitationForm = false,
 	) {
 		this.id = id;
+		this.elicitationForm = elicitationForm;
 		this.summaryText = summaryText;
 		this.worker = worker;
 		this.client = client;
@@ -108,7 +114,7 @@ export class AcpSession {
 		});
 		this.startup = startup;
 		this.output = startup.output;
-		void this.output.catch(() => this.close());
+		void this.output.catch(() => closeInBackground(this));
 		this.unsubscribes.push(this.worker.onSessionIdentity((id) => startup.identify(id)));
 		await this.worker.start();
 		await this.worker.persistSession();
@@ -292,8 +298,24 @@ export class AcpSession {
 
 	private async ui(request: AcpUiRequest): Promise<void> {
 		// The host forwards only dialogs; a UI notification (status, widget, title) has no one to answer it.
-		if (!["select", "confirm", "input", "editor"].includes(request.method)) return;
+		if (!["select", "confirm", "input", "editor", "ask"].includes(request.method)) return;
 		const turn = this.observed ?? this.active;
+		if (request.method === "ask") {
+			// No turn to answer for: every question is aborted (a closed signal).
+			const signal = turn?.controller.signal ?? AbortSignal.abort();
+			const onCancelled = () => void this.cancel().catch(reportFailure("ACP permission cancellation failed"));
+			const env = {
+				client: this.client,
+				sessionId: this.id,
+				signal,
+				elicitationForm: this.elicitationForm,
+				onCancelled,
+			};
+			const replies = await askClient(env, request.questions);
+			if (!this.dead)
+				await this.worker.respondToExtensionUIRequest({ type: "extension_ui_response", id: request.id, replies });
+			return;
+		}
 		const permission = request.method === "select" ? request.permission : undefined;
 		let value: string | undefined;
 		if (
@@ -374,22 +396,5 @@ export class AcpSession {
 			this.fail("Session closed; execution may have occurred. The prompt was not replayed.");
 			for (const unsubscribe of this.unsubscribes.splice(0)) unsubscribe();
 		}
-	}
-}
-
-async function withAbort<T>(signal: AbortSignal, pending: Promise<T>): Promise<T> {
-	if (signal.aborted) {
-		void pending.catch(() => {});
-		throw new Error("Cancelled");
-	}
-	let onAbort: () => void = () => {};
-	const cancelled = new Promise<never>((_resolve, reject) => {
-		onAbort = () => reject(new Error("Cancelled"));
-		signal.addEventListener("abort", onAbort, { once: true });
-	});
-	try {
-		return await Promise.race([pending, cancelled]);
-	} finally {
-		signal.removeEventListener("abort", onAbort);
 	}
 }

@@ -22,7 +22,7 @@ describe("registerTurnSetup", () => {
 	const turns = new Map<ReturnType<typeof fakeHost>, ReturnType<typeof registerTurnSetup>>();
 	const setupTurn = (fake: ReturnType<typeof fakeHost>) => turns.get(fake)!;
 	// The research section's last-resort line: shown only when neither the research server nor a shell or `web` is reachable.
-	it("tells a session with a person to use askUser and a headless one not to, and never changes it mid-session", async () => {
+	it("tells a session with a person to use askUser and a headless one not to, and follows a UI that attaches later", async () => {
 		const prompt = async ({ fake }: ReturnType<typeof setup>, hasUI: boolean) => {
 			const event = {
 				systemPromptOptions: {
@@ -37,13 +37,14 @@ describe("registerTurnSetup", () => {
 		const interactive = setup();
 		expect(await prompt(interactive, true)).toContain("Ask with askUser");
 		const cached = await prompt(interactive, true);
-		expect(await prompt(interactive, false)).toBe(cached);
+		expect(await prompt(interactive, true)).toBe(cached);
+		expect(await prompt(interactive, false)).not.toContain("Ask with askUser");
 
 		const headless = setup();
 		const text = await prompt(headless, false);
 		expect(text).not.toContain("Ask with askUser");
 		expect(text).toContain("Ask the user");
-		expect(await prompt(headless, true)).toBe(text);
+		expect(await prompt(headless, true)).toContain("Ask with askUser");
 	});
 
 	const NO_LOOKUP_TOOL = "no lookup tool is available";

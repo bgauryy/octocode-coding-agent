@@ -67,8 +67,10 @@ export function projectEditHunk(query: Record<string, unknown>, path: string, gu
 	const file = resolveToolPath(cwd, path);
 	const inspection = guard.inspect(file, "edit", path);
 	if (inspection.refusal) return refuse(inspection.refusal);
-	if (inspection.unread) return refuse(`${path} was not read in this session`);
-	if (!inspection.current || inspection.stale) return refuse(`${path} has no current verified read`);
+	// A parallel call of the same message counts only once it has finished, so a read made there does not yet hold.
+	const later = "; a read by a parallel call of this message counts after that call finishes";
+	if (inspection.unread) return refuse(`${path} was not read in this session${later}`);
+	if (!inspection.current || inspection.stale) return refuse(`${path} has no current verified read${later}`);
 	let data: Buffer;
 	try {
 		data = fs.readFileSync(file);

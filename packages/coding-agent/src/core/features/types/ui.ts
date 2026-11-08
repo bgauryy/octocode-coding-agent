@@ -9,6 +9,7 @@ import type {
 	OverlayOptions,
 	TUI,
 } from "@octocodeai/octocode-tui";
+import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import type { Theme } from "../../../theme/theme.ts";
 import type { ReadonlyFooterDataProvider, StatusTone } from "../../footer-data-provider.ts";
 import type { KeybindingsManager } from "../../keybindings.ts";
@@ -19,7 +20,7 @@ import type { SessionPickerOptions } from "../../session-picker.ts";
 // UI Context
 // ============================================================================
 
-/** A permission decision carried by a select dialog; values name its existing single-use choices. */
+/** An approval's identity as an RPC client receives it on a `select` request, and as a `Question` carries it (`approval`). */
 export interface ExtensionUIPermissionRequest {
 	toolCallId?: string;
 	toolName?: string;
@@ -31,9 +32,8 @@ export interface ExtensionUIPermissionRequest {
 }
 
 /**
- * A select dialog's structured view (`octocode/ask/view.ts` builds and checks it): a short question, dim metadata, a
- * quoted body, details behind a toggle, options with descriptions and a write-in row. Every option label equals a
- * select option string, so a host that does not draw it shows the plain title and options unchanged.
+ * The structured card the terminal draws for a question (`octocode/ask/question.ts` `viewOf` builds it): a short question,
+ * dim metadata, a quoted body, details behind a toggle, options with descriptions and a write-in row.
  */
 export interface ExtensionUIAskView {
 	/** One sentence, drawn bold. */
@@ -62,24 +62,31 @@ export interface ExtensionUIRemoteAnswer<T> {
 
 /** Options for extension UI dialogs. */
 export interface ExtensionUIDialogOptions {
-	/** Select dialogs only: the structured view a terminal draws instead of the plain title. */
-	ask?: ExtensionUIAskView;
 	/** AbortSignal to programmatically dismiss the dialog. */
 	signal?: AbortSignal;
 	/** Timeout in milliseconds. Dialog auto-dismisses with live countdown display. */
 	timeout?: number;
-	/** Select dialogs only: transports may expose these choices as a permission request. */
-	permission?: ExtensionUIPermissionRequest;
-	/**
-	 * Select and confirm dialogs only: the dialog decides whether to allow an action. Remote clients show it as an approval
-	 * (the awaiting `kind` is `approval`), not as a question. Every Octocode permission prompt sets it.
-	 */
-	approval?: boolean;
 	/**
 	 * The dialog blocks work that goes on without the user, such as a background subagent's approval. It is reported as
 	 * waiting even when no run is active; a picker the user opens themselves is not blocking and is not reported then.
 	 */
 	blocking?: boolean;
+}
+
+/** How `ExtensionUIContext.ask` is called. */
+export interface ExtensionUIAskOptions {
+	/** Dismisses the dialogs. */
+	signal?: AbortSignal;
+	/** The dialogs block work that goes on without the user (as `ExtensionUIDialogOptions.blocking`). */
+	blocking?: boolean;
+	/** Timeout in milliseconds. */
+	timeout?: number;
+	/**
+	 * A subagent's permission header: the one line its parent reads to answer a lone approval without a dialog
+	 * (`octocode/permission/header.ts`). A host that relays the question sends it along (an RPC `ask` request's `header`);
+	 * it is never shown.
+	 */
+	header?: string;
 }
 
 /** Placement for extension widgets. */
@@ -119,6 +126,15 @@ export interface ExtensionUIContext {
 
 	/** Show a text input dialog. */
 	input(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
+
+	/**
+	 * Show a batch of typed questions together and return one `Reply` per question, in order (`Question` and `Reply` are
+	 * the contracts' own). Optional: a host that draws questions itself provides it (an RPC client that declared `ask`
+	 * with `--rpc-ask`, the terminal, ACP); every other host gets the same questions as `select`, `input` and `confirm`
+	 * dialogs. Callers use `octocode/ask/ask.ts`, never this directly. A dismissed question is a `cancelled` reply, not a
+	 * rejection.
+	 */
+	ask?(questions: Question[], opts?: ExtensionUIAskOptions): Promise<Reply[]>;
 
 	/** Show a notification to the user. */
 	notify(message: string, type?: "info" | "warning" | "error"): void;

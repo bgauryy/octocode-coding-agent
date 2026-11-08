@@ -51,6 +51,11 @@ export interface TimerOptions {
 	small?: SmallModel;
 }
 
+const itemSeq = (ref: string) => {
+	const seq = /^\s*(?:[bB]|#)?(\d{1,9})\s*$/.exec(ref)?.[1];
+	return seq === undefined ? undefined : Number(seq);
+};
+
 /**
  * The `timer` tool and its scheduler: each session loads its own active timers from the agent database at start, fires
  * them while it runs (a wake is a steer message: a busy session reads it at its next step, an idle one starts a turn; retried by `wake-retry.ts` like a job report),
@@ -82,9 +87,13 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		reservation: options.reservation,
 		context: () => current,
 		item(ref) {
-			const seq = /^\s*(?:[bB]|#)?(\d{1,9})\s*$/.exec(ref)?.[1];
-			const item = seq === undefined ? undefined : backlog.itemBySeq(db().db, workspace(), Number(seq));
+			const seq = itemSeq(ref);
+			const item = seq === undefined ? undefined : backlog.itemBySeq(db().db, workspace(), seq);
 			return item ? (item.closed === null ? item.state : "closed") : undefined;
+		},
+		blockers(ref) {
+			const seq = itemSeq(ref);
+			return seq === undefined ? undefined : backlog.openPrerequisites(db().db, workspace(), seq);
 		},
 		agentEnd(name) {
 			const [event] = agentEvents.list(db().db, workspace(), Number.MAX_SAFE_INTEGER, 1, {

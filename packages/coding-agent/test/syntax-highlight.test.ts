@@ -4,7 +4,9 @@ import { getMarkdownTheme, highlightCode, initTheme, theme } from "../src/theme/
 import {
 	highlight,
 	loadAllHighlightLanguages,
+	isHighlightable,
 	renderHighlightedHtml,
+	resolveLanguage,
 	supportsLanguage,
 } from "../src/utils/syntax-highlight.ts";
 
@@ -29,12 +31,21 @@ const eagerLanguages = [
 	"groovy",
 	"perl",
 	"lua",
+	"yaml",
+	"sql",
+	"xml",
+	"css",
+	"diff",
+	"markdown",
+	"ini",
+	"dockerfile",
+	"makefile",
 ];
 const eagerLanguagesLoadedAtStartup = eagerLanguages.every(supportsLanguage);
 const uncommonLanguageLoadedAtStartup = supportsLanguage("ada");
 
 describe("syntax highlight renderer", () => {
-	it("loads the twenty most common languages at startup and defers the rest", async () => {
+	it("loads the most common languages at startup and defers the rest", async () => {
 		expect(eagerLanguagesLoadedAtStartup).toBe(true);
 		expect(uncommonLanguageLoadedAtStartup).toBe(false);
 		await loadAllHighlightLanguages();
@@ -126,5 +137,77 @@ describe("theme syntax highlighting", () => {
 		);
 		expect(highlightCode("@decorator", "python")[0]).toBe(`${theme.getFgAnsi("muted")}@decorator\x1b[39m`);
 		expect(highlightCode("<div></div>", "html")[0]).toContain(`${theme.getFgAnsi("syntaxKeyword")}div\x1b[39m`);
+	});
+});
+
+describe("language names and guards", () => {
+	it("resolves fence aliases and the first word of an info string", () => {
+		for (const name of [
+			"tsx",
+			"ts",
+			"sh",
+			"zsh",
+			"console",
+			"shell",
+			"yml",
+			"jsonc",
+			"patch",
+			"jsx",
+			"html",
+			"svg",
+			"docker",
+			"make",
+		]) {
+			expect(supportsLanguage(name), name).toBe(true);
+		}
+		expect(resolveLanguage("TS title=x")).toBe("ts");
+		expect(resolveLanguage("tsx {1,3}")).toBe("typescript");
+		expect(resolveLanguage("sh")).toBe("bash");
+		expect(resolveLanguage("html")).toBe("xml");
+		expect(resolveLanguage("not-a-language")).toBeUndefined();
+		expect(resolveLanguage("")).toBeUndefined();
+	});
+
+	it("limits highlighting by lines, bytes and line length", () => {
+		expect(isHighlightable("a\n".repeat(1999))).toBe(true);
+		expect(isHighlightable("a\n".repeat(2000))).toBe(false);
+		expect(isHighlightable("x".repeat(4096))).toBe(true);
+		expect(isHighlightable("x".repeat(4097))).toBe(false);
+		expect(isHighlightable(`${"x".repeat(1000)}\n`.repeat(300))).toBe(false);
+	});
+});
+
+describe("highlight.js 11 output through the theme", () => {
+	beforeEach(() => {
+		setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+		initTheme("dark");
+	});
+	afterEach(() => {
+		resetCapabilitiesCache();
+	});
+
+	it("colors keywords, strings, comments, functions and types in TypeScript", () => {
+		const code = 'function greet(name: string): void {\n\t// hi\n\tconst s = "x";\n}\nclass Foo {}';
+		const out = highlightCode(code, "ts title=x").join("\n");
+		expect(out).toContain(`${theme.getFgAnsi("syntaxKeyword")}function\x1b[39m`);
+		expect(out).toContain(`${theme.getFgAnsi("syntaxFunction")}greet\x1b[39m`);
+		expect(out).toContain(`${theme.getFgAnsi("syntaxComment")}// hi\x1b[39m`);
+		expect(out).toContain(`${theme.getFgAnsi("syntaxString")}"x"\x1b[39m`);
+		expect(out).toContain(`${theme.getFgAnsi("syntaxType")}Foo\x1b[39m`);
+	});
+
+	it("colors YAML, SQL and CSS that used to load late", () => {
+		expect(highlightCode("key: 1", "yml").join("")).toContain(theme.getFgAnsi("syntaxNumber"));
+		expect(highlightCode("SELECT 1", "sql").join("")).toContain(theme.getFgAnsi("syntaxKeyword"));
+		expect(highlightCode("a { color: red; }", "css").join("")).toContain("\x1b[");
+	});
+
+	it("returns plain code-block lines for oversized code and caches repeat calls", () => {
+		const big = "const a = 1;\n".repeat(2500);
+		const plain = highlightCode(big, "typescript");
+		expect(plain[0]).toBe(theme.fg("mdCodeBlock", "const a = 1;"));
+		const first = highlightCode("const a = 1", "typescript");
+		first[0] = "mutated";
+		expect(highlightCode("const a = 1", "typescript")[0]).not.toBe("mutated");
 	});
 });

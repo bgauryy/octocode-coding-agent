@@ -9,13 +9,25 @@ import {
 	SEPARATOR,
 	type SettingsListTheme,
 } from "@octocodeai/octocode-tui";
-import { highlight, supportsLanguage } from "../utils/syntax-highlight.ts";
+import { highlight, isHighlightable, resolveLanguage } from "../utils/syntax-highlight.ts";
 import type { Theme } from "./theme-class.ts";
+import type { ThemeColor } from "./theme-types.ts";
 import { theme } from "./theme-global.ts";
 
 // ============================================================================
 // TUI Helpers
 // ============================================================================
+
+/** The GitHub alert kinds a `MarkdownTheme` styles. */
+type MarkdownAlertKind = Parameters<NonNullable<MarkdownTheme["alert"]>>[0];
+
+const ALERT_COLORS: Record<MarkdownAlertKind, ThemeColor> = {
+	note: "accent",
+	tip: "success",
+	important: "mdHeading",
+	warning: "warning",
+	caution: "error",
+};
 
 type CliHighlightTheme = Record<string, (s: string) => string>;
 
@@ -36,7 +48,17 @@ function buildCliHighlightTheme(t: Theme): CliHighlightTheme {
 		meta: (s: string) => t.fg("muted", s),
 		function: (s: string) => t.fg("syntaxFunction", s),
 		title: (s: string) => t.fg("syntaxFunction", s),
+		"title.class": (s: string) => t.fg("syntaxType", s),
+		"title.function": (s: string) => t.fg("syntaxFunction", s),
 		class: (s: string) => t.fg("syntaxType", s),
+		selector: (s: string) => t.fg("syntaxKeyword", s),
+		attribute: (s: string) => t.fg("syntaxVariable", s),
+		property: (s: string) => t.fg("syntaxVariable", s),
+		symbol: (s: string) => t.fg("syntaxNumber", s),
+		section: (s: string) => t.fg("syntaxFunction", s),
+		bullet: (s: string) => t.fg("syntaxPunctuation", s),
+		"template-variable": (s: string) => t.fg("syntaxVariable", s),
+		code: (s: string) => t.fg("syntaxString", s),
 		type: (s: string) => t.fg("syntaxType", s),
 		tag: (s: string) => t.fg("syntaxPunctuation", s),
 		name: (s: string) => t.fg("syntaxKeyword", s),
@@ -61,21 +83,47 @@ function getCliHighlightTheme(t: Theme): CliHighlightTheme {
 	return cachedCliHighlightTheme;
 }
 
+const HIGHLIGHT_CACHE_ENTRIES = 64;
+const HIGHLIGHT_CACHE_MAX_CHARS = 64 * 1024;
+const highlightCaches = new WeakMap<Theme, Map<string, string[]>>();
+
 /**
  * Highlight code with syntax coloring based on file extension or language, in `source` (the active theme by default).
- * Returns array of highlighted lines; unknown languages and highlighter failures use the code-block color.
+ * Returns array of highlighted lines; unknown languages, oversized code (see `isHighlightable`) and highlighter
+ * failures use the code-block color. Recent results are cached per theme so a re-render of unchanged code is free.
  */
 export function highlightCode(code: string, lang?: string, source: Theme = theme): string[] {
-	// Validate language before highlighting to avoid stderr spam from cli-highlight
-	const validLang = lang && supportsLanguage(lang) ? lang : undefined;
-	// Skip highlighting when no valid language is specified. cli-highlight's
-	// auto-detection is unreliable and can misidentify prose as AppleScript,
-	// LiveCodeServer, etc., coloring random English words as keywords.
-	if (validLang) {
+	// Skip highlighting when no valid language is specified: auto-detection is unreliable and can misidentify prose
+	// as AppleScript, LiveCodeServer, etc., coloring random English words as keywords.
+	const validLang = resolveLanguage(lang);
+	if (validLang && isHighlightable(code)) {
+		const cacheable = code.length <= HIGHLIGHT_CACHE_MAX_CHARS;
+		const key = `${validLang}\0${code}`;
+		let cache = highlightCaches.get(source);
+		const hit = cacheable ? cache?.get(key) : undefined;
+		if (hit) {
+			// Refresh recency: Map iterates in insertion order.
+			cache?.delete(key);
+			cache?.set(key, hit);
+			return hit.slice();
+		}
 		try {
-			return highlight(code, { language: validLang, ignoreIllegals: true, theme: getCliHighlightTheme(source) }).split(
-				"\n",
-			);
+			const lines = highlight(code, {
+				language: validLang,
+				ignoreIllegals: true,
+				theme: getCliHighlightTheme(source),
+			}).split("\n");
+			if (cacheable) {
+				if (!cache) {
+					cache = new Map();
+					highlightCaches.set(source, cache);
+				}
+				cache.set(key, lines);
+				if (cache.size > HIGHLIGHT_CACHE_ENTRIES) {
+					cache.delete(cache.keys().next().value as string);
+				}
+			}
+			return lines.slice();
 		} catch {
 			// Fall through to the plain code-block color.
 		}
@@ -164,6 +212,7 @@ export function getMarkdownTheme(source: Theme = theme): MarkdownTheme {
 		code: (text: string) => theme.fg("mdCode", text),
 		codeBlock: (text: string) => theme.fg("mdCodeBlock", text),
 		codeBlockBorder: (text: string) => theme.fg("mdCodeBlockBorder", text),
+		codeBlockLabel: (text: string) => theme.fg("mdCodeBlockBorder", text),
 		quote: (text: string) => theme.fg("mdQuote", text),
 		quoteBorder: (text: string) => theme.fg("mdQuoteBorder", text),
 		hr: (text: string) => theme.fg("mdHr", text),
@@ -173,6 +222,7 @@ export function getMarkdownTheme(source: Theme = theme): MarkdownTheme {
 		underline: (text: string) => theme.underline(text),
 		strikethrough: (text: string) => theme.strikethrough(text),
 		highlightCode: (code: string, lang?: string): string[] => highlightCode(code, lang, theme),
+		alert: (kind: MarkdownAlertKind, text: string) => theme.fg(ALERT_COLORS[kind], text),
 	};
 }
 
@@ -183,6 +233,9 @@ export function getSelectListTheme(): SelectListTheme {
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),
+		matchHighlight: (text: string) => theme.bold(theme.fg("accent", text)),
+		directory: (text: string) => theme.fg("mdLink", text),
+		hint: (text: string) => theme.fg("dim", text),
 	};
 }
 

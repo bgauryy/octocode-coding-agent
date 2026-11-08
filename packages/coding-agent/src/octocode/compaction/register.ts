@@ -51,6 +51,7 @@ import {
 	recentFiles,
 	settleRestoredFiles,
 } from "./restore.ts";
+import { liveStateLines } from "./live-state.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { carryFileLists, summaryMethodOf, windowBudget, writeSummary } from "./summary.ts";
 import { requestMessages } from "./thinking.ts";
@@ -142,6 +143,8 @@ export function registerCompaction(
 	let restoreCandidates: WorkedFile[] = [];
 	let restoreBudget = RESTORE_TOTAL_CHARS;
 	let pendingRestore: PendingRestore | undefined;
+	/** When this process started its session: background work started earlier ended with an earlier process. */
+	let workSince = Date.now();
 	api.on("session_before_compact", async (event, ctx) => {
 		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.
 		continuity.discard();
@@ -171,10 +174,13 @@ export function registerCompaction(
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
 		const cacheTtlMs = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
-		return writeSummary(api, event, ctx, from, continuity, parentId, cacheTtlMs);
+		return writeSummary(api, event, ctx, from, continuity, parentId, cacheTtlMs, () =>
+			liveStateLines(ctx, event.branchEntries, workSince),
+		);
 	});
 
 	api.on("session_start", async (_event, ctx) => {
+		workSince = Date.now();
 		tooLarge.reset();
 		thrash.reset();
 		requests.reset();

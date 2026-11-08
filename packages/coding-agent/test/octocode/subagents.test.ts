@@ -11,7 +11,7 @@ import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
 import { machineSubagents, maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
 import { FAILED_NEXT, failedNext } from "../../src/octocode/subagents/report-text.ts";
-import { assistantText } from "../../src/octocode/subagents/events.ts";
+import { assistantText } from "../../src/octocode/subagents/event-text.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { taskSkillPlan } from "../../src/octocode/subagents/task-skills.ts";
 import { localResearchTools, mcpFloor } from "../../src/octocode/subagents/core-tools.ts";
@@ -224,7 +224,7 @@ describe("subagents", () => {
 		// Parent/child and teammate communication share one policy: a child messages its parent for a decision, and its
 		// parent relays anything outside its session tree.
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user; ask whoever can settle it, never guess or loop \(your coordinator relays beyond your tree\):\n\n```mermaid/,
+			/You cannot ask the user\. When stuck \(missing input or access, or a retry failed twice\), never guess or loop:\n\n```mermaid/,
 		);
 	});
 
@@ -237,13 +237,14 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,bash,file,agent,steps,timer,archive,skill,mcp,mcp__*",
+			tools: "read,grep,bash,file,agent,timer,archive,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
 		expect(args).toEqual([
 			"--mode",
 			"rpc",
+			"--rpc-ask",
 			"--session-dir",
 			SESSION.dir,
 			"--session-id",
@@ -251,7 +252,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,bash,file,agent,steps,timer,archive,skill,mcp,mcp__*",
+			"read,grep,bash,file,agent,timer,archive,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
 			"mcp__browser__*",
@@ -300,12 +301,13 @@ describe("subagents", () => {
 		expect(args).toEqual([
 			"--mode",
 			"rpc",
+			"--rpc-ask",
 			"--session-dir",
 			SESSION.dir,
 			"--session-id",
 			SESSION.id,
 			"--tools",
-			["bash", "file", "agent", "steps", "timer", "archive", "skill", "mcp", ...localResearchTools()]
+			["bash", "file", "agent", "timer", "archive", "skill", "mcp", ...localResearchTools()]
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",

@@ -39,6 +39,8 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 interface RpcModeOptions {
 	/** `--no-dialogs`: no one answers dialogs here, so the session runs with no UI and asks get the headless refusal. */
 	noDialogs?: boolean;
+	/** `--rpc-ask`: the client declared it answers `ask` requests; only then does the session's UI offer `ask`. */
+	rpcAsk?: boolean;
 }
 
 /**
@@ -84,7 +86,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		});
 		unsubscribeBackpressure = session.agent.subscribe((event) => waitForEventBackpressure(event));
 		await session.bindExtensions({
-			uiContext: options.noDialogs ? undefined : createExtensionUIContext(output, pendingExtensionRequests),
+			uiContext: options.noDialogs
+				? undefined
+				: createExtensionUIContext(output, pendingExtensionRequests, { ask: options.rpcAsk === true }),
 			mode: "rpc",
 			commandContextActions: {
 				waitForIdle: () => session.waitForIdle(),
@@ -142,13 +146,21 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		removeSignalHandlers();
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
-		await runtimeHost.dispose();
+		// Every caller voids this promise: a failed dispose or flush must still detach and exit with a status, not end the
+		// process as an unhandled rejection.
+		let status = exitCode;
+		try {
+			await runtimeHost.dispose();
+		} catch (disposeError) {
+			process.stderr.write(`octocode: session cleanup failed: ${errorMessage(disposeError)}\n`);
+			status ||= 1;
+		}
 		detachInput();
 		process.stdin.pause();
 		if (signal !== "SIGTERM") {
-			await flushRawStdout();
+			await flushRawStdout().catch(() => undefined);
 		}
-		process.exit(exitCode);
+		process.exit(status);
 	}
 
 	async function checkShutdownRequested(): Promise<void> {

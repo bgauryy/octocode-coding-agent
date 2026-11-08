@@ -30,6 +30,36 @@ describe("animationClock", () => {
 		assert.strictEqual(animationClock.isRunning(), false);
 	});
 
+	it("drops a subscriber that throws and reports it as a rejection; the others keep running", () => {
+		mock.timers.enable({ apis: ["setInterval", "Date"] });
+		const reported: unknown[] = [];
+		const reject = mock.method(Promise, "reject", (error: unknown) => {
+			reported.push(error);
+			return Promise.resolve();
+		});
+		let failing = 0;
+		let healthy = 0;
+		const stopFailing = animationClock.subscribe(
+			() => {
+				failing++;
+				throw new Error("disposed component");
+			},
+			{ everyMs: 80, kind: "decor" },
+		);
+		const stopHealthy = animationClock.subscribe(() => healthy++, { everyMs: 80, kind: "decor" });
+		advance(400);
+		reject.mock.restore();
+		assert.strictEqual(failing, 1);
+		assert.ok(healthy >= 4);
+		assert.deepStrictEqual(
+			reported.map((error) => (error as Error).message),
+			["disposed component"],
+		);
+		stopFailing();
+		stopHealthy();
+		assert.strictEqual(animationClock.isRunning(), false);
+	});
+
 	it("keeps a slow counter on time beside a fast spinner", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let seconds = 0;

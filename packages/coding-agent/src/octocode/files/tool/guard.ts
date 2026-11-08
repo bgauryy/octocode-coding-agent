@@ -102,7 +102,8 @@ export function staleRefusal(display: string, reader: Reader, by = ""): string {
 }
 
 const BASH_PRINT = (file: string): string => `\`sed -n '1,200p' ${file}\``;
-const PIPE_NOTE = "A read piped or redirected, or after `||`, does not count.";
+const PIPE_NOTE =
+	"A read piped or redirected, or after `||`, does not count, and neither does one made by a parallel call of this message until that call finishes: read first, then call `file` again in a later message.";
 
 /** The exact call that counts, path filled in, for the declared reader; a plain print in `bash` counts with either reader (`bashReads`). */
 function unreadRefusal(display: string, reader: Reader): string {

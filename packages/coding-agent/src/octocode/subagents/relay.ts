@@ -1,5 +1,4 @@
 import type { ExtensionUIContext } from "../../core/features/index.ts";
-import { ALLOW_ONCE, DENY_NOTE, NOTE_TITLE } from "../permission/ask/text.ts";
 import {
 	AUDIT_NOTIFY_PREFIX,
 	type AuditEntry,
@@ -8,27 +7,29 @@ import {
 	isRoutine,
 } from "../permission/audit.ts";
 import { EXPOSURE_NOTIFY_PREFIX, parseExposure } from "../permission/provenance/exposure.ts";
-import { type PermissionHeader, redactNonce, splitHeader } from "../permission/header.ts";
+import { type PermissionHeader, redactNonce } from "../permission/header.ts";
 import type { ActionClass, AskReason } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
 import { headerText } from "../shared/fence.ts";
 import { withDialog } from "../shared/locks.ts";
-import { checkedView, takeWriteIn } from "../shared/ask-view.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { stringList } from "../shared/util.ts";
 import type { RunningBudgets } from "./budget.ts";
+import { askShortcut, refusedReplies, relayAsk, relayedQuestions } from "./relay-ask.ts";
 
 /**
  * A subagent's dialogs, answered by its parent. The child runs in Octocode's RPC mode: its `ctx.ui.select`, `confirm` and `input`
  * arrive as `extension_ui_request` records on its stdout and wait for an `extension_ui_response` on its stdin. The parent
- * shows each one in its own UI, unchanged apart from a title line naming the child (taken from the process the request
- * arrived on, never from the request), and returns the user's answer. A permission prompt's options are the child's, so the
- * grant a user picks ("Allow all shell commands for this session") applies to that child only: the parent's own grants are
- * never touched. This enforces the parent's policy; it is not a sandbox, the child is the same OS user.
+ * shows each one in its own UI, unchanged apart from a line naming the child (taken from the process the request arrived
+ * on, never from the request), and returns the user's answer. A child is always started with `--rpc-ask`, so its permission
+ * prompts and `askUser` questions arrive as one `ask` request of typed questions (`relay-ask.ts`), decoded by role; a
+ * plain select, confirm or input is an extension's own dialog and carries no approval. A permission prompt's options are
+ * the child's, so the grant a user picks ("Allow all shell commands for this session") applies to that child only: the
+ * parent's own grants are never touched. This enforces the parent's policy; it is not a sandbox, the child is the same OS user.
  */
 
 /** The methods that wait for an answer. */
-const DIALOG_METHODS: ReadonlySet<string> = new Set(["select", "confirm", "input", "editor"]);
+const DIALOG_METHODS: ReadonlySet<string> = new Set(["select", "confirm", "input", "editor", "ask"]);
 
 /** Dialogs shown to the user for one child in one window; the rest of the window is denied. */
 const RELAY_MAX_DIALOGS = 10;
@@ -52,7 +53,7 @@ interface RelayPermission {
 /** What the parent offers its children: its permission state always, its UI only when a person can be asked. */
 export interface RelayHost {
 	permission: RelayPermission;
-	ui?: Pick<ExtensionUIContext, "select" | "confirm" | "input" | "notify"> | undefined;
+	ui?: Pick<ExtensionUIContext, "select" | "confirm" | "input" | "notify" | "ask"> | undefined;
 	/** Registers the secret given to child `id` with the team, so the user's messages to it are signed; returns what ends that when the child is gone (`Team.vouch`). */
 	vouch?: ((id: string, secret: string) => () => void) | undefined;
 	/** Child `id` reported, on the channel only its own harness writes to, whether it read anything untrusted (`parseExposure`). */
@@ -99,8 +100,6 @@ export class ChildRelay {
 	#windowStart = 0;
 	#shown = 0;
 	#limited = false;
-	/** The note the child's next input titled `title` gets: a prompt denied for its rate, or a note typed in the card's write-in. */
-	#denyNote: { title: string; note: string } | undefined;
 
 	constructor(who: ChildWho, host: RelayHost | undefined, options: RelayOptions) {
 		this.#who = who;
@@ -129,30 +128,25 @@ export class ChildRelay {
 		const title = typeof event.title === "string" ? event.title : "";
 		const options = stringList(event.options) ?? [];
 		const ui = this.#host?.ui;
-		// A note already given (a denial the limit made, or the card's write-in): the child's own follow-up input asks for it.
-		const note = this.#denyNote;
-		this.#denyNote = undefined;
-		if (method === "input" && note && title === note.title) {
-			this.#options.send({ type: "extension_ui_response", id, value: note.note });
-			return;
-		}
 		if (!ui || method === "editor" || this.#open.size > 0) {
 			this.#cancel(id);
 			return;
 		}
-		const { title: shown, header } =
-			method === "select" ? splitHeader(title, this.#options.nonce) : { title, header: undefined };
-		if (header && this.#fastPath(id, header, options)) return;
+		// A child's permission `ask` carries its header in its own field (`askShortcut` verifies it).
+		const asked = method === "ask" ? relayedQuestions(event, this.#label(), this.#options.nonce) : undefined;
+		const shortcut = asked && askShortcut(event, asked, this.#options.nonce);
+		if (shortcut && this.#fastPath(id, shortcut.header, shortcut.options, shortcut.reply)) return;
 		if (this.#overLimit(ui)) {
-			if (method === "select" && options.includes(DENY_NOTE)) {
-				this.#denyNote = { title: NOTE_TITLE, note: RELAY_LIMIT_NOTE };
-				this.#options.send({ type: "extension_ui_response", id, value: DENY_NOTE });
+			if (asked) {
+				this.#options.send({ type: "extension_ui_response", id, replies: refusedReplies(asked, RELAY_LIMIT_NOTE) });
 				return;
 			}
 			this.#cancel(id);
 			return;
 		}
-		void this.#show(ui, id, method, shown, options, event);
+		// The parent's waiting hook or the answer to a child that already exited failed: forget the dialog; the child's own
+		// timeout or exit ends its wait.
+		void this.#show(ui, id, method, title, options, event).catch(() => this.#open.delete(id));
 	}
 
 	/**
@@ -210,14 +204,14 @@ export class ChildRelay {
 		this.#report();
 	}
 
-	/** The parent's own mode already allows the call: answer "Allow once" without a dialog, and audit it. */
-	#fastPath(id: string, header: PermissionHeader, options: readonly string[]): boolean {
+	/** The parent's own mode already allows the call: answer "Allow once" (`answer`) without a dialog, and audit it. */
+	#fastPath(id: string, header: PermissionHeader, options: readonly string[], answer: object): boolean {
 		const permission = this.#host?.permission;
-		// The header only speeds a call up: it must match the dialog it came with, and name a label the child offers.
-		if (!permission || !options.includes(ALLOW_ONCE) || !sameList(header.options, options)) return false;
+		// The header only speeds a call up: it must list the choices of the question it came with.
+		if (!permission || !sameList(header.options, options)) return false;
 		if (!permission.allows([header.action, ...header.also], header.reasons)) return false;
 		permission.relayedAllow(this.#who.id, header.action, header.what);
-		this.#options.send({ type: "extension_ui_response", id, value: ALLOW_ONCE });
+		this.#options.send({ type: "extension_ui_response", id, ...answer });
 		return true;
 	}
 
@@ -273,41 +267,39 @@ export class ChildRelay {
 		// A header the parent rejected is shown whole, but never with the child's secret in it.
 		const shown = (text: string): string => sanitizeTerminalText(redactNonce(text, this.#options.nonce));
 		const heading = `${this.#label()} asks:\n${shown(title)}`;
-		// A relayed dialog is a wait even while the parent is idle (a background child asks after the parent's turn ended). The
-		// child says whether it is an approval: its permission prompts stay approvals for the parent's clients.
+		// A relayed dialog is a wait even while the parent is idle (a background child asks after the parent's turn ended).
 		const dialogOptions = {
 			signal: controller.signal,
 			blocking: true,
-			...(method !== "input" && event.approval === true ? { approval: true } : {}),
 			...(typeof event.timeout === "number" ? { timeout: event.timeout } : {}),
 		};
 		let response: Record<string, unknown> = { cancelled: true };
 		try {
-			response = await withDialog(async () => {
-				if (controller.signal.aborted) return { cancelled: true };
-				if (method === "select") {
-					// Labels are drawn sanitized; the answer is the child's own label.
-					const drawn = options.map(shown);
-					// The child's card, kept only when it shows nothing its verified title does not, under the child's name.
-					const view = checkedView(event.ask, drawn, shown(title));
-					const ask = view && { ...view, meta: [`${this.#label()} asks`, ...(view.meta ?? [])] };
-					const choice = await ui.select(heading, drawn, ask ? { ...dialogOptions, ask } : dialogOptions);
-					const index = choice === undefined ? -1 : drawn.indexOf(choice);
-					// A note typed in the card's write-in answers the child's follow-up input for it, unshown.
-					const written = ask?.writeIn && choice === ask.writeIn.label ? takeWriteIn(ask) : undefined;
-					const asked = (event.ask as { writeIn?: { title?: unknown } } | undefined)?.writeIn?.title;
-					if (written !== undefined && typeof asked === "string") this.#denyNote = { title: asked, note: written };
-					return index < 0 ? { cancelled: true } : { value: options[index] };
-				}
-				if (method === "confirm") {
-					const message = typeof event.message === "string" ? shown(event.message) : "";
-					const confirmed = await ui.confirm(heading, message, dialogOptions);
-					return controller.signal.aborted ? { cancelled: true } : { confirmed };
-				}
-				const placeholder = typeof event.placeholder === "string" ? shown(event.placeholder) : undefined;
-				const value = await ui.input(heading, placeholder, dialogOptions);
-				return value === undefined ? { cancelled: true } : { value };
-			}, controller.signal);
+			// `relayAsk` queues behind the parent's other dialogs itself (`ask`), so it is not wrapped again.
+			const questions = method === "ask" ? relayedQuestions(event, this.#label(), this.#options.nonce) : undefined;
+			response = questions
+				? await relayAsk(ui, questions, {
+						signal: controller.signal,
+						...(typeof event.timeout === "number" ? { timeout: event.timeout } : {}),
+					})
+				: await withDialog(async () => {
+						if (controller.signal.aborted || method === "ask") return { cancelled: true };
+						if (method === "select") {
+							// Labels are drawn sanitized; the answer is the child's own label.
+							const drawn = options.map(shown);
+							const choice = await ui.select(heading, drawn, dialogOptions);
+							const index = choice === undefined ? -1 : drawn.indexOf(choice);
+							return index < 0 ? { cancelled: true } : { value: options[index] };
+						}
+						if (method === "confirm") {
+							const message = typeof event.message === "string" ? shown(event.message) : "";
+							const confirmed = await ui.confirm(heading, message, dialogOptions);
+							return controller.signal.aborted ? { cancelled: true } : { confirmed };
+						}
+						const placeholder = typeof event.placeholder === "string" ? shown(event.placeholder) : undefined;
+						const value = await ui.input(heading, placeholder, dialogOptions);
+						return value === undefined ? { cancelled: true } : { value };
+					}, controller.signal);
 		} catch {
 			// The parent's UI failed (its session was replaced): the child is told nobody answered.
 		}

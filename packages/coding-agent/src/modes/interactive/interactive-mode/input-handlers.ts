@@ -13,6 +13,7 @@ import { extensionForImageMimeType, readClipboardImage } from "../../../utils/cl
 import { editInExternalEditor } from "../external-editor.ts";
 import { bindEditorHandlers } from "./extension-chrome.ts";
 import { quoteIfNeeded } from "./helpers.ts";
+import { rewritePastedImagePaths } from "./paste-image-paths.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -40,6 +41,8 @@ type InputHandlersHost = Pick<
 	| "session"
 	| "settingsManager"
 	| "showError"
+	| "showWarning"
+	| "showStatus"
 	| "showModelSelector"
 	| "showQueueManager"
 	| "showSessionSelector"
@@ -138,6 +141,8 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	host.defaultEditor.onPasteImage = () => {
 		void host.handleClipboardPaste();
 	};
+	// A dropped image file arrives as pasted path text: it becomes clean absolute paths the prompt attaches.
+	host.defaultEditor.onPasteText = (text) => rewritePastedImagePaths(host, text);
 	bindEditorHandlers(host);
 }
 

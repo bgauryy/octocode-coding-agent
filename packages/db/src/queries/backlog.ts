@@ -1,6 +1,6 @@
 import type { ItemType } from "@octocodeai/octocode-contracts/backlogs";
 import type { DatabaseSync } from "node:sqlite";
-import { allRows, num, type Row } from "../rows.ts";
+import { allRows, num } from "../rows.ts";
 
 // Item rows and listings (one item, an origin's derived items, filtered pages) live beside this module.
 export * from "./backlog-items.ts";
@@ -272,11 +272,4 @@ export function ongoingItems(
 			"SELECT seq, title, goal, paths FROM backlog WHERE workspace_id = ? AND state = 'ongoing' AND assignee = ? ORDER BY priority, updated_at DESC",
 		)
 		.all(repoKey, sessionId) as Array<{ seq: number; title: string; goal: string; paths: string }>;
-}
-
-/** Backlog items of `repoKey` still to do. */
-export function todoCount(db: DatabaseSync, repoKey: string): number {
-	return num(
-		(db.prepare("SELECT COUNT(*) AS n FROM backlog WHERE workspace_id = ? AND state = 'todo'").get(repoKey) as Row).n,
-	);
 }

@@ -174,7 +174,8 @@ async function openWorkspace(): Promise<Workspace> {
 				sessionId,
 				action: "answer",
 				dialogId: awaiting.id,
-				choice,
+				// The dialog is one typed question: reply with the option whose label is `choice`, by its id.
+				replies: [{ id: awaiting.questions![0].id, picks: [optionId(awaiting, choice)] }],
 			}),
 		viewToken: async () => {
 			const published = await post(daemon, "/api/admin/remote", daemon.token, { transport: "ssh", access: "view" });
@@ -184,6 +185,13 @@ async function openWorkspace(): Promise<Workspace> {
 		},
 	};
 }
+
+/** The id of the first question's option whose label contains `label`. */
+const optionId = (awaiting: ApplicationAwaiting, label: string): string => {
+	const option = awaiting.questions?.[0]?.options?.find((candidate) => candidate.label.includes(label));
+	if (!option) throw new Error(`no option "${label}" in ${JSON.stringify(awaiting.questions)}`);
+	return option.id;
+};
 
 const waitingOn = async (workspace: Workspace, what: string) => {
 	await until(() => workspace.tab.awaiting()?.id !== undefined, what, WAIT);
@@ -203,7 +211,7 @@ describe("a dialog answered from the web workspace", () => {
 
 		const awaiting = await waitingOn(workspace, "the bash ask in the web stream");
 		expect(awaiting.kind).toBe("approval");
-		expect(awaiting.options).toContain("Allow once");
+		expect(awaiting.questions?.[0]?.options?.map((option) => option.label)).toContain("Allow once");
 		expect(awaiting.title).toBeTruthy();
 		// Nothing runs while the dialog waits.
 		expect(fs.existsSync(marker)).toBe(false);
@@ -262,10 +270,9 @@ describe("a dialog answered from the web workspace", () => {
 		const awaiting = await waitingOn(workspace, "the question in the web stream");
 		expect(awaiting.kind).toBe("question");
 		expect(awaiting.title).toContain("Which colour should the badge be?");
-		const orange = awaiting.options?.find((option) => option.includes("Orange"));
-		expect(orange, JSON.stringify(awaiting.options)).toBeDefined();
+		expect(awaiting.questions?.[0]?.options?.map((option) => option.label)).toContain("Orange");
 
-		const answered = await workspace.answer(awaiting, orange!);
+		const answered = await workspace.answer(awaiting, "Orange");
 		expect(answered.status, JSON.stringify(answered.body)).toBe(200);
 
 		// The turn ends with the model's last scripted text, after it was sent the answer.

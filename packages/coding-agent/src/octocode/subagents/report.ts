@@ -1,7 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../shared/format.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
@@ -16,9 +15,9 @@ import {
 import { asRecord, errorMessage as describeError } from "@octocodeai/octocode-contracts/guards";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { appendScratchFile, snapshotReport, writeScratchFile, type ReportArtifact } from "../shared/report-artifact.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { appendHead, emptyHead, headPreview, REPORT_MAX_LINES } from "./report-head.ts";
+import { isWaitingLine } from "./pending-waits.ts";
 
-const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
 const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_LINES);
 
@@ -131,42 +130,6 @@ export function reportChecks(text: string | undefined): string[] | undefined {
 	return checks;
 }
 
-interface ReportHead {
-	head: string;
-	bytes: number;
-	lines: number;
-	firstLineBytes: number;
-}
-
-const emptyHead = (): ReportHead => ({ head: "", bytes: 0, lines: 1, firstLineBytes: 0 });
-
-/** Keep enough raw text to cut a preview; totals describe the complete report on disk. */
-function appendHead(before: ReportHead, section: string): ReportHead {
-	const newline = section.indexOf("\n");
-	return {
-		// Four extra bytes retain an overflow code point, so a multibyte boundary cannot hide a cut.
-		head: cutText(before.head + section, REPORT_MAX_BYTES + 4)
-			.split("\n")
-			.slice(0, REPORT_MAX_LINES + 1)
-			.join("\n"),
-		bytes: before.bytes + Buffer.byteLength(section),
-		lines: before.lines + (section.match(/\n/g)?.length ?? 0),
-		firstLineBytes:
-			before.firstLineBytes +
-			(before.lines === 1 ? Buffer.byteLength(newline < 0 ? section : section.slice(0, newline)) : 0),
-	};
-}
-
-function headPreview(report: ReportHead): string {
-	const cut = truncateHead(report.head, { maxBytes: REPORT_MAX_BYTES, maxLines: REPORT_MAX_LINES });
-	if (report.bytes <= REPORT_MAX_BYTES && report.lines <= REPORT_MAX_LINES) return report.head;
-	if (cut.content === "") {
-		const head = cutText(report.head, REPORT_MAX_BYTES);
-		return `${head}\n\n[Output trimmed: the first line alone is ${formatSize(report.firstLineBytes)}; kept its first ${formatSize(Buffer.byteLength(head))} (${formatSize(report.bytes)} in all).]`;
-	}
-	return `${cut.content}\n\n[Output trimmed: ${cut.outputLines} of ${report.lines} lines (${formatSize(cut.outputBytes)} of ${formatSize(report.bytes)}).]`;
-}
-
 /**
  * A bounded preview and an incremental disk report. Retries replace the current section; incoming messages start a new
  * one. The preview is always cut from the whole uncut report, so follow-ups never stack truncation notices.
@@ -180,6 +143,8 @@ export class ReportTracker {
 	private signature = "";
 	private sections = 0;
 	private sectionStart = 0;
+	/** The only section is a waiting line kept because a report with nothing in it is no answer; a later answer replaces it. */
+	private waitOnly = false;
 	private fresh = true;
 	private failure: string | undefined;
 	private outcome: { status: ReportStatus; source: OutcomeSource } | undefined;
@@ -204,6 +169,11 @@ export class ReportTracker {
 		this.resultContract = resultContract;
 	}
 
+	/** At least one answer is in: the report exists, however its follow-ups end. */
+	get hasReport(): boolean {
+		return this.sections > 0;
+	}
+
 	/**
 	 * A message reached the child; `job`: the notice line when it is the child's own background job ending. A `quiet` job
 	 * report starts no turn: it adds its line to the report already given instead of a follow-up answer.
@@ -225,7 +195,17 @@ export class ReportTracker {
 		}
 	}
 
-	answer(raw: string | undefined, stopReason: unknown, errorMessage?: unknown): void {
+	/**
+	 * `waiting`: the child still has a background job or timer pending, so a waiting-only text is not its report.
+	 * `reminder`: its own timer woke this turn and no tool ran, so after a report its text only echoes the reminder.
+	 */
+	answer(
+		raw: string | undefined,
+		stopReason: unknown,
+		errorMessage?: unknown,
+		waiting = false,
+		reminder = false,
+	): void {
 		const failed = stopReason === "error" || stopReason === "aborted" || stopReason === "length";
 		this.failure = failed
 			? visibleControls(
@@ -245,6 +225,10 @@ export class ReportTracker {
 			return;
 		}
 		const text = visibleControls(raw);
+		// A waiting line after a report pads it; the first answer is kept for now, as a report with nothing in it would be no
+		// answer, and the next section replaces it (`restart`).
+		if (waiting && !failed && stopReason !== "toolUse" && this.sections > 0 && isWaitingLine(text)) return;
+		if (reminder && !failed && stopReason !== "toolUse" && this.sections > 0) return;
 		this.lastText = preview(text);
 		if (stopReason === "toolUse" || failed) {
 			this.partialFile = undefined;
@@ -262,6 +246,7 @@ export class ReportTracker {
 			return;
 		}
 		const append = this.fresh || this.sections === 0;
+		if (append && this.waitOnly) this.restart();
 		// One task, one report: the answer to the child's own job notice extends the report it already gave, and keeps that
 		// report's outcome unless it names a new one. A new task (a message from the parent) is judged on its own.
 		const followUp = this.job;
@@ -279,14 +264,29 @@ export class ReportTracker {
 		}
 		const section = `${this.sections > 1 ? SEPARATOR : ""}${followUp ? `Follow-up to the report above (${followUp}):\n` : ""}${text}`;
 		this.write(section, append);
+		this.waitOnly = this.sections === 1 && isWaitingLine(text);
 		this.signature = signature;
 		this.fresh = false;
+	}
+
+	/** Drops the waiting-only section that stood in for a report: the answer that follows it is the report. */
+	private restart(): void {
+		this.full = emptyHead();
+		this.before = emptyHead();
+		this.sections = 0;
+		this.sectionStart = 0;
+		this.signature = "";
+		this.outcome = undefined;
+		this.prior = undefined;
+		this.job = undefined;
+		this.waitOnly = false;
 	}
 
 	/** A line added to the latest report without a model turn; a later answer still starts its own section. */
 	private note(line: string): void {
 		this.before = this.full;
 		this.sectionStart = this.full.bytes;
+		this.waitOnly = false;
 		this.write(`\n\n${line}`, true);
 	}
 

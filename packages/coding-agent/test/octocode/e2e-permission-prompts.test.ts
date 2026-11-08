@@ -38,12 +38,17 @@ const shows = (pattern: RegExp | string) => async () => {
 const idle = () => t!.until(() => !t!.host.session.isStreaming, "the turn to end", 30_000);
 const exists = (file: string) => fs.existsSync(path.join(t!.cwd, file));
 
-/** The dialog's rows, to move the cursor to the one whose label is `label`. */
+/** The dialog's rows, to move the cursor to the one whose label is `label`; the approval card numbers its choices (`1. Apply all`). */
 async function choose(label: string): Promise<void> {
-	const rows = (await t!.grid()).map((row) => row.replace(/^[\s│>›❯→▸*]+/, "").trim());
+	const rows = (await t!.grid()).map((row) =>
+		row
+			.replace(/^[\s│>›❯→▸*]+/, "")
+			.replace(/^\d+\.\s+/, "")
+			.trim(),
+	);
 	const first = rows.findIndex((row) => row === ONCE || row.startsWith(ONCE));
 	const target = rows.findIndex((row, index) => index >= first && row.startsWith(label));
-	expect(first, `the dialog lists ${ONCE}`).toBeGreaterThanOrEqual(0);
+	expect(first, `the dialog lists ${ONCE}\n${rows.join("\n")}`).toBeGreaterThanOrEqual(0);
 	expect(target, `the dialog lists ${label}\n${rows.join("\n")}`).toBeGreaterThanOrEqual(0);
 	for (let step = first; step < target; step++) t!.press(KEY.down);
 	await new Promise((resolve) => setTimeout(resolve, 100));

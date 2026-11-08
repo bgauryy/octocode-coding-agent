@@ -47,15 +47,19 @@ describe("the shared one-second clock", () => {
 		stop();
 	});
 
-	it("runs every listener when one throws, then rethrows the first error; a listener may stop itself", () => {
+	it("runs every listener when one throws, then reports the first error as a rejection, never a throw out of the timer; a listener may stop itself", () => {
 		vi.useFakeTimers();
+		// The session's unhandledRejection listener shows the report; here it is captured instead of reaching the runner.
+		const reported = vi.spyOn(Promise, "reject").mockImplementation(() => Promise.resolve());
 		const after = vi.fn();
 		const stopFailing = onSecond(() => {
 			throw new Error("first");
 		});
 		const stopSelf = onSecond(() => stopSelf());
 		const stopAfter = onSecond(after);
-		expect(() => vi.advanceTimersByTime(1_000)).toThrow("first");
+		expect(() => vi.advanceTimersByTime(1_000)).not.toThrow();
+		expect(reported).toHaveBeenCalledWith(expect.objectContaining({ message: "first" }));
+		reported.mockRestore();
 		expect(after).toHaveBeenCalledTimes(1);
 		stopFailing();
 		vi.advanceTimersByTime(2_000);

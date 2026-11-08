@@ -18,6 +18,7 @@ type CrashReportingHost = Pick<
 	InteractiveModeHost,
 	| "bugReportHintShown"
 	| "chatContainer"
+	| "uncaughtCrash"
 	| "crashReportInstructions"
 	| "emergencyTerminalExit"
 	| "getCrashExtensionHint"
@@ -90,7 +91,8 @@ export function recordCrash(
 }
 
 export function crashReportInstructions(host: CrashReportingHost): string {
-	const resume = host.session.sessionFile ? `run \`${APP_NAME} -r\` to resume the session, then` : "start octocode and";
+	const resumeCommand = host.session.sessionFile ? formatResumeCommand(host.sessionManager) : undefined;
+	const resume = resumeCommand ? `run \`${resumeCommand}\` to resume the session, then` : "start octocode and";
 	return `To report this crash: ${resume} run /bug. The crash details are attached automatically.`;
 }
 
@@ -143,6 +145,49 @@ export function emergencyTerminalExit(host: CrashReportingHost): never {
 	// The terminal is gone. Do not run normal shutdown because TUI and
 	// extension cleanup can write restore sequences and re-trigger EIO.
 	process.exit(129);
+}
+
+/** More survived errors than this within the window means something is looping: crash with the latest. */
+const SURVIVED_LIMIT = 10;
+const SURVIVED_WINDOW_MS = 60_000;
+const survivedAt = new WeakMap<object, number[]>();
+
+/**
+ * Node 25+ reports a FileHandle its owner dropped without closing as an uncaught error, after it has already closed the
+ * descriptor itself. Nothing is half-done, so the session survives it; the owner's leak is still a bug to fix.
+ */
+export function isLeakedFileHandleError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(error as NodeJS.ErrnoException).code === "ERR_INVALID_STATE" &&
+		error.message.startsWith("A FileHandle object was closed during garbage collection")
+	);
+}
+
+/**
+ * Process-level error listener. A rejection nobody awaited and a leaked FileHandle tear no in-memory state, so they are
+ * shown as a warning and the session keeps running; any other uncaught throw may have stopped code mid-change and
+ * crashes. A burst of survived errors crashes too, so a loop cannot flood the chat.
+ */
+export function backgroundError(
+	host: CrashReportingHost,
+	kind: "uncaughtException" | "unhandledRejection",
+	error: unknown,
+): void {
+	const crash = (): never => host.uncaughtCrash(error instanceof Error ? error : new Error(errorMessage(error)));
+	if (kind === "uncaughtException" && !isLeakedFileHandleError(error)) crash();
+	if (host.isShuttingDown) return;
+	const now = Date.now();
+	const recent = [...(survivedAt.get(host) ?? []).filter((at) => now - at < SURVIVED_WINDOW_MS), now];
+	survivedAt.set(host, recent);
+	if (recent.length > SURVIVED_LIMIT) crash();
+	try {
+		const what = kind === "unhandledRejection" ? "Unhandled background error" : "Background error";
+		host.showWarning(`${what}; the session keeps running: ${errorMessage(error)}`);
+		host.suggestBugReport();
+	} catch {
+		// A warning that cannot render must not turn a survivable error into a crash.
+	}
 }
 
 /**

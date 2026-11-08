@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { QuestionsSchema } from "./question.ts";
 
 /**
  * A blocking dialog the run waits on: an approval, or a question or other input. With `id` a client may answer it with
@@ -7,7 +8,10 @@ import { Type } from "typebox";
  */
 export const AwaitingSchema = Type.Object({
 	kind: Type.Union([Type.Literal("approval"), Type.Literal("question")]),
+	/** One line, for lists and the card's heading. */
 	title: Type.Optional(Type.String({ maxLength: 200 })),
+	/** The whole question when it is more than `title` (several lines, or the card's own question); a client draws it under the heading. */
+	question: Type.Optional(Type.String({ maxLength: 4000 })),
 	id: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
 	options: Type.Optional(Type.Array(Type.String({ maxLength: 200 }), { maxItems: 50 })),
 	allowsText: Type.Optional(Type.Boolean()),
@@ -43,6 +47,11 @@ export const AwaitingSchema = Type.Object({
 			{ maxItems: 50 },
 		),
 	),
+	/**
+	 * The typed questions of a dialog that asks several or typed ones (batch, multi-select, text), present beside the older
+	 * fields above. Answer with the `answer` command's `replies`: one per question id, choosing options by their id.
+	 */
+	questions: Type.Optional(QuestionsSchema),
 	/** The option that opens a free-text step (a second `awaiting` that allows text) instead of answering at once. */
 	writeIn: Type.Optional(Type.String({ maxLength: 200 })),
 });

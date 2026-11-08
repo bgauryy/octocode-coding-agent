@@ -97,17 +97,19 @@ describe("dialog broker", () => {
 		expect(await edited).toBe("final");
 	});
 
-	it("carries the approval and blocking options into the start event, approval for choices only", async () => {
+	it("carries the blocking option into the start event; a select, confirm or input never claims to be an approval", async () => {
 		const { t, events, flush } = tracker();
 		const { ui } = fakeUi();
 		const wrapped = t.wrap(ui);
-		void wrapped.select("Run?", ["Allow once"], { approval: true, blocking: true });
-		void wrapped.confirm("Sure?", "", { approval: true });
-		void wrapped.input("Why not?", undefined, { approval: true });
+		void wrapped.select("Run?", ["Allow once"], { blocking: true });
+		void wrapped.confirm("Sure?", "");
+		void wrapped.input("Why not?", undefined);
 		void wrapped.select("Plain", ["a"], {});
 		await flush();
-		expect(events[0]).toMatchObject({ kind: "select", approval: true, blocking: true });
-		expect(events[1]).toMatchObject({ kind: "confirm", approval: true });
+		expect(events[0]).toMatchObject({ kind: "select", blocking: true });
+		expect(events[0].approval).toBeUndefined();
+		expect(events[1]).toMatchObject({ kind: "confirm" });
+		expect(events[1].approval).toBeUndefined();
 		expect(events[1].blocking).toBeUndefined();
 		expect(events[2].approval).toBeUndefined();
 		expect(events[3].approval).toBeUndefined();

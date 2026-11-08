@@ -81,7 +81,7 @@ describe("renderCliGuide", () => {
 		expect(linux.split("\n")[1]).toBe(
 			"Host: Linux arm64. On PATH: git, rg. gh: logged in. Check any other tool with `command -v` before relying on it.",
 		);
-		expect(linux).toContain("ss -ltnp");
+		expect(linux).toContain("sha256sum");
 		expect(linux).not.toContain("BSD tools");
 		expect(renderCliGuide(host("win32"))).toContain("type: powershell");
 		expect(renderCliGuide(host("freebsd"))).toContain("Host notes: check flags");

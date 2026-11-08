@@ -177,7 +177,8 @@ describe("file restore after compaction", () => {
 			whole: false,
 			stamp: expect.objectContaining({ size: fs.statSync(big).size }),
 		});
-		expect(restored.content).toMatch(/\[… shown lines 1–200 of 400; read the file with an offset for the rest\]/);
+		const shown = /\[… shown lines 1–(\d+) of 160; read the file with an offset for the rest\]/.exec(restored.content);
+		expect(Number(shown![1]) * line.length).toBeLessThanOrEqual(RESTORE_FILE_CHARS);
 		const body = restored.content
 			.split("\n")
 			.filter((text) => text.startsWith("z"))

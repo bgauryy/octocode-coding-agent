@@ -60,7 +60,9 @@ describe("research routing in the policy", () => {
 	it("gives the parent delegation guidance and leaves skill loading to the skills section", () => {
 		const root = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: true });
 		expect(root).toContain("give coupled work one owner");
-		expect(root).toContain("Treat a report as a claim: check the result your next step depends on.");
+		expect(root).toContain(
+			"A report is a claim: read its `Noticed` line first and check what your next step depends on.",
+		);
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
 		const child = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false });
@@ -283,7 +285,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			expect(octocode).not.toContain("Use bash for builds");
 			expect(octocode).not.toContain("`agent`");
 			if (isSubagent) {
-				expect(octocode).toContain("no messaging tool is active");
+				expect(octocode).toContain("have no messaging tool");
 				expect(octocode).toContain("leave it blocked in your report");
 			}
 		}

@@ -323,7 +323,7 @@ async function scenario() {
 		const answers = [];
 		for (const request of script.requests) {
 			emit({ type: "extension_ui_request", ...request });
-			if (["select", "confirm", "input", "editor"].includes(request.method)) {
+			if (["select", "confirm", "input", "editor", "ask"].includes(request.method)) {
 				answers.push(
 					await new Promise((resolve) => {
 						const found = commands.find((command) => command.id === request.id);
@@ -515,6 +515,13 @@ async function scenario() {
 			log("abort");
 			emit({ type: "agent_settled", aborted: true });
 		});
+		setTimeout(() => undefined, 60_000);
+	} else if (task.startsWith("settled but alive")) {
+		// Answers and settles, then keeps its process alive past a closed input: only the parent's stop ends it.
+		emit(say("FINAL REPORT"));
+		emit({ type: "agent_settled" });
+		end = "hold";
+		ignoreClose = true;
 		setTimeout(() => undefined, 60_000);
 	} else if (task.startsWith("gated")) {
 		// Runs until the test creates the file OCTOCODE_FAKE_GATE names, then answers: the test acts as the child's team meanwhile.

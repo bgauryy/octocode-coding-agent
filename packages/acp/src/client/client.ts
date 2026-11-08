@@ -344,12 +344,17 @@ export class AcpBackend implements ExternalBackend {
 		if (this.closing) return this.closing;
 		this.lifetime.abort(reason);
 		this.closing = Promise.resolve().then(async () => {
-			this.connection?.close(reason);
-			await this.host.processTree.stop(this.child.pid);
-			this.child.stdin.destroy();
-			this.child.stdout.destroy();
-			this.child.stderr.destroy();
+			try {
+				this.connection?.close(reason);
+				await this.host.processTree.stop(this.child.pid);
+			} finally {
+				this.child.stdin.destroy();
+				this.child.stdout.destroy();
+				this.child.stderr.destroy();
+			}
 		});
+		// Child and stream listeners start this without awaiting it; awaiting callers (`close`) still see a failure.
+		this.closing.catch(() => undefined);
 		return this.closing;
 	}
 }

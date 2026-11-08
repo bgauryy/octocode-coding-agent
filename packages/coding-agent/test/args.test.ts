@@ -82,6 +82,41 @@ describe("parseArgs", () => {
 			const result = parseArgs(["-r"]);
 			expect(result.resume).toBe(true);
 		});
+
+		test("--resume <id> and -r <id> open that session like --session", () => {
+			for (const flag of ["--resume", "-r"]) {
+				const result = parseArgs([flag, "0197f6e4-4cf9-7f44-a2d8-f8f7f49ee9d3"]);
+				expect(result.session).toBe("0197f6e4-4cf9-7f44-a2d8-f8f7f49ee9d3");
+				expect(result.resume).toBeUndefined();
+				expect(result.diagnostics).toEqual([]);
+			}
+			expect(parseArgs(["--resume=0197f6e4"]).session).toBe("0197f6e4");
+			expect(parseArgs(["-r", "./saved/session.jsonl"]).session).toBe("./saved/session.jsonl");
+		});
+
+		test("--resume <id> then a prompt keeps the prompt", () => {
+			const result = parseArgs(["--resume", "0197f6e4", "continue the refactor"]);
+			expect(result.session).toBe("0197f6e4");
+			expect(result.messages).toEqual(["continue the refactor"]);
+		});
+
+		test("--resume does not swallow a prompt or a flag that is not a session id", () => {
+			const prompt = parseArgs(["--resume", "fix the build"]);
+			expect(prompt.resume).toBe(true);
+			expect(prompt.session).toBeUndefined();
+			expect(prompt.messages).toEqual(["fix the build"]);
+			const flag = parseArgs(["-r", "-p", "hello"]);
+			expect(flag.resume).toBe(true);
+			expect(flag.print).toBe(true);
+			expect(parseArgs(["-r", "@notes.md"]).fileArgs).toEqual(["notes.md"]);
+		});
+
+		test("--resume <id> with a different --session is an error", () => {
+			const result = parseArgs(["--session", "aaaa1111", "--resume", "bbbb2222"]);
+			expect(result.diagnostics).toEqual([
+				{ type: "error", message: "--resume: conflicts with --session given earlier" },
+			]);
+		});
 	});
 
 	describe("flags with values", () => {

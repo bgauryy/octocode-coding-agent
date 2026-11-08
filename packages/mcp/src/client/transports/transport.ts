@@ -51,14 +51,29 @@ export abstract class TransportEvents {
 		for (const listener of this.messageListeners) listener(message);
 	}
 
+	// emitError and emitClose run from stream and child-process events, where a listener's throw is an uncaught exception
+	// that ends the host: each listener is contained, and the others still run.
 	protected emitError(error: unknown): void {
 		const normalized = toError(error);
-		for (const listener of this.errorListeners) listener(normalized);
+		for (const listener of this.errorListeners) {
+			try {
+				listener(normalized);
+			} catch (failure) {
+				// Reporting it as an error again could loop: surface it as a rejection the host reports.
+				void Promise.reject(failure);
+			}
+		}
 	}
 
 	protected emitClose(): void {
 		if (this.closeEmitted) return;
 		this.closeEmitted = true;
-		for (const listener of this.closeListeners) listener();
+		for (const listener of this.closeListeners) {
+			try {
+				listener();
+			} catch (failure) {
+				this.emitError(failure);
+			}
+		}
 	}
 }

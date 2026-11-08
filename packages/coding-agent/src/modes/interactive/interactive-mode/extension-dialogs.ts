@@ -12,7 +12,7 @@ import { ExtensionInputComponent } from "../components/extension-input.ts";
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
-import type { InteractiveModeHost } from "./host.ts";
+import type { InteractiveModeHost, SelectorCard } from "./host.ts";
 
 /** Interactive-mode members used by the extension dialogs. */
 type ExtensionDialogsHost = Pick<
@@ -114,7 +114,8 @@ export function closeExtensionOverlays(host: object): boolean {
 }
 
 /**
- * Show a selector for extensions.
+ * Show a selector for extensions. `blocked` is what the footer reports while it is open (a question unless the caller
+ * says otherwise); `card` draws it as an ask card (`extension-ask.ts` shows approvals this way).
  */
 export function showExtensionSelector(
 	host: ExtensionDialogsHost,
@@ -122,6 +123,7 @@ export function showExtensionSelector(
 	options: string[],
 	opts?: ExtensionUIDialogOptions,
 	blocked: BlockedStatus = { kind: "question", message: title },
+	card?: SelectorCard,
 ): Promise<string | undefined> {
 	return new Promise((resolve) => {
 		if (opts?.signal?.aborted) {
@@ -133,7 +135,7 @@ export function showExtensionSelector(
 		host.extensionSelector = new ExtensionSelectorComponent(title, options, finish, () => finish(undefined), {
 			tui: host.ui,
 			timeout: opts?.timeout,
-			...(opts?.ask ? { ask: opts.ask } : {}),
+			...(card ? { ask: card.view, ...(card.onWriteIn ? { onWriteIn: card.onWriteIn } : {}) } : {}),
 			onToggleToolsExpanded: () => host.toggleToolOutputExpansion(),
 			// A dialog that opens mid-run (an approval) keeps what the user types: it is submitted as if typed in the editor
 			// (dialog unit tests build hosts without a session).
@@ -174,7 +176,7 @@ export async function showExtensionConfirm(
 	opts?: ExtensionUIDialogOptions,
 ): Promise<boolean> {
 	const result = await host.showExtensionSelector(`${title}\n${message}`, ["Yes", "No"], opts, {
-		kind: "permission",
+		kind: "question",
 		message: title,
 	});
 	return result === "Yes";

@@ -115,7 +115,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			}));
 			const active = new Set(session.getActiveToolNames());
 			expect([...active]).toEqual(
-				expect.arrayContaining(["file", "agent", "steps", "archive", ...localResearchTools()]),
+				expect.arrayContaining(["file", "agent", "timer", "archive", ...localResearchTools()]),
 			);
 			if (fields.tools === "web,mcp__example__lookup") {
 				expect(active.has("mcp__example__lookup")).toBe(true);
@@ -133,7 +133,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				defaults?.length === 1 &&
 				defaults[0] === "read"
 			) {
-				expect([...active]).toEqual(expect.arrayContaining(["agent", "steps", "archive"]));
+				expect([...active]).toEqual(expect.arrayContaining(["agent", "timer", "archive"]));
 				// Without a `-bash` entry the child gets the shell even when its parent's defaults have none.
 				expect(active.has("bash")).toBe(fields.tools === undefined);
 			}
@@ -210,7 +210,7 @@ describe("bundled roles", () => {
 		const lean = loadProfiles(tmp(), tmp(), false, {}).get("lean");
 		expect(lean?.lean).toBe(true);
 		for (const tool of ["bash", "file"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
-		for (const tool of ["agent", "steps"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
+		for (const tool of ["agent", "timer"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
 		for (const tool of ["archive", "skill", "mcp"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(false);
 	});
 
@@ -253,8 +253,9 @@ describe("bundled roles", () => {
 
 	it("does not read `task` in a saved profile's tools or excludeTools as `steps`", () => {
 		const selects = parseProfile("old", "---\ntools: bash,task\n---\nTask");
-		// `steps` comes from the core floor, not from reading `task` as its old name.
-		expect(profileSelectsTool(selects, "steps", ["bash"])).toBe(true);
+		// `steps` is not a core tool and `task` is not its old name: only a profile listing `steps` selects it.
+		expect(profileSelectsTool(selects, "steps", ["bash"])).toBe(false);
+		expect(profileSelectsTool(parseProfile("new", "---\ntools: bash,steps\n---\nTask"), "steps", ["bash"])).toBe(true);
 		const excludes = parseProfile("old", "---\nexcludeTools: task\n---\nTask");
 		expect(profileSelectsTool(excludes, "steps", ["bash", "steps"])).toBe(true);
 		expect(profileSelectsTool(excludes, "bash", ["bash", "steps"])).toBe(true);

@@ -27,7 +27,8 @@ export async function applyServerChanges(
 	const { signal } = state.session;
 	state.servers = state.servers.filter((server) => !removed.includes(server));
 	for (const server of removed) hideTools(state, server.entry.name);
-	for (const server of added) server.unselected = isEnabled(server) && !isSelected(state.api, server.entry);
+	for (const server of added)
+		server.unselected = isEnabled(server) && !isSelected(state.api, server.entry, state.taskNamed);
 	state.servers.push(...added);
 	state.emitChange();
 	await Promise.all(removed.flatMap((server) => server.connection?.close() ?? []));

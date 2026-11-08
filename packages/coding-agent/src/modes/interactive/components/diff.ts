@@ -13,53 +13,6 @@ function parseDiffLine(line: string): { prefix: string; lineNum: string; content
 	return { prefix: match[1], lineNum: match[2], content: match[3] };
 }
 
-/**
- * Compute word-level diff and render with inverse on changed parts.
- * Uses diffWords which groups whitespace with adjacent words for cleaner highlighting.
- * Strips leading whitespace from inverse to avoid highlighting indentation.
- */
-function renderIntraLineDiff(oldContent: string, newContent: string): { removedLine: string; addedLine: string } {
-	const wordDiff = Diff.diffWords(oldContent, newContent);
-
-	let removedLine = "";
-	let addedLine = "";
-	let isFirstRemoved = true;
-	let isFirstAdded = true;
-
-	for (const part of wordDiff) {
-		if (part.removed) {
-			let value = part.value;
-			// Strip leading whitespace from the first removed part
-			if (isFirstRemoved) {
-				const leadingWs = value.match(/^(\s*)/)?.[1] || "";
-				value = value.slice(leadingWs.length);
-				removedLine += leadingWs;
-				isFirstRemoved = false;
-			}
-			if (value) {
-				removedLine += theme.inverse(value);
-			}
-		} else if (part.added) {
-			let value = part.value;
-			// Strip leading whitespace from the first added part
-			if (isFirstAdded) {
-				const leadingWs = value.match(/^(\s*)/)?.[1] || "";
-				value = value.slice(leadingWs.length);
-				addedLine += leadingWs;
-				isFirstAdded = false;
-			}
-			if (value) {
-				addedLine += theme.inverse(value);
-			}
-		} else {
-			removedLine += part.value;
-			addedLine += part.value;
-		}
-	}
-
-	return { removedLine, addedLine };
-}
-
 export interface RenderDiffOptions {
 	/** File path, used to pick the syntax highlighting language. */
 	filePath?: string;
@@ -175,55 +128,11 @@ function overlayRanges(styled: string, ranges: Range[], on: string, off: string)
 	return inside ? out + off : out;
 }
 
-/**
- * Render a diff string with colored lines and intra-line change highlighting.
- * - Context lines: dim/gray
- * - Removed lines: red, with changed tokens emphasized
- * - Added lines: green, with changed tokens emphasized
- *
- * On themes without tool backgrounds, changed lines get a tinted background, syntax-highlighted content (when the
- * file's language is known) and a stronger tint on changed words; otherwise the whole line takes the diff colour and
- * changed words are inverted.
- */
-export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
-	const tints = diffTints();
-	if (!tints) return renderBlocks(diffText, plainChange);
-	const language = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
-	const changedLine = (sign: "+" | "-", row: DiffRow, ranges: Range[] = []): string => {
-		const color = sign === "+" ? "toolDiffAdded" : "toolDiffRemoved";
-		const body = language ? (highlightCode(row.content, language)[0] ?? row.content) : theme.fg(color, row.content);
-		const marked = overlayRanges(body, ranges, tints.word[sign], tints.line[sign]);
-		// The sign and number carry the colour; the tint marks the whole changed line, so a line of only whitespace
-		// still shows as changed.
-		const text = visibleWidth(row.content) === 0 ? " " : marked;
-		return `${theme.fg(color, `${sign}${row.lineNum} `)}${tints.line[sign]}${text}${DEFAULT_BG}`;
-	};
-	return renderBlocks(diffText, (removed, added) => {
-		// Lines replaced one for one are paired, so each pair can show which words changed.
-		const paired = removed.length === added.length && removed.length <= MAX_PAIRED_LINES;
-		const ranges = paired ? removed.map((row, index) => changedRanges(row.content, added[index].content)) : [];
-		return [
-			...removed.map((row, index) => changedLine("-", row, ranges[index]?.removed)),
-			...added.map((row, index) => changedLine("+", row, ranges[index]?.added)),
-		];
-	});
-}
-
-/** The foreground-only rendering of a change block, for themes that draw tool output on their own background. */
-function plainChange(removed: DiffRow[], added: DiffRow[]): string[] {
-	// Only do intra-line diffing for a single line modification. Otherwise, show lines as-is.
-	if (removed.length === 1 && added.length === 1) {
-		const { removedLine, addedLine } = renderIntraLineDiff(removed[0].content, added[0].content);
-		return [
-			theme.fg("toolDiffRemoved", `-${removed[0].lineNum} ${removedLine}`),
-			theme.fg("toolDiffAdded", `+${added[0].lineNum} ${addedLine}`),
-		];
-	}
-	return [
-		...removed.map((row) => theme.fg("toolDiffRemoved", `-${row.lineNum} ${row.content}`)),
-		...added.map((row) => theme.fg("toolDiffAdded", `+${row.lineNum} ${row.content}`)),
-	];
-}
+/** A run of consecutive diff lines the renderer treats together. */
+type Segment =
+	| { kind: "raw"; text: string }
+	| { kind: "context"; rows: DiffRow[] }
+	| { kind: "change"; removed: DiffRow[]; added: DiffRow[] };
 
 interface DiffRow {
 	lineNum: string;
@@ -231,13 +140,114 @@ interface DiffRow {
 	content: string;
 }
 
+/** SGR parameters that open or close one kind of style, so a style can be carried onto the next line. */
+const SGR = /\x1b\[([0-9;]*)m/g;
+const SGR_CLOSES: Record<string, string> = {
+	"39": "fg",
+	"49": "bg",
+	"22": "weight",
+	"23": "italic",
+	"24": "underline",
+	"27": "inverse",
+	"29": "strike",
+};
+
+function sgrKind(first: number): string | undefined {
+	if (first === 38 || (first >= 30 && first <= 37) || (first >= 90 && first <= 97)) return "fg";
+	if (first === 48 || (first >= 40 && first <= 47) || (first >= 100 && first <= 107)) return "bg";
+	if (first === 1 || first === 2) return "weight";
+	if (first === 3) return "italic";
+	if (first === 4) return "underline";
+	if (first === 7) return "inverse";
+	if (first === 9) return "strike";
+	return undefined;
+}
+
 /**
- * Walks a diff: context lines (and lines that are not diff rows) are drawn dim; each change block, the removed lines
- * and the added lines that follow them, goes to `change`.
+ * Splits highlighted multi-line text so every line is self-contained: a style still open at the end of a line (a
+ * comment or string spanning lines) is closed there and reopened at the start of the next.
  */
-function renderBlocks(diffText: string, change: (removed: DiffRow[], added: DiffRow[]) => string[]): string {
+function carryStyles(lines: string[]): string[] {
+	const open = new Map<string, string>();
+	return lines.map((line) => {
+		const prefix = [...open.values()].join("");
+		for (const match of line.matchAll(SGR)) {
+			const params = match[1] || "0";
+			if (params === "0") open.clear();
+			else if (SGR_CLOSES[params]) open.delete(SGR_CLOSES[params]);
+			else {
+				const kind = sgrKind(Number(params.split(";")[0]));
+				if (kind) open.set(kind, match[0]);
+			}
+		}
+		return `${prefix}${line}${open.size > 0 ? "\x1b[0m" : ""}`;
+	});
+}
+
+/** Highlights the rows as one text, so multi-line comments and strings keep their state, one line per row. */
+function highlightRows(rows: DiffRow[], language: string | undefined): string[] | undefined {
+	if (!language || rows.length === 0) return undefined;
+	const lines = highlightCode(rows.map((row) => row.content).join("\n"), language);
+	return lines.length === rows.length ? carryStyles(lines) : undefined;
+}
+
+/**
+ * Render a diff string with colored lines and intra-line change highlighting.
+ * - Context lines: dim/gray, with dimmed syntax colour when the file's language is known
+ * - Removed lines: red sign, syntax-coloured text, with changed words emphasized
+ * - Added lines: green sign, syntax-coloured text, with changed words emphasized
+ *
+ * Each side of a change block is highlighted as one text, so a comment or string spanning lines colours every line.
+ * On themes without tool backgrounds, changed lines get a tinted background and a stronger tint on changed words;
+ * otherwise the changed words are inverted. Without a known language the text takes the diff colour.
+ */
+export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
+	const tints = diffTints();
+	const language = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
+	const wordOn = (sign: "+" | "-") => tints?.word[sign] ?? "\x1b[7m";
+	const wordOff = (sign: "+" | "-") => tints?.line[sign] ?? "\x1b[27m";
+	const changedLine = (sign: "+" | "-", row: DiffRow, highlighted?: string, ranges: Range[] = []): string => {
+		const color = sign === "+" ? "toolDiffAdded" : "toolDiffRemoved";
+		const body = highlighted ?? theme.fg(color, row.content);
+		const marked = overlayRanges(body, ranges, wordOn(sign), wordOff(sign));
+		const label = theme.fg(color, `${sign}${row.lineNum} `);
+		if (!tints) return `${label}${marked}`;
+		// The sign and number carry the colour; the tint marks the whole changed line, so a line of only whitespace
+		// still shows as changed.
+		const text = visibleWidth(row.content) === 0 ? " " : marked;
+		return `${label}${tints.line[sign]}${text}${DEFAULT_BG}`;
+	};
+	const out: string[] = [];
+	for (const segment of parseSegments(diffText)) {
+		if (segment.kind === "raw") {
+			out.push(theme.fg("toolDiffContext", segment.text));
+		} else if (segment.kind === "context") {
+			const highlighted = highlightRows(segment.rows, language);
+			segment.rows.forEach((row, index) => {
+				out.push(
+					highlighted
+						? `${theme.fg("toolDiffContext", ` ${row.lineNum} `)}\x1b[2m${highlighted[index]}\x1b[22m`
+						: theme.fg("toolDiffContext", ` ${row.lineNum} ${row.content}`),
+				);
+			});
+		} else {
+			const { removed, added } = segment;
+			// Lines replaced one for one are paired, so each pair can show which words changed.
+			const paired = removed.length === added.length && removed.length <= MAX_PAIRED_LINES;
+			const ranges = paired ? removed.map((row, index) => changedRanges(row.content, added[index].content)) : [];
+			const removedHl = highlightRows(removed, language);
+			const addedHl = highlightRows(added, language);
+			removed.forEach((row, i) => out.push(changedLine("-", row, removedHl?.[i], ranges[i]?.removed)));
+			added.forEach((row, i) => out.push(changedLine("+", row, addedHl?.[i], ranges[i]?.added)));
+		}
+	}
+	return out.join("\n");
+}
+
+/** Groups a diff into raw lines, runs of context rows and change blocks (the removed rows and the added rows after them). */
+function parseSegments(diffText: string): Segment[] {
 	const lines = diffText.split("\n");
-	const result: string[] = [];
+	const segments: Segment[] = [];
 	let i = 0;
 	const collect = (prefix: "-" | "+"): DiffRow[] => {
 		const rows: DiffRow[] = [];
@@ -251,16 +261,21 @@ function renderBlocks(diffText: string, change: (removed: DiffRow[], added: Diff
 	};
 	while (i < lines.length) {
 		const parsed = parseDiffLine(lines[i]);
+		const last = segments[segments.length - 1];
 		if (!parsed) {
-			result.push(theme.fg("toolDiffContext", lines[i]));
+			segments.push({ kind: "raw", text: lines[i] });
 			i++;
 		} else if (parsed.prefix !== "-" && parsed.prefix !== "+") {
-			result.push(theme.fg("toolDiffContext", ` ${parsed.lineNum} ${replaceTabs(parsed.content)}`));
+			const row = { lineNum: parsed.lineNum, content: replaceTabs(parsed.content) };
+			// A row without a line number is the "..." gap marker: it ends the run, so code on either side is not joined.
+			if (last?.kind === "context" && parsed.lineNum.trim() !== "" && last.rows.at(-1)?.lineNum.trim() !== "")
+				last.rows.push(row);
+			else segments.push({ kind: "context", rows: [row] });
 			i++;
 		} else {
 			const removed = collect("-");
-			result.push(...change(removed, collect("+")));
+			segments.push({ kind: "change", removed, added: collect("+") });
 		}
 	}
-	return result.join("\n");
+	return segments;
 }

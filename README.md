@@ -343,7 +343,7 @@ See [running inside tmux](packages/coding-agent/docs/tmux.md).
 | Shortcuts and diagnostics    | `/keys`, `/debug`, `/bug`, `/changelog`                                                                 |
 | Leave                        | `/quit`; `/logout` removes saved credentials                                                            |
 
-Start flags: `--continue`, `--resume`, `--session <id>`, `--fork <id>`, `--no-session`, `--model provider/id:thinking`, `--plan` (read-only until you approve a plan), `--worktree <name>`, `--trust`, `--offline`, `--tools`, `--no-mcp`. `--dangerously-skip-permissions` starts in `bypass` (nothing asks; use it only in a disposable container). See [CLI](packages/coding-agent/docs/cli.md) and [keybindings](packages/coding-agent/docs/keybindings.md).
+Start flags: `--continue`, `--resume [id]` (an id resumes it; none opens a picker), `--session <id>`, `--fork <id>`, `--no-session`, `--model provider/id:thinking`, `--plan` (read-only until you approve a plan), `--worktree <name>`, `--trust`, `--offline`, `--tools`, `--no-mcp`. `--dangerously-skip-permissions` starts in `bypass` (nothing asks; use it only in a disposable container). See [CLI](packages/coding-agent/docs/cli.md) and [keybindings](packages/coding-agent/docs/keybindings.md).
 
 ## Web, remote and other interfaces
 

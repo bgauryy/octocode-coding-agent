@@ -1,6 +1,4 @@
-The messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.
-
-Create a concise checkpoint of the user's request and the progress shown above. This checkpoint will be placed before the later messages so the conversation can continue with the necessary context.
+The messages above are earlier context from an ongoing conversation; later messages are stored separately and need not be reconstructed. Write a concise checkpoint of the user's request and the progress shown above, to be placed before the later messages:
 
 ## Original Request
 [What did the user ask for?]
@@ -11,4 +9,4 @@ Create a concise checkpoint of the user's request and the progress shown above. 
 ## Context Needed to Continue
 - [Information from these messages needed to understand the later work]
 
-Only summarize information explicitly present above. Do not infer or recreate later messages.
+Summarize only what is explicitly present above; do not infer or recreate later messages.

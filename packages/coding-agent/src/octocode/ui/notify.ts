@@ -327,7 +327,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		paintTitle();
 		// Only the agent's dialogs: one the user opened (such as a `/permissions` picker) needs no call back.
 		if (runStartedAt === undefined) return;
-		const type: NoticeType = event.kind === "confirm" ? "permission_prompt" : "elicitation_dialog";
+		const type: NoticeType = event.approval === true ? "permission_prompt" : "elicitation_dialog";
 		fire(
 			{ type, title: "Octocode: waiting for you", message: promptTitle(event) ?? "A question needs your answer" },
 			true,

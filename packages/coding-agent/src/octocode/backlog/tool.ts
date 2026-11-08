@@ -1,5 +1,4 @@
 import {
-	type Completion,
 	EntityFields,
 	type EntityInput,
 	isItemType,
@@ -7,7 +6,7 @@ import {
 	type CloseInput,
 	CloseInputSchema,
 } from "@octocodeai/octocode-contracts/backlogs";
-import { LIST_STATES, STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
+import { LIST_STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
@@ -16,22 +15,24 @@ import { storedText, visibleControls } from "../../../../common/src/sanitize.ts"
 import { contentText, textResult } from "../shared/util.ts";
 import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
-import { itemDetail, itemLine } from "./format.ts";
-import { withOperationKey, type CompletionArgument } from "./completion-key.ts";
+import { itemLine } from "./format.ts";
 import {
-	acceptTargetShorthand,
-	addEntry,
+	checkedEntry,
 	entityFields,
-	ITEM_ENTRY_KEYS,
+	ITEM_ENTRY_FIELDS,
 	type LinkArgument,
 	itemsField,
+	legacyEntityFields,
 	linkInput,
+	stateField,
 	updatesField,
 } from "./tool-schema.ts";
 import { batchAdd, batchGet, batchUpdate } from "./tool-batch.ts";
-import { AUDIT_SHOWN, auditText } from "./audit-text.ts";
+import { epicCompletion, parseJsonStrings, splitIds } from "./tool-arguments.ts";
+import { getResult } from "./tool-get.ts";
+import { entities, keyed, replayText } from "./tool-support.ts";
 import { withReason } from "../shared/reason.ts";
-import { type Item, PRIORITIES } from "./store.ts";
+import { PRIORITIES } from "./store.ts";
 import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-text.ts";
 import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
 import { styleBacklogLines } from "./tool-style.ts";
@@ -45,9 +46,6 @@ import {
 	MAX_LIST_LIMIT,
 	runList,
 } from "./tool-list.ts";
-
-/** The states a subagent may set: claiming and closing items its parent holds. */
-const SUBAGENT_STATES = ["ongoing", "done"] as const;
 
 export function registerBacklogTool(
 	api: ExtensionAPI,
@@ -67,7 +65,7 @@ export function registerBacklogTool(
 					description: "get/update/list: item id",
 				}),
 			),
-			updates: updatesField(subagent ? StringEnum(SUBAGENT_STATES) : StringEnum(STATES)),
+			updates: updatesField(),
 			...(subagent ? {} : { items: itemsField() }),
 			title: Type.Optional(Type.String({ description: `${write}one-line summary; list: words in the title` })),
 			goal: Type.Optional(
@@ -80,14 +78,12 @@ export function registerBacklogTool(
 			),
 			why: Type.Optional(Type.String({ description: `${write}why it matters; required for add` })),
 			evidence: Type.Optional(
-				Type.Array(Type.String(), { description: `${write}observations with source (path:line, command)` }),
+				Type.Array(Type.String(), {
+					description: `${write}observations with source (path:line, command); paths and URLs become links`,
+				}),
 			),
 			plan: Type.Optional(Type.String({ description: `${write}approach and steps; blast radius, before -> after` })),
-			state: Type.Optional(
-				subagent
-					? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
-					: StringEnum(STATES, { description: "add: initial (default backlog); update: new" }),
-			),
+			state: stateField(subagent),
 			priority: Type.Optional(
 				StringEnum(PRIORITIES, {
 					description: `${write}p0 urgent … p3 someday (default p2); list: this or more urgent`,
@@ -103,7 +99,7 @@ export function registerBacklogTool(
 					description: `Origin ID${subagent ? "" : '; update "" clears'}; list: items derived from it`,
 				}),
 			),
-			close: Type.Optional({ ...CloseInputSchema, description: "update: end an unneeded item (kept, not deleted)" }),
+			close: Type.Optional({ ...CloseInputSchema, description: "update: end an unneeded item" }),
 			note: Type.Optional(
 				Type.String({
 					description: `${subagent ? "update" : "update, or add with state ongoing/done"}: append progress or findings`,
@@ -112,21 +108,25 @@ export function registerBacklogTool(
 			query: Type.Optional(Type.String({ description: "list: text in any field, or a whole tag" })),
 			states: Type.Optional(
 				Type.Array(StringEnum(LIST_STATES), {
-					description: "list: states to show (default ongoing, todo)",
+					description: "list: states to show (default ongoing, todo, backlog)",
 				}),
 			),
 			limit: Type.Optional(
 				Type.Integer({
-					description: `list/get: page size, capped at ${MAX_LIST_LIMIT} (items ${DEFAULT_LIST_LIMIT}, notes 10)`,
+					description: `list/get: page size ≤${MAX_LIST_LIMIT} (default 15; ${DEFAULT_LIST_LIMIT} with states or ids; get notes 10)`,
 				}),
 			),
 			offset: Type.Optional(Type.Integer({ description: "list/get: skip; copy from Next" })),
+			changes: Type.Optional(Type.Boolean({ description: "get: also show logged changes" })),
 		},
 		{ additionalProperties: false },
 	);
-	// What a call may carry: the declared fields plus the list filters older calls still send (`legacyListFields`).
-	const accepted = Type.Object({ ...parameters.properties, ...legacyListFields }, { additionalProperties: false });
-	const validationParameters = withReason(acceptTargetShorthand(accepted));
+	// What a call may carry: the declared fields plus what older calls still send (`legacyListFields`, `legacyEntityFields`).
+	const accepted = Type.Object(
+		{ ...parameters.properties, ...legacyListFields, ...legacyEntityFields },
+		{ additionalProperties: false },
+	);
+	const validationParameters = withReason(accepted);
 	api.registerTool(
 		timedTool(
 			{
@@ -143,7 +143,11 @@ export function registerBacklogTool(
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
 					// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
-					const { reason: _reason, links, ...rest } = params as Params & { reason?: string; links?: LinkArgument[] };
+					const {
+						reason: _reason,
+						links,
+						...rest
+					} = parseJsonStrings(params as Params & { reason?: string; links?: LinkArgument[] });
 					const unknown = Object.keys(rest).filter(
 						(key) => !Object.hasOwn(accepted.properties, key) && !Object.hasOwn(EntityFields, key),
 					);
@@ -195,26 +199,31 @@ export function registerBacklogTool(
 	);
 
 	/**
-	 * A `get` of several ids (`ids`, or older calls' comma-separated `id`), an `add` with `items` or an `update` with `updates`: each runs as
-	 * the single form, a refusal stays on its row.
+	 * A `get` of several ids (`ids`, or an `id` of ids joined by commas or spaces), an `add` with `items` or an `update` with
+	 * `updates`: each runs as the single form, a refusal stays on its row.
 	 */
-	function batched(backlog: Backlog, args: Omit<Params, "completion"> & { completion?: CompletionArgument }) {
+	function batched(backlog: Backlog, args: Params) {
 		const { updates, items, ...single } = args;
 		if (items !== undefined) {
 			if (args.op !== "add" || args.title !== undefined)
 				throw new Error("items goes with op add and no title: each entry carries its own title.");
-			return batchAdd(items, ITEM_ENTRY_KEYS, "items", (entry) =>
-				run(backlog, { ...single, ...(addEntry(validationParameters, entry) as Params) }),
+			return batchAdd(items, ITEM_ENTRY_FIELDS, "items", (entry) =>
+				run(backlog, { ...single, ...(checkedEntry(validationParameters, parseJsonStrings(entry), "add") as Params) }),
 			);
 		}
 		if (updates !== undefined) {
 			if (args.op !== "update" || args.id !== undefined)
 				throw new Error("updates goes with op update and no id: each entry carries its own id.");
-			return batchUpdate(updates, (entry) => run(backlog, { ...single, ...entry, op: "update" }));
+			return batchUpdate(updates, (entry) =>
+				run(backlog, {
+					...single,
+					...(checkedEntry(validationParameters, parseJsonStrings(entry), "update") as Params),
+				}),
+			);
 		}
 		if (args.op !== "get") return undefined;
 		const { ids: listed, ...one } = single;
-		const ids = [...(args.id?.split(",") ?? []), ...(listed ?? [])].map((id) => id.trim()).filter(Boolean);
+		const ids = [...splitIds(args.id ?? ""), ...(listed ?? []).flatMap(splitIds)];
 		if (ids.length === 1) return run(backlog, { ...one, id: ids[0] });
 		return ids.length > 1 ? batchGet(ids, (id) => run(backlog, { ...one, id })) : undefined;
 	}
@@ -232,6 +241,7 @@ export function registerBacklogTool(
 			plan?: string;
 			state?: State;
 			note?: string;
+			changes?: boolean;
 		};
 
 	/** The descriptive fields a call sets, only those it names. */
@@ -242,9 +252,18 @@ export function registerBacklogTool(
 		...(plan !== undefined ? { plan } : {}),
 	});
 
-	function run(backlog: Backlog, args: Omit<Params, "completion"> & { completion?: CompletionArgument }) {
+	/** A plain `state: done` on an epic whose items are all done or closed carries the completion built from them. */
+	function closingEpic(backlog: Backlog, args: Params): Params {
+		if (args.op !== "update" || args.state !== "done" || args.completion !== undefined || args.close !== undefined)
+			return args;
+		const epic = args.id ? backlog.store.get(args.id) : undefined;
+		if (epic?.type !== "epic" || epic.state === "done" || backlog.store.epicState(epic) !== "done") return args;
+		return { ...args, completion: epicCompletion(backlog.store.list({ parentId: epic.ref }).items) as never };
+	}
+
+	function run(backlog: Backlog, args: Params) {
 		if (args.op === "list") return runList(backlog, args);
-		const given: Params = keyed(args);
+		const given: Params = keyed(closingEpic(backlog, args));
 		const { store, actor, session } = backlog;
 		// The description tells every role that a claim needs why and goal. A subagent's items have both, set by the
 		// parent, which `updateItem` keeps: drop the child's copies here and say so, rather than refuse a claim the
@@ -287,35 +306,9 @@ export function registerBacklogTool(
 					? 'get needs an id, e.g. "B12", or ids, e.g. ["B12", "B14"].'
 					: `${params.op} needs an id, e.g. "B12".`,
 			);
-		if (params.op === "get") {
-			const item = store.get(params.id);
-			if (!item) throw new Error(`No backlog item ${visibleControls(params.id)}.`);
-			const offset = Math.max(0, Math.floor(params.offset ?? 0));
-			const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? 10)));
-			const notes = store.notes(item, limit, offset);
-			const total = store.noteCount(item);
-			const origin = item.from === undefined ? undefined : store.get(item.from);
-			const derived = store.derived(item);
-			const children = item.type === "epic" ? store.list({ parentId: item.ref }).items : [];
-			const detail = itemDetail(item, notes, total, Date.now(), {
-				self: actor.id,
-				version: true,
-				noteOffset: offset,
-				...(actor.owners ? { parents: actor.owners } : {}),
-				...(origin ? { origin } : {}),
-				derived,
-				children,
-				marks: store.marks([item, ...(origin ? [origin] : []), ...derived, ...children], actor.id, actor.owners),
-				tasks: store.tasks.list({ item: item.ref }),
-				runs: store.runs(item),
-				epicState: store.epicState(item),
-			});
-			const next =
-				offset + notes.length < total
-					? `\nNext: backlog ${JSON.stringify({ op: "get", id: item.ref, limit, offset: offset + notes.length })}`
-					: "";
-			return textResult(`${detail}${auditText(store.audit(item.ref, AUDIT_SHOWN))}${next}`, { item });
-		}
+		if (params.op === "update" && splitIds(params.id).length > 1)
+			throw new Error("update takes one id: use updates for several, e.g. updates [{id, state}, ...].");
+		if (params.op === "get") return getResult(backlog, { ...params, id: params.id });
 		const fields = {
 			type: params.type,
 			parentId: params.parentId,
@@ -372,29 +365,4 @@ export function registerBacklogTool(
 		const flagged = review.length ? `\nNeeds review (done): ${review.join(", ")}.` : "";
 		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${flagged}`, { item });
 	}
-}
-
-/** An operationKey names one completion: its replay says it was applied before, and whether the item moved on since. */
-function replayText(item: Item, done: Completion): string {
-	const head = `Completion ${visibleControls(done.operationKey)} of ${item.ref} was already recorded (${new Date(done.at).toISOString()}); nothing was written.`;
-	if (item.state !== "done")
-		return `${head} ${item.ref} has changed since: it is now ${item.state}. Close it with a new operationKey.`;
-	const latest = item.completions.at(-1);
-	return latest && latest.id !== done.id ? `${head} A later completion (${latest.id}) replaced it.` : head;
-}
-
-/** The call with its completion's retry key filled in: an explicit one wins, else derived from item and content. */
-function keyed<P extends { id?: string; completion?: CompletionArgument }>(
-	p: P,
-): Omit<P, "completion"> & { completion?: NonNullable<EntityInput["completion"]> } {
-	const { completion, ...rest } = p;
-	return completion ? { ...rest, completion: withOperationKey(completion, p.id) } : rest;
-}
-
-function entities(p: EntityInput): EntityInput {
-	return Object.fromEntries(
-		Object.keys(EntityFields)
-			.filter((key) => p[key as keyof EntityInput] !== undefined)
-			.map((key) => [key, p[key as keyof EntityInput]]),
-	);
 }

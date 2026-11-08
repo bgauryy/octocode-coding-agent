@@ -23,7 +23,9 @@ function repoRelative(entry: string, root: string): string {
 
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 200;
-const DEFAULT_LIST_STATES: ListState[] = ["ongoing", "todo"];
+/** Rows a list without states, ids or limit shows: the open work (ongoing, todo and proposed), most important first. */
+const DEFAULT_OPEN_LIMIT = 15;
+const DEFAULT_LIST_STATES: ListState[] = ["ongoing", "todo", "backlog"];
 
 /**
  * The fields only `list` reads. `list` also filters by fields other operations write (`id`, `title`, `type`,
@@ -130,7 +132,8 @@ export function runList(
 	// `since` follows the order: with sort created it bounds creation time, as the older `createdSince` did.
 	const createdSince = filters.createdSince ?? (filters.sort === "created" ? filters.since : undefined);
 	const updatedSince = filters.sort === "created" ? undefined : filters.since;
-	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIST_LIMIT)));
+	const defaultLimit = params.states?.length || ids ? DEFAULT_LIST_LIMIT : DEFAULT_OPEN_LIMIT;
+	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? defaultLimit)));
 	const offset = Math.max(0, Math.floor(params.offset ?? 0));
 	// "me" is this session; a subagent never holds an item, so for it "me" is the parent session it works for.
 	const assignees =
@@ -174,10 +177,12 @@ export function runList(
 			`No ${states.join("/")} items${filters.query ? ` matching "${visibleControls(filters.query)}"` : ""}${filters.from ? ` from ${visibleControls(filters.from)}` : ""}${others.length ? ` (filters: ${others.join(", ")})` : ""}.`,
 		);
 	}
-	if (total > offset + items.length)
+	if (total > offset + items.length) {
+		lines.push(`${total - offset - items.length} more.`);
 		lines.push(
 			`Next: backlog ${JSON.stringify({ op: "list", states, ...filters, limit, offset: offset + items.length })}`,
 		);
+	}
 	const triage = states.includes("backlog") ? 0 : store.counts().items.backlog;
 	if (triage > 0) lines.push(`${triage} proposed item(s) await triage (list with states: ["backlog"]).`);
 	return textResult(lines.join("\n"), { shown: items.length, total });

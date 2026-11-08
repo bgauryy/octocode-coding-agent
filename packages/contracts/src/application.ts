@@ -8,6 +8,7 @@ import {
 	type ApplicationAssetPayload,
 } from "./content.ts";
 import { AwaitingSchema } from "./application-awaiting.ts";
+import { ReplySchema } from "./question.ts";
 
 export const APPLICATION_PROTOCOL_VERSION = 1 as const;
 const identity = {
@@ -46,10 +47,12 @@ export const ApplicationCommandSchema = Type.Union([
 			dialogId: Type.String({ minLength: 1, maxLength: 64 }),
 			choice: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 			text: Type.Optional(Type.String({ maxLength: 4000 })),
+			/** The answers to a dialog that asks typed questions (`awaiting.questions`): one reply per question id, picks by option id. */
+			replies: Type.Optional(Type.Array(ReplySchema, { maxItems: 8 })),
 		},
 		{
 			additionalProperties: false,
-			oneOf: [{ required: ["choice"] }, { required: ["text"] }],
+			oneOf: [{ required: ["choice"] }, { required: ["text"] }, { required: ["replies"] }],
 		},
 	),
 ]);
@@ -364,6 +367,7 @@ export function applicationCommandFingerprint(command: ApplicationCommand): stri
 						dialogId: command.dialogId,
 						...(command.choice !== undefined ? { choice: command.choice } : {}),
 						...(command.text !== undefined ? { text: command.text } : {}),
+						...(command.replies !== undefined ? { replies: command.replies } : {}),
 					}
 				: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
 	});

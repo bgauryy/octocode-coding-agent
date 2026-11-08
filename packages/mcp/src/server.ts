@@ -38,14 +38,16 @@ export function describeState(server: McpServer, withError = true): string {
 	if (!isEnabled(server)) return "disabled";
 	const connection = server.connection;
 	if (!connection) return server.unselected ? "not selected" : "starting";
+	// A start that timed out was tried once more with a longer timeout; the state says so.
+	const retried = connection.retriedAfterTimeout ? " (retried after timeout)" : "";
 	switch (connection.state) {
 		case "needs-auth":
 			return "needs sign-in";
 		case "failed":
-			return withError ? `failed: ${firstLine(connection.error ?? "unknown error")}` : "failed";
+			return (withError ? `failed: ${firstLine(connection.error ?? "unknown error")}` : "failed") + retried;
 		case "connected": {
 			const { tools } = connection;
-			return `connected · ${tools.length} tool${tools.length === 1 ? "" : "s"}`;
+			return `connected · ${tools.length} tool${tools.length === 1 ? "" : "s"}${retried}`;
 		}
 		case "connecting":
 			return "connecting…";

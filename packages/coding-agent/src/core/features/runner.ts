@@ -198,7 +198,12 @@ export class ExtensionRunner {
 
 	emitError(error: Types.ExtensionError): void {
 		for (const listener of this.errorListeners) {
-			listener(error);
+			try {
+				listener(error);
+			} catch {
+				// emitError runs inside the catch of every dispatch: a failing reporter must not turn a contained handler
+				// failure into a rejected dispatch or skip the other reporters.
+			}
 		}
 	}
 

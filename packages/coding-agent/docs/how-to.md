@@ -4,9 +4,9 @@ Short recipes for common tasks. Each links to the page that owns the details. Co
 
 ## Resume a session, or find the one that worked on a backlog item
 
-- `octocode --continue` resumes the most recent session of the current folder. `/resume` (or `octocode --resume`) opens the picker; sessions are grouped by day, so yesterday's has its own heading. Tab switches between this folder and all folders.
+- `octocode --continue` resumes the most recent session of the current folder. `/resume` (or `octocode --resume`) opens the picker; `octocode --resume <id>` resumes that session directly, and the command to do so is printed when you quit; sessions are grouped by day, so yesterday's has its own heading. Tab switches between this folder and all folders.
 - `/resume B346` lists only the sessions that held or hold backlog item B346; `/resume all B346` searches every repository.
-- In a worktree, `--continue` and `--resume` see only that folder's sessions: use Tab in the picker or `octocode --session <id>`.
+- In a worktree, `--continue` and `--resume` see only that folder's sessions: use Tab in the picker or `octocode --resume <id>`.
 
 Details: [session commands](native-features.md#session-workflow-commands), [worktrees](native-features.md#worktrees).
 

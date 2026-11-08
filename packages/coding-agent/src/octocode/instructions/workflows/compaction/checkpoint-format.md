@@ -1,7 +1,7 @@
-Write these sections, in this order, with the headings as given:
+Write these sections in this order, with these headings:
 
 {{goalHeading}}
-[What the user is trying to accomplish and why: the reason they gave or the problem it solves, left out when nothing shows it; several items when the session covers different tasks]
+[What the user is trying to accomplish and why (their reason, if shown); several items for different tasks]
 
 ## Constraints & Preferences
 - [Constraints, preferences or requirements the user stated, or "(none)"]
@@ -20,15 +20,15 @@ Write these sections, in this order, with the headings as given:
 - **[Decision]**: [Brief rationale]
 
 ## Errors & Fixes
-- [Each error or failed approach: the exact error text, its cause, and the fix, or "unresolved". The user's corrections of the approach belong here.]
+- [Each error or failed approach: exact error text, cause, fix or "unresolved"; include the user's corrections]
 
 ## Where We Stopped
-- [The work under way in the last messages of the conversation (the request to write this summary is not one of them and not a user ask), with its exact file paths, and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
+- [Work under way in the last messages (the request to write this summary is not one of them and not a user ask), with exact file paths and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
 
 ## Critical Context
 - [Data, examples or references needed to continue, or "(none)"]
 
 {{tldrHeading}}
-One or two lines on what the summarized messages did, then a line "{{topicsLabel}} " with 3 to 8 comma-separated keywords. An index of the conversation's history uses it as this stretch's label.
+One or two lines on what these messages did, then a line "{{topicsLabel}} " with 3 to 8 comma-separated keywords (the history index uses it as this stretch's label).
 
-Keep each section concise. Keep file paths, symbols, commands, error strings, URLs and identifiers exact.
+Keep sections concise and paths, symbols, commands, error strings, URLs and identifiers exact.

@@ -103,6 +103,9 @@ it("fails closed without a verified snapshot or an exact projection", () => {
 	const unread = setup(LETTERS, false);
 	expect(() => projectCodexPatch(edit(edits))).toThrow(/snapshot-aware/);
 	expect(() => projectCodexPatch(edit(edits), unread.snapshots)).toThrow(/snapshot-aware.*was not read/);
+	expect(() => projectCodexPatch(edit(edits), unread.snapshots)).toThrow(
+		/parallel call of this message counts after that call finishes/,
+	);
 
 	const changed = setup(LETTERS);
 	fs.writeFileSync(changed.file, LETTERS.replace("p", "q"));

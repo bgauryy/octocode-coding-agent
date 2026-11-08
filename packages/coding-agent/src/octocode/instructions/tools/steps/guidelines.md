@@ -1,1 +1,1 @@
-Set a step ongoing when you start it and done when finished. Leave unfinished steps todo (they persist and show on resume); drop only a step you decided against.{{#if subagent}} Your open steps pass to your coordinator when you end.{{/if}}
+Set a step ongoing when you start it and done when finished. Leave unfinished steps todo (they persist and show on resume); drop only one you decided against.{{#if subagent}} Your open steps pass to your coordinator when you end.{{/if}}

@@ -2,8 +2,9 @@ import type { Backlog } from "./context.ts";
 import { BacklogError, type Item } from "./item.ts";
 
 /**
- * The link between a backlog item and the child a parent starts for it (`agent` `item`): the parent must hold the item,
- * the child may update only it (`writes.ts`, by `Actor.item`), and the child's report is noted on it here.
+ * The link between a backlog item and the child a parent starts for it (`agent` `item`): the parent holds the item (it
+ * claims a claimable one once the call is accepted), the child may update only it (`writes.ts`, by `Actor.item`), and the child's
+ * report is noted on it here.
  */
 
 /** The item `ref` names, when this session holds it (ongoing, assigned to it); any other state is refused with why. */
@@ -15,6 +16,38 @@ export function heldItem({ store, session }: Backlog, ref: string): Item {
 	if (item.assignee !== session)
 		throw new BacklogError(`${item.ref} is held by ${item.assignee}, not by this session: claim it (ongoing) first.`);
 	return item;
+}
+
+/**
+ * The item a delegation names, checked and not yet claimed: one this session already holds as is, or an unheld `todo` or
+ * `backlog` item with goal and why that `claimDelegated` can claim. An epic, an item held by another session, a finished
+ * one, or one without goal or why is refused with what to do.
+ */
+export function checkDelegable(backlog: Backlog, ref: string): { item: Item; claimable: boolean } {
+	const item = backlog.store.get(ref);
+	if (!item) throw new BacklogError(`No backlog item ${ref}.`);
+	if (item.type === "epic")
+		throw new BacklogError(
+			`${item.ref} is an epic: it follows its items, so delegate one of them (list parentId ${item.ref}).`,
+		);
+	if (item.state !== "todo" && item.state !== "backlog") return { item: heldItem(backlog, ref), claimable: false };
+	const missing = [!item.goal.trim() && "a goal (the done criterion)", !item.why.trim() && "a why (the reason)"].filter(
+		Boolean,
+	);
+	if (missing.length)
+		throw new BacklogError(
+			`${item.ref} is ${item.state} and needs ${missing.join(" and ")} before it can be delegated: add ${missing.length > 1 ? "them" : "it"} with backlog update, then call again.`,
+		);
+	return { item, claimable: true };
+}
+
+/** Claims a checked unheld item for this session through the ordinary claim (`BacklogStore.update`), as the delegation. */
+export function claimDelegated({ store, actor, session }: Backlog, item: Item): Item {
+	return store.update(
+		item.ref,
+		{ state: "ongoing", version: item.version, note: `Claimed for session ${session} by delegating it to a subagent.` },
+		actor,
+	);
 }
 
 /** What the parent knows about a child's report once it arrived; the words themselves stay in the report. */

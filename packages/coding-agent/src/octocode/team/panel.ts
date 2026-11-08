@@ -9,7 +9,7 @@ import { needsYou } from "./panel-attention.ts";
 import { FINISHED_MS, safe } from "./panel-compact.ts";
 import { FinishedTracker } from "./panel-finished.ts";
 import { widgetLines } from "./panel-layout.ts";
-import { PanelMotion } from "./panel-motion.ts";
+import { type Moving, PanelMotion } from "./panel-motion.ts";
 import { nextMinuteDelay } from "./panel-work.ts";
 import { TeamOutage } from "./panel-outage.ts";
 import { descendants, liveMembers, roster } from "./panel-roster.ts";
@@ -28,7 +28,7 @@ const WIDGET_KEY = "octocode-agents";
  * widget already counts the agents. It reads nothing itself: the team session's ticker refreshes a cached view and calls back once a second.
  * The same widget lists the other running work (bash jobs, timers, background subagents the team does not list) from the
  * session's `RunningWork`, and the footer's `running` segment counts it all by type. Those rows repaint when their owner
- * publishes a change. Elapsed time moves with the agents' motion clock (seconds) or, when no mark moves, once a minute on the same clock (whole minutes); nothing repaints when no work has a clock.
+ * publishes a change. Every work row has a spinner and counts in seconds on the motion clock; in reduced motion, where no mark moves, the clocks repaint once a minute (whole minutes) and nothing repaints when no work has a clock.
  */
 export class AgentsView {
 	private unwatch: (() => void) | undefined;
@@ -41,10 +41,10 @@ export class AgentsView {
 	/** Last footer text sent: an unchanged one is not sent again on every tick. */
 	private status: string | undefined;
 	private render: (() => void) | undefined;
-	/** Repaints on the animation clock while an agent works or just finished, and not otherwise. */
+	/** Repaints on the animation clock while an agent works or just finished or any work row runs, and not otherwise. */
 	private readonly motion = new PanelMotion(
-		(now) =>
-			roster(
+		(now) => [
+			...roster(
 				this.members,
 				this.team.id,
 				now,
@@ -54,6 +54,9 @@ export class AgentsView {
 				...panelState(entry, now),
 				...(entry.doneAt === undefined ? {} : { since: entry.doneAt }),
 			})),
+			// Running work moves too: its spinner and second clock show it is alive while the main agent idles.
+			...this.workItems().map((): Moving => ({ state: "running" })),
+		],
 		() => this.render?.(),
 		// With no mark moving, still-running work repaints once a minute, on the oldest row's boundary.
 		(now) => nextMinuteDelay(this.workItems(), now),

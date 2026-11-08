@@ -88,7 +88,15 @@ class AnimationClock {
 			subscriber.due += subscriber.everyMs;
 			// After a stall (a suspended process, frozen decor resuming), restart the rhythm instead of catching up.
 			if (subscriber.due <= now) subscriber.due = now + subscriber.everyMs;
-			subscriber.listener(now);
+			try {
+				subscriber.listener(now);
+			} catch (error) {
+				// A throw out of the timer would end the process and skip the other subscribers: drop the failing animation
+				// and report its error as a rejection, which the app shows without exiting.
+				this.subscribers.delete(subscriber);
+				this.reschedule();
+				void Promise.reject(error);
+			}
 		}
 	}
 }

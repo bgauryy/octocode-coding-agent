@@ -36,14 +36,14 @@ export function isolatedChildSteps(cwd: string, agent: string): string {
 /** Capture worktree-local steps before cleanup; the usual item report and same-workspace adoption follow cleanup. */
 export async function finishChildNotes(
 	ctx: Ctx,
-	isolation: { worktree?: { cwd: string }; finish(): Promise<string>; ref?: string },
+	isolation: { worktree?: { cwd: string }; finish(): Promise<string>; ref?: string; patch?: string },
 	linked: ItemLink | undefined,
 	outcome: SubagentOutcome | undefined,
 	agent: string,
 ): Promise<string> {
 	const steps = isolation.worktree && !linked ? isolatedChildSteps(isolation.worktree.cwd, agent) : "";
 	const note = await isolation.finish();
-	return `${note}${reportNotes(ctx, linked, outcome, agent, isolation.ref)}${steps}`;
+	return `${note}${reportNotes(ctx, linked, outcome, agent, isolation.ref, isolation.patch)}${steps}`;
 }
 
 /**
@@ -70,6 +70,7 @@ function reportNotes(
 	outcome: SubagentOutcome | undefined,
 	agent: string,
 	ref: string | undefined,
+	patch: string | undefined,
 ): string {
-	return `${linked?.attach(outcome, agent, ref) ?? ""}${adoptChildTasks(ctx, agent)}`;
+	return `${linked?.attach(outcome, agent, ref, patch) ?? ""}${adoptChildTasks(ctx, agent)}`;
 }

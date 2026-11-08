@@ -200,6 +200,20 @@ export function itemBySeq(db: DatabaseSync, repo: string, seq: number): ItemRow<
 	return db.prepare(`${SELECT} WHERE b.workspace_id = ? AND b.seq = ?`).get(repo, seq) as ItemRow<string> | undefined;
 }
 
+/** The `depends_on` prerequisites (`B12`) of item `seq` that are missing or not done (a closed item counts as done), in link order. */
+export function openPrerequisites(db: DatabaseSync, repo: string, seq: number): string[] {
+	return allRows<{ ref: string }>(
+		db.prepare(
+			`SELECT json_extract(l.target, '$.id') AS ref FROM backlog b JOIN backlog_links l ON l.item = b.id AND l.relation = 'depends_on'
+			 WHERE b.workspace_id = ? AND b.seq = ?
+			 AND NOT EXISTS (SELECT 1 FROM backlog d WHERE d.workspace_id = b.workspace_id AND 'B' || d.seq = json_extract(l.target, '$.id') AND d.state = 'done')
+			 ORDER BY l.rowid`,
+		),
+		repo,
+		seq,
+	).map((row) => row.ref);
+}
+
 /** The rows of the items that came from `rowId`, in board order. */
 export function derivedFrom(db: DatabaseSync, rowId: number): ItemRow<string>[] {
 	return allRows<ItemRow<string>>(db.prepare(`${SELECT} WHERE b.from_item = ? ORDER BY ${BOARD_ORDER}`), rowId);

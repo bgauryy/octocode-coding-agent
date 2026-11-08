@@ -9,7 +9,7 @@ import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { hintLine, keyText } from "./keybinding-hints.ts";
 import { DETAILS_KEY, hasMore, renderAskCard, startRow, writeInRow } from "../../../octocode/ask/card.ts";
-import { type AskView, giveWriteIn } from "../../../octocode/shared/ask-view.ts";
+import type { AskView } from "../../../octocode/shared/ask-view.ts";
 
 interface ExtensionSelectorOptions {
 	tui?: TUI;
@@ -24,10 +24,12 @@ interface ExtensionSelectorOptions {
 	onSubmitText?: (text: string) => void;
 	/**
 	 * Draw the dialog as an ask card (`octocode/ask/card.ts`) instead of the plain title: used only when its option labels
-	 * are exactly `options`. Its write-in row opens an inline editor; Enter there hands the note over (`giveWriteIn`) and
+	 * are exactly `options`. Its write-in row opens an inline editor; Enter there hands the note to `onWriteIn` and
 	 * selects the row, Esc returns to the options.
 	 */
 	ask?: AskView;
+	/** Receives the note typed in the card's write-in, just before the write-in row is selected. */
+	onWriteIn?: (note: string) => void;
 }
 
 export class ExtensionSelectorComponent extends Container {
@@ -45,6 +47,7 @@ export class ExtensionSelectorComponent extends Container {
 	private draft = "";
 	private draftText: Text | undefined;
 	private readonly ask: AskView | undefined;
+	private readonly onWriteIn: ((note: string) => void) | undefined;
 	private expanded = false;
 	/** The write-in's text while it is open. */
 	private writing: string | undefined;
@@ -67,6 +70,7 @@ export class ExtensionSelectorComponent extends Container {
 		this.onSubmitText = opts?.onSubmitText;
 		this.baseTitle = title;
 		const ask = opts?.ask;
+		this.onWriteIn = opts?.onWriteIn;
 		this.ask =
 			ask && ask.options.length === options.length && ask.options.every((o, i) => o.label === options[i])
 				? ask
@@ -166,7 +170,7 @@ export class ExtensionSelectorComponent extends Container {
 			else if (kb.matches(keyData, "tui.select.cancel")) this.writing = undefined;
 			else if (kb.matches(keyData, "tui.select.confirm") || keyData === "\n") {
 				const label = this.options[this.selectedIndex];
-				giveWriteIn(ask, this.writing.trim());
+				this.onWriteIn?.(this.writing.trim());
 				this.writing = undefined;
 				if (label) this.onSelectCallback(label);
 			}

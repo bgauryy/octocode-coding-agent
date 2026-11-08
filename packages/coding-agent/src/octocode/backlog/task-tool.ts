@@ -54,7 +54,7 @@ function taskPrompt(subagent: boolean) {
 	return {
 		promptSnippet: renderInstruction("tools/steps/snippet.md"),
 		description:
-			"Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, it needs item.",
+			"Tracked steps of one piece of work, kept under the backlog item you hold (not as separate items) or on this session. add uses the one item this session holds; with several, pass item.",
 		promptGuidelines: [renderInstruction("tools/steps/guidelines.md", { subagent })],
 	};
 }
@@ -104,7 +104,7 @@ export function registerTaskTool(
 			why: Type.Optional(Type.String({ description: "add/update: why" })),
 			item: Type.Optional(
 				Type.String({
-					description: "list/add: e.g. B12; add: not an epic (epics hold no steps); list: an epic covers its items",
+					description: "list/add: e.g. B12; list: an epic covers its items",
 				}),
 			),
 			state: Type.Optional(StringEnum(TASK_STATES, { description: "list: filter; add: todo/ongoing; update: new" })),
@@ -193,6 +193,10 @@ export function registerTaskTool(
 				name: "steps",
 				label: "Steps",
 				...taskPrompt(subagent),
+				// Registered either way, so the store rules and RPC callers are unchanged, but declared (with its snippet and
+				// guidelines) only when named in `/tools`, `--tools`, `defaultTools` or a profile: every child's tool list names it
+				// (`CORE_TOOLS`), the main session starts without it.
+				defaultActive: false,
 				parameters,
 				// A removed op fails the schema's enum with a bare list; this says it is gone.
 				prepareArguments(args) {

@@ -17,8 +17,11 @@ const refLink = (backlog: Backlog, ref: string): WorkLink => ({
 	target: { resource: "files", repositoryKey: backlog.store.repo, path: ref },
 });
 
-/** Links `ref` on `item` (the links already there stay) with a note that it is saved but not merged. */
-export function noteSavedRef(backlog: Backlog, item: string, ref: string): void {
+/**
+ * Links `ref` on `item` (the links already there stay) with a note that it is saved but not merged. `patch` is the file
+ * holding the child's own change when the ref could not take it cleanly (`WorktreeResult.conflict`): the note names it.
+ */
+export function noteSavedRef(backlog: Backlog, item: string, ref: string, patch?: string): void {
 	const current = backlog.store.get(item);
 	if (!current) throw new BacklogError(`No backlog item ${item}.`);
 	const id = ref.slice(REF_PREFIX.length);
@@ -26,7 +29,7 @@ export function noteSavedRef(backlog: Backlog, item: string, ref: string): void 
 		current.ref,
 		{
 			links: mergeLinks(current.links, [refLink(backlog, ref)]),
-			note: `The isolated change is saved on ${ref}, not merged yet. Merge it with \`agent\` type \`coordinate\`, action \`merge\`, id \`${id}\` (the user: \`/agents merge ${id}\`).`,
+			note: `The isolated change is saved on ${ref}, not merged yet. Merge it with \`agent\` type \`coordinate\`, action \`merge\`, id \`${id}\` (the user: \`/agents merge ${id}\`).${patch ? ` The ref did not take the child's change cleanly; its own change is the patch ${patch}.` : ""}`,
 		},
 		backlog.actor,
 	);

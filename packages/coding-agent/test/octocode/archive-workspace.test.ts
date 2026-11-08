@@ -359,11 +359,11 @@ it("propagates cancellation during the final recovery read before returning a re
 	const fake = fakeHost();
 	registerArchiveTool(fake.api);
 	const controller = new AbortController();
-	const open = fs.createReadStream;
-	const spy = vi.spyOn(fs, "createReadStream").mockImplementation((...args) => {
-		const stream = open(...args);
+	const open = fs.promises.open.bind(fs.promises);
+	const spy = vi.spyOn(fs.promises, "open").mockImplementation(async (...args: Parameters<typeof fs.promises.open>) => {
+		const handle = await open(...args);
 		queueMicrotask(() => controller.abort());
-		return stream;
+		return handle;
 	});
 	const ctx = fakeCtx({ cwd: root });
 	Object.assign(ctx.sessionManager, { getSessionFile: () => transcript });

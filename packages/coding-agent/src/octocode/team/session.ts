@@ -114,7 +114,7 @@ export class Team {
 				heartbeat: (db) => this.activity.heartbeat(db),
 				relays: (db) => this.relays.take(db),
 				reporting: (id) => this.running?.has(id) === true,
-				checkIn: () => checkInConfig(api.getSettings().subagents, this.env),
+				checkIn: () => checkInConfig(api.getSettings().subagents, this.env, api),
 			},
 			this.mail,
 		);

@@ -77,10 +77,13 @@ export function insertCharacter(editor: EditorModel, char: string, skipUndoCoale
 
 	editor.notifyChange();
 
+	// A new trigger character reopens a list the user closed with Esc.
+	if (editor.autocomplete.autocompleteTriggerCharacters.includes(char)) editor.autocomplete.clearDismissal();
+
 	// Check if we should trigger or update autocomplete
 	if (!editor.autocomplete.autocompleteState) {
-		// Auto-trigger for "/" at the start of a line (slash commands)
-		if (char === "/" && editor.isAtStartOfMessage()) {
+		// Auto-trigger for "/" at the start of the input (commands) or at any other token start (skills)
+		if (char === "/" && (editor.isAtStartOfMessage() || editor.isAtSkillMentionStart())) {
 			editor.autocomplete.tryTriggerAutocomplete();
 		}
 		// Auto-trigger for symbol-based completion like @, #, or provider triggers at token boundaries
@@ -332,6 +335,7 @@ function triggerAutocompleteInCompletionContext(editor: EditorModel): void {
 	const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
 	if (
 		editor.isInSlashCommandContext(textBeforeCursor) ||
+		editor.isInSkillMentionContext(textBeforeCursor) ||
 		editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)
 	) {
 		editor.autocomplete.tryTriggerAutocomplete();

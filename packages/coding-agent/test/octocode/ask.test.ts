@@ -1,7 +1,7 @@
 import { CURSOR_MARKER, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { showAskDialog } from "../../src/octocode/ask/dialog.ts";
+import { showAskDialog } from "./ask-dialog-helper.ts";
 import { formatAnswers, registerAskUser } from "../../src/octocode/ask/tool.ts";
 import { promptTitle, withDialog } from "../../src/octocode/shared/locks.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
@@ -69,6 +69,9 @@ const extras: AskQuestion = {
 	options: [{ label: "Docs" }, { label: "Tests" }, { label: "Bench" }],
 };
 
+/** `extras` as the model sends it: the `type` field, not the internal multiSelect flag. */
+const { multiSelect: _multi, ...extrasArgs } = extras;
+
 describe("askUser", () => {
 	it("shows configured question navigation, toggles and cancel keys", async () => {
 		const keybindings = new KeybindingsManager({
@@ -127,7 +130,7 @@ describe("askUser", () => {
 			ui: {
 				custom: async () => {
 					titles.push(promptTitle({ kind: "custom" }));
-					return { cancelled: true, answers: [] };
+					return [];
 				},
 			},
 		});
@@ -150,7 +153,7 @@ describe("askUser", () => {
 						frames.push(dialog.render(80).join("\n"));
 						dialog.focused = false;
 						frames.push(dialog.render(80).join("\n"));
-						resolve({ cancelled: true, answers: [] });
+						resolve([]);
 					}),
 			},
 		});
@@ -334,7 +337,12 @@ describe("askUser tool", () => {
 	const fake = fakeHost();
 	registerAskUser(fake.api);
 	const tool = fake.tools.get("askUser");
-	const params = { questions: [{ ...scope, header: "A very long header" }, extras] };
+	const params = {
+		questions: [
+			{ ...scope, header: "A very long header" },
+			{ ...extrasArgs, type: "multi" as const },
+		],
+	};
 
 	it("does not open a cancelled queued question over an active dialog", async () => {
 		let release!: () => void;
@@ -425,7 +433,7 @@ describe("askUser tool", () => {
 			],
 		});
 		// Multi-select in RPC: one pick per round until Done, every option, or typed text.
-		const multi = { questions: [extras] };
+		const multi = { questions: [{ ...extrasArgs, type: "multi" as const }] };
 		const done = await tool.execute(
 			"c",
 			multi,
@@ -460,6 +468,23 @@ describe("askUser tool", () => {
 			typed: "CI",
 		});
 		expect(typed.content[0].text).toBe('"Which extras?" → Tests + (typed) CI');
+	});
+
+	it("bounds options and questions at 4 in the description and the code", async () => {
+		// Strict-mode schemas refuse maxItems: the limit is in the description and enforced in code.
+		expect(JSON.stringify(tool.parameters)).not.toContain("maxItems");
+		expect(tool.description).toContain("2-4 options");
+		expect(tool.description).toContain("At most 4 questions");
+		const questions = Array.from({ length: 6 }, (_, i) => ({
+			question: `Q${i}?`,
+			options: ["A", "B", "C", "D", "E"].map((label) => ({ label })),
+		}));
+		const ctx = fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A", "1. A", "1. A", "1. A"] } });
+		const result = await tool.execute("c", { questions }, undefined, undefined, ctx);
+		expect((result.details as AskResult).answers).toHaveLength(4);
+		expect(result.content[0].text).toContain(
+			"(Not asked: 2 questions past the first 4 and 4 options past the first 4.)",
+		);
 	});
 
 	it("says how many empty questions and options it did not ask", async () => {

@@ -959,7 +959,7 @@ __metadata:
     cross-spawn: "npm:7.0.6"
     diff: "npm:8.0.4"
     grok-mermaid: "npm:0.2.3"
-    highlight.js: "npm:10.7.3"
+    highlight.js: "npm:11.12.0"
     highlight.js-browser: "npm:highlight.js@11.12.0"
     hosted-git-info: "npm:9.0.3"
     ignore: "npm:7.0.8"
@@ -3841,13 +3841,6 @@ __metadata:
   version: 11.12.0
   resolution: "highlight.js@npm:11.12.0"
   checksum: 10c0/c62ebfad125b541790412374a15ae1ca15a45fdfac0fae2b5c96b6a10dc8d5d15380adf748584fb08cfeb4db2b3a749a170e2afd0b640e9fad86445b1c435777
-  languageName: node
-  linkType: hard
-
-"highlight.js@npm:10.7.3":
-  version: 10.7.3
-  resolution: "highlight.js@npm:10.7.3"
-  checksum: 10c0/073837eaf816922427a9005c56c42ad8786473dc042332dfe7901aa065e92bc3d94ebf704975257526482066abb2c8677cc0326559bb8621e046c21c5991c434
   languageName: node
   linkType: hard
 

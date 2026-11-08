@@ -301,4 +301,9 @@ export class Editor implements Component, Focusable {
 	public isShowingAutocomplete(): boolean {
 		return this.model.autocomplete.isShowingAutocomplete();
 	}
+
+	/** True while a suggestion request is in flight (no list yet): Esc then cancels it instead of the agent. */
+	public hasPendingAutocomplete(): boolean {
+		return this.model.autocomplete.hasPendingRequest();
+	}
 }

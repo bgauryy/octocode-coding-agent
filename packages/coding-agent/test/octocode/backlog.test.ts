@@ -347,7 +347,7 @@ describe("backlog tool", () => {
 		expect(new Set(notes).size).toBe(23);
 	});
 
-	it("adds proposals to backlog, lists open work with a triage line, and gets details", async () => {
+	it("adds proposals to backlog, lists proposed items with open work, and gets details", async () => {
 		const t = setup();
 		expect(
 			await t.text({
@@ -361,13 +361,11 @@ describe("backlog tool", () => {
 			}),
 		).toBe("Added B1 [backlog p1] Add memory tool #mem");
 		await t.text({ op: "add", why: "Required work", title: "Accepted", goal: "it works", state: "todo" });
-		expect(await t.text({ op: "list" })).toBe(
-			'B2 [todo p2] Accepted\n1 proposed item(s) await triage (list with states: ["backlog"]).',
-		);
+		expect(await t.text({ op: "list" })).toBe("B2 [todo p2] Accepted\nB1 [backlog p1] Add memory tool #mem");
 		expect(await t.text({ op: "update", id: "B1", state: "ongoing", note: "starting" })).toBe(
 			"Updated B1 [ongoing p1] Add memory tool #mem (you)",
 		);
-		const detail = await t.text({ op: "get", id: "b1" });
+		const detail = await t.text({ op: "get", id: "b1", changes: true });
 		expect(detail).toContain("B1 [ongoing p1] Add memory tool #mem (you)");
 		expect(detail).toContain("with BM25");
 		expect(detail).toMatch(
@@ -510,7 +508,8 @@ describe("backlog tool", () => {
 		await expect(sub.call({ op: "update", id: "B1", parentId: "B2" })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B1", dependsOn: ["B2"] })).rejects.toThrow(/only the state and notes/);
 		expect(sub.tool.parameters.properties).toHaveProperty("completion");
-		expect(sub.tool.parameters.properties).toHaveProperty("links");
+		// Links are accepted from older callers but no longer declared; paths and URLs go in evidence.
+		expect(sub.tool.parameters.properties).not.toHaveProperty("links");
 		await expect(
 			sub.call({ op: "add", ...READY, title: "linked", parentId: "B1", links: [], dependsOn: ["B1"] }),
 		).rejects.toThrow("A subagent proposal cannot set parentId, dependsOn:");
@@ -596,7 +595,7 @@ describe("backlog tool", () => {
 					operationKey: "k",
 				},
 			}),
-		).rejects.toThrow(/Invalid backlog entity fields at \/completion\/verification/);
+		).rejects.toThrow(/Unknown completion\.verification fields: extra/);
 	});
 
 	it("keeps why apart from the call reason, expands reference shorthands, and shows links and completion ids", async () => {
@@ -654,7 +653,7 @@ describe("backlog tool", () => {
 		);
 		const root = await t.text({ op: "get", id: "B1" });
 		expect(root).toContain("Derived items (1):\n- B2 [backlog p2] Follow-up (from B1)");
-		const child = await t.text({ op: "get", id: "B2" });
+		const child = await t.text({ op: "get", id: "B2", changes: true });
 		expect(child).toContain("From: B1 [todo p2] Root task");
 		expect(child).toMatch(/- .* ago agent · created from B1/);
 		expect(await t.text({ op: "list", from: "B1", states: ["backlog"] })).toBe("B2 [backlog p2] Follow-up (from B1)");
@@ -1133,7 +1132,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 			"Evidence:\n- src/backlog/store.ts:87 — body copied into notes\n- yarn test → 2 failures",
 			"Plan: Add four columns, then render them.\n  Keep search on LIKE.",
 			"created ",
-			"Notes and changes:",
+			"Notes:",
 		];
 		const at = order.map((part) => detail.indexOf(part));
 		expect(at.every((index) => index >= 0)).toBe(true);

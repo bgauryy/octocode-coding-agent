@@ -11,6 +11,12 @@ import { memberWorktree, worktreeLabel } from "../shared/member-worktree.ts";
 import type { MemberDetails } from "./store/details.ts";
 import { STALLED_LISTED_MS } from "./store/limits.ts";
 
+/**
+ * A working child with no model progress for this long is marked stalled in `coordinate list`. Its process stamps the
+ * progress (`subagents/liveness.ts` `heartbeatDue`) while it works inside a declared long call or job, so quiet that long is not that.
+ */
+export const STALL_MS = 10 * 60_000;
+
 /** Columns a detail line of `coordinate list` takes at most, its indent included: one terminal row. */
 const DETAIL_COLUMNS = 100;
 
@@ -80,8 +86,10 @@ export function describeMembers(
 				const doing = member.status === "working" ? (member.activity ?? "working") : "idle";
 				const asked = asksLabel(asks?.get(member.id));
 				const waiting = (asks?.get(member.id) ?? []).filter((ask) => !ask.answer);
-				const output =
-					member.lastOutputAt === undefined ? "" : ` · last output ${formatAgo(now - member.lastOutputAt)}`;
+				// `lastOutputAt` is the child's last model or tool event (or a heartbeat inside a declared long call), never a stdout byte.
+				const quiet = member.lastOutputAt === undefined ? undefined : now - member.lastOutputAt;
+				const output = quiet === undefined ? "" : ` · last progress ${formatAgo(quiet)}`;
+				const stalled = member.status === "working" && quiet !== undefined && quiet >= STALL_MS;
 				// Another worktree of the repository: its folder name says where, and its locks are paths in that checkout.
 				const elsewhere = here && member.checkout && member.checkout !== here;
 				const folder = memberWorktree(member, here);
@@ -89,12 +97,17 @@ export function describeMembers(
 				const budget = standing?.(member.id);
 				const requests = budget ? ` · ${budget.used} of ${budget.soft} requests, stops at ${budget.hard}` : "";
 				return [
-					`${member.id}${you} · ${member.role} · ${member.status}${model}${parent}${worktree}`,
+					`${member.id}${you} · ${member.role} · ${member.status}${stalled ? " · stalled" : ""}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
 					`  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
 					...(member.cwd ? [`  in ${member.cwd}${member.branch ? ` @ ${member.branch}` : ""}`] : []),
 					...detailLines(details?.get(member.id), here),
 					`  ${firstLine(doing)}${output}`,
+					...(stalled
+						? [
+								`  stalled: no model request or tool event for ${formatAgo(quiet)}, outside any declared long call or job; stop or message it`,
+							]
+						: []),
 					...awaiting(member, now, questions),
 					...(asked ? [`  ${asked} to its coordinator`] : []),
 					...waiting.map(

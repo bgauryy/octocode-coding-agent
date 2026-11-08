@@ -96,7 +96,8 @@ describe("closing a backlog item", () => {
 		const closedRow = events.find((e) => (e.after as { closed?: string } | null)?.closed);
 		expect(closedRow?.actor).toMatchObject({ kind: "agent", surface: "tool" });
 		expect(JSON.parse((closedRow!.after as { closed: string }).closed)).toMatchObject({ kind: "wont_do" });
-		const trail = await text({ op: "get", id: "B1" });
+		expect(await text({ op: "get", id: "B1" })).not.toMatch(/Audit \(latest/);
+		const trail = await text({ op: "get", id: "B1", changes: true });
 		expect(trail).toMatch(/Audit \(latest/);
 		expect(trail).toMatch(/\(agent via tool\)/);
 		expect(trail).toMatch(/closed/);

@@ -37,7 +37,10 @@ const parameters = Type.Object(
 					),
 					item: Type.Optional(
 						Type.Object(
-							{ ref: Type.String(), state: Type.String({ description: "todo|ongoing|done|closed" }) },
+							{
+								ref: Type.String({ description: "item, or several comma-joined (any fires)" }),
+								state: Type.String({ description: "todo|ongoing|done|closed|ready (dependsOn all done)" }),
+							},
 							{ additionalProperties: false },
 						),
 					),
@@ -51,7 +54,9 @@ const parameters = Type.Object(
 						),
 					),
 					check: Type.Optional(
-						Type.String({ description: "question a small model judges (paid) once the one other condition fires" }),
+						Type.String({
+							description: "question a small model judges once the one other condition fires (paid, capped)",
+						}),
 					),
 				},
 				{ additionalProperties: false, description: "one condition" },
@@ -92,7 +97,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		label: "Timer",
 		promptSnippet: renderInstruction("tools/timer/snippet.md"),
 		description:
-			"Wake this session with a note (a message): once after seconds, every seconds, or once when one until condition holds: unlocked, file, item, agent, port, command, or check (a small model judges once one fires; paid, capped). Survives resume.",
+			"Wake this session with a note (a message): once after seconds, every seconds, or once when one until condition holds (unlocked, file, item, agent, port, command, check). Survives resume.",
 		parameters,
 		async execute(toolCallId, params: Params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();
@@ -115,6 +120,14 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 				throw new Error(`This session has ${MAX_ACTIVE} active timers, the most it may hold: cancel one first.`);
 			const agent = host.agent();
 			const condition = parseUntil(params.until);
+			const ended = condition?.kind === "agent" ? host.deps.agentEnd(condition.name) : undefined;
+			if (condition?.kind === "agent" && ended)
+				throw new Error(
+					`${condition.name} already ended (${ended.reason}), so there is nothing to wait for: its report reaches you without a timer. No timer was set.`,
+				);
+			const missing =
+				condition?.kind === "item" ? condition.ref.split(",").filter((ref) => host.deps.item(ref) === undefined) : [];
+			if (missing.length) throw new Error(`No backlog item ${missing.join(", ")} in this workspace. No timer was set.`);
 			if (condition?.kind === "check") {
 				const refusal = await host.checkRefusal(ctx);
 				if (refusal) throw new Error(refusal);

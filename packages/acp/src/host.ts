@@ -5,6 +5,7 @@
  * or `runAcpMode`. Everything below is a narrow structural type: the host's richer RPC and session types satisfy it.
  */
 import type { ImageContent, Message, TextContent } from "@octocodeai/octocode-ai";
+import type { Question, Reply } from "@octocodeai/octocode-contracts";
 
 /** Where a saved copy of captured output goes: the host's private session output folder. Undefined when it could not be written. */
 export type AcpSaveOutput = (data: string | Uint8Array, label: string, extension: string) => string | undefined;
@@ -83,10 +84,16 @@ export type AcpUiRequest =
 				rejectOnce: string;
 			};
 	  }
-	| { id: string; method: "confirm" | "input" | "editor"; title: string };
+	| { id: string; method: "confirm" | "input" | "editor"; title: string }
+	/** A batch of typed questions (the worker runs with `--rpc-ask`); answered with `replies`, one per question id. */
+	| { id: string; method: "ask"; questions: Question[]; approval?: boolean };
 
-/** The answer to an `AcpUiRequest`: a chosen value, or a cancellation. */
-export type AcpUiResponse = { type: "extension_ui_response"; id: string } & ({ value: string } | { cancelled: true });
+/** The answer to an `AcpUiRequest`: a chosen value, the replies to an `ask`, or a cancellation. */
+export type AcpUiResponse = { type: "extension_ui_response"; id: string } & (
+	| { value: string }
+	| { replies: Reply[] }
+	| { cancelled: true }
+);
 
 /** The state of a worker session the broker needs to own its identity. */
 export interface AcpWorkerState {

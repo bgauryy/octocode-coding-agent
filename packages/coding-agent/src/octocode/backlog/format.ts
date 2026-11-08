@@ -131,6 +131,8 @@ function itemFields(item: Item): string[] {
 
 interface DetailOptions {
 	noteOffset?: number;
+	/** The notes are only the agents' and users' (no store-logged changes): the heading says so. */
+	notesOnly?: boolean;
 	self?: string;
 	/** A subagent's parent sessions, shown as `(coordinator)`. */
 	parents?: ReadonlySet<string>;
@@ -204,12 +206,13 @@ export function itemDetail(
 	lines.push(...runsBlock(options.runs ?? [], now));
 	if (notes.length > 0) {
 		const offset = options.noteOffset ?? 0;
+		const heading = options.notesOnly ? "Notes" : "Notes and changes";
 		const label =
 			offset > 0
-				? `Notes and changes (${offset + 1}–${offset + notes.length} newest of ${totalNotes}):`
+				? `${heading} (${offset + 1}–${offset + notes.length} newest of ${totalNotes}):`
 				: totalNotes > notes.length
-					? `Notes and changes (last ${notes.length} of ${totalNotes}):`
-					: "Notes and changes:";
+					? `${heading} (last ${notes.length} of ${totalNotes}):`
+					: `${heading}:`;
 		lines.push("", label, ...notes.map((note) => noteLine(note, now, self, parents)));
 	}
 	return lines.join("\n");

@@ -24,17 +24,18 @@ import {
 import {
 	CONNECT_RETRY_DELAYS_MS,
 	ConnectBackoff,
+	connectBackoffError,
 	connectWithRetries,
 	createMcpClient,
 	DEFAULT_TIMEOUT_MS,
 	type McpRequestHost,
 	RetiringClients,
+	retryAfterTimeout,
 	runRequest,
 	type ServerState,
 	stderrTail,
 	trackToolListChanges,
 } from "./runtime/client.ts";
-import { firstLine } from "../../common/src/clip.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpToolCaller } from "./tools.ts";
@@ -59,6 +60,8 @@ export class McpServerConnection implements McpToolCaller {
 	readonly entry: McpServerEntry;
 	state: ServerState = "connecting";
 	error: string | undefined;
+	/** The last start answered too slowly, so it was retried once with a longer timeout (shown in the state). */
+	retriedAfterTimeout = false;
 	clientError: string | undefined;
 	tools: McpTool[] = [];
 	/** Server instructions from `initialize`, describing its tools as a group. */
@@ -139,12 +142,7 @@ export class McpServerConnection implements McpToolCaller {
 		if (unavailable) return Promise.reject(unavailable);
 		if (this.client?.connectionState === "connected") return Promise.resolve(this.client);
 		const wait = this.opening ? 0 : this.backoff.remainingMs();
-		if (wait > 0)
-			return Promise.reject(
-				new Error(
-					`MCP server "${this.entry.name}" failed to connect ${this.backoff.count} times in a row (${firstLine(this.error ?? "unknown error")}); it is not started again for ${Math.ceil(wait / 1000)}s. Restart it to try now.`,
-				),
-			);
+		if (wait > 0) return Promise.reject(connectBackoffError(this.entry.name, this.backoff.count, this.error, wait));
 		this.opening ??= this.open().finally(() => {
 			this.opening = undefined;
 		});
@@ -174,9 +172,8 @@ export class McpServerConnection implements McpToolCaller {
 	};
 
 	/**
-	 * The error for a call made while the connection is not up, or undefined when it is connected. A call does not wait
-	 * for the connection: after a drop the next call starts the reconnect in the background (its outcome shows in
-	 * `state` and `error`) and fails with the state and how to restart the server.
+	 * The error for a call made while the connection is not up, or undefined when connected. A call does not wait: after a
+	 * drop it starts the reconnect in the background (the outcome shows in `state` and `error`) and fails with how to restart.
 	 */
 	rejectWhileDown(): Error | undefined {
 		const failure = callWhileDownError(this.entry, {
@@ -190,10 +187,7 @@ export class McpServerConnection implements McpToolCaller {
 		return failure;
 	}
 
-	/**
-	 * Cancel a connect in progress, for example a hung one that a reconnect replaces. Its callers see the failure;
-	 * a later `getClient()` or `reconnect()` starts a new attempt.
-	 */
+	/** Cancel a connect in progress (a hung one a reconnect replaces): its callers see the failure; a later call starts anew. */
 	abortOpening(): void {
 		this.openingAbort?.abort();
 	}
@@ -209,10 +203,7 @@ export class McpServerConnection implements McpToolCaller {
 		await this.getClient();
 	}
 
-	/**
-	 * Stop the server for this session: its process or session ends and its tools are withdrawn. Calls fail instead of
-	 * starting it again; `reconnect()` starts it. Configuration is unchanged.
-	 */
+	/** Stop the server for this session: its tools are withdrawn and calls fail instead of starting it; `reconnect()` starts it. */
 	async stop(): Promise<void> {
 		this.stopped = true;
 		this.abortOpening();
@@ -260,6 +251,7 @@ export class McpServerConnection implements McpToolCaller {
 		this.openingAbort = openingAbort;
 		const signal = AbortSignal.any([this.shutdown.signal, openingAbort.signal]);
 		this.state = "connecting";
+		this.retriedAfterTimeout = false;
 		this.changed();
 		const retries = "url" in this.entry.config ? CONNECT_RETRY_DELAYS_MS : [];
 		try {
@@ -268,7 +260,15 @@ export class McpServerConnection implements McpToolCaller {
 				signal,
 				() => {
 					this.stderrTail = undefined;
-					return this.connectOnce(signal);
+					return retryAfterTimeout(
+						this.timeoutMs,
+						signal,
+						(timeoutMs) => this.connectOnce(signal, timeoutMs),
+						() => {
+							this.retriedAfterTimeout = true;
+							this.changed();
+						},
+					);
 				},
 				(error) => this.connectFailed(error),
 			);
@@ -277,8 +277,8 @@ export class McpServerConnection implements McpToolCaller {
 		}
 	}
 
-	private async connectOnce(signal: AbortSignal): Promise<McpClient> {
-		const { client, closeClient } = createMcpClient(this.entry.name, this.cwd, this.timeoutMs, this.log);
+	private async connectOnce(signal: AbortSignal, timeoutMs: number): Promise<McpClient> {
+		const { client, closeClient } = createMcpClient(this.entry.name, this.cwd, timeoutMs, this.log);
 		this.clientError = undefined;
 		client.onError((error) => {
 			if (signal.aborted || this.closed || (this.client && this.client !== client)) return;
@@ -332,10 +332,7 @@ export class McpServerConnection implements McpToolCaller {
 		return new Error(`MCP server "${this.entry.name}" failed to connect: ${this.error}`);
 	}
 
-	/**
-	 * The transport dropped. The tools stay declared, so the provider's cached prompt prefix is not rewritten
-	 * (`rejectWhileDown` fails calls until the server is back); the status shows why.
-	 */
+	/** The transport dropped. The tools stay declared (the cached prompt prefix holds; `rejectWhileDown` fails calls); the status shows why. */
 	private handleClientClose(client: McpClient, stdio: StdioTransport | undefined): void {
 		if (this.client !== client || this.closed) return;
 		this.client = undefined;

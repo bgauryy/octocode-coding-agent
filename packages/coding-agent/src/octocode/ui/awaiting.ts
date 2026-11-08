@@ -1,4 +1,4 @@
-import type { ApplicationAwaiting } from "@octocodeai/octocode-contracts";
+import type { ApplicationAwaiting, Question } from "@octocodeai/octocode-contracts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ExtensionUIAskView } from "../../core/features/types.ts";
@@ -7,7 +7,7 @@ import { clipText, firstLine } from "../shared/util.ts";
 import { promptTitle } from "../shared/locks.ts";
 
 /**
- * What a dialog asks, for the browser: a confirmation and a dialog opened with the `approval` option (every permission
+ * What a dialog asks, for the browser: a confirmation and an `ask` dialog with an approval question (every permission
  * prompt) are approvals; a choice, an input or a custom dialog is a question. With the dialog's `id` (the broker's), its
  * options and whether it takes text, a client can answer it with the `answer` command; an editor dialog, or a custom one
  * without a remote answer shape, carries no id and stays terminal-only.
@@ -20,15 +20,31 @@ export function awaitingFor(event: {
 	allowsText?: boolean;
 	approval?: boolean;
 	ask?: ExtensionUIAskView;
+	questions?: Question[];
 }): ApplicationAwaiting {
 	const title = promptTitle(event);
+	// The heading is one clipped line; the whole question (the card's own, else the title's later lines) rides beside it.
+	const full = clipText(redactSecrets((event.ask?.question ?? title ?? "").trim()), 4000);
+	const shortTitle = title ? clipText(redactSecrets(firstLine(title)), 200) : undefined;
+	const question = full && full !== shortTitle ? full : undefined;
 	// A custom dialog is answerable only when it opened with a remote answer shape (askUser), which gives it options.
 	const answerable =
 		event.id !== undefined &&
 		(["select", "confirm", "input"].includes(event.kind) || (event.kind === "custom" && event.options !== undefined));
+	if (event.kind === "ask" && event.questions) {
+		// The typed questions carry everything (options by id, write-ins, approval roles); the older fields stay empty.
+		return {
+			kind: event.approval ? "approval" : "question",
+			...(shortTitle ? { title: shortTitle } : {}),
+			...(question ? { question } : {}),
+			...(event.id !== undefined ? { id: event.id, options: [], allowsText: false } : {}),
+			questions: event.questions.map(redactedQuestion),
+		};
+	}
 	return {
 		kind: event.kind === "confirm" || event.approval ? "approval" : "question",
-		...(title ? { title: clipText(redactSecrets(firstLine(title)), 200) } : {}),
+		...(shortTitle ? { title: shortTitle } : {}),
+		...(question ? { question } : {}),
 		...(answerable
 			? {
 					id: event.id,
@@ -41,6 +57,29 @@ export function awaitingFor(event: {
 }
 
 const text = (value: string, max: number) => clipText(redactSecrets(value), max);
+
+/** A question for the browser: every string redacted; its shape and bounds are the contract's own. */
+function redactedQuestion(q: Question): Question {
+	const redacted = (value: string) => redactSecrets(value);
+	return {
+		...q,
+		question: redacted(q.question),
+		...(q.header ? { header: redacted(q.header) } : {}),
+		...(q.meta ? { meta: q.meta.map(redacted) } : {}),
+		...(q.body ? { body: { ...q.body, text: redacted(q.body.text) } } : {}),
+		...(q.notes ? { notes: q.notes.map((note) => ({ ...note, text: redacted(note.text) })) } : {}),
+		...(q.options
+			? {
+					options: q.options.map((option) => ({
+						...option,
+						label: redacted(option.label),
+						...(option.description ? { description: redacted(option.description) } : {}),
+					})),
+				}
+			: {}),
+		...(q.approval ? { approval: { ...q.approval, targets: q.approval.targets.map(redacted) } } : {}),
+	};
+}
 
 /**
  * The ask card's content for the browser, from the dialog's own view: every string redacted and bounded, the option

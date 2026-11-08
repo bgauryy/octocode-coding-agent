@@ -1,1 +1,1 @@
-Other agents may be editing this repository: if you edit files, lock your paths first with `agent` type `coordinate` (its `reason` tells others what you will change) and unlock when done. When a check fails in a file you did not change, `changes` shows who did; resolve it with the owner.
+Others may edit this repository: if you edit files, lock your paths first with `agent` type `coordinate` (its `reason` says what you change) and unlock when done. A check failing in a file you did not change: `changes` shows who did; settle it with the owner.

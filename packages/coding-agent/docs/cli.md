@@ -34,7 +34,7 @@ The groups below name the flags; `octocode --help` has the exact syntax.
 
 - **Model**: `--model` (accepts `provider/id` and a `:thinking` suffix), `--provider` (for the auth commands, or a bare `--model` id), `--models` for the cycling list, `--thinking`, `--list-models`.
 - **Permissions**: `--permission-mode manual|workspace|full` picks the start mode; `--dangerously-skip-permissions` starts in `bypass`, where nothing asks and every call is still recorded. Subagents inherit either. See [permissions](permissions.md#modes).
-- **Sessions**: `--continue`, `--resume`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
+- **Sessions**: `--continue`, `--resume [id]`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
 - **Planning**: `--plan` starts with the planning constraint on (read-only until you approve a plan; see [native planning constraint](native-features.md#native-planning-constraint)).
 - **Tools**: `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools`, `--no-mcp`. See [native features](native-features.md#tool-selection-and-migration).
 - **Resources**: `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`. User code extensions are not supported, and their flags (`--extension`, `-e`, `--no-extensions`) are unknown options. Built-in features switch through the `extensions` setting (`-builtin:llama.cpp`); MCP is always on unless `--no-mcp` is passed.
@@ -44,12 +44,14 @@ An unknown `--flag` fails at startup with `Unknown option: --flag` and a pointer
 Every flag has one long name. The only short forms are single letters: `-p`, `-c`, `-r`, `-n`, `-t`, `-h` and `-v`.
 
 - **Trust and network**: `--trust` records your trust of the current folder and then runs; a print, JSON or RPC run in a folder you have not trusted exits with an error without it (it does not apply to `--mode acp`). `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).
-- **Headless**: `--no-stdin` (do not read piped stdin), `--no-dialogs` (RPC mode: no one answers dialogs, so asks are refused as in a print run; see [RPC mode](rpc.md#protocol)).
+- **Headless**: `--no-stdin` (do not read piped stdin), `--no-dialogs` (RPC mode: no one answers dialogs, so asks are refused as in a print run; see [RPC mode](rpc.md#protocol)), `--rpc-ask` (RPC mode: the client answers `ask` requests, batches of typed questions, instead of `select`, `confirm` and `input` dialogs; a subagent always runs with it).
 - **Interface**: `--tui-mode`, `--use-theme`, `--verbose`.
 
 When `--continue`, `--session` or `--session-id` opens a saved session that another running Octocode process has open, Octocode asks whether to resume it here as well, as `/resume` and `--resume` do; Cancel exits. Print, JSON and RPC modes cannot ask, so they exit with an error instead: two processes appending to one session overwrite each other's history. `--fork` copies the session and is never refused. `--session-id <id>` and `--fork --session-id <id>` refuse an id that belongs to a saved session in another folder and name its file; use `--session <id>` to open it.
 
-`--session <id>` with an id saved in another project folder offers to fork it here. Print, JSON and RPC modes cannot ask, so they exit `1` and name `--fork <id>`, leaving stdin unread; `--resume` opens a picker and exits `1` the same way. A prefix of `--session` or `--fork` that matches several sessions exits `1` and lists them. A match in this project wins over matches elsewhere.
+`--resume <id>` (or `-r <id>`) is `--session <id>`: it takes an id, a unique id prefix or a session file path, and Octocode prints `octocode --resume <id>` when a session ends. `--resume` alone opens the picker. After `--resume`, a bare word is taken as the id only when it looks like one (four or more hex digits and dashes, or a path); anything else stays the prompt, so `octocode -r "fix the build"` opens the picker with that prompt. Write `--resume=<id>` or use `--session <id>` for an id that does not look like that.
+
+`--session <id>` with an id saved in another project folder offers to fork it here. Print, JSON and RPC modes cannot ask, so they exit `1` and name `--fork <id>`, leaving stdin unread; bare `--resume` opens a picker and exits `1` the same way. A prefix of `--session` or `--fork` that matches several sessions exits `1` and lists them. A match in this project wins over matches elsewhere.
 
 If a write to stdout fails in print, JSON or RPC mode, for example `octocode --mode json "…" | head -1`, Octocode releases the session and exits `1` with one line on stderr.
 

@@ -22,6 +22,7 @@ import { buildAgentArgs, type ChildSession, childSession } from "./process/sessi
 import type { AgentProfile } from "./profiles.ts";
 import type { RelayHost } from "./relay.ts";
 import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
+import { registerIdleItems } from "./idle-items.ts";
 import { startNotices } from "./start-notices.ts";
 import { agentToolSpec } from "./agent-tool.ts";
 import { FORK_NOTE_TYPE, forkNote, resumeNote } from "./children.ts";
@@ -93,6 +94,7 @@ export function registerAgentTool(
 		reports: new ReportQueue(api),
 		read: new ReadReports(),
 		running: new Map(),
+		items: new Map(),
 		slots: new Slots(),
 		session: 0,
 		changed: () => panel.setBackground([...runs.background.keys()]),
@@ -207,6 +209,7 @@ export function registerAgentTool(
 		if (event.toolResults.length > 0) runs.reports.stepEnded();
 		return undefined;
 	});
+	registerIdleItems(api, team, runs);
 	api.on("agent_settled", async () => {
 		runs.reports.retryExhausted();
 		await late.take();

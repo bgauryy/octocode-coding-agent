@@ -2,6 +2,7 @@ import type { Token } from "marked";
 import { renderLatex } from "../../latex.ts";
 import { getCapabilities } from "../../terminal-image/capabilities.ts";
 import { hyperlink } from "../../terminal-image.ts";
+import { fileReferenceUrl, findFileReferences, splitFileReferences } from "./linkify.ts";
 import type { LatexToken } from "./parser.ts";
 import type { InlineStyleContext, MarkdownRenderHost } from "./types.ts";
 
@@ -17,6 +18,17 @@ export function renderInlineTokens(
 		const segments: string[] = text.split("\n");
 		return segments.map((segment: string) => applyText(segment)).join("\n");
 	};
+
+	// A file reference is coloured as a link (clickable where the terminal supports it); its text is unchanged.
+	const linkifiedText = (text: string): string =>
+		splitFileReferences(text)
+			.map((piece) => {
+				if (!piece.reference) return applyTextWithNewlines(piece.text);
+				const styled = host.theme.link(piece.text);
+				const url = fileReferenceUrl(piece.reference.path, process.cwd());
+				return (getCapabilities().hyperlinks ? hyperlink(styled, url) : styled) + stylePrefix;
+			})
+			.join("");
 
 	for (const token of tokens) {
 		switch (token.type) {
@@ -39,7 +51,7 @@ export function renderInlineTokens(
 				if (token.tokens && token.tokens.length > 0) {
 					result += renderInlineTokens(host, token.tokens, resolvedStyleContext);
 				} else {
-					result += applyTextWithNewlines(token.text);
+					result += linkifiedText(token.text);
 				}
 				break;
 
@@ -60,9 +72,17 @@ export function renderInlineTokens(
 				break;
 			}
 
-			case "codespan":
-				result += host.theme.code(token.text) + stylePrefix;
+			case "codespan": {
+				const code = host.theme.code(token.text);
+				// A span that is only a file reference becomes a link; the code styling stays.
+				const [only] = findFileReferences(token.text);
+				const isReference = only !== undefined && only.start === 0 && only.end === token.text.length;
+				result +=
+					(isReference && getCapabilities().hyperlinks
+						? hyperlink(code, fileReferenceUrl(only.path, process.cwd()))
+						: code) + stylePrefix;
 				break;
+			}
 
 			case "link": {
 				const linkText = renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);

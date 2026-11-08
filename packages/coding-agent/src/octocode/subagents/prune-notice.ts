@@ -15,14 +15,14 @@ export async function pruneNotice(
 	try {
 		const report = await pruneWorktrees(ctx.cwd, home);
 		const note = describePrune(report);
-		const linked = report.saved.flatMap(({ ref, item }) => (ref && item ? [{ ref, item }] : []));
+		const linked = report.saved.flatMap(({ ref, patch, item }) => (ref && item ? [{ ref, patch, item }] : []));
 		if (linked.length === 0) return note;
 		const failures: string[] = [];
 		try {
 			const backlog = openBacklog(ctx, { isSubagent: false });
-			for (const { ref, item } of linked) {
+			for (const { ref, patch, item } of linked) {
 				try {
-					noteSavedRef(backlog, item, ref);
+					noteSavedRef(backlog, item, ref, patch);
 				} catch (error) {
 					failures.push(`Could not link ${ref} on ${item}: ${errorMessage(error)}`);
 				}

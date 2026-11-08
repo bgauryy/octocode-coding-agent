@@ -362,7 +362,8 @@ describe("every native tool, in one real process", () => {
 	beforeAll(async () => {
 		box = repository();
 		steps = [...flat.map(({ step }) => withPage(step)), { text: "parent-final-text" }];
-		const run = box.start(["-p", script(steps)]);
+		// `steps` is registered but not in the default tool list: this run opts in to prove its calls.
+		const run = box.start(["--tools", "+steps", "-p", script(steps)]);
 		({ code } = await run.exited);
 		stdout = run.stdout();
 	});
@@ -536,11 +537,39 @@ describe("the native paths that need a run of their own", () => {
 	});
 });
 
-/** One rendered tool's block in the prompt's `<mcps>` section. */
+/**
+ * One rendered tool's block in the prompt's `<mcps>` section. A type the renderer hoists because several tools share it
+ * (`} & QueriesVariants)[]`, `type QueriesVariants = …;` once per server) is written back in place, so the block reads
+ * as one signature.
+ */
 function toolBlock(system: string, tool: string): string {
 	const start = system.indexOf(`function ${tool}(input:`);
 	expect(start, `${tool} is rendered`).toBeGreaterThanOrEqual(0);
-	return system.slice(start, system.indexOf("}): unknown;", start));
+	const block = system.slice(start, system.indexOf("}): unknown;", start));
+	return block.replace(/&\s*([A-Z]\w*)\b/g, (whole, name: string) => {
+		const body = hoistedType(system, name);
+		return body === undefined ? whole : `& (${body})`;
+	});
+}
+
+/** The right-hand side of `type <name> = …;` in the prompt, up to its closing `;` outside brackets and comments. */
+function hoistedType(system: string, name: string): string | undefined {
+	const head = `type ${name} = `;
+	const from = system.indexOf(head);
+	if (from < 0) return undefined;
+	let depth = 0;
+	for (let at = from + head.length; at < system.length; at++) {
+		if (system.startsWith("/*", at)) {
+			at = system.indexOf("*/", at + 2) + 1;
+			if (at <= 0) return undefined;
+			continue;
+		}
+		const char = system[at];
+		if ("{[(".includes(char)) depth++;
+		else if ("}])".includes(char)) depth--;
+		else if (char === ";" && depth === 0) return system.slice(from + head.length, at);
+	}
+	return undefined;
 }
 
 interface Field {

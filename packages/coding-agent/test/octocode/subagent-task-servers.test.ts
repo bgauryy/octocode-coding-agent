@@ -12,6 +12,8 @@ import {
 	registerMcpAddedServers,
 	serializeMcpSessionServers,
 } from "../../../mcp/src/session-servers.ts";
+import { getToolListError } from "../../src/core/settings-manager.ts";
+import { isDefaultActive } from "../../../mcp/src/exposure.ts";
 import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { resolveTaskServers } from "../../src/octocode/subagents/task-servers.ts";
@@ -58,9 +60,26 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 		expect(childLeavesOut(plan.only, "gamma")).toBe(true);
 	});
 
-	it("adds the named servers' tools to the child's selection", () => {
+	it("adds no pattern to a +name child list, which its parser refuses: the child's MCP host selects the server", () => {
 		const args = buildAgentArgs(undefined, undefined, SESSION, [], undefined, ["alpha"]);
-		expect(args[args.indexOf("--tools") + 1]).toContain("+mcp__alpha__*");
+		const tools = args[args.indexOf("--tools") + 1];
+		expect(tools).not.toContain("mcp__alpha");
+		expect(getToolListError(tools.split(","))).toBeUndefined();
+	});
+
+	it("adds the named servers' pattern to a profile's allowlist", () => {
+		const profile = { name: "r", description: "", prompt: "", tools: "read,grep" };
+		const args = buildAgentArgs(profile, undefined, SESSION, [], undefined, ["alpha"]);
+		const tools = args[args.indexOf("--tools") + 1];
+		expect(tools.split(",")).toContain("mcp__alpha__*");
+		expect(getToolListError(tools.split(","))).toBeUndefined();
+	});
+
+	it("refuses a tool list the child could not parse, before the child starts", () => {
+		const profile = { name: "bad", description: "", prompt: "", tools: "+mcp__alpha__*" };
+		expect(() => buildAgentArgs(profile, undefined, SESSION, [], undefined, ["alpha"])).toThrow(
+			"not patterns: +mcp__alpha__*",
+		);
 	});
 
 	it("refuses an unknown or disabled name with one line naming the configured servers", () => {
@@ -87,6 +106,20 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 		expect(resolveTaskServers(events, [], { ...profile, tools: "mcp__*" }, false).only).toEqual([]);
 	});
 
+	it("activates every tool only of a server the task named; an exact profile entry keeps its one tool", () => {
+		const events = session(["alpha", "beta"]);
+		const profile = { name: "e", description: "", prompt: "", tools: "+mcp__beta__echo" };
+		const plan = resolveTaskServers(events, ["alpha"], profile, false);
+		// Both servers run in the child: the task named alpha, the profile's own entry names beta.
+		expect(plan.only).toEqual(["alpha", "beta"]);
+		expect(plan.named).toEqual(["alpha"]);
+		const file = parseMcpSessionServers(serializeMcpSessionServers(plan.servers, [], plan.only, plan.named)!);
+		const taskNamed = new Set(file.named);
+		const optIn = (name: string) => ({ name, source: "test", config: { command: "unused", defaultActive: false } });
+		expect(isDefaultActive(optIn("alpha"), taskNamed)).toBe(true);
+		expect(isDefaultActive(optIn("beta"), taskNamed)).toBe(false);
+	});
+
 	it("reads the list from the child's handoff file", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-task-servers-"));
 		const file = path.join(dir, "servers.json");
@@ -95,6 +128,7 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 		expect(registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file })).toEqual({
 			stopped: [],
 			only: [],
+			named: [],
 		});
 		fs.rmSync(dir, { recursive: true, force: true });
 	});

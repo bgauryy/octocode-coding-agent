@@ -90,9 +90,9 @@ describe("native prompt section updates", () => {
 			const options = normalizeBuildSystemPromptOptions({ cwd: "/workspace", selectedTools });
 			await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 			const prompt = buildSystemPrompt(options);
-			expect(prompt.match(/prefer behavioral and end-to-end tests/g)).toHaveLength(1);
-			expect(prompt).toContain("assert observable contracts");
-			expect(prompt).toContain("write unit tests first to reproduce a bug or pin a pure function");
+			expect(prompt.match(/Tests drive the public entry point/g)).toHaveLength(1);
+			expect(prompt).toContain("assert observable behavior");
+			expect(prompt).toContain("reproduce a bug with a failing test first");
 			expect(prompt).toContain("mock only external boundaries");
 			expect(prompt).toContain("Never weaken or delete tests");
 			// The agent tool's message guideline owns when to message; the policy does not restate it.
@@ -110,12 +110,12 @@ describe("native prompt section updates", () => {
 		const writer = octocodePrompt({ ...input, canDelegate: false });
 		const reader = octocodePrompt({ ...input, canDelegate: false, readOnly: true });
 		for (const prompt of [root, writer])
-			expect(prompt).toContain("map the blast radius (exports, config, tests, docs)");
+			expect(prompt).toContain("know its blast radius (exports, config, tests, docs)");
 		expect(root).toContain("propose wider cleanups.");
 		expect(writer).toContain("within your assigned area; report anything outside it instead of changing it");
 		expect(reader).not.toContain("blast radius");
 		// Plain-text visuals the terminal shows as written (user request: no Mermaid); only the main session answers the user.
-		expect(root).toContain("draw it in plain text: a box-and-arrow sketch");
+		expect(root).toContain("clearer than prose: a small box-and-arrow sketch");
 		expect(root).toContain("no Mermaid in answers.");
 		expect(root).toContain("Finish or revert partial edits; stop only your jobs whose result is moot.");
 		for (const prompt of [writer, reader]) {
@@ -127,6 +127,6 @@ describe("native prompt section updates", () => {
 	it("does not instruct a session without messaging to contact another agent", () => {
 		const current = octocodePrompt({ ...input, canUseAgent: false });
 		expect(current).not.toContain("`agent`");
-		expect(current).not.toContain("## Manage running children");
+		expect(current).not.toContain("## Run children and use reports");
 	});
 });

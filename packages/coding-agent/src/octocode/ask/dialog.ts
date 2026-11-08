@@ -5,20 +5,14 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
-import { Breath, tabMark } from "./dialog/marks.ts";
-import {
-	type AskAnswer,
-	type AskQuestion,
-	type AskResult,
-	answerOf,
-	questionView,
-	remoteAnswer,
-	rows,
-} from "./dialog/answers.ts";
+import { Breath } from "./dialog/marks.ts";
+import { type AskAnswer, answerOf } from "./dialog/answers.ts";
+import { renderReview, tabsLine } from "./dialog/tabs.ts";
+import { questionView, remoteAnswer } from "./dialog/view.ts";
 import { DETAILS_KEY, hasMore, renderAskCard, startRow } from "./card.ts";
 import type { AskView } from "../shared/ask-view.ts";
 import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
@@ -30,16 +24,18 @@ import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
  * Space or Enter and answer only from their own "Submit selection" row.
  */
 export function showAskDialog(
-	ctx: ExtensionContext,
-	questions: AskQuestion[],
+	ctx: Pick<ExtensionContext, "ui">,
+	questions: readonly Question[],
 	signal?: AbortSignal,
-): Promise<AskResult> {
-	if (signal?.aborted) return Promise.resolve({ answers: [], cancelled: true, reason: "aborted" });
+): Promise<Reply[]> {
+	const cancelled = (reason: "declined" | "aborted"): Reply[] =>
+		questions.map((q) => ({ id: q.id, cancelled: reason }));
+	if (signal?.aborted) return Promise.resolve(cancelled("aborted"));
 	// The working line and the dialog notification name the question (the count first, so clipping keeps it).
 	const title = `${questions.length > 1 ? `${questions.length} questions: ` : ""}${questions[0]?.question ?? ""}`;
 	return titledDialog(title, () =>
 		ctx.ui
-			.custom<AskResult>(
+			.custom<Reply[]>(
 				(tui, theme, keybindings, done) =>
 					new AskDialog(
 						questions,
@@ -53,7 +49,7 @@ export function showAskDialog(
 				remoteAnswer(questions),
 			)
 			// Closed without an answer (another view took its place, or the UI was reset): a dismissal.
-			.then((result) => result ?? { answers: [], cancelled: true }),
+			.then((replies) => replies ?? cancelled("declined")),
 	);
 }
 
@@ -62,6 +58,7 @@ class AskDialog {
 	private readonly keybindings: KeybindingsManager;
 	private readonly isMulti: boolean;
 	private readonly answers = new Map<number, AskAnswer>();
+	private readonly replies = new Map<number, Reply>();
 	private readonly toggled = new Map<number, Set<number>>();
 	private readonly drafts = new Map<number, string>();
 	private tab = 0;
@@ -72,7 +69,7 @@ class AskDialog {
 	private warning = "";
 	private cache: string[] | undefined;
 	private cacheWidth = 0;
-	private readonly onAbort = () => this.finish(true);
+	private readonly onAbort = () => this.finish();
 	/** The unanswered tabs' `◇` breathes while any question waits. */
 	private readonly breath = new Breath(() => {
 		this.cache = undefined;
@@ -80,19 +77,19 @@ class AskDialog {
 	});
 
 	readonly theme: DialogTheme;
-	private readonly questions: AskQuestion[];
+	private readonly questions: readonly Question[];
 	private readonly views: AskView[];
 	private readonly editor: Editor;
 	private readonly requestRender: () => void;
-	private readonly done: (result: AskResult) => void;
+	private readonly done: (replies: Reply[]) => void;
 	private readonly signal?: AbortSignal;
 	constructor(
-		questions: AskQuestion[],
+		questions: readonly Question[],
 		keybindings: KeybindingsManager,
 		theme: DialogTheme,
 		editor: Editor,
 		requestRender: () => void,
-		done: (result: AskResult) => void,
+		done: (replies: Reply[]) => void,
 		signal?: AbortSignal,
 	) {
 		this.questions = questions;
@@ -107,7 +104,7 @@ class AskDialog {
 
 		this.isMulti = questions.length > 1;
 		this.breath.sync(this.isMulti);
-		this.typing = questions[0]?.options.length === 0;
+		this.typing = questions[0]?.type === "text";
 		editor.onSubmit = (value) => this.submitTyped(value);
 		// The run was aborted (e.g. the user interrupted the agent) while the dialog was open.
 		if (signal?.aborted) queueMicrotask(this.onAbort);
@@ -141,32 +138,40 @@ class AskDialog {
 		this.requestRender();
 	}
 
-	private finish(cancelled: boolean): void {
+	private finish(): void {
 		if (this.finished) return;
 		this.finished = true;
 		this.dispose();
-		this.done({
-			answers: this.questions.flatMap((_, index) => this.answers.get(index) ?? []),
-			cancelled,
-			...(this.signal?.aborted ? { reason: "aborted" as const } : {}),
-		});
+		const why = this.signal?.aborted ? "aborted" : "declined";
+		this.done(this.questions.map((q, index): Reply => this.replies.get(index) ?? { id: q.id, cancelled: why }));
 	}
 
-	private answer(index: number, value: AskAnswer): void {
-		this.answers.set(index, value);
+	/** Records question `index`'s answer from the option rows picked (their indexes) and the text typed, then moves on. */
+	private answer(index: number, picked: number[], text?: string): void {
+		const q = this.questions[index];
+		const options = q.options ?? [];
+		const rows = [...picked].sort((a, b) => a - b).map((at) => options[at]);
+		this.answers.set(
+			index,
+			answerOf(
+				q.question,
+				rows.map((option) => option.label),
+				text,
+			),
+		);
+		this.replies.set(index, { id: q.id, picks: rows.map((option) => option.id), ...(text ? { text } : {}) });
 		if (!this.isMulti) {
-			this.finish(false);
+			this.finish();
 			return;
 		}
 		this.tab = index < this.questions.length - 1 ? index + 1 : this.questions.length;
 		this.cursor = this.views[this.tab] ? startRow(this.views[this.tab]) : 0;
-		this.typing = this.questions[this.tab]?.options.length === 0;
+		this.typing = this.questions[this.tab]?.type === "text";
 		this.editor.setText(this.drafts.get(this.tab) ?? "");
 		this.refresh();
 	}
 
 	private submitTyped(value: string): void {
-		const q = this.questions[this.tab];
 		const text = value.trim();
 		this.typing = false;
 		this.editor.setText("");
@@ -175,8 +180,7 @@ class AskDialog {
 			return;
 		}
 		this.drafts.set(this.tab, text);
-		const picked = [...(this.toggled.get(this.tab) ?? [])].sort((a, b) => a - b).map((index) => q.options[index].label);
-		this.answer(this.tab, answerOf(q.question, picked, text));
+		this.answer(this.tab, [...(this.toggled.get(this.tab) ?? [])], text);
 	}
 
 	private moveTab(step: number): void {
@@ -184,7 +188,7 @@ class AskDialog {
 		this.cursor = this.views[this.tab] ? startRow(this.views[this.tab]) : 0;
 		this.warning = "";
 		// A free-text question opens its editor (with the saved draft) however it is reached.
-		this.typing = this.questions[this.tab]?.options.length === 0;
+		this.typing = this.questions[this.tab]?.type === "text";
 		this.editor.setText(this.typing ? (this.drafts.get(this.tab) ?? "") : "");
 		this.refresh();
 	}
@@ -209,19 +213,19 @@ class AskDialog {
 			return;
 		}
 		if (this.keybindings.matches(data, "tui.select.cancel")) {
-			this.finish(true);
+			this.finish();
 			return;
 		}
 		if (this.tab === this.questions.length) {
 			if (this.keybindings.matches(data, "tui.select.confirm") && this.answers.size === this.questions.length)
-				this.finish(false);
+				this.finish();
 			return;
 		}
 		this.questionKey(this.questions[this.tab], data);
 	}
 
-	private questionKey(q: AskQuestion, data: string): void {
-		const count = rows(q).length;
+	private questionKey(q: Question, data: string): void {
+		const count = this.views[this.tab].options.length;
 		this.warning = "";
 		if (this.keybindings.matches(data, "tui.select.up")) this.cursor = (this.cursor + count - 1) % count;
 		else if (this.keybindings.matches(data, "tui.select.down")) this.cursor = (this.cursor + 1) % count;
@@ -229,7 +233,11 @@ class AskDialog {
 		else if (/^[1-9]$/.test(data) && Number(data) <= count) this.cursor = Number(data) - 1;
 		// One question: tab shows a forwarded body whole (several questions move between tabs with it instead).
 		else if (!this.isMulti && data === DETAILS_KEY) this.expanded = !this.expanded;
-		else if (q.multiSelect && this.keybindings.matches(data, "app.ask.toggle") && this.cursor < q.options.length)
+		else if (
+			q.type === "multi" &&
+			this.keybindings.matches(data, "app.ask.toggle") &&
+			this.cursor < (q.options?.length ?? 0)
+		)
 			this.toggle();
 		else if (this.keybindings.matches(data, "tui.select.confirm")) {
 			this.choose(q);
@@ -245,19 +253,20 @@ class AskDialog {
 		this.toggled.set(this.tab, set);
 	}
 
-	private choose(q: AskQuestion): void {
-		if (this.cursor === q.options.length) {
+	private choose(q: Question): void {
+		const count = q.options?.length ?? 0;
+		if (this.cursor === count) {
 			this.typing = true;
 			this.editor.setText(this.drafts.get(this.tab) ?? "");
 			this.refresh();
 			return;
 		}
-		if (!q.multiSelect) {
-			this.answer(this.tab, answerOf(q.question, [q.options[this.cursor].label]));
+		if (q.type !== "multi") {
+			this.answer(this.tab, [this.cursor]);
 			return;
 		}
 		// Multi-select: Enter on an option toggles it; only the Submit row answers.
-		if (this.cursor < q.options.length) {
+		if (this.cursor < count) {
 			this.toggle();
 			this.refresh();
 			return;
@@ -268,8 +277,7 @@ class AskDialog {
 			this.refresh();
 			return;
 		}
-		const labels = [...set].sort((a, b) => a - b).map((index) => q.options[index].label);
-		this.answer(this.tab, answerOf(q.question, labels));
+		this.answer(this.tab, [...set]);
 	}
 
 	render(width: number): string[] {
@@ -287,10 +295,10 @@ class AskDialog {
 		};
 		lines.push(theme.fg("accent", "─".repeat(w)));
 		if (this.isMulti) {
-			add(" ", this.tabsLine());
+			add(" ", tabsLine(theme, questions, this.answers, this.tab));
 			lines.push("");
 		}
-		if (this.tab === questions.length) this.renderReview(add, lines);
+		if (this.tab === questions.length) renderReview(add, lines, this.theme, questions, this.answers, this.keybindings);
 		else this.renderQuestion(add, lines, w);
 		lines.push("");
 		const q = questions[this.tab];
@@ -298,7 +306,7 @@ class AskDialog {
 		const cancel = shortcutText("tui.select.cancel", this.keybindings);
 		const enter = !q
 			? `${confirm} submit`
-			: q.multiSelect
+			: q.type === "multi"
 				? `${shortcutText("app.ask.toggle", this.keybindings)}/${confirm} toggle · Submit selection to confirm`
 				: `${confirm} choose`;
 		const help = this.typing
@@ -323,49 +331,13 @@ class AskDialog {
 		return lines;
 	}
 
-	private tabsLine(): string {
-		const { theme, questions, answers } = this;
-		const tabs = questions.map((q, index) => {
-			const mark = tabMark(theme, answers.has(index));
-			const name = ` ${sanitizeTerminalText(q.header ?? `Q${index + 1}`)} `;
-			return index === this.tab
-				? theme.bg("selectedBg", `${theme.fg("text", " ")}${mark}${theme.fg("text", name)}`)
-				: `${theme.fg("muted", " ")}${mark}${theme.fg(answers.has(index) ? "success" : "muted", name)}`;
-		});
-		const submit = " ✓ Submit ";
-		tabs.push(
-			this.tab === questions.length
-				? theme.bg("selectedBg", theme.fg("text", submit))
-				: theme.fg(answers.size === questions.length ? "success" : "dim", submit),
-		);
-		return tabs.join(" ");
-	}
-
-	private renderReview(add: (prefix: string, text: string) => void, lines: string[]): void {
-		const { theme, questions, answers } = this;
-		for (const [index, q] of questions.entries()) {
-			const given = answers.get(index);
-			add(
-				" ",
-				`${theme.fg("muted", `${sanitizeTerminalText(q.header ?? `Q${index + 1}`)}: `)}${given ? theme.fg("text", sanitizeTerminalText(given.answer)) : theme.fg("warning", "(unanswered)")}`,
-			);
-		}
-		lines.push("");
-		add(
-			" ",
-			answers.size === questions.length
-				? theme.fg("success", `${shortcutText("tui.select.confirm", this.keybindings)} to submit`)
-				: theme.fg("warning", "Answer every question to submit"),
-		);
-	}
-
 	private renderQuestion(add: (prefix: string, text: string) => void, lines: string[], width: number): void {
 		const q = this.questions[this.tab];
 		add(
 			" ",
 			this.theme.fg(
 				"muted",
-				`Question ${this.tab + 1} of ${this.questions.length}${q.multiSelect ? " · Choose one or more, then Submit selection" : " · Choose one"}`,
+				`Question ${this.tab + 1} of ${this.questions.length}${q.type === "multi" ? " · Choose one or more, then Submit selection" : " · Choose one"}`,
 			),
 		);
 		const card = renderAskCard(
@@ -378,7 +350,7 @@ class AskDialog {
 				...(this.answers.get(this.tab) ? { answer: this.answers.get(this.tab)?.answer } : {}),
 				...(this.warning ? { warning: this.warning } : {}),
 				...(this.typing ? { editor: this.editor.render(Math.max(1, width - 2)) } : {}),
-				hideRows: q.options.length === 0 && this.typing,
+				hideRows: q.type === "text" && this.typing,
 			},
 			this.theme,
 			width,

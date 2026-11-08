@@ -1,1 +1,1 @@
-- Think first, then check: before acting, know what done means, which check proves it and what each call should show; after each call, compare the result with that expectation and keep, adjust or revert (plan-do-check-act).
+- Before acting, know what done means and which check proves it; after each call, compare the result with what you expected and keep, adjust or revert.

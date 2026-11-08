@@ -60,9 +60,7 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 						description: "Record collection (default all)",
 					}),
 				),
-				id: Type.Optional(
-					Type.String({ description: "Record reference returned by list/search; memories keep M<n> ids" }),
-				),
+				id: Type.Optional(Type.String({ description: "Record reference from list/search; memories keep M<n> ids" })),
 				query: Type.Optional(
 					Type.String({
 						description:

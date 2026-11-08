@@ -41,7 +41,7 @@ export function backlogPrompt(subagent: boolean): {
 		"An item another running session holds takes only notes. " +
 		"Claiming (ongoing) needs why and goal; done needs completion; close (obsolete, duplicate of, wont_do) needs a reason. Items are never deleted.";
 	const ops =
-		"list/get: read (list: all filters apply); follow Next for more. " +
+		"list/get: read; follow Next for more. " +
 		(subagent
 			? "add: propose; update: ongoing, done, close or notes"
 			: "add: propose; update: edit, claim (ongoing), close or add notes");

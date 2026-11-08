@@ -132,12 +132,12 @@ describe("backlog list filters", () => {
 		expect(refs(await t.backlog({ op: "list", dependsOn: ["B2"] }))).toEqual(["B3"]);
 		expect(refs(await t.backlog({ op: "list", dependsOn: ["B3"] }))).toEqual([]);
 		expect(refs(await t.backlog({ op: "list", blocked: true }))).toEqual(["B3"]);
-		expect(refs(await t.backlog({ op: "list", blocked: false }))).toEqual(["B5", "B2", "B1"]);
+		expect(refs(await t.backlog({ op: "list", blocked: false }))).toEqual(["B5", "B2", "B1", "B4"]);
 		expect(refs(await t.backlog({ op: "list", assignee: "me" }))).toEqual(["B5"]);
 		expect(await t.backlog({ op: "list", assignee: "someone-else" })).toBe(
-			'No ongoing/todo items (filters: assignee).\n1 proposed item(s) await triage (list with states: ["backlog"]).',
+			"No ongoing/todo/backlog items (filters: assignee).",
 		);
-		expect(refs(await t.backlog({ op: "list", since: "1h" }))).toEqual(["B5", "B3", "B2", "B1"]);
+		expect(refs(await t.backlog({ op: "list", since: "1h" }))).toEqual(["B5", "B3", "B2", "B1", "B4"]);
 		expect(refs(await t.backlog({ op: "list", since: "2999-01-01T00:00:00Z" }))).toEqual([]);
 		await expect(t.backlog({ op: "list", since: "yesterday-ish" })).rejects.toThrow(/since needs an ISO time/);
 		// A subagent's "me" is the parent session it works for: here no item is held by that session.
@@ -154,7 +154,7 @@ describe("backlog list filters", () => {
 
 	it("sorts by creation or update and combines every filter", async () => {
 		const t = await board();
-		expect(refs(await t.backlog({ op: "list", sort: "created" }))).toEqual(["B5", "B3", "B2", "B1"]);
+		expect(refs(await t.backlog({ op: "list", sort: "created" }))).toEqual(["B5", "B4", "B3", "B2", "B1"]);
 		await t.backlog({ op: "update", id: "B2", note: "touched" });
 		expect(refs(await t.backlog({ op: "list", sort: "updated" }))[0]).toBe("B2");
 		await expect(t.backlog({ op: "list", sort: "random" })).rejects.toThrow();
@@ -164,16 +164,16 @@ describe("backlog list filters", () => {
 			),
 		).toEqual(["B3"]);
 		expect(await t.backlog({ op: "list", parentId: "B1", type: "bug", title: "index", query: "crash" })).toBe(
-			'No ongoing/todo items matching "crash" (filters: title, parentId, type).\n1 proposed item(s) await triage (list with states: ["backlog"]).',
+			'No ongoing/todo/backlog items matching "crash" (filters: title, parentId, type).',
 		);
 		// Empty lists filter nothing, like omitted ones.
-		expect(refs(await t.backlog({ op: "list", tags: [], ids: [], id: "" }))).toEqual(["B5", "B3", "B2", "B1"]);
+		expect(refs(await t.backlog({ op: "list", tags: [], ids: [], id: "" }))).toEqual(["B5", "B3", "B2", "B1", "B4"]);
 	});
 
 	it("filters by creation time with sort created, as an age or an ISO time, and pins an age in Next", async () => {
 		const t = await board();
 		const created = { op: "list", sort: "created" } as const;
-		expect(refs(await t.backlog({ ...created, since: "1h" }))).toEqual(["B5", "B3", "B2", "B1"]);
+		expect(refs(await t.backlog({ ...created, since: "1h" }))).toEqual(["B5", "B4", "B3", "B2", "B1"]);
 		expect(refs(await t.backlog({ ...created, since: "2999-01-01T00:00:00Z" }))).toEqual([]);
 		// An update moves the update time, not the creation time.
 		await new Promise((resolve) => setTimeout(resolve, 5));
@@ -190,7 +190,7 @@ describe("backlog list filters", () => {
 			"(filters: type, since)",
 		);
 		// The older `createdSince` still bounds creation time in any order, so recorded calls replay.
-		expect(refs(await t.backlog({ op: "list", createdSince: "1h" })).sort()).toEqual(["B1", "B2", "B3", "B5"]);
+		expect(refs(await t.backlog({ op: "list", createdSince: "1h" })).sort()).toEqual(["B1", "B2", "B3", "B4", "B5"]);
 		expect(refs(await t.backlog({ op: "list", createdSince: cut }))).toEqual([]);
 		await expect(t.backlog({ op: "list", createdSince: "soon" })).rejects.toThrow(/createdSince needs an ISO time/);
 	});
@@ -203,7 +203,13 @@ describe("backlog list filters", () => {
 		expect(next).toBeDefined();
 		const args = JSON.parse(next!) as Record<string, unknown>;
 		// The age became a fixed time, so the next page lists the same set.
-		expect(args).toMatchObject({ op: "list", states: ["ongoing", "todo"], parentId: "B1", limit: 1, offset: 1 });
+		expect(args).toMatchObject({
+			op: "list",
+			states: ["ongoing", "todo", "backlog"],
+			parentId: "B1",
+			limit: 1,
+			offset: 1,
+		});
 		expect(String(args.since)).toMatch(/^\d{4}-\d\d-\d\dT/);
 		const second = await t.backlog(args);
 		expect(refs(second)).toEqual(["B2"]);

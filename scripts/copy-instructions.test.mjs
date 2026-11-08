@@ -5,11 +5,12 @@ import { join } from "node:path";
 import test from "node:test";
 import { copyInstructions } from "./copy-instructions.mjs";
 
-test("copies the prompt Markdown folders, not TypeScript or the README", (t) => {
+test("copies the prompt Markdown folders, not TypeScript, the README or the generated final prompts", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "copy-instructions-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const source = join(root, "src");
-	for (const folder of ["policy", "roles"]) mkdirSync(join(source, folder), { recursive: true });
+	for (const folder of ["policy", "roles", "final"]) mkdirSync(join(source, folder), { recursive: true });
+	writeFileSync(join(source, "final", "main.md"), "generated\n");
 	writeFileSync(join(source, "policy", "work.md"), "work\n");
 	writeFileSync(join(source, "roles", "lean.md"), "lean\n");
 	writeFileSync(join(source, "README.md"), "map\n");
@@ -23,4 +24,5 @@ test("copies the prompt Markdown folders, not TypeScript or the README", (t) => 
 	assert.equal(existsSync(join(destination, "policy", "stale.md")), false);
 	assert.equal(existsSync(join(destination, "README.md")), false);
 	assert.equal(existsSync(join(destination, "policy.ts")), false);
+	assert.equal(existsSync(join(destination, "final")), false);
 });

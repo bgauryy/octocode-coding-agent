@@ -34,6 +34,8 @@ export interface WorktreeResult {
 	ref?: string;
 	/** `git diff --stat` of those changes. */
 	stat?: string;
+	/** Set when the child's changes did not apply to the commit it started from: the ref is the child's own head, built on the parent's working-copy snapshot; `patch` is its own change as a file. */
+	conflict?: { patch: string; reason: string };
 }
 
 export { worktreesDir } from "../shared/own-worktree.ts";

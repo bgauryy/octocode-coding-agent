@@ -136,3 +136,94 @@ export async function walkDirectoryWithFd(
 		});
 	});
 }
+
+export interface FdListEntry {
+	/** Path relative to the base directory, `/`-separated, without a trailing slash. */
+	path: string;
+	isDirectory: boolean;
+}
+
+/**
+ * Stream every file and directory below `baseDir` (no result limit). `onEntries` receives batches as fd
+ * prints them; the walk stops once `cap` entries were delivered. Resolves with `ok: false` when fd cannot
+ * run or exits with an error, so the caller can fall back to another source.
+ */
+export function streamFdEntries(
+	baseDir: string,
+	fdPath: string,
+	cap: number,
+	signal: AbortSignal,
+	onEntries: (entries: FdListEntry[]) => void,
+): Promise<{ ok: boolean; truncated: boolean }> {
+	return new Promise((resolve) => {
+		const child = spawn(
+			fdPath,
+			[
+				"--base-directory",
+				baseDir,
+				"--type",
+				"f",
+				"--type",
+				"d",
+				"--follow",
+				"--hidden",
+				"--exclude",
+				".git",
+				"--exclude",
+				".git/*",
+				"--exclude",
+				".git/**",
+			],
+			{ stdio: ["ignore", "pipe", "ignore"] },
+		);
+		let pending = "";
+		let delivered = 0;
+		let truncated = false;
+		let settled = false;
+
+		const settle = (ok: boolean) => {
+			if (settled) return;
+			settled = true;
+			signal.removeEventListener("abort", stop);
+			resolve({ ok, truncated });
+		};
+		const stop = () => {
+			if (child.exitCode === null) child.kill("SIGKILL");
+		};
+		const deliver = (lines: string[]) => {
+			const batch: FdListEntry[] = [];
+			for (const line of lines) {
+				if (delivered + batch.length >= cap) {
+					truncated = true;
+					break;
+				}
+				if (!line) continue;
+				const display = toDisplayPath(line);
+				const isDirectory = display.endsWith("/");
+				const path = isDirectory ? display.slice(0, -1) : display;
+				if (!path || path === ".git" || path.startsWith(".git/") || path.includes("/.git/")) continue;
+				// Paths with control characters would write their escapes to the terminal as suggestion labels.
+				if (hasControlCharacter(path)) continue;
+				batch.push({ path, isDirectory });
+			}
+			delivered += batch.length;
+			if (batch.length > 0) onEntries(batch);
+			if (truncated) stop();
+		};
+
+		signal.addEventListener("abort", stop, { once: true });
+		child.stdout.setEncoding("utf-8");
+		child.stdout.on("data", (chunk: string) => {
+			if (truncated) return;
+			pending += chunk;
+			const lines = pending.split("\n");
+			pending = lines.pop() ?? "";
+			deliver(lines);
+		});
+		child.on("error", () => settle(false));
+		child.on("close", (code) => {
+			if (!truncated && pending) deliver([pending]);
+			settle(truncated || (!signal.aborted && code === 0));
+		});
+	});
+}

@@ -53,6 +53,7 @@ export function invokeCommand(
 			const result = session.answerDialog(command.dialogId, {
 				...(command.choice !== undefined ? { choice: command.choice } : {}),
 				...(command.text !== undefined ? { text: command.text } : {}),
+				...(command.replies !== undefined ? { replies: command.replies } : {}),
 			});
 			if (!result.ok) throw new Error(result.reason);
 			return undefined;

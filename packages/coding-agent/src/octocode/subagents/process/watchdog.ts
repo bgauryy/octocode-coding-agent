@@ -17,17 +17,21 @@ export class ChildWatchdog {
 	private readonly limits: WatchdogLimits;
 	private readonly paused: () => boolean;
 	private readonly onStall: () => void;
+	private readonly beat: ((now: number, resumed: boolean) => void) | undefined;
 
+	/** `beat`: called each tick (`resumed`: the machine just woke), so the host can stamp the child's progress while it works without model events. */
 	constructor(
 		state: Pick<ChildState, "toolsRunning" | "settling" | "busyUntil" | "lastActivity">,
 		limits: WatchdogLimits,
 		paused: () => boolean,
 		onStall: () => void,
+		beat?: (now: number, resumed: boolean) => void,
 	) {
 		this.state = state;
 		this.limits = limits;
 		this.paused = paused;
 		this.onStall = onStall;
+		this.beat = beat;
 	}
 
 	private get intervalMs(): number {
@@ -35,7 +39,14 @@ export class ChildWatchdog {
 	}
 
 	start(): void {
-		this.timer = setInterval(() => this.tick(Date.now()), this.intervalMs);
+		// A throw out of a timer is an uncaught exception: report it as a rejection, which the session shows as a warning.
+		this.timer = setInterval(() => {
+			try {
+				this.tick(Date.now());
+			} catch (error) {
+				void Promise.reject(error);
+			}
+		}, this.intervalMs);
 		this.timer.unref();
 	}
 
@@ -57,8 +68,10 @@ export class ChildWatchdog {
 		if (gap > this.intervalMs + SUSPEND_MARGIN_MS) {
 			this.activeAt += gap;
 			this.state.busyUntil += gap;
+			this.beat?.(now, true);
 			return;
 		}
+		this.beat?.(now, false);
 		if (this.stalled || this.paused()) return;
 		const { state, limits } = this;
 		const busy = state.toolsRunning > 0 || state.settling;

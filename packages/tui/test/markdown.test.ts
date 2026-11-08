@@ -342,7 +342,7 @@ describe("Markdown component", () => {
 
 			const lines = markdown.render(24).map((line) => stripAnsi(line).trimEnd());
 
-			assert.deepStrictEqual(lines, ["```", "     return alpha + beta", "     + gamma + delta;", "```"]);
+			assert.deepStrictEqual(lines, ["     return alpha + beta", "     + gamma + delta;"]);
 		});
 
 		it("should render and wrap code blocks inside list items", () => {
@@ -355,7 +355,7 @@ describe("Markdown component", () => {
 
 			const lines = markdown.render(24).map((line) => stripAnsi(line).trimEnd());
 
-			assert.deepStrictEqual(lines, ["- ```ts", "    alpha beta gamma", "    delta epsilon zeta", "  ```"]);
+			assert.deepStrictEqual(lines, ["-   ts", "    alpha beta gamma", "    delta epsilon zeta"]);
 		});
 	});
 
@@ -982,7 +982,7 @@ A=
 			const markdown = new Markdown(source, 0, 0, defaultMarkdownTheme);
 			const lines = markdown.render(80).map((line) => stripAnsi(line).trimEnd());
 
-			assert.deepStrictEqual(lines, ["Escaped $x-y$.", "", "```text", "  $\\mathbb{C}^3$", "```"]);
+			assert.deepStrictEqual(lines, ["Escaped $x-y$.", "", "  text", "  $\\mathbb{C}^3$"]);
 		});
 
 		it("allows LaTeX rendering to be disabled", () => {
@@ -1159,10 +1159,11 @@ again, hello world`,
 			const lines = markdown.render(80);
 			const plainLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 
-			const closingBackticksIndex = plainLines.indexOf("```");
-			assert.ok(closingBackticksIndex !== -1, "Should have closing backticks");
+			const lastCodeIndex = plainLines.indexOf('  const hello = "world";');
+			assert.ok(lastCodeIndex !== -1, "Should have the code line");
+			assert.ok(!plainLines.includes("```"), "Should not show literal fences");
 
-			const afterBackticks = plainLines.slice(closingBackticksIndex + 1);
+			const afterBackticks = plainLines.slice(lastCodeIndex + 1);
 			const emptyLineCount = afterBackticks.findIndex((line) => line !== "");
 
 			assert.strictEqual(
@@ -1187,7 +1188,7 @@ code block
 
 more text`,
 			];
-			const expectedLines = ["hello this is text", "", "```", "  code block", "```", "", "more text"];
+			const expectedLines = ["hello this is text", "", "  code block", "", "more text"];
 
 			for (const text of cases) {
 				const markdown = new Markdown(text, 0, 0, defaultMarkdownTheme);
@@ -1512,7 +1513,7 @@ bar`,
 
 	describe("Heading with inline code", () => {
 		it("should preserve heading styling after inline code", () => {
-			const markdown = new Markdown("### Why `sourceInfo` should not be optional", 0, 0, defaultMarkdownTheme);
+			const markdown = new Markdown("## Why `sourceInfo` should not be optional", 0, 0, defaultMarkdownTheme);
 
 			const lines = markdown.render(80);
 			const joinedOutput = lines.join("\n");
@@ -1532,6 +1533,20 @@ bar`,
 			const precedingChunk = joinedOutput.slice(Math.max(0, afterCodeIndex - 40), afterCodeIndex);
 			assert.ok(precedingChunk.includes("\x1b[1m"), `Should re-apply bold before text after code: ${precedingChunk}`);
 			assert.ok(precedingChunk.includes("\x1b[36m"), `Should re-apply cyan before text after code: ${precedingChunk}`);
+		});
+
+		it("shows no # markers and keeps bold without the heading color for h3 and deeper", () => {
+			const markdown = new Markdown("### Why `sourceInfo` should not be optional", 0, 0, defaultMarkdownTheme);
+
+			const lines = markdown.render(80);
+			assert.deepStrictEqual(
+				lines.map((line) => stripAnsi(line).trimEnd()),
+				["Why sourceInfo should not be optional"],
+			);
+			const joinedOutput = lines.join("\n");
+			const precedingChunk = joinedOutput.slice(0, joinedOutput.indexOf(" should not be optional"));
+			assert.ok(precedingChunk.endsWith("\x1b[1m"), `Should re-apply bold after the code span: ${precedingChunk}`);
+			assert.ok(!joinedOutput.includes("\x1b[36m"), "h3 uses bold only, not the heading color");
 		});
 
 		it("should preserve heading styling after inline code for h1", () => {
@@ -1753,27 +1768,27 @@ bar`,
 			const cases = [
 				{
 					input: "```ts\nconst x = 1;\n``",
-					expected: ["```ts", "  const x = 1;", "```"],
+					expected: ["  ts", "  const x = 1;"],
 				},
 				{
 					input: "```md\nnot a closing fence:\n``\n```",
-					expected: ["```md", "  not a closing fence:", "  ``", "```"],
+					expected: ["  md", "  not a closing fence:", "  ``"],
 				},
 				{
 					input: "```ts\n``",
-					expected: ["```ts", "", "```"],
+					expected: ["  ts", ""],
 				},
 				{
 					input: "````\n```",
-					expected: ["```", "", "```"],
+					expected: [""],
 				},
 				{
 					input: "~~~~~\n~~~~",
-					expected: ["```", "", "```"],
+					expected: [""],
 				},
 				{
 					input: "```md\nnot a closing fence:\n``\n```\n\nafter",
-					expected: ["```md", "  not a closing fence:", "  ``", "```", "", "after"],
+					expected: ["  md", "  not a closing fence:", "  ``", "", "after"],
 				},
 			];
 
@@ -1788,6 +1803,69 @@ bar`,
 			const complete = new Markdown("```ts\nconst x = 1;\n```", 0, 0, defaultMarkdownTheme);
 
 			assert.strictEqual(partial.render(80).length, complete.render(80).length);
+		});
+	});
+	describe("Code block labels and alerts", () => {
+		const plain = (text: string, width = 40) =>
+			new Markdown(text, 0, 0, defaultMarkdownTheme).render(width).map((line) => stripAnsi(line).trimEnd());
+
+		it("uses only the first word of the info string as the label and the language", () => {
+			assert.deepStrictEqual(plain("```ts title=x\nconst a = 1;\n```"), ["  ts", "  const a = 1;"]);
+			assert.deepStrictEqual(plain("```js {1,3}\nlet a;\n```"), ["  js", "  let a;"]);
+		});
+
+		it("passes the first word to highlightCode", () => {
+			const seen: Array<string | undefined> = [];
+			const theme = {
+				...defaultMarkdownTheme,
+				highlightCode: (code: string, lang?: string) => {
+					seen.push(lang);
+					return code.split("\n");
+				},
+			};
+			new Markdown("```tsx title=a.tsx\n<A />\n```", 0, 0, theme).render(40);
+			assert.deepStrictEqual(seen, ["tsx"]);
+		});
+
+		it("shows no label row for a fence without a language and no closing fence at all", () => {
+			assert.deepStrictEqual(plain("```\ncode\n```\n\nafter"), ["  code", "", "after"]);
+		});
+
+		it("styles the label with codeBlockLabel when the theme has one", () => {
+			const theme = { ...defaultMarkdownTheme, codeBlockLabel: (text: string) => `<${text}>` };
+			const lines = new Markdown("```ts\nx\n```", 0, 0, theme).render(40);
+			assert.strictEqual(lines[0].trimEnd(), "  <ts>");
+		});
+
+		it("renders a GitHub alert as a labelled bar", () => {
+			assert.deepStrictEqual(plain("> [!WARNING]\n> Careful **now**\n> more\n\nafter"), [
+				"┃ ⚠ Warning",
+				"┃ Careful now",
+				"┃ more",
+				"",
+				"after",
+			]);
+			for (const [kind, label] of [
+				["NOTE", "ℹ Note"],
+				["tip", "✦ Tip"],
+				["IMPORTANT", "‼ Important"],
+				["CAUTION", "⊘ Caution"],
+			]) {
+				assert.deepStrictEqual(plain(`> [!${kind}]\n> body`), [`┃ ${label}`, "┃ body"]);
+			}
+			assert.deepStrictEqual(plain("> [!NOTE]"), ["┃ ℹ Note"]);
+			assert.deepStrictEqual(plain("> [!TIP] same line\n> next"), ["┃ ✦ Tip", "┃ same line", "┃ next"]);
+		});
+
+		it("colors an alert through the theme's alert hook", () => {
+			const theme = { ...defaultMarkdownTheme, alert: (kind: string, text: string) => `{${kind}:${text}}` };
+			const lines = new Markdown("> [!CAUTION]\n> x", 0, 0, theme).render(40);
+			assert.ok(lines[0].startsWith("{caution:┃ }"));
+			assert.ok(lines[1].startsWith("{caution:┃ }"));
+		});
+
+		it("keeps an unknown marker as an ordinary quote", () => {
+			assert.deepStrictEqual(plain("> [!BUG]\n> body"), ["│ [!BUG]", "│ body"]);
 		});
 	});
 });

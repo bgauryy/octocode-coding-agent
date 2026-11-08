@@ -150,36 +150,36 @@ export function registerSendMessageTool(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent" (coordinator); use an exact id across trees. "all" reaches only your tree; omit with replyTo to answer its sender. Also another Octocode process by its name, or "coordinator" from a linked worktree: the session in the main checkout; if there is none or several, nothing is sent.'
-							: 'Agent id, role or "parent" (coordinator) in your tree; it relays beyond it. "all": the whole tree; omit with replyTo to answer its sender.',
+							? 'Agent id, role or "parent" (coordinator); use an exact id across trees. "all" reaches only your tree. Omit with replyTo to answer its sender. Also another Octocode process by name, or "coordinator" from a linked worktree (the main checkout\'s session; none or several: nothing is sent).'
+							: 'Agent id, role or "parent" (coordinator) in your tree; it relays beyond it. "all": the whole tree. Omit with replyTo to answer its sender.',
 					}),
 				),
 				message: Type.Optional(Type.String()),
 				forward: Type.Optional(
 					Type.Integer({
 						description:
-							"Stored message # to pass on unchanged (msg#N elsewhere); message becomes an optional note; replies go to its sender. Teammates only: refused for another process.",
+							"Stored message # to pass on unchanged; message becomes an optional note; replies go to its sender. Teammates only.",
 					}),
 				),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description: "true: a request you need answered; wakes an idle recipient. Default false: an FYI",
+						description: "true: a request you need answered; wakes an idle recipient. Default: an FYI",
 					}),
 				),
 				wake: Type.Optional(
 					Type.Boolean({
-						description: "true: an idle recipient acts now, no answer expected (an FYI waits). Not with to: all",
+						description: "true: an idle recipient acts now, no answer expected. Not with to: all",
 					}),
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description: "Message number to answer; wakes the asker. Teammates only: ignored for another process.",
+						description: "Message number to answer; wakes the asker. Teammates only.",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop the recipient's current step for this message; only its starter may. Teammates only: refused for another process. Default: deliver at its next step.",
+							"true: stop the recipient's current step for this message; only its starter may. Teammates only. Default: delivered at its next step.",
 					}),
 				),
 			}),

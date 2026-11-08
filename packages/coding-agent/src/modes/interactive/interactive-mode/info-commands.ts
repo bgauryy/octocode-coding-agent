@@ -21,6 +21,7 @@ import { formatKeyText, keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
+import { formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the informational slash commands. */
@@ -53,13 +54,16 @@ export function handleSessionCommand(host: InfoCommandsHost): void {
 	const cacheWarmingMode = host.settingsManager.getCacheWarmingMode();
 	const model = host.session.model;
 	const selectedModelKey = `${model?.provider}/${model?.id}`;
+	const resumeCommand = formatResumeCommand(host.sessionManager);
 	const renderInfo = (): string => {
 		let info = `${theme.bold("Session Info")}\n\n`;
 		if (sessionName) {
 			info += `${theme.fg("dim", "Name:")} ${sessionName}\n`;
 		}
 		info += `${theme.fg("dim", "File:")} ${stats.sessionFile ?? "In-memory"}\n`;
-		info += `${theme.fg("dim", "ID:")} ${stats.sessionId}\n\n`;
+		info += `${theme.fg("dim", "ID:")} ${stats.sessionId}\n`;
+		if (resumeCommand) info += `${theme.fg("dim", "Resume:")} ${resumeCommand}\n`;
+		info += "\n";
 		info += `${theme.bold("Messages")}\n`;
 		info += `${theme.fg("dim", "Total:")} ${stats.totalMessages}\n`;
 		info += `${theme.fg("dim", "User:")} ${stats.userMessages}\n`;

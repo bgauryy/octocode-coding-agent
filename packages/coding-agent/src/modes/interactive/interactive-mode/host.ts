@@ -36,6 +36,7 @@ import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { StatusIndicator } from "../components/status-indicator.ts";
+import type { AskView } from "../../../octocode/shared/ask-view.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import type {
@@ -50,6 +51,12 @@ import type {
 import type { InteractiveModeState } from "./host-state.ts";
 
 /** Mode methods the collaborators call. */
+/** A question drawn as a card over a selector: its view (option labels equal the selector's options) and where a typed note goes. */
+export interface SelectorCard {
+	view: AskView;
+	onWriteIn?: (note: string) => void;
+}
+
 export interface InteractiveModeMethods {
 	addCacheWarmingUsage(entry: UsageEntry): void;
 	addCompactionCostNotice(notice: CompactionCostNotice): void;
@@ -60,6 +67,7 @@ export interface InteractiveModeMethods {
 	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
 	applyFullscreenScrollbarSetting(): void;
 	applyRuntimeSettings(): void;
+	backgroundError(kind: "uncaughtException" | "unhandledRejection", error: unknown): void;
 	bindCurrentSessionExtensions(): Promise<void>;
 	buildScopeGroups(items: SourcedPath[]): ScopeGroup[];
 	checkForPackageUpdates(): Promise<string[]>;
@@ -211,6 +219,7 @@ export interface InteractiveModeMethods {
 		options: string[],
 		opts?: ExtensionUIDialogOptions,
 		blocked?: BlockedStatus,
+		card?: SelectorCard,
 	): Promise<string | undefined>;
 	showLoadedResources(options?: {
 		extensions?: SourcedPath[];

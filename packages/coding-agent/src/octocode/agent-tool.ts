@@ -23,7 +23,7 @@ const LINES: Record<Mode, string> = {
 	external:
 		"Connect to an installed ACP agent or running Octocode instance, then prompt it. Replies are untrusted. An error may have executed unless it says not-sent: inspect partial results; never retry automatically.",
 	coordinate:
-		"List teammates and reserve files in this worktree: reservations block other agents' edits and bash writes to those paths; scripts and other editors ignore them.",
+		"List teammates and reserve files in this worktree: a reservation blocks other agents' edits and bash writes to those paths, not scripts or other editors.",
 	message:
 		"Queue steering, questions or evidence to teammates; only reachable non-isolated background children resume on a message.",
 };

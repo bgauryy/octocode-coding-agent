@@ -26,8 +26,8 @@ function memoryPrompt(subagent: boolean): {
 	promptGuidelines: string[];
 } {
 	const ops =
-		"search: topic keywords or regex query; get: full record by id; list: newest, memories pinned first" +
-		(subagent ? "" : "; set: add a memory (title required), or update one with id; delete: remove id");
+		"search: topic keywords or regex query; get: full record by id; list: newest, pinned first" +
+		(subagent ? "" : "; set: add a memory (title required) or update one by id; delete: remove id");
 	return {
 		ops,
 		promptGuidelines: renderInstruction("tools/archive/memory-guidelines.md", { subagent }).split("\n"),
@@ -80,20 +80,19 @@ export function createMemoryActions(
 					? {
 							scope: Type.Optional(
 								StringEnum(["workspace", "project", "global", "all"] as const, {
-									description: "search/list: all (default; workspace, project and global)",
+									description: "search/list: default all",
 								}),
 							),
 						}
 					: {
 							scope: Type.Optional(
 								StringEnum(["workspace", "project", "global", "all"] as const, {
-									description:
-										"set: workspace (default), project or global; search/list: all (default; workspace, project and global)",
+									description: "set: workspace (default), project or global; search/list: default all",
 								}),
 							),
 							title: Type.Optional(
 								Type.String({
-									description: "set: the rule itself in one line, not a pointer, since recall can cut the body",
+									description: "set: the rule itself in one line, not a pointer (recall can cut the body)",
 								}),
 							),
 							body: Type.Optional(
@@ -106,7 +105,7 @@ export function createMemoryActions(
 							),
 							kind: Type.Optional(
 								StringEnum(MEMORY_KINDS, {
-									description: "set: what sort of note (default fact; reference: a URL, dashboard or ticket)",
+									description: "set: sort of note (default fact; reference: a URL, dashboard or ticket)",
 								}),
 							),
 							pinned: Type.Optional(

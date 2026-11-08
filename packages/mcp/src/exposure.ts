@@ -16,17 +16,29 @@ export function hasDirectTools(entry: McpServerEntry): boolean {
 export const declaredExposure = (exposure: McpExposure): "direct" | "hidden" =>
 	exposure === "hidden" ? "hidden" : "direct";
 
-/** Whether the server's tools are in an agent's default tool selection (`defaultActive`, default true). */
-export function isDefaultActive(entry: McpServerEntry): boolean {
-	return entry.config.defaultActive !== false;
+/**
+ * Whether the server's tools are in an agent's default tool selection: `defaultActive` (default true), or a server the
+ * task of this child named (`McpExtensionState.taskNamed`), which the task chose for it. A server only the child's own
+ * tools name keeps its default: an exact `+mcp__x__tool` entry activates that one tool.
+ */
+export function isDefaultActive(entry: McpServerEntry, taskNamed?: ReadonlySet<string>): boolean {
+	return entry.config.defaultActive !== false || taskNamed?.has(entry.name) === true;
 }
 
 /** The prefix every tool name of the server starts with: `mcp__<namespace>__`. */
 const serverToolPrefix = (server: string): string => `${mcpNamespace(server)}__`;
 
-/** Whether the session's tool selection can declare the server's tools; a server it cannot is not started for it. */
-export function isSelected(api: Pick<McpExtensionApi, "selectsTools">, entry: McpServerEntry): boolean {
+/**
+ * Whether the session's tool selection can declare the server's tools; a server it cannot is not started for it. A
+ * server the child's task named counts as default-active, so no `--tools` entry has to name it (an exclusion still wins).
+ */
+export function isSelected(
+	api: Pick<McpExtensionApi, "selectsTools">,
+	entry: McpServerEntry,
+	taskNamed?: ReadonlySet<string>,
+): boolean {
 	return (
-		typeof api.selectsTools !== "function" || api.selectsTools(serverToolPrefix(entry.name), isDefaultActive(entry))
+		typeof api.selectsTools !== "function" ||
+		api.selectsTools(serverToolPrefix(entry.name), isDefaultActive(entry, taskNamed))
 	);
 }

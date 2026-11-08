@@ -51,7 +51,8 @@ export { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNo
  * and cached as the session's requests are. Code, not the model, then appends the files Octocode saved from the
  * summarized results (`saved-results.ts`, carried like the file lists), the user's messages word for word (within a
  * budget, carried across compactions), the transcript that still holds every detail and the skills loaded so far
- * (`loaded-skills.ts`). Any failure
+ * (`loaded-skills.ts`), and the backlog items this session holds and its running background work, read from the tools
+ * (`live-state.ts`). Any failure
  * returns nothing, and Octocode writes its default summary; the same additions then follow it as one message
  * (`continuity.ts`).
  */
@@ -145,6 +146,7 @@ function codeSections(
 	segment: number,
 	saveText: ((text: string) => string | undefined) | null,
 	parentId: string | undefined,
+	liveState: (() => readonly string[]) | undefined,
 ): { saved: string[]; skills: ReturnType<typeof loadedSkills>; body: string; messages: string; note: string } {
 	const summarized = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages];
 	// The user's messages, their askUser answers and, in a subagent, its parent's mail, each labeled by source.
@@ -154,7 +156,8 @@ function codeSections(
 		ctx.sessionManager.getSessionFile(),
 		api.getActiveTools().includes("backlog"),
 		archivePointer(segment),
-		loadedSkillsLines(skills),
+		// The backlog and running work as the tools state them now, ahead of the skills line.
+		[...(liveState?.() ?? []), ...loadedSkillsLines(skills)],
 	);
 	// Every file saved from the summarized results (and by earlier summaries), named once, like the file lists.
 	const saved = savedResultPaths(
@@ -199,6 +202,8 @@ export async function writeSummary(
 	parentId?: string,
 	/** The lifetime of the session's history cache entry (`promptCacheTtlMs`): past it, the shared request does not cache its history. */
 	cacheTtlMs?: number,
+	/** The Recovery lines for the state the tools report (`live-state.ts`), read when the summary is written, never from the model. */
+	liveState?: () => readonly string[],
 ): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
@@ -304,6 +309,7 @@ export async function writeSummary(
 			segment,
 			saveText,
 			parentId,
+			liveState,
 		);
 		const details = {
 			...asRecord(result.details),
@@ -327,7 +333,17 @@ export async function writeSummary(
 		// that summary as one message (`continuity.ts`). Saving its long texts can fail like Octocode's summary does.
 		if (fallback) {
 			try {
-				const { body, messages, note } = codeSections(api, event, ctx, "", kept, segment, saveText, parentId);
+				const { body, messages, note } = codeSections(
+					api,
+					event,
+					ctx,
+					"",
+					kept,
+					segment,
+					saveText,
+					parentId,
+					liveState,
+				);
 				fallback.hold(event.preparation.firstKeptEntryId, `${body}${messages}${note}`);
 			} catch (sectionsError) {
 				const sectionsFailed = persistenceFailure(api, ctx, sectionsError);

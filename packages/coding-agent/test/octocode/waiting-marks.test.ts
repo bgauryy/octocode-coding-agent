@@ -1,7 +1,7 @@
 import { animationClock, SPINNER } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { showAskDialog } from "../../src/octocode/ask/dialog.ts";
+import { showAskDialog } from "./ask-dialog-helper.ts";
 import { Breath, tabMark } from "../../src/octocode/ask/dialog/marks.ts";
 import { registerAskUser } from "../../src/octocode/ask/tool.ts";
 import { agentState } from "../../src/octocode/subagents/render-state.ts";
@@ -82,7 +82,7 @@ describe("waiting on you: the question dialog tabs", () => {
 						frames.push(dialog.render(80).join("\n"));
 						running.push(animationClock.isRunning());
 						dialog.dispose();
-						resolve({ cancelled: true, answers: [] });
+						resolve([]);
 					}),
 			},
 		});

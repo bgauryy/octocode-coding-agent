@@ -291,6 +291,30 @@ function maskedReadOnly(command: string): boolean {
 	return commands > 0;
 }
 
+/** One word of a plain command: literal characters and quoted text with no expansion (`$`, backtick, `\`, `!`) in it. */
+const PLAIN_WORD = String.raw`(?:[\w@%+=:,./~-]|'[^']*'|"[^"$\`\\!]*")+`;
+const PLAIN_COMMAND = new RegExp(`^[ \\t]*${PLAIN_WORD}(?:[ \\t]+${PLAIN_WORD})*[ \\t]*$`);
+/** `sed -n 'A,Bp'`: the one `sed` form that prints lines and cannot write (`w`), run (`e`) or edit in place (`-i`). */
+const SED_PRINT = /^\d+(?:,(?:\d+|\$))?p$/;
+
+/**
+ * Whether `command` is one plain simple command that only reads, judged by its text alone: words with no operator,
+ * redirection, expansion, glob or line break (`PLAIN_WORD`), a program of `READERS` or a read-only `git` subcommand without a
+ * writing option (`reads`), or `sed -n 'A,Bp'` (`SED_PRINT`). For a line the bash parse could not read (it has a time
+ * budget and may be unloaded): the text is simple enough that no second reading is needed, and anything else is false.
+ */
+export function plainReader(command: string): boolean {
+	if (!PLAIN_COMMAND.test(command)) return false;
+	const tokens = (command.match(new RegExp(PLAIN_WORD, "g")) ?? []).map((word) =>
+		word.replace(/'([^']*)'|"([^"]*)"/g, (_all, single?: string, double?: string) => single ?? double ?? ""),
+	);
+	const [name, ...rest] = tokens;
+	if (name === undefined || !/^[A-Za-z][\w.-]*$/.test(name)) return false;
+	if (name === "sed")
+		return rest[0] === "-n" && SED_PRINT.test(rest[1] ?? "") && rest.slice(2).every((word) => !word.startsWith("-"));
+	return reads(tokens);
+}
+
 /**
  * The bash parse's reading: complete (no syntax it does not model), no write target, and every simple command it finds
  * (in a list, pipeline or substitution, past wrappers) a reader by `reads`.

@@ -91,7 +91,7 @@ describe("a headless parent's failed turn with children running", () => {
 
 		expect(harness.faux.state.callCount).toBe(2);
 		expect(harness.session.lastRunOutcome?.status).toBe("failed");
-		expect(written()).toContain(`octocode --session ${harness.sessionManager.getSessionId()}`);
+		expect(written()).toContain(`octocode --resume ${harness.sessionManager.getSessionId()}`);
 	});
 
 	it("does not hold on an error waiting cannot clear, and says what it stopped", async () => {
@@ -101,7 +101,7 @@ describe("a headless parent's failed turn with children running", () => {
 		await harness.session.prompt("start");
 		expect(harness.session.lastRunOutcome?.status).toBe("failed");
 		expect(written()).toContain("stopping 2 running subagents");
-		expect(written()).toContain("--session");
+		expect(written()).toContain("--resume");
 	});
 
 	it("stays silent for a failed run with no children", async () => {

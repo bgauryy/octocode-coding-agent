@@ -18,14 +18,16 @@ function tick(): void {
 			failure ??= { error };
 		}
 	}
-	if (failure) throw failure.error;
+	// A throw out of a timer is an uncaught exception, which ends the session: report it as a rejection instead, which the
+	// session shows as a warning; the failing listener stays subscribed and runs again next second.
+	if (failure) void Promise.reject(failure.error);
 }
 
 /**
  * Calls `listener` every second until the returned function is called. Every listener shares one unref'd timer, which
  * runs only while one is subscribed: the team ticker, a subagent's parent check and the poll for late reports each wake
  * the event loop once a second, so together they wake it once. Every listener runs even when an earlier one throws; the
- * first error is rethrown after them.
+ * first error is reported after them as an unhandled rejection, never thrown out of the timer.
  */
 export function onSecond(listener: () => void): () => void {
 	const subscription: Subscription = { listener };

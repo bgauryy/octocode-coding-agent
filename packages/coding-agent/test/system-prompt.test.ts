@@ -123,7 +123,7 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).not.toContain("other custom tools");
 		expect(prompt.match(/Read the documentation that defines/g)).toBeNull();
 		// The docs section points at the documentation once and restates no reading rule.
-		expect(prompt.match(/Octocode documentation, under/g)).toHaveLength(1);
+		expect(prompt.match(/Octocode's own documentation is under/g)).toHaveLength(1);
 		// SDK sessions without an `octocode` section keep the core communication floor.
 		expect(prompt).toContain("- Be concise in your responses");
 	});
@@ -220,8 +220,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toMatch(/Octocode documentation, under \S+ \(not the working directory\)/);
-			expect(prompt).toContain("README.md and docs/ (docs/index.md maps each topic to its page)");
+			expect(prompt).toMatch(/Octocode's own documentation is under \S+ \(not the working directory\)/);
+			expect(prompt).toContain("README.md and docs/ (docs/index.md maps topics to pages)");
 			expect(prompt).not.toContain("examples/");
 		});
 	});

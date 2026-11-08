@@ -105,12 +105,12 @@ describe.each(AGENTS)("$name context", (agent) => {
 		const text = systemText(context());
 		const agentTool = JSON.stringify(context().tools.find((tool) => tool.name === "agent") ?? {});
 		if (agent.kind === "main") {
-			expect(text).toContain("only you reach other Octocode processes");
-			expect(agentTool).toContain("Also another Octocode process by its name");
+			expect(text).toContain("Only you reach other Octocode processes");
+			expect(agentTool).toContain("Also another Octocode process by name");
 			expect(agentTool).toContain("a linked worktree's branch");
 			return;
 		}
-		expect(text).not.toContain("only you reach other Octocode processes");
+		expect(text).not.toContain("Only you reach other Octocode processes");
 		expect(agentTool).not.toContain("Also another Octocode process by its name");
 		expect(agentTool).not.toContain("a linked worktree's branch");
 	});

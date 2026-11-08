@@ -3,13 +3,19 @@ import { NEEDS_APPROVAL } from "../permission/ask/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
 import { EXPOSURE_NOTIFY_PREFIX } from "../permission/provenance/exposure.ts";
-import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
-import { Thought, thoughtGist } from "../shared/thought.ts";
-import { addUsage, contentText, emptyUsage, finiteNumber, toolHint } from "../shared/util.ts";
-import { JOB_TYPE } from "../shared/messages.ts";
+import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { Thought } from "../shared/thought.ts";
+import { addUsage, contentText, emptyUsage } from "../shared/util.ts";
+import { JOB_TYPE, TIMER_TYPE } from "../shared/messages.ts";
 import { imagesOf } from "./screenshots.ts";
 import { jobNotice } from "./report.ts";
+import { type Compactions, endCompaction } from "./event-compactions.ts";
+import { declaredTimeout, describeToolCall, replySteps, assistantText } from "./event-text.ts";
+import { noteWaits, type ReplyWait } from "./pending-waits.ts";
+import { MODEL_EVENTS } from "./liveness.ts";
 import { type ChildNotices, NoticeLog, NOTICES_INLINE, NOTICES_INLINE_CHARS } from "./notices.ts";
+
+export type { Compactions };
 
 export interface WatchdogLimits {
 	/**
@@ -23,20 +29,6 @@ export interface WatchdogLimits {
 	 * declares one gets that. Past it plus `idleMs`, a tool that never ends (or a hold that never settles) is hung.
 	 */
 	busyMs: number;
-}
-
-/** What a child's compactions came to (Octocode's `compaction_start` / `compaction_end`): counted, never dropped, so a report can say how often and how well. */
-export interface Compactions {
-	/** Compactions that produced a summary. */
-	done: number;
-	/** Compactions stopped before they finished (the child was aborted, or an extension cancelled it). */
-	aborted: number;
-	/** Compactions that failed; `error` is the latest message. */
-	failed: number;
-	error?: string;
-	/** Context size in tokens before and after the latest finished compaction. */
-	tokensBefore?: number;
-	tokensAfter?: number;
 }
 
 /** One step of a running child, for the parent's live row. */
@@ -93,6 +85,17 @@ export interface ChildState {
 	busyUntil: number;
 	/** The longest deadline of a background job it started: settling waits for timed jobs. */
 	jobsMs: number;
+	waits: number;
+	/** The replies it asked for among `waits`, settled only by their own answer (`pending-waits.ts`). */
+	replies: ReplyWait[];
+	/** Its own timer woke the current turn, and no tool has run since: a text answer is only the reminder's echo. */
+	timerWake: boolean;
+	/** The last model request, reply, tool or compaction event (not any stdout byte); 0 before the first. */
+	progressAt: number;
+	/** A foreground call that declared its own `timeout` may run silent until this moment (0: none). */
+	declaredUntil: number;
+	/** A background job that declared its own `timeout` may run silent until this moment (0: none pending). */
+	jobsUntil: number;
 	lastActivity: string;
 	usage: Usage;
 	usageEntryIds: Set<string>;
@@ -117,6 +120,12 @@ export function newChildState(): ChildState {
 		settling: false,
 		busyUntil: 0,
 		jobsMs: 0,
+		waits: 0,
+		replies: [],
+		timerWake: false,
+		progressAt: 0,
+		declaredUntil: 0,
+		jobsUntil: 0,
 		lastActivity: "started",
 		usage: emptyUsage(),
 		usageEntryIds: new Set(),
@@ -139,13 +148,17 @@ export type ChildEffect =
 	| { kind: "close" }
 	/** The run is over (`agent_settled`); `aborted` is what the child said, before the lifecycle weighs a stall. */
 	| { kind: "settled"; aborted: boolean }
-	/**
-	 * A message that is not the child's own reply (its prompt, a team message) reached it. `job`: the first line of the
-	 * notice when it is the child's own background bash job ending (`shared/messages.ts` `JOB_TYPE`).
-	 */
+	/** A message that is not the child's own reply reached it. `job`: the first line of its own background bash job's end notice (`JOB_TYPE`). */
 	| { kind: "incoming"; role: unknown; job?: string; quiet?: true }
 	/** An assistant reply ended: the report tracker reads its text. */
-	| { kind: "answer"; text: string | undefined; stopReason: unknown; errorMessage: unknown }
+	| {
+			kind: "answer";
+			text: string | undefined;
+			stopReason: unknown;
+			errorMessage: unknown;
+			waiting: boolean;
+			reminder: boolean;
+	  }
 	/** The first model reply of the run started (streamed, whole, or implied by a tool call): the provider has written the prompt cache for the prefix. */
 	| { kind: "responding" }
 	/** An assistant reply ended: `count` replies so far in this run; `continues`: it asked for tools, so the child goes on. */
@@ -160,38 +173,6 @@ export function parseEvent(line: string): Record<string, unknown> | undefined {
 	}
 }
 
-export function assistantText(message: unknown): string | undefined {
-	if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) return undefined;
-	const text = contentText(message.content).trim();
-	return text || undefined;
-}
-
-/** A reply's reasoning as trail lines: each thinking block's gist, then its narration when tool calls follow (a final answer is the report). */
-function replySteps(message: Record<string, unknown>): string[] {
-	if (!Array.isArray(message.content)) return [];
-	const steps: string[] = [];
-	for (const part of message.content) {
-		if (!isRecord(part)) continue;
-		const gist =
-			part.type === "thinking" && typeof part.thinking === "string" ? thoughtGist(part.thinking, true) : undefined;
-		if (gist) steps.push(`✻ ${gist}`);
-	}
-	const narration = message.stopReason === "toolUse" ? assistantText(message) : undefined;
-	if (narration) steps.push(`› ${redactSecrets(narration.replace(/\s+/g, " "))}`);
-	return steps;
-}
-
-/** A call's own deadline in ms: its `timeout` argument (seconds), when it declares one. */
-function declaredTimeout(args: unknown): number | undefined {
-	const seconds = isRecord(args) ? args.timeout : undefined;
-	return typeof seconds === "number" && seconds > 0 ? seconds * 1000 : undefined;
-}
-
-function describeToolCall(name: unknown, args: unknown): string {
-	const hint = toolHint(args);
-	return `→ ${String(name)}${hint ? ` ${hint}` : ""}`;
-}
-
 /** The prompt command's own answer; every other `response` is for a command this parent never sends. */
 function promptResponse(event: Record<string, unknown>): ChildEffect[] {
 	if (event.command !== "prompt") return [];
@@ -204,24 +185,6 @@ function promptResponse(event: Record<string, unknown>): ChildEffect[] {
 		];
 	// An extension command consumed the prompt: no run starts, so no `agent_settled` will come.
 	return isRecord(event.data) && event.data.disposition === "handled" ? [{ kind: "close" }] : [];
-}
-
-/** A compaction ended: counts it, and adds the summary's own model usage to the run (it is no reply, so no `message_end` carries it). */
-function endCompaction(state: ChildState, event: Record<string, unknown>): void {
-	const result = event.result;
-	if (isRecord(result)) {
-		const tally = state.compactions;
-		tally.done += 1;
-		const [before, after] = [finiteNumber(result.tokensBefore), finiteNumber(result.estimatedTokensAfter)];
-		if (before !== undefined) tally.tokensBefore = before;
-		if (after !== undefined) tally.tokensAfter = after;
-		addUsage(state.usage, result.usage);
-	} else if (event.aborted === true) state.compactions.aborted += 1;
-	else {
-		state.compactions.failed += 1;
-		const message = event.errorMessage;
-		state.compactions.error = visibleControls(typeof message === "string" && message ? message : "compaction failed");
-	}
 }
 
 /**
@@ -296,6 +259,9 @@ export function reduceEvent(
 	}
 	// Calls a tool makes itself (another tool) are part of that call, not activity of their own.
 	if (event.parentToolCallId) return [];
+	noteWaits(state, event);
+	if (state.waits === 0) state.jobsUntil = 0;
+	if (typeof type === "string" && MODEL_EVENTS.has(type)) state.progressAt = now;
 	const effects: ChildEffect[] = [];
 	const progress = (update: Omit<ChildProgress, "usage">) =>
 		effects.push({ kind: "progress", update: { ...update, usage: state.usage } });
@@ -320,7 +286,7 @@ export function reduceEvent(
 		return effects;
 	}
 	if (type === "compaction_end") {
-		endCompaction(state, event);
+		endCompaction(state.compactions, state.usage, event);
 		state.lastActivity = "compacted its context";
 		progress({ compacting: false, compactions: { ...state.compactions } });
 		return effects;
@@ -343,17 +309,22 @@ export function reduceEvent(
 		return effects;
 	}
 	if (type === "tool_execution_start") {
+		state.timerWake = false;
 		state.toolsRunning++;
 		state.settling = false;
 		const own = declaredTimeout(event.args);
-		if (own !== undefined && isRecord(event.args) && event.args.background === true)
+		const background = isRecord(event.args) && event.args.background === true;
+		if (own !== undefined && background) {
 			state.jobsMs = Math.max(state.jobsMs, own);
+			state.jobsUntil = Math.max(state.jobsUntil, now + own);
+		} else if (own !== undefined) state.declaredUntil = Math.max(state.declaredUntil, now + own);
 		state.busyUntil = Math.max(state.busyUntil, now + (own ?? limits.busyMs) + limits.idleMs);
 		state.lastActivity = describeToolCall(event.toolName, event.args);
 		progress({ activity: state.lastActivity });
 	}
 	if (type === "tool_execution_end") {
 		state.toolsRunning = Math.max(0, state.toolsRunning - 1);
+		if (state.toolsRunning === 0) state.declaredUntil = 0;
 		const image = imagesOf(event.result).at(-1);
 		if (image) progress({ image });
 		const result = event.result;
@@ -365,6 +336,8 @@ export function reduceEvent(
 	const message = event.message;
 	if (message.role !== "assistant") {
 		// A background `bash verify` job reports when it ends, as a message rather than a tool result.
+		// A turn its own timer started (`TIMER_TYPE`) is a reminder until a tool runs; any other new message ends that.
+		if (message.role === "custom" || message.role === "user") state.timerWake = message.customType === TIMER_TYPE;
 		if (message.customType === JOB_TYPE) noteVerification(state, { result: { details: message.details } }, progress);
 		if (message.role === "toolResult" && isRecord(message.usage)) {
 			const id = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
@@ -391,6 +364,8 @@ export function reduceEvent(
 		text: assistantText(message),
 		stopReason: message.stopReason,
 		errorMessage: message.errorMessage,
+		waiting: state.waits > 0,
+		reminder: state.timerWake && message.stopReason === "stop",
 	});
 	return effects;
 }

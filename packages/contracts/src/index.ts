@@ -6,3 +6,5 @@ export * from "./protocol.ts";
 export * from "./application.ts";
 export * from "./content.ts";
 export * from "./stream.ts";
+export * from "./question.ts";
+export * from "./question-replies.ts";

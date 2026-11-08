@@ -53,6 +53,48 @@ describe("renderDiff", () => {
 		});
 	});
 
+	describe("syntax colour", () => {
+		const OLD = "/* first\n second\n third */\nconst a = 1;\n";
+		const NEW = "const a = 2;\n";
+		const colour = (line: string) => line.match(/\x1b\[38;[0-9;]*m/)?.[0];
+
+		for (const themeName of ["octocode-dark", "dark"]) {
+			it(`colours every line of a comment spanning removed lines (${themeName})`, () => {
+				initTheme(themeName);
+				const { diff } = generateDiffString(OLD, NEW);
+				const removed = renderDiff(diff, { filePath: "a.ts" })
+					.split("\n")
+					.filter((line) => plain(line).startsWith("-"));
+				expect(removed.map((line) => plain(line).replace(/^-\s*\d+ /, ""))).toEqual([
+					"/* first",
+					" second",
+					" third */",
+					"const a = 1;",
+				]);
+				// Skip the sign colour: the body's first colour is the comment colour on all three comment lines.
+				const bodyColour = (line: string) => colour(line.slice(line.indexOf(" ") + 1));
+				expect(bodyColour(removed[1])).toBeDefined();
+				expect(bodyColour(removed[1])).toBe(bodyColour(removed[0]));
+				expect(bodyColour(removed[2])).toBe(bodyColour(removed[0]));
+				expect(bodyColour(removed[3])).not.toBe(bodyColour(removed[0]));
+			});
+		}
+
+		it("keeps word emphasis over highlighted text and dims syntax on context lines", () => {
+			initTheme("octocode-dark");
+			const { diff } = generateDiffString(
+				"const a = 1;\nconst b = 2;\nconst c = 3;\n",
+				"const a = 1;\nconst b = 5;\nconst c = 3;\n",
+			);
+			const lines = renderDiff(diff, { filePath: "a.ts" }).split("\n");
+			const added = lines.find((line) => plain(line).startsWith("+"))!;
+			expect(new Set(backgrounds(added)).size).toBe(2);
+			const context = lines.find((line) => plain(line).startsWith(" "))!;
+			expect(context).toContain("\x1b[2m");
+			expect(colour(context.slice(context.indexOf("\x1b[2m")))).toBeDefined();
+		});
+	});
+
 	describe("on a theme that draws tool backgrounds", () => {
 		beforeAll(() => initTheme("dark"));
 

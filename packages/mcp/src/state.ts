@@ -80,6 +80,8 @@ export class McpExtensionState {
 	parentStopped: ReadonlySet<string> = new Set();
 	/** In a subagent whose task named its servers: the configured servers it runs; any other stays out. */
 	taskServers: ReadonlySet<string> | undefined;
+	/** The servers among them that the task itself named: all their tools are active (`isDefaultActive`). */
+	taskNamed: ReadonlySet<string> | undefined;
 
 	/** Whether this subagent leaves the configured server `name` out: its task did not name it, or its parent stopped it. */
 	leavesOut(name: string): boolean {
