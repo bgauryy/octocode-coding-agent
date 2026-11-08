@@ -12,7 +12,7 @@ instructions/
   subagent/          identity.md worktree.md why.md report.md   (a child's task message); role-skills.md (its role section)
   notices/           runtime messages the model reads: compaction, recovery, resume, subagents, mail, hooks, the loop guard
   tools/             each tool's snippet and guidelines (`tools/<tool>/snippet.md`, `guidelines.md`); `tools/bash/cli.md` is the CLI guide appended to the bash description
-  system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md
+  system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md harnesses.md harness.md
   workflows/         planning.md plan-approved.md plan-reminder.md side-question.md summarization.md title.md optimize-prompt.md
   roles/             researcher.md implementer.md reviewer.md browser.md lean.md   (profiles with front matter)
   policy.ts lean.ts task.ts report.ts   thin TypeScript: derive the flags once, render the files

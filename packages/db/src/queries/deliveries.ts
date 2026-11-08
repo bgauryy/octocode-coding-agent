@@ -91,7 +91,7 @@ export function recentTraffic(
 		.prepare("SELECT * FROM messages WHERE team = ? AND created_at > ? ORDER BY id DESC LIMIT ?")
 		.all(team, since, limit) as Row[];
 	const deliveries = db.prepare(
-		"SELECT recipient, delivered_at, completed_at, dead_at FROM deliveries WHERE message = ? ORDER BY recipient",
+		"SELECT recipient, delivered_at, completed_at, dead_at, relay_to FROM deliveries WHERE message = ? ORDER BY recipient",
 	);
 	return rows.map((message) => ({ message, deliveries: deliveries.all(num(message.id)) as Row[] }));
 }
@@ -223,15 +223,16 @@ export function closeAsksOf(db: DatabaseSync, sender: string, now: number): void
 }
 
 /**
- * Closes the questions `asker` sent `recipient` that it read and has not answered, and settles the dead letters of them
- * not yet reported: the recipient's report answered them, so the asker is not told they went unanswered. Relay requests stay.
+ * Closes the questions `asker` sent `recipient` that it read and has not answered, including those dead-lettered when the
+ * recipient left before its report: the report answered them, so each is a completed delivery (no dead letter, and the
+ * asker is not told it went unanswered). A dead letter the asker was already told of stays one. Relay requests stay.
  */
 export function closeQuestionsTo(db: DatabaseSync, asker: string, recipient: string, now: number): void {
 	db.prepare(
-		`UPDATE deliveries SET completed_at = COALESCE(completed_at, ?), notified_at = CASE WHEN dead_at IS NOT NULL AND notified_at IS NULL THEN ? ELSE notified_at END
+		`UPDATE deliveries SET completed_at = COALESCE(completed_at, ?), dead_at = CASE WHEN notified_at IS NULL THEN NULL ELSE dead_at END
        WHERE recipient = ? AND relay_to IS NULL AND delivered_at IS NOT NULL AND (completed_at IS NULL OR (dead_at IS NOT NULL AND notified_at IS NULL))
        AND message IN (SELECT id FROM messages WHERE sender = ? AND reply_required = 1)`,
-	).run(now, now, recipient, asker);
+	).run(now, recipient, asker);
 }
 
 /**

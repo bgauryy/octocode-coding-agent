@@ -26,6 +26,7 @@ import { providerHealth } from "./provider-health.ts";
 import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
 import type { RunDetails } from "./run-types.ts";
+import type { GraphWake } from "./graph-wake.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
@@ -157,6 +158,8 @@ export interface AgentRuns {
 	ended?: (id: string, end: AgentEnd) => void;
 	/** Bumped when a session ends: a background run started under an earlier session drops its late report. */
 	session: number;
+	/** Wakes the parent for a report that says what became ready or what is stuck (`graph-wake.ts`). */
+	graph?: GraphWake;
 }
 
 /** What a call asks for: its goal (already checked by `checkGoal`), a profile and model to plan with. */

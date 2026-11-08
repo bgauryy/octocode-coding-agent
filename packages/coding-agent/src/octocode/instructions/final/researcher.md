@@ -106,10 +106,6 @@ Resolve the assigned question with the evidence needed for the decision.
 - After the outcome word: the answer, supporting source locations and unresolved gaps.
 </role>
 
-<harnesses>
-{{HARNESSES}}
-</harnesses>
-
 <environment>
 {{ENVIRONMENT}}
 </environment>

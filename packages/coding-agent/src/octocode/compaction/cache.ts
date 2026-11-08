@@ -82,15 +82,20 @@ export class PromptCacheLifetimes {
 
 	/**
 	 * The model's lifetimes: the inferred ones once an undeclared model was seen caching, else its resolved cache tiers
-	 * (`resolveModelCapabilities`, which read a declared `promptCache` first), the tiers the cache warmer plans with.
+	 * (`resolveModelCapabilities`, which read a declared `promptCache` first), the tiers the cache warmer plans with. A
+	 * marker model without a long tier gets its short tier as the long one, the lifetime its long requests are sent with.
 	 */
 	of(model: CacheModel | undefined): PromptCache | undefined {
 		if (!model) return undefined;
 		const key = keyOf(model);
 		if (this.caching.has(key) && (!model.promptCache || this.supplied.has(key)))
 			return inferredPromptCache(model, !this.shortOnly.has(key));
-		const { lifetimes } = resolveModelCapabilities(model as Model<Api>).cache;
-		return Object.keys(lifetimes).length > 0 ? lifetimes : undefined;
+		const { mechanism, lifetimes } = resolveModelCapabilities(model as Model<Api>).cache;
+		if (Object.keys(lifetimes).length === 0) return undefined;
+		// A marker adapter sends long history at the short lifetime where the endpoint has no long tier.
+		if (mechanism === "markers" && lifetimes.long === undefined && lifetimes.short !== undefined)
+			return { ...lifetimes, long: lifetimes.short };
+		return lifetimes;
 	}
 
 	/** Notes a turn's assistant reply; supplies lifetimes to Octocode's registry when it shows an undeclared model caching. */

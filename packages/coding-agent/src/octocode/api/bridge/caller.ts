@@ -2,7 +2,7 @@ import { renderInstruction } from "../../../core/prompt-template.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { formatClock } from "../../shared/format.ts";
 import { headerText } from "../../shared/fence.ts";
-import { apiDir, listInstances } from "../registry.ts";
+import { apiDir, readInstance } from "../registry.ts";
 import type { ExternalAdmission, TurnCeiling } from "./contracts.ts";
 
 /**
@@ -28,6 +28,10 @@ export interface ExternalFacts extends CallerClaim {
 	replyRequired?: boolean;
 	/** The name of the running instance the claimed caller named: what it can be messaged at. */
 	replyTo?: string;
+	/** That instance confirmed on its own registered socket that this call is its own (`bridge/verify.ts`). */
+	verified?: boolean;
+	/** Another live record carries that instance's name, so its label adds the instance id. */
+	sharedName?: boolean;
 }
 
 /** The caller's claim from a call's params, bounded to one line each; a field of the wrong shape counts as not given. */
@@ -53,10 +57,10 @@ export function externalFacts(
 	waiting: boolean,
 	replyRequired = false,
 ): ExternalFacts {
-	// Only a running instance can be replied to, by the name its own record holds: the hint repeats no text the caller wrote.
-	const instance = caller.instanceId
-		? listInstances(apiDir(), false).find((each) => each.id === caller.instanceId)
-		: undefined;
+	// Only a running instance can be replied to, by the name its own record (`<id>.json`) holds: the hint repeats no text
+	// the caller wrote. The claim must be self-consistent (its pid is the named instance's, as `external/peers.ts` sends it).
+	const record = caller.instanceId ? readInstance(apiDir(), caller.instanceId) : undefined;
+	const instance = record?.pid === caller.pid ? record : undefined;
 	const replyTo = instance?.name ?? instance?.id;
 	return {
 		from,
@@ -68,13 +72,22 @@ export function externalFacts(
 	};
 }
 
-/** What the session's permission layer decides on: the sender, the running process it named if any, and the rest of its claim. */
+/**
+ * What the session's permission layer decides on: the sender, the running process it named if any, and the rest of its
+ * claim. Only a process that confirmed the call (`verified`) is the scope of a process grant or denial, keyed by the
+ * instance it confirmed (its id and pid): its name is any record's to repeat, so it is only the label. An unconfirmed
+ * claim is asked about as any other caller.
+ */
 export function admission(facts: ExternalFacts, text: string, ceiling?: TurnCeiling): ExternalAdmission {
+	const label = facts.sharedName ? `${facts.replyTo} (${facts.instanceId})` : facts.replyTo;
+	const confirmed =
+		facts.replyTo && facts.verified && label ? { id: `${facts.instanceId}#${facts.pid}`, name: label } : undefined;
 	return {
 		...(ceiling ? { ceiling } : {}),
 		from: facts.from,
-		...(facts.replyTo ? { process: facts.replyTo } : {}),
+		...(confirmed ? { process: confirmed } : {}),
 		details: [
+			...(facts.replyTo && !facts.verified ? [`says it is ${facts.replyTo}, which did not confirm it`] : []),
 			...(facts.pid === undefined ? [] : [`says pid ${facts.pid}`]),
 			...(facts.cwd === undefined ? [] : [`says it works in ${facts.cwd}`]),
 		],

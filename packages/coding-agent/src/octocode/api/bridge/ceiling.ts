@@ -6,7 +6,9 @@ import type { ApiOperations, TurnCeiling } from "./contracts.ts";
  * the session's behalf takes it from here:
  * - `message.send` (`send.ts`) reads the same setting (`sessionApiTurnCeiling`) for admission and the turn's cap, and sets and releases the cap through `operations`;
  * - `external.call` runs inside `hold()`, so the spawn check and the external agent's permission requests are judged under it;
- * - `agents.tell` passes `current()` to admission (the recipient's own turn runs in the recipient's process, outside this cap).
+ * - `agents.tell` (`tell.ts`) is admitted under `current()`; when it reaches a member this process runs (named, or through
+ *   "all"), it sets the cap through `operations` until `agent_settled`, while a recipient in another process runs under
+ *   that process's own mode.
  *
  * The cap is one process-wide setting, so `operations` (hand it to everything that calls `capTurn`) keeps a call's cap in
  * place when a send-started turn settles, and a finished call leaves a send-started turn's cap alone.

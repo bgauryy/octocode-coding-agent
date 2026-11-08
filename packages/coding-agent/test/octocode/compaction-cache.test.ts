@@ -208,11 +208,13 @@ describe("prompt-cache lifetimes for models that declare none", () => {
 		expect(api.registerProvider).toHaveBeenCalledOnce();
 		expect(lifetimes.of(model as never)).toEqual({ short: 300, long: 3600 });
 		// A model never seen caching plans with its resolved tiers: the adapter's 5m and 1h for Anthropic markers, none for
-		// provider-managed caching. Inferred lifetimes stay with the models seen caching.
+		// provider-managed caching. Inferred lifetimes stay with the models seen caching. A marker model without a long tier
+		// gets its long requests at 5m, so its long tier is the short one, as `inferredPromptCache` gives it.
 		expect(lifetimes.of(opus({ id: "never-cached" }) as never)).toEqual({ short: 300, long: 3600 });
 		expect(lifetimes.of(opus({ id: "never-cached", api: "mistral-conversations" }) as never)).toBeUndefined();
 		expect(lifetimes.of(opus({ id: "never-cached", compat: { supportsLongCacheRetention: false } }) as never)).toEqual({
 			short: 300,
+			long: 300,
 		});
 	});
 });

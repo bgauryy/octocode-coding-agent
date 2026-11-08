@@ -30,7 +30,7 @@ const BODY = Array.from({ length: 12 }, (_, i) => `line ${i + 1} of the sender's
 const SENDER = "octocode-main-6c9a8aad";
 const claim = (text = BODY) => ({
 	from: SENDER,
-	process: SENDER,
+	process: { id: "oc-6c9a8a#2779", name: SENDER },
 	details: ["pid 2779", "in /Users/bgaryy/code/octocodecode"],
 	text,
 });
@@ -171,8 +171,9 @@ describe("external-message ask card", () => {
 		}
 	});
 
+	// The write-in is the 6th row: a process's message also offers "Deny messages from <process> for this session" after Deny.
 	it("sends the inline write-in's note to the sender without a second dialog", async () => {
-		const { admit, input } = session((entry) => drive(entry, ["5", "\r", ..."use staging".split(""), "\r"]).chosen);
+		const { admit, input } = session((entry) => drive(entry, ["6", "\r", ..."use staging".split(""), "\r"]).chosen);
 		await expect(admit()).rejects.toThrow("denied this message, saying: use staging.");
 		expect(input).not.toHaveBeenCalled();
 	});
@@ -180,7 +181,7 @@ describe("external-message ask card", () => {
 	it("returns to the options when Esc closes the write-in", async () => {
 		const { asked, admit } = session(() => ALLOW_ONCE);
 		await admit();
-		const { chosen, frames } = drive(asked[0], ["5", "\r", "x", "\x1b", "4", "\r"]);
+		const { chosen, frames } = drive(asked[0], ["6", "\r", "x", "\x1b", "4", "\r"]);
 		expect(frames[3].join("\n")).toContain("Tell the agent why: x");
 		expect(frames[4].join("\n")).not.toContain("Tell the agent why:");
 		expect(chosen).toBe(DENY);

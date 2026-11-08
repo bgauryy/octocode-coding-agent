@@ -1,3 +1,4 @@
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Permission } from "./ask.ts";
 import { heldTo } from "./ask/cap.ts";
 import type { Asker } from "./ask/types.ts";
@@ -7,8 +8,11 @@ import type { PermissionMode } from "./mode.ts";
 interface ExternalClaim {
 	/** The sender's own label, or its process name. */
 	from: string;
-	/** A running instance's process name the caller named: only such a caller can hold a process grant. */
-	process?: string;
+	/**
+	 * The running instance that confirmed the call: only such a caller can hold a process grant or denial, keyed by `id`
+	 * (its instance id and pid); `name` is only the label, since any record can repeat it.
+	 */
+	process?: { id: string; name: string };
 	/** The rest of what it claims (pid, folder), for the dialog. */
 	details: string[];
 	text: string;
@@ -33,21 +37,27 @@ export async function admitExternalMessage(
 	// True when the ceiling, not the session's mode, makes this ask: the usual advice (a wider mode) would not help.
 	const held = !options.planning && capped !== undefined && capped !== permission.mode;
 	const judged = options.planning ? "manual" : capped;
+	const sender = claim.process?.name ?? claim.from;
 	const verdict = await permission.check(ctx, {
 		action: "message.external",
 		title: "Let this external message reach the agent?",
-		what: [`from ${claim.process ?? claim.from} (external, not you)`, ...claim.details, claim.text],
+		what: [`from ${sender} (external, not you)`, ...claim.details, claim.text],
 		// The card shows the sender as metadata and the message as a collapsible quote; `what` stays the title and audit text.
-		view: { meta: [`from ${claim.process ?? claim.from} (external, not you)`, ...claim.details], body: claim.text },
+		view: { meta: [`from ${sender} (external, not you)`, ...claim.details], body: claim.text },
 		// No agent is involved in this ask, so the card shows no purpose line.
 		purpose: "",
-		...(claim.process ? { grant: { key: claim.process, label: `messages from ${claim.process}` } } : {}),
+		...(claim.process
+			? { grant: { key: claim.process.id, label: `messages from ${claim.process.name}`, deniable: true } }
+			: {}),
 		...(judged ? { asMode: judged } : {}),
 		...(options.onAsk ? { onAsk: options.onAsk } : {}),
 		...(options.signal ? { signal: options.signal } : {}),
 	});
 	if (verdict.allowed) return;
 	const note = /^User's note: (.*)$/m.exec(verdict.message)?.[1];
+	// "Deny messages from <process> for this session", just given or remembered: asking again would not help.
+	if (verdict.via === "user" && verdict.lasts === "session")
+		throw new Error(renderInstruction("notices/mail/external-denied-session.md", { self: options.self, sender, note }));
 	if (verdict.via === "user")
 		throw new Error(
 			`The user of ${options.self} denied this message${note ? `, saying: ${note}` : ""}. Nothing reached its agent. Its user can allow it when asked again, ${held ? `or set sessionApiTurnPermission to "session" in the global settings` : "or set /permissions full there"}.`,

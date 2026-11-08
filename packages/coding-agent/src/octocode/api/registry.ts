@@ -50,21 +50,35 @@ export function removeRecord(dir: string, id: string): void {
 	fs.rmSync(recordFile(dir, id), { force: true });
 }
 
-/** Live instances, oldest first. By default, records of dead processes are swept with their socket files; completion disables pruning. */
-export function listInstances(dir: string, prune = true): InstanceRecord[] {
+/** A live record and the name of the file it was read from (`<id>.json` for a record its instance wrote). */
+export interface InstanceEntry {
+	file: string;
+	record: InstanceRecord;
+}
+
+/** Whether `entry` is in its instance's own file: Octocode writes no other, so any other is another process's. */
+export const inOwnFile = (entry: InstanceEntry): boolean => entry.file === `${entry.record.id}.json`;
+
+/** Removes the file `entry` was read from, and nothing else: a copy in another file goes without the instance's own. */
+export function removeEntry(dir: string, entry: InstanceEntry): void {
+	fs.rmSync(path.join(instancesDir(dir), entry.file), { force: true });
+}
+
+/** Live records with their files, oldest first. By default, records of dead processes are swept with their socket files; completion disables pruning. */
+export function listInstanceEntries(dir: string, prune = true): InstanceEntry[] {
 	let names: string[];
 	try {
 		names = fs.readdirSync(instancesDir(dir));
 	} catch {
 		return [];
 	}
-	const found: InstanceRecord[] = [];
+	const found: InstanceEntry[] = [];
 	for (const name of names.filter((entry) => entry.endsWith(".json"))) {
 		const file = path.join(instancesDir(dir), name);
 		try {
 			const record = JSON.parse(fs.readFileSync(file, "utf8")) as InstanceRecord;
 			if (typeof record.id !== "string" || typeof record.pid !== "number") continue;
-			if (processAlive(record.pid)) found.push(record);
+			if (processAlive(record.pid)) found.push({ file: name, record });
 			else if (prune) {
 				fs.rmSync(file, { force: true });
 				if (record.socket) removeSocket(record.socket);
@@ -73,7 +87,46 @@ export function listInstances(dir: string, prune = true): InstanceRecord[] {
 			// A record being written or corrupt: skip it.
 		}
 	}
-	return found.sort((a, b) => a.startedAt - b.startedAt);
+	return found.sort((a, b) => a.record.startedAt - b.record.startedAt);
+}
+
+/** Live instances, oldest first (`listInstanceEntries` without the files). */
+export function listInstances(dir: string, prune = true): InstanceRecord[] {
+	return listInstanceEntries(dir, prune).map((entry) => entry.record);
+}
+
+/** When a record was last added, replaced or removed: the instances directory's mtime, undefined when it is missing. */
+export function instancesStamp(dir: string): number | undefined {
+	try {
+		return fs.statSync(instancesDir(dir)).mtimeMs;
+	} catch {
+		return undefined;
+	}
+}
+
+/** When the instance `id`'s own file was last written: an overwrite in place leaves the folder's mtime as it was. */
+export function recordStamp(dir: string, id: string): number | undefined {
+	if (!/^[A-Za-z0-9_-]+$/.test(id)) return undefined;
+	try {
+		return fs.statSync(recordFile(dir, id)).mtimeMs;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The live record of the instance `id`, read only from its own file (`<id>.json`): a record elsewhere in the directory
+ * that repeats the id is not the instance's. Undefined when the file is missing, unreadable, names another id, or its
+ * process is gone.
+ */
+export function readInstance(dir: string, id: string): InstanceRecord | undefined {
+	if (!/^[A-Za-z0-9_-]+$/.test(id)) return undefined;
+	try {
+		const record = JSON.parse(fs.readFileSync(recordFile(dir, id), "utf8")) as InstanceRecord;
+		return record.id === id && typeof record.pid === "number" && processAlive(record.pid) ? record : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**

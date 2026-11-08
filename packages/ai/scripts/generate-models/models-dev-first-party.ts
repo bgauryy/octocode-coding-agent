@@ -5,7 +5,11 @@ import {
 	CLOUDFLARE_WORKERS_AI_BASE_URL,
 } from "../../src/api/cloudflare.ts";
 import type { Model } from "../../src/types.ts";
-import { BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS, MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS } from "./constants.ts";
+import {
+	BEDROCK_END_OF_LIFE_MODEL_IDS,
+	BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS,
+	MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS,
+} from "./constants.ts";
 import { getModelsDevCost } from "./pricing.ts";
 import { processGoogleModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
@@ -25,6 +29,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 		for (const [modelId, model] of Object.entries(data["amazon-bedrock"].models)) {
 			const m = model;
 			if (m.tool_call !== true) continue;
+			// models.dev marks some models deprecated that AWS still serves; only end-of-life ones are left out.
+			if (BEDROCK_END_OF_LIFE_MODEL_IDS.has(modelId)) continue;
 			if (BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS.has(modelId)) continue;
 
 			const id = modelId;

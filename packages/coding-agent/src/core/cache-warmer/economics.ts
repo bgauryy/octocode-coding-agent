@@ -57,8 +57,8 @@ interface PromptCacheLifetime {
 /**
  * Lifetimes of the prompt cache entries a request writes, for the retention pair the request used: the model's resolved
  * cache tiers (`resolveModelCapabilities`), which take a declared `promptCache` lifetime first and otherwise the lifetime
- * the adapter sends, and have no long tier where the adapter sends none. Undefined when the model has no lifetime for
- * that tier or caching is off.
+ * the adapter sends, and have no long tier where the adapter sends none (a marker adapter then sends long history at the
+ * short lifetime). Undefined when the model has no lifetime for that tier or caching is off.
  */
 export function getPromptCacheLifetime(
 	model: Model<Api>,
@@ -69,8 +69,12 @@ export function getPromptCacheLifetime(
 	const instructions = resolveInstructionCacheRetention(options);
 	// Adapters with Anthropic-style markers send long history behind short instructions at the short lifetime; that is
 	// the safe lifetime to plan with for any provider.
-	const history = instructions === "short" && retention === "long" ? "short" : retention;
-	const lifetimes = resolveModelCapabilities(model, options?.env).cache.lifetimes;
+	const { mechanism, lifetimes } = resolveModelCapabilities(model, options?.env).cache;
+	// A marker adapter also sends long history at the short lifetime where the endpoint has no long tier.
+	const history =
+		(instructions === "short" && retention === "long") || (mechanism === "markers" && lifetimes.long === undefined)
+			? "short"
+			: retention;
 	const seconds = lifetimes[history];
 	if (!validSeconds(seconds)) return undefined;
 	const layered =

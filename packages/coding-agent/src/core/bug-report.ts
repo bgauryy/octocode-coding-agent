@@ -13,11 +13,10 @@ import {
 	completeSummarization,
 	estimateTokens,
 	getSummarizationFailure,
-	serializeConversation,
+	serializeMessages,
 } from "./compaction/index.ts";
 import type { CrashRecord } from "./crash-log.ts";
 import type { Extension } from "./features/types.ts";
-import { convertToLlm } from "./messages.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { ReadonlySessionManager } from "./session-manager.ts";
 import type { Settings } from "./settings-manager.ts";
@@ -316,7 +315,7 @@ export async function generateBugReportSummary(options: GenerateBugReportSummary
 		messages.length < options.messages.length
 			? `Note: only the last ${messages.length} of ${options.messages.length} messages are shown.`
 			: undefined,
-		`<conversation>\n${serializeConversation(convertToLlm(messages))}\n</conversation>`,
+		`<conversation>\n${serializeMessages(messages)}\n</conversation>`,
 		hint ? `<user-report>\n${hint}\n</user-report>` : undefined,
 		BUG_SUMMARY_INSTRUCTIONS,
 	]

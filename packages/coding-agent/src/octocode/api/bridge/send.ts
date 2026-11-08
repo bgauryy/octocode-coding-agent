@@ -9,7 +9,7 @@ import type { EventLog } from "../events.ts";
 import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS, WAITING_FOR_USER } from "../protocol.ts";
 import { preparationExpired, type SendReceipt, type SendReceipts } from "../receipts.ts";
 import { sessionApiTurnCeiling } from "../enabled.ts";
-import { admission, callerFrom, externalFacts, externalFooter, externalHeader } from "./caller.ts";
+import { admission, callerFrom, type ExternalFacts, externalFacts, externalFooter, externalHeader } from "./caller.ts";
 import type { AgentDirectory, ApiOperations, TurnCeiling } from "./contracts.ts";
 
 /** Senders a client may not claim: the user, the team's own API sender, and (checked per call) any live agent. */
@@ -32,16 +32,22 @@ interface SendHost {
 	audit(data: Record<string, unknown>): void;
 	/** Which listener took this call. */
 	transport?: "socket" | "http";
+	/** The caller's facts, verified with the instance it names when it names one (`bridge/verify.ts`), waiting at most `timeoutMs`; without it every caller is unverified. */
+	verify?(facts: ExternalFacts, timeoutMs: number): Promise<ExternalFacts>;
 }
 
 /** The sender name a client gave, on one line; a name that would pass for the user, the team or a live agent is refused. */
 function sender(host: SendHost, params: Record<string, unknown>): string {
 	const given = stringParam(params, "from", { max: 64, optional: true });
 	const from = headerText((given ?? "external client").replaceAll('"', " "), 64) || "external client";
-	const taken = host.agents
-		.list()
-		.some((agent) => typeof agent === "object" && agent !== null && (agent as { id?: unknown }).id === from);
-	if (RESERVED_SENDERS.has(from.toLowerCase()) || taken)
+	// Compared in one folded form (compatibility forms such as fullwidth letters, and letter case), so "ＵＳＥＲ" is "user".
+	const fold = (name: string) => name.normalize("NFKC").toLowerCase();
+	const folded = fold(from);
+	const taken = host.agents.list().some((agent) => {
+		const id = typeof agent === "object" && agent !== null ? (agent as { id?: unknown }).id : undefined;
+		return typeof id === "string" && fold(id) === folded;
+	});
+	if (RESERVED_SENDERS.has(folded) || taken)
 		throw new RpcError(
 			ERR.invalidParams,
 			`The sender name ${JSON.stringify(from)} is reserved for the user or a team agent; name your client instead (for example "ci bot"). Nothing was sent.`,
@@ -107,7 +113,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		timeout,
 	);
 	preparingTimer.unref();
-	const external = externalFacts(from, caller, host.transport, wait, replyRequired);
+	let external = externalFacts(from, caller, host.transport, wait, replyRequired);
 	// Every message is held to the ceiling, also one that steers or queues behind running work: the run it joins, the
 	// user's own included, runs under it until the session settles, so timing a message never yields the session's full mode.
 	const admitCeiling = sessionApiTurnCeiling();
@@ -120,6 +126,9 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		let text = "";
 		let outcome: "not-sent" | "refused" | "dispatched" = "not-sent";
 		try {
+			// The call's own wait bounds the call back to the instance the caller names.
+			if (host.verify)
+				external = await Promise.race([host.verify(external, timeout), receipt.settlement.then(() => external)]);
 			if (host.operations.messageSend)
 				await Promise.race([host.operations.messageSend(message, ctx, receipt.controller.signal), receipt.settlement]);
 			if (host.operations.admit) {
@@ -208,7 +217,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			id,
 			from,
 			caller,
-			callerVerified: false,
+			callerVerified: external.verified === true,
 			...(capped ? { turnPermission: capped } : {}),
 			mode: deliverAs,
 			queued: accepted.queued,
@@ -218,7 +227,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			id,
 			from,
 			caller,
-			callerVerified: false,
+			callerVerified: external.verified === true,
 			transport: host.transport,
 			text: redactSecrets(capChars(text, 2_000)),
 			queued: accepted.queued,

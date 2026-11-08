@@ -73,10 +73,13 @@ export class ApiServer {
 	private readonly dispatch: Dispatch;
 	private readonly log: EventLog;
 	private readonly token: string;
-	constructor(dispatch: Dispatch, log: EventLog, token: string) {
+	/** Told of each `GET /events` stream that opens: a read that bypasses `dispatch`. */
+	private readonly onStream: ((connection: Connection) => void) | undefined;
+	constructor(dispatch: Dispatch, log: EventLog, token: string, onStream?: (connection: Connection) => void) {
 		this.dispatch = dispatch;
 		this.log = log;
 		this.token = token;
+		this.onStream = onStream;
 	}
 
 	/**
@@ -244,6 +247,7 @@ export class ApiServer {
 			else res.write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
 		};
 		this.streams.add(res);
+		this.onStream?.({ transport: "http" });
 		const sub = this.log.subscribe(send, {
 			...(Number.isInteger(last) && last >= 0 ? { since: last } : {}),
 			...(types ? { types } : {}),

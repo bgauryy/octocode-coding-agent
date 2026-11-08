@@ -5,6 +5,8 @@
  * page only renders them.
  */
 
+import type { TrafficDrop } from "./team.ts";
+
 /** What a layer of a request is, in the order the provider matched the prompt prefix. */
 export const PROFILE_LAYER_KINDS = [
 	"tools",
@@ -186,6 +188,8 @@ export interface ProfileMessage {
 	/** Milliseconds from sending to delivery, and to the answer when one came. */
 	deliveredMs?: number;
 	answeredMs?: number;
+	/** The recipients that left without reading it, or without answering it (`Traffic.dropped`). */
+	dropped?: TrafficDrop[];
 }
 
 /** What the analysis found worth changing, like a Lighthouse audit: each finding names its cost and evidence. */

@@ -17,7 +17,7 @@
 | skills | session | keep | - | the skills this agent can load |
 | hooks | session | keep | - | sections/hooks.md and the hooks configured for this session |
 | role | session | keep | - | roles/<profile>.md and its skills |
-| harnesses | session | keep | - | the harnesses Octocode reads, on or off (`core/discovery/vendors/prompt.ts`) |
+| harnesses | session | keep | - | system/harnesses.md and system/harness.md, for the harnesses Octocode reads, on or off (`core/discovery/vendors/prompt.ts`); the main session only |
 | environment | volatile | keep | - | system/environment.md |
 | planning | volatile | keep | - | workflows/planning.md |
 | mcp_status | volatile | keep | - | sections/mcp_status.md and the MCP servers that are not ready |

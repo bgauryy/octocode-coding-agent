@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
-import { type AgentRun, decode } from "./agent-runs.ts";
+import { type AgentRun, decode, openForItems } from "./agent-runs.ts";
 
 /** A backlog item as an agent is linked to it: where it lives, its number and how to write it from the caller's workspace. */
 export interface ItemLinkRef {
@@ -85,17 +85,9 @@ function liveName(db: DatabaseSync, ref: string, item: ReturnType<typeof parseIt
 		(INTEGER.test(ref)
 			? first(db, "SELECT id FROM agents WHERE pid = ? ORDER BY joined_at DESC LIMIT 1", Number(ref))
 			: undefined) ??
+		// The child working on the item, by the plan view's own rule (`openForItems`).
 		(item
-			? item.workspaceIds
-					.map((workspace) =>
-						first(
-							db,
-							"SELECT r.agent_id FROM agent_runs r JOIN agents a ON a.id = r.agent_id WHERE r.backlog_workspace = ? AND r.backlog_seq = ? AND r.ended_at IS NULL ORDER BY r.started_at DESC LIMIT 1",
-							workspace,
-							item.seq,
-						),
-					)
-					.find((name) => name !== undefined)
+			? item.workspaceIds.map((workspace) => openForItems(db, workspace, [item.seq])[0]?.agentId).find(Boolean)
 			: undefined)
 	);
 }

@@ -29,6 +29,7 @@ import {
 	updatesField,
 } from "./tool-schema.ts";
 import { batchAdd, batchGet, batchUpdate } from "./tool-batch.ts";
+import { endedNotice } from "./graph-notice.ts";
 import { epicCompletion, parseJsonStrings, splitIds } from "./tool-arguments.ts";
 import { getResult } from "./tool-get.ts";
 import { entities, keyed, replayText } from "./tool-support.ts";
@@ -233,8 +234,11 @@ export function registerBacklogTool(
 		if (items !== undefined) {
 			if (args.op !== "add" || args.title !== undefined)
 				throw new Error("items goes with op add and no title: each entry carries its own title.");
-			return batchAdd(items, ITEM_ENTRY_FIELDS, "items", (entry) =>
-				run(backlog, { ...single, ...(checkedEntry(validationParameters, parseJsonStrings(entry), "add") as Params) }),
+			return batchAdd(items, ITEM_ENTRY_FIELDS, "items", (entry, earlier) =>
+				run(
+					backlog,
+					earlier({ ...single, ...(checkedEntry(validationParameters, parseJsonStrings(entry), "add") as Params) }),
+				),
 			);
 		}
 		if (updates !== undefined) {
@@ -389,6 +393,7 @@ export function registerBacklogTool(
 		// Reopening is allowed (a regression turns up after the fact); the done items that waited on this one are named.
 		const review = reopened ? store.reviewNeeded(item) : [];
 		const flagged = review.length ? `\nNeeds review (done): ${review.join(", ")}.` : "";
-		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${flagged}`, { item });
+		const graph = subagent ? "" : endedNotice(backlog, item, before); // a child's report carries it instead
+		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${flagged}${graph}`, { item });
 	}
 }

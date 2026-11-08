@@ -4,8 +4,7 @@ import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
 import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import type { AgentSessionApi } from "./api.ts";
-import { completeSummarization, serializeConversation } from "../compaction/index.ts";
-import { convertToLlm } from "../messages.ts";
+import { completeSummarization, serializeMessages } from "../compaction/index.ts";
 import { createSessionUsageRecorder } from "../usage-totals.ts";
 import { getSummarizationRequestAuth } from "./request-auth.ts";
 import {
@@ -109,7 +108,7 @@ export class SideQuestions {
 				Math.floor((request.model.contextWindow - maxTokens) * CHARS_PER_TOKEN * 0.65) -
 				SIDE_QUESTION_SYSTEM_PROMPT.length -
 				256;
-			const transcript = serializeConversation(convertToLlm(messages));
+			const transcript = serializeMessages(messages);
 			const { prompt, history } = buildSideQuestionPrompt(question, transcript, this.exchanges, budget);
 			const response = await completeSummarization(
 				request.model,

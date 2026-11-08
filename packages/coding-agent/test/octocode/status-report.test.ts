@@ -19,7 +19,7 @@ describe("/status", () => {
 		const commands = new Subcommands();
 		commands.add(
 			"status",
-			statusCommand(fake.api, () => "Octocode 1.0"),
+			statusCommand(fake.api, { mode: "full" }, () => "Octocode 1.0"),
 		);
 		commands.register(fake.api);
 		const sessionManager = SessionManager.inMemory(process.cwd());

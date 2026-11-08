@@ -209,6 +209,13 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	defaultActive?: boolean;
 
 	/**
+	 * Tools this one needs beside it: while it is active they are registered and active too, whatever `--tools`, the
+	 * `defaultTools` setting or a deselection say. The operator's `--exclude-tools` and a tool policy still remove them.
+	 * Honored only on native and base tools; an extension or SDK tool's companions follow the selection like any tool.
+	 */
+	companionTools?: readonly string[];
+
+	/**
 	 * Adjust how the loadout is presented to the model while this tool is active. Called whenever
 	 * the active tools change. Tools that orchestrate other tools use it, for example to list the
 	 * callable tools in their own description.

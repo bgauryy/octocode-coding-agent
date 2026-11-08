@@ -109,7 +109,9 @@ async function main(argv: string[]): Promise<void> {
 	}
 	target = pickInstance(instances, flags.get("to") as string | undefined, process.cwd());
 	const client = new ApiClient(target);
-	if (command === "status") console.log(JSON.stringify(await client.call("status"), null, 2));
+	// Reads are recorded and an abort is admitted naming the caller: a claim, which the receiver says it could not confirm.
+	if (command === "status")
+		console.log(JSON.stringify(await client.call("status", { caller: callerOf(instances) }), null, 2));
 	else if (command === "external") {
 		const input: unknown = JSON.parse(words.join(" "));
 		if (!input || typeof input !== "object" || Array.isArray(input))
@@ -122,7 +124,8 @@ async function main(argv: string[]): Promise<void> {
 		console.log(
 			JSON.stringify(await client.call("external.call", input as Record<string, unknown>, { timeoutMs }), null, 2),
 		);
-	} else if (command === "abort") console.log(JSON.stringify(await client.call("turn.abort")));
+	} else if (command === "abort")
+		console.log(JSON.stringify(await client.call("turn.abort", { caller: callerOf(instances) })));
 	else if (command === "send") {
 		const own = process.env.OCTOCODE_SESSION_ID;
 		// A session's own run cannot answer a call its own tool is blocked on.

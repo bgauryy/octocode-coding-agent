@@ -204,10 +204,10 @@ describe("cache-sharing compaction summary", () => {
 			}
 		});
 
-		it("leaves the standalone request's preferences alone", async () => {
+		it("sends the standalone request without a cache write, as it does on a warm cache", async () => {
 			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - TTL - 1_000) });
 			await writeSummary(api, event, ctx, { ...model, id: "previous" } as never, undefined, undefined, TTL);
-			expect(calls[0].options.cacheRetention).toBe("short");
+			expect(calls[0].options.cacheRetention).toBe("none");
 		});
 	});
 
@@ -575,16 +575,17 @@ describe("writeSummary with the shared path", () => {
 		expect(notices).toEqual([]);
 	});
 
-	it("summarizes a downshift on the previous model with the standalone request only, routed and cached as the session is", async () => {
+	it("summarizes a downshift on the previous model with the standalone request only, passing the session's preferences and never cached", async () => {
 		const { calls, api, ctx, event } = setup({
 			settings: { cacheRetention: "long", instructionCacheRetention: "short" },
 		});
 		const out = await writeSummary(api, event, ctx, { ...model, id: "previous" } as never);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
+		// Its prompt is never sent again, so it writes no cache entry (history `none`); the rest stays the session's.
 		expect(calls[0].options).toMatchObject({
 			sessionId: "sid-1",
-			cacheRetention: "long",
+			cacheRetention: "none",
 			instructionCacheRetention: "short",
 		});
 		expect(out?.compaction?.summary).toContain("## Goal");

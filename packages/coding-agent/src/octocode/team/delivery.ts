@@ -6,6 +6,7 @@ import { CheckIn, type CheckInConfig } from "./check-in.ts";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
 import type { Message } from "./model.ts";
+import { EXTERNAL_SENDER } from "../shared/messages.ts";
 import { outside } from "./routing.ts";
 import type { TeamStore } from "./store.ts";
 import { WakePace } from "./wake-pace.ts";
@@ -14,6 +15,12 @@ import { WakePace } from "./wake-pace.ts";
 const FAILED_TICKS_NOTICE = 30;
 /** An idle agent handed a waking message that the model has not been called with after this long was not started by Octocode (no model, or no sign-in). */
 const WAKE_STUCK_MS = 10_000;
+
+/** Whether stored message `id` went to more than one recipient when sent (a forward adds recipients later and is not counted). */
+function broadcast(db: TeamStore, id: number): boolean {
+	const stored = db.refs.read(id);
+	return typeof stored === "object" && stored.deliveries.filter((each) => !each.forwardedBy).length > 1;
+}
 
 /** What delivery needs from the agent's membership (`Team`), read when used so it always sees the current session. */
 interface DeliveryHost {
@@ -49,7 +56,7 @@ export class Delivery {
 
 	private readonly host: DeliveryHost;
 	private readonly mail: Mail;
-	/** How often peers may start this agent's turns while it is idle (`wake-pace.ts`). */
+	/** How often peers may start this agent's turns while it is idle (`wake-pace.ts`); `Team` shares it with the coordination graph's wakes. */
 	private readonly pace: WakePace;
 	constructor(host: DeliveryHost, mail: Mail, pace = new WakePace()) {
 		this.host = host;
@@ -91,6 +98,8 @@ export class Delivery {
 		db: TeamStore | undefined,
 		messages: ReadonlyArray<{ role?: string; customType?: string; details?: unknown }>,
 	): void {
+		// The model is called now, so a question from the coordinator that ended a wait is in front of it.
+		this.mail.modelCalled();
 		const me = this.inbox.awaitingContext ? this.host.id() : undefined;
 		const ids = me && db ? messages.flatMap((message) => mailIds(message, me)) : [];
 		if (!me || !db || ids.length === 0) return;
@@ -162,11 +171,13 @@ export class Delivery {
 	}
 
 	/**
-	 * Whether waking this agent is a peer's choice, and so paced: not the user's or an API client's message, not an interrupt,
-	 * and not the answer to a question this agent asked and still waits on.
+	 * Whether waking this agent is a peer's choice, and so paced: not the user's or an API client's message to this agent,
+	 * not an interrupt, and not the answer to a question this agent asked and still waits on. An API client's broadcast
+	 * (`agents.tell` to "all", stored with several recipients) is paced like a peer's: one admission reaches every idle agent.
 	 */
 	private paced(db: TeamStore, me: string, message: Message): boolean {
-		if (!message.wake || message.interrupt || outside(message.from)) return false;
+		if (!message.wake || message.interrupt) return false;
+		if (outside(message.from)) return message.from === EXTERNAL_SENDER && broadcast(db, message.id);
 		if (message.replyTo === undefined) return true;
 		const asked = db.replyTarget(message.replyTo);
 		return !(asked?.from === me && asked.replyRequired);

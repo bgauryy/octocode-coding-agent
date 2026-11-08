@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ApiCallError, ApiClient } from "../api/client.ts";
+import { issueTicket, ownInstance } from "../api/identity.ts";
 import { ERR, MESSAGE_KEY_MAX, PROTOCOL_VERSION } from "../api/protocol.ts";
-import { apiDir, listInstances, selectInstance } from "../api/registry.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { ticketTarget } from "../api/registry-integrity.ts";
+import { apiDir, type InstanceRecord, listInstances, selectInstance } from "../api/registry.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
 import { PROMPT_TIMEOUT_MS, promptTimeoutValid } from "./protocol.ts";
 
@@ -31,13 +33,32 @@ export class OctocodeBackend implements ExternalBackend {
 
 	private readonly client: ApiClient;
 	private readonly caller: Record<string, unknown>;
+	/** The instance id of the session this backend drives, and the endpoint its calls go to: what each call's ticket is issued for. */
+	private readonly target: { id: string; via: string | undefined };
 	readonly sessionId: string;
 	readonly cwd: string;
-	private constructor(client: ApiClient, caller: Record<string, unknown>, sessionId: string, cwd: string) {
+	private constructor(
+		client: ApiClient,
+		caller: Record<string, unknown>,
+		target: { id: string; via: string | undefined },
+		sessionId: string,
+		cwd: string,
+	) {
 		this.client = client;
 		this.caller = caller;
+		this.target = target;
 		this.sessionId = sessionId;
 		this.cwd = cwd;
+	}
+
+	/** Runs `call` with this process's claim and a fresh ticket, so the receiver can confirm the call is this process's own (`api/identity.ts`). */
+	private async claimed<T>(call: (caller: Record<string, unknown>) => Promise<T>): Promise<T> {
+		const { ticket, release } = issueTicket(this.target.id, this.target.via);
+		try {
+			return await call({ ...this.caller, ticket });
+		} finally {
+			release();
+		}
 	}
 
 	static async connect(
@@ -45,7 +66,14 @@ export class OctocodeBackend implements ExternalBackend {
 		env: NodeJS.ProcessEnv = process.env,
 	): Promise<OctocodeBackend> {
 		const cwd = canonical(input.cwd);
-		const instance = selectInstance(listInstances(apiDir(env)), input.instanceId);
+		const selected = selectInstance(listInstances(apiDir(env)), input.instanceId);
+		// Each call carries a ticket for this instance: only the record in its own file, repeated by no other, may get one.
+		let instance: InstanceRecord;
+		try {
+			instance = ticketTarget(apiDir(env), selected);
+		} catch (error) {
+			throw new Error(`Octocode instance identity is ambiguous: ${errorMessage(error)}`, { cause: error });
+		}
 		if (instance.protocol !== PROTOCOL_VERSION)
 			throw new Error(
 				`Octocode instance ${instance.id} speaks API protocol ${instance.protocol}, not ${PROTOCOL_VERSION}`,
@@ -97,18 +125,25 @@ export class OctocodeBackend implements ExternalBackend {
 		) {
 			throw new Error("Octocode live session or workspace mismatch");
 		}
-		const own = listInstances(apiDir(env), false).find((entry) => entry.pid === process.pid);
+		// This session's own API record: a record another process wrote with this pid does not change what it claims.
+		const own = ownInstance();
 		const caller = {
 			pid: process.pid,
 			cwd: own?.cwd ?? process.cwd(),
 			...(own ? { instanceId: own.id, name: own.name } : {}),
 		};
-		return new OctocodeBackend(client, caller, status.sessionId, cwd);
+		return new OctocodeBackend(
+			client,
+			caller,
+			{ id: instance.id, via: instance.socket ?? instance.http?.url },
+			status.sessionId,
+			cwd,
+		);
 	}
 
 	private async status(options: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Record<string, unknown>> {
 		if (this.closed) throw new Error("Octocode connection is closed");
-		const status = await this.client.call("status", {}, { timeoutMs: API_CALL_MS, ...options });
+		const status = await this.client.call("status", { caller: this.caller }, { timeoutMs: API_CALL_MS, ...options });
 		if (
 			!isRecord(status) ||
 			status.sessionId !== this.sessionId ||
@@ -156,19 +191,21 @@ export class OctocodeBackend implements ExternalBackend {
 				throw new Error("Octocode session is busy; nothing was sent");
 			this.owned = { key, text };
 			attempted = true;
-			const reply = await this.client.call(
-				"message.send",
-				{
-					text,
-					from: "Octocode external adapter",
-					caller: this.caller,
-					expectedSessionId: this.sessionId,
-					requireIdle: true,
-					key,
-					wait: true,
-					timeoutMs: options.timeoutMs,
-				},
-				{ timeoutMs: options.timeoutMs + 1000, signal: controller.signal },
+			const reply = await this.claimed((caller) =>
+				this.client.call(
+					"message.send",
+					{
+						text,
+						from: "Octocode external adapter",
+						caller,
+						expectedSessionId: this.sessionId,
+						requireIdle: true,
+						key,
+						wait: true,
+						timeoutMs: options.timeoutMs,
+					},
+					{ timeoutMs: options.timeoutMs + 1000, signal: controller.signal },
+				),
 			);
 			if (!isRecord(reply) || typeof reply.text !== "string" || typeof reply.id !== "string")
 				throw new Error("Invalid Octocode run settlement response");
@@ -230,10 +267,12 @@ export class OctocodeBackend implements ExternalBackend {
 			this.owned = undefined;
 			return;
 		}
-		await this.client.call(
-			"turn.abort",
-			{ expectedSessionId: this.sessionId, key: owned.key },
-			{ timeoutMs: API_CALL_MS },
+		await this.claimed((caller) =>
+			this.client.call(
+				"turn.abort",
+				{ expectedSessionId: this.sessionId, key: owned.key, caller },
+				{ timeoutMs: API_CALL_MS },
+			),
 		);
 		this.owned = undefined;
 	}

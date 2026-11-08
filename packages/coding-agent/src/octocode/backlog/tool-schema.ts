@@ -188,7 +188,8 @@ export function entityFields(subagent: boolean) {
 		),
 		dependsOn: Type.Optional(
 			Type.Array(Type.String(), {
-				description: "prerequisite item IDs; [] clears. list: items needing any",
+				description:
+					"prerequisite item IDs, or in an items entry an earlier entry's exact title; [] clears. list: items needing any",
 			}),
 		),
 		completion,

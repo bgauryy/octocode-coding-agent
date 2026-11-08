@@ -7,10 +7,15 @@ import { getAnthropicCompat } from "../api/anthropic-messages/compat.ts";
 import {
 	bedrockSupportsLongCacheRetention,
 	isAnthropicClaudeModel,
+	isNovaExplicitCacheModel,
 	supportsAdaptiveThinking,
 	supportsPromptCaching,
 } from "../api/bedrock-converse-stream/model-match.ts";
-import { azureAcceptsExtendedRetention } from "../api/azure-openai-config.ts";
+import {
+	azureSupportsExplicitPromptCacheMode,
+	azureSupportsInstructionBreakpoints,
+	azureSupportsLongCacheRetention,
+} from "../api/azure-openai-config.ts";
 import { usesGoogleThinkingLevel } from "../api/google-shared/thinking-format.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
@@ -25,8 +30,10 @@ export type ThinkingControl = "none" | "effort" | "budget" | "level";
 
 /**
  * How a prompt prefix is cached: `markers` are Anthropic-style breakpoints with 5-minute and 1-hour tiers, `key` is a
- * routing key with provider-managed retention, `explicit-breakpoint` is OpenAI's explicit cache mode, `implicit` is
- * provider-managed caching with nothing to send, `none` caches nothing.
+ * routing key with provider-managed retention, `explicit-breakpoint` is OpenAI's explicit cache mode (on Azure, a
+ * deployment that opted in with `compat.supportsExplicitPromptCacheMode`, or GPT-6 Astra's 30m instruction breakpoints
+ * beside a routing key), `implicit` is provider-managed caching with nothing
+ * to send, `none` caches nothing.
  */
 export type CacheMechanism = "markers" | "key" | "explicit-breakpoint" | "implicit" | "none";
 
@@ -91,14 +98,18 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 			mechanism,
 			lifetimes: tiers(declared.short ?? MARKER_LIFETIMES.short, declared.long ?? MARKER_LIFETIMES.long),
 		};
+	// Azure outside explicit mode: 30m instruction breakpoints in implicit mode (GPT-6 Astra), and 24h key retention
+	// where it is accepted. A deployment opted in to explicit mode takes OpenAI's 30m and 12h tiers below.
+	if (model.api === "azure-openai-responses" && !azureSupportsExplicitPromptCacheMode(model)) {
+		const short = mechanism === "explicit-breakpoint" ? (declared.short ?? EXPLICIT_LIFETIMES.short) : declared.short;
+		return { mechanism, lifetimes: tiers(short, declared.long ?? EXTENDED_KEY_LIFETIME) };
+	}
 	if (mechanism === "explicit-breakpoint")
 		return {
 			mechanism,
 			lifetimes: tiers(declared.short ?? EXPLICIT_LIFETIMES.short, declared.long ?? EXPLICIT_LIFETIMES.long),
 		};
 	if (mechanism === "key" && model.api === "openai-responses")
-		return { mechanism, lifetimes: tiers(declared.short, declared.long ?? EXTENDED_KEY_LIFETIME) };
-	if (model.api === "azure-openai-responses" && azureAcceptsExtendedRetention(model))
 		return { mechanism, lifetimes: tiers(declared.short, declared.long ?? EXTENDED_KEY_LIFETIME) };
 	return { mechanism, lifetimes: tiers(declared.short, declared.long) };
 }
@@ -109,7 +120,10 @@ function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {
 			return "markers";
 		case "bedrock-converse-stream": {
 			const bedrock = model as Model<"bedrock-converse-stream">;
-			return isAnthropicClaudeModel(bedrock) && supportsPromptCaching(bedrock, env) ? "markers" : "implicit";
+			return (isAnthropicClaudeModel(bedrock) || isNovaExplicitCacheModel(bedrock)) &&
+				supportsPromptCaching(bedrock, env)
+				? "markers"
+				: "implicit";
 		}
 		case "openai-completions":
 			return getCompletionsCompat(model as Model<"openai-completions">).cacheControlFormat === "anthropic"
@@ -120,6 +134,9 @@ function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {
 				? "explicit-breakpoint"
 				: "key";
 		case "azure-openai-responses":
+			return azureSupportsExplicitPromptCacheMode(model) || azureSupportsInstructionBreakpoints(model)
+				? "explicit-breakpoint"
+				: "key";
 		case "openai-codex-responses":
 		case "mistral-conversations":
 			return "key";
@@ -142,6 +159,8 @@ function supportsLongRetention(model: Model<Api>): boolean {
 			return getCompletionsCompat(model as Model<"openai-completions">).supportsLongCacheRetention;
 		case "bedrock-converse-stream":
 			return bedrockSupportsLongCacheRetention(model as Model<"bedrock-converse-stream">);
+		case "azure-openai-responses":
+			return azureSupportsLongCacheRetention(model);
 		default:
 			return (
 				(model.compat as { supportsLongCacheRetention?: boolean } | undefined)?.supportsLongCacheRetention !== false

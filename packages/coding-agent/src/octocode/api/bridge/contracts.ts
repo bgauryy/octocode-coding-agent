@@ -22,8 +22,11 @@ export function nesting(parentId: string | undefined): { depth: number; parentId
 /** Who an external message says it is from and what it asks: what the session's permission layer decides on. */
 export interface ExternalAdmission {
 	from: string;
-	/** The name of the running instance the caller named. */
-	process?: string;
+	/**
+	 * The running instance that confirmed the call (`bridge/verify.ts`): `id` (its instance id and pid) keys its grant and
+	 * denial, `name` is what the user knows it by.
+	 */
+	process?: { id: string; name: string };
 	details: string[];
 	text: string;
 	/** This process's own name, for what the sender reads back. */

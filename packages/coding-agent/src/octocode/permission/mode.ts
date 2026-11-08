@@ -216,12 +216,12 @@ export const PROFILE_DECLARABLE: readonly ActionClass[] = ["browser.control", "n
 /**
  * Classes a parent may hand a subagent, which cannot ask anyone: every class with a session kind (what the user allowed
  * for the session), plus the profile-declarable ones. Destructive shell and MCP never pass down, and neither do the
- * classes only a top-level session can meet: a child has no API to receive on and no merge to land.
+ * classes only a top-level session can meet (a child has no API to receive on and no merge to land) or browser cookie
+ * access, which a child asks for through its parent each time (docs/permissions.md).
  */
+const NEVER_HANDED_DOWN: ReadonlySet<ActionClass> = new Set(["message.external", "worktree.merge", "browser.cookies"]);
 export const SPAWN_GRANTABLE: ReadonlySet<ActionClass> = new Set([
-	...ACTION_CLASSES.filter(
-		(action) => kindOf(action) !== undefined && action !== "message.external" && action !== "worktree.merge",
-	),
+	...ACTION_CLASSES.filter((action) => kindOf(action) !== undefined && !NEVER_HANDED_DOWN.has(action)),
 	...PROFILE_DECLARABLE,
 ]);
 

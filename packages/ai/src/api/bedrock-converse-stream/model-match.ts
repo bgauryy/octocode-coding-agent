@@ -52,6 +52,24 @@ export function isAnthropicClaudeModel(model: Model<"bedrock-converse-stream">):
 }
 
 /**
+ * Amazon Nova models that take explicit cache checkpoints, per "Supported models, Regions, and explicit caching limits"
+ * (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, fetched 2026-11-08): Nova 2 Lite, Nova Pro,
+ * Nova Lite and Nova Micro, on `system` and `messages` only (not `tools`), with the 5-minute TTL only, at most four
+ * checkpoints and at most 20K cached tokens. Other Nova models (Premier) keep implicit caching.
+ */
+const NOVA_EXPLICIT_CACHE_TOKENS = ["nova-2-lite-v1", "nova-pro-v1", "nova-lite-v1", "nova-micro-v1"] as const;
+
+export function isNovaExplicitCacheModel(model: Pick<Model<"bedrock-converse-stream">, "id" | "name">): boolean {
+	const candidates = getModelMatchCandidates(model.id, model.name);
+	return candidates.some((candidate) => NOVA_EXPLICIT_CACHE_TOKENS.some((token) => candidate.includes(token)));
+}
+
+/** Whether the model takes cache checkpoints in its `tools` list; Nova accepts them only on system and messages. */
+export function supportsToolCachePoint(model: Model<"bedrock-converse-stream">): boolean {
+	return !isNovaExplicitCacheModel(model);
+}
+
+/**
  * Check if the model supports prompt caching.
  * Supported: Claude 3.5 Haiku, Claude 3.7 Sonnet, Claude 4.x models, Claude 5 models
  *
@@ -61,9 +79,10 @@ export function isAnthropicClaudeModel(model: Model<"bedrock-converse-stream">):
  * For application inference profiles (whose ARNs don't contain the model name),
  * also checks model.name which is user-controlled via models.json or registerProvider.
  * As a last resort, set AWS_BEDROCK_FORCE_CACHE=1 to enable cache points.
- * Amazon Nova models have automatic caching and don't need explicit cache points.
+ * Amazon Nova models AWS lists for explicit caching take cache points too ({@link isNovaExplicitCacheModel}).
  */
 export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, env?: ProviderEnv): boolean {
+	if (isNovaExplicitCacheModel(model)) return true;
 	const candidates = getModelMatchCandidates(model.id, model.name);
 
 	const hasClaudeRef = candidates.some((s) => s.includes("claude"));
@@ -92,12 +111,13 @@ export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, e
  * https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-1.html), Sonnet 4.5 lists
  * "5 minutes, 1 hour" (https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-5.html),
  * and https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html lists one hour for Claude 5.x, Opus 4.5
- * and later, Sonnet 4.6 and later and Haiku 4.5. A `ttl` on a five-minute-only model can be rejected with a
+ * and later, Sonnet 4.6 and later and Haiku 4.5. Claude 3.x is classified as five-minute-only by its absence from that
+ * one-hour table, not by a model-card quote. A `ttl` on a five-minute-only model can be rejected with a
  * ValidationException. Unknown and newer models keep the one-hour TTL.
  */
 const FIVE_MINUTE_ONLY_CLAUDE = /(?:sonnet|opus)-4(?:-0(?!\d)|-20\d{6}|(?!-\d))|opus-4-1(?!\d)|claude-3-/;
 
-export function supportsOneHourCacheTtl(modelId: string, modelName?: string): boolean {
+function supportsOneHourCacheTtl(modelId: string, modelName?: string): boolean {
 	// Only the separator-normalized forms: in a raw "claude-sonnet-4.5" the "sonnet-4" is followed by "." and would match.
 	const normalized = getModelMatchCandidates(modelId, modelName).map((value) => value.replace(NAME_SEPARATORS, "-"));
 	return !normalized.some((candidate) => FIVE_MINUTE_ONLY_CLAUDE.test(candidate));
@@ -108,5 +128,8 @@ export function supportsOneHourCacheTtl(modelId: string, modelName?: string): bo
  * otherwise the model rule does ({@link supportsOneHourCacheTtl}). The adapter and the model capabilities both use it.
  */
 export function bedrockSupportsLongCacheRetention(model: Model<"bedrock-converse-stream">): boolean {
-	return model.compat?.supportsLongCacheRetention ?? supportsOneHourCacheTtl(model.id, model.name);
+	return (
+		model.compat?.supportsLongCacheRetention ??
+		(!isNovaExplicitCacheModel(model) && supportsOneHourCacheTtl(model.id, model.name))
+	);
 }

@@ -182,6 +182,7 @@ function profileMessages(traffic: readonly Traffic[]): ProfileMessage[] {
 			text: message.text,
 			...(message.deliveredAt === undefined ? {} : { deliveredMs: Math.max(0, message.deliveredAt - message.at) }),
 			...(answered === undefined ? {} : { answeredMs: Math.max(0, answered - message.at) }),
+			...(message.dropped === undefined ? {} : { dropped: message.dropped }),
 		};
 	});
 }

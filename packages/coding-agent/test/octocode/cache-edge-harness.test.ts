@@ -135,6 +135,31 @@ describe("retention with no settings", () => {
 		expect(withLong).toBeGreaterThan(500);
 	});
 
+	// A marker adapter sends long history on a model with no long tier at the 5m short lifetime, so the warmer and
+	// compaction plan with the short tier instead of no lifetime.
+	it("plans with the short tier for long history on marker models without a long tier", async () => {
+		unset();
+		const models = await runtime();
+		const settings = SettingsManager.inMemory({});
+		const lifetimes = new PromptCacheLifetimes();
+		const opus41 = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-1-20250805-v1:0") as Model<Api>;
+		expect(resolveModelCapabilities(opus41).cache).toEqual({ mechanism: "markers", lifetimes: { short: 300 } });
+		expect(child(models, opus41, settings).ttlMs).toBe(300_000);
+		let shortOnly = 0;
+		for (const provider of getBuiltinProviders()) {
+			for (const model of getBuiltinModels(provider) as Model<Api>[]) {
+				const { mechanism, lifetimes: tiers } = resolveModelCapabilities(model).cache;
+				if (mechanism !== "markers" || tiers.long !== undefined || tiers.short === undefined) continue;
+				shortOnly++;
+				const id = `${provider}/${model.id}`;
+				expect({ id, ttlMs: child(models, model, settings).ttlMs }).toEqual({ id, ttlMs: tiers.short * 1000 });
+				const compaction = promptCacheTtlMs(lifetimes.of(model), { [CACHE_RETENTION_ENV]: "long" });
+				expect({ id, compaction }).toEqual({ id, compaction: tiers.short * 1000 });
+			}
+		}
+		expect(shortOnly).toBeGreaterThan(0);
+	});
+
 	/** The runtime a one-shot `octocode -p` run builds (`runtime-factory.ts`), in an isolated home and project. */
 	const printRuntime = async () => {
 		const root = tmp("octocode-print-");

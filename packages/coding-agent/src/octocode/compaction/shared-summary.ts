@@ -7,13 +7,14 @@ import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { withoutHiddenDeclarations } from "../../core/hidden-declarations.ts";
 import { convertToLlm } from "../../core/messages.ts";
-import { sessionCleared, sessionClearedAt } from "../files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clipText, contentText } from "../shared/util.ts";
-import { requestMessages } from "./thinking.ts";
+import { latestReminderOnly } from "../shared/reminder-view.ts";
+import { prefixRewritten } from "./clearing.ts";
+import { requestView } from "./request-view.ts";
 
 /**
  * The summary request that reads the conversation from the prompt cache. Octocode's `compact()` serializes the conversation
@@ -124,7 +125,9 @@ function overCap(response: AssistantMessage, text: string, cap: number): boolean
  * for every failure, so the caller can say why it falls back to a request that bills the whole input; `userChoice` marks
  * blocked images, the user's own setting, which needs no warning. A cancel (abort) reports nothing. `cacheCold`: the
  * history's cache entry has expired, so this request has nothing to read there, and what it would write is never read,
- * because the summary replaces those messages in the next request.
+ * because the summary replaces those messages in the next request. A request that rewrites the prefix anyway
+ * (`prefixRewritten`: a switch of a physical session model since the last reply, or a trailing update the transcript folds into the leading
+ * prompt) is cold the same way.
  */
 export async function sharedSummary(
 	api: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings" | "getHiddenDeclarations">,
@@ -146,13 +149,14 @@ export async function sharedSummary(
 		if (settings.images?.blockImages) return fail("images are blocked in settings", true);
 		const { preparation } = event;
 		const projection = ctx.sessionManager.buildSessionProjection();
-		// The projection plus the transform Octocode's own `context` handler applies to every real request.
-		const messages = requestMessages(
-			withoutHiddenDeclarations(projection.messages, new Set(api.getHiddenDeclarations())),
+		// The projection as every live request sends it: Octocode's own `context` transform (`requestView`) and, in a
+		// child, only the latest identity reminder, so the cached prefix is the same.
+		const messages = requestView(
+			latestReminderOnly(withoutHiddenDeclarations(projection.messages, new Set(api.getHiddenDeclarations()))),
+			ctx.sessionManager,
 			model,
-			sessionCleared(ctx.sessionManager),
-			sessionClearedAt(ctx.sessionManager),
 		);
+		const cold = cacheCold || prefixRewritten(messages, model);
 		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
 		const prompt = [
 			SHARED_SUMMARY_PROMPT,
@@ -169,8 +173,9 @@ export async function sharedSummary(
 		const options: SimpleStreamOptions = {
 			...sessionCachePreferences(ctx, model, settings),
 			// The instruction preference stays as asked. octocode-ai treats history `none` as none for the whole prompt today
-			// (`resolveInstructionCacheRetention`), and drops the session's routing id with it: nothing cached is lost.
-			...(cacheCold ? { cacheRetention: "none" as const } : {}),
+			// (`resolveInstructionCacheRetention`), and the adapters drop the session's cache routing id with it (OpenCode keeps
+			// its required `x-opencode-session` header): nothing cached is lost.
+			...(cold ? { cacheRetention: "none" as const } : {}),
 			// The session's own thinking level, budgets, transport and routing id: each one changes what the provider caches.
 			...(level === "off" ? {} : { reasoning: level }),
 			...(settings.thinkingBudgets ? { thinkingBudgets: settings.thinkingBudgets } : {}),

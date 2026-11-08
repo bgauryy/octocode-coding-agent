@@ -13,6 +13,7 @@ const DESCRIPTIONS = {
 	session: "later ones like it run unasked until this session ends",
 	kind: "every one of this kind runs unasked until this session ends",
 	deny: "the agent is told you refused",
+	denySession: "later ones like it are refused unasked until this session ends",
 	note: "type what to do instead; esc returns here",
 };
 
@@ -21,6 +22,7 @@ interface Labels {
 	session?: string;
 	kind?: string;
 	deny: string;
+	denySession?: string;
 	note: string;
 	noteTitle: string;
 }
@@ -48,6 +50,7 @@ export function permissionView(
 		...(labels.session ? { [labels.session]: DESCRIPTIONS.session } : {}),
 		...(labels.kind ? { [labels.kind]: DESCRIPTIONS.kind } : {}),
 		[labels.deny]: DESCRIPTIONS.deny,
+		...(labels.denySession ? { [labels.denySession]: DESCRIPTIONS.denySession } : {}),
 		[labels.note]: DESCRIPTIONS.note,
 	};
 	const lines = cardLines(request, mode, "").map(systemNote);
@@ -68,7 +71,7 @@ export function permissionView(
 		options: choices.map((label) => ({
 			label,
 			...(described[label] ? { description: described[label] } : {}),
-			...(label === labels.deny ? { tone: "danger" as const } : {}),
+			...(label === labels.deny || label === labels.denySession ? { tone: "danger" as const } : {}),
 		})),
 		writeIn: { label: labels.note, title: labels.noteTitle, placeholder: "what to do instead" },
 	};

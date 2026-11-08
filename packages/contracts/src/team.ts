@@ -70,4 +70,12 @@ export interface Traffic {
 	/** When the first recipient took it (epoch ms); absent while every delivery is still queued. */
 	deliveredAt?: number;
 	state: "queued" | "delivered" | "awaiting reply" | "answered" | "dead-lettered";
+	/** The recipients that left the team without reading it (`read` false) or, for a question, without answering it; absent when none did. */
+	dropped?: TrafficDrop[];
+}
+
+/** One recipient that dropped a message (`Traffic.dropped`). */
+export interface TrafficDrop {
+	recipient: string;
+	read: boolean;
 }

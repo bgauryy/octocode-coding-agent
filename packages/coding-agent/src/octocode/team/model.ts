@@ -152,6 +152,10 @@ export function toTraffic(row: Row, deliveries: Row[]): Traffic {
 	const deliveredAt = Math.min(
 		...deliveries.map((d) => (typeof d.delivered_at === "number" ? d.delivered_at : Infinity)),
 	);
+	// A failed relay request is the parent's errand, not a message it read or dropped (its `note` says why it failed).
+	const dropped = deliveries
+		.filter((d) => d.dead_at !== null && (d.relay_to === null || d.relay_to === undefined))
+		.map((d) => ({ recipient: String(d.recipient), read: d.delivered_at !== null }));
 	return {
 		id: num(row.id),
 		from: String(row.sender),
@@ -161,6 +165,7 @@ export function toTraffic(row: Row, deliveries: Row[]): Traffic {
 		...(typeof replyTo === "number" ? { replyTo } : {}),
 		...(Number.isFinite(deliveredAt) ? { deliveredAt } : {}),
 		state,
+		...(dropped.length > 0 ? { dropped } : {}),
 	};
 }
 

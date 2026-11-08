@@ -48,6 +48,18 @@ async function bedrockPoints(
 	model: Model<"bedrock-converse-stream">,
 	options: StreamOptions = { cacheRetention: "long" },
 ): Promise<CachePoint[]> {
+	const payload = await bedrockPayload(model, options);
+	return [
+		...(payload.toolConfig?.tools ?? []),
+		...(payload.system ?? []),
+		...payload.messages.flatMap((message) => message.content),
+	].flatMap((block) => (block.cachePoint ? [block.cachePoint] : []));
+}
+
+async function bedrockPayload(
+	model: Model<"bedrock-converse-stream">,
+	options: StreamOptions = { cacheRetention: "long" },
+): Promise<BedrockPayload> {
 	let payload: BedrockPayload | undefined;
 	const context = normalizeContext({
 		systemPrompt: "Stable instructions",
@@ -63,11 +75,7 @@ async function bedrockPoints(
 		},
 	}).result();
 	if (!payload) throw new Error("payload not captured");
-	return [
-		...(payload.toolConfig?.tools ?? []),
-		...(payload.system ?? []),
-		...payload.messages.flatMap((message) => message.content),
-	].flatMap((block) => (block.cachePoint ? [block.cachePoint] : []));
+	return payload;
 }
 
 describe("Bedrock one-hour cache points per model", () => {
@@ -88,18 +96,17 @@ describe("Bedrock one-hour cache points per model", () => {
 		for (const point of points) expect(point.ttl).toBe("1h");
 	});
 
-	it.each([
-		"us.anthropic.claude-sonnet-4-20250514-v1:0",
-		"global.anthropic.claude-sonnet-4-20250514-v1:0",
-		"us.anthropic.claude-opus-4-1-20250805-v1:0",
-	] as const)("sends five-minute points on %s instead of a ttl it rejects", async (id) => {
-		const points = await bedrockPoints(getBuiltinModel("amazon-bedrock", id));
-		expect(points.length).toBeGreaterThan(0);
-		for (const point of points) expect(point.ttl).toBeUndefined();
-	});
+	it.each(["us.anthropic.claude-opus-4-1-20250805-v1:0", "anthropic.claude-opus-4-1-20250805-v1:0"] as const)(
+		"sends five-minute points on %s instead of a ttl it rejects",
+		async (id) => {
+			const points = await bedrockPoints(getBuiltinModel("amazon-bedrock", id));
+			expect(points.length).toBeGreaterThan(0);
+			for (const point of points) expect(point.ttl).toBeUndefined();
+		},
+	);
 
 	it("lets an explicit supportsLongCacheRetention override the model rule", async () => {
-		const base = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-20250514-v1:0");
+		const base = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-1-20250805-v1:0");
 		const points = await bedrockPoints({ ...base, compat: { ...base.compat, supportsLongCacheRetention: true } });
 		for (const point of points) expect(point.ttl).toBe("1h");
 	});
@@ -116,7 +123,7 @@ describe("Bedrock one-hour cache points per model", () => {
 		"anthropic/claude-opus-4-1@20250805",
 		"claude-opus-4@20250514",
 	])("sends five-minute points for an application inference profile named %s", async (name) => {
-		const base = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-20250514-v1:0");
+		const base = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-1-20250805-v1:0");
 		const profile = {
 			...base,
 			id: "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc123",
@@ -129,7 +136,6 @@ describe("Bedrock one-hour cache points per model", () => {
 
 	// Layered retention on a five-minute-only model: no layer may carry a ttl, whichever layer asks for long.
 	it.each([
-		{ model: "us.anthropic.claude-sonnet-4-20250514-v1:0", history: "short", instructions: "long" },
 		{ model: "us.anthropic.claude-opus-4-1-20250805-v1:0", history: "short", instructions: "long" },
 		{ model: "us.anthropic.claude-opus-4-1-20250805-v1:0", history: "long", instructions: "short" },
 	] as const)(
@@ -163,9 +169,40 @@ describe("Bedrock one-hour cache points per model", () => {
 		for (const point of points) expect(point.ttl).toBe("1h");
 	});
 
-	it.todo(
-		"Nova explicit cache points (system and messages only, 5m, 20K-token cap): a product decision, see decisionsForUser",
-	);
+	/**
+	 * AWS "Supported models, Regions, and explicit caching limits"
+	 * (https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, fetched 2026-11-08) lists Nova 2 Lite,
+	 * Nova Pro, Nova Lite and Nova Micro with explicit cache checkpoints on `system` and `messages` only, a 5-minute TTL
+	 * only (a `ttl` field "can result in a ValidationException") and at most four checkpoints. Nova Premier is not
+	 * listed and keeps implicit caching.
+	 */
+	it.each([
+		"us.amazon.nova-pro-v1:0",
+		"amazon.nova-lite-v1:0",
+		"eu.amazon.nova-micro-v1:0",
+		"global.amazon.nova-2-lite-v1:0",
+	] as const)("%s: ttl-less cache points on system and messages, none on tools", async (id) => {
+		const model = getBuiltinModel("amazon-bedrock", id);
+		for (const retention of ["long", "short"] as const) {
+			const payload = await bedrockPayload(model, {
+				cacheRetention: retention,
+				instructionCacheRetention: retention,
+			});
+			expect(payload.toolConfig?.tools.some((block) => block.cachePoint)).toBe(false);
+			expect(payload.system?.filter((block) => block.cachePoint).map((block) => block.cachePoint)).toEqual([
+				{ type: "default" },
+			]);
+			expect(payload.messages.at(-1)?.content.at(-1)?.cachePoint).toEqual({ type: "default" });
+		}
+		expect(resolveModelCapabilities(model, {}).cache).toEqual({ mechanism: "markers", lifetimes: { short: 300 } });
+		expect(await bedrockPoints(model, { cacheRetention: "none", instructionCacheRetention: "none" })).toEqual([]);
+	});
+
+	it("keeps Nova Premier, which AWS does not list for explicit caching, on implicit caching", async () => {
+		const model = getBuiltinModel("amazon-bedrock", "us.amazon.nova-premier-v1:0");
+		expect(await bedrockPoints(model)).toEqual([]);
+		expect(resolveModelCapabilities(model, {}).cache.mechanism).toBe("implicit");
+	});
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -344,15 +381,12 @@ const claudeRoutes = getBuiltinProviders().flatMap((provider) =>
  *   (Sonnet 4.5 is missing from the prompt-caching table but its card lists one hour)
  * - https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html: "5 minutes, 1 hour" for Claude 5.x,
  *   Opus 4.5-4.8, Sonnet 4.6 and Haiku 4.5
- * Every other catalog Bedrock Claude model accepts one hour.
+ * Every other catalog Bedrock Claude model accepts one hour. Sonnet 4 reached end of life on 2026-10-14 and is not in
+ * the catalog.
  */
 const FIVE_MINUTE_ONLY_BEDROCK_IDS = [
 	"anthropic.claude-opus-4-1-20250805-v1:0",
-	"apac.anthropic.claude-sonnet-4-20250514-v1:0",
-	"eu.anthropic.claude-sonnet-4-20250514-v1:0",
-	"global.anthropic.claude-sonnet-4-20250514-v1:0",
 	"us.anthropic.claude-opus-4-1-20250805-v1:0",
-	"us.anthropic.claude-sonnet-4-20250514-v1:0",
 ];
 
 /** The longest TTL the route documents for this model: one hour, except Bedrock models that accept only five minutes. */

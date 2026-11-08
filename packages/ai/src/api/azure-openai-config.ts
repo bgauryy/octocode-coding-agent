@@ -133,17 +133,44 @@ export function azureAcceptsExtendedRetention(model: Model<Api>): boolean {
 	return declared ?? AZURE_EXTENDED_RETENTION_MODELS.has(model.id);
 }
 
+/**
+ * Whether an Azure deployment opted in to OpenAI's explicit cache mode with `compat.supportsExplicitPromptCacheMode`.
+ * Standard pay-as-you-go deployments of GPT-5.6 and later accept `prompt_cache_options` and a 12h TTL; provisioned
+ * GPT-5.6 deployments reject breakpoints, and the adapter cannot tell the deployment types apart, so it is never assumed.
+ */
+export function azureSupportsExplicitPromptCacheMode(model: Pick<Model<Api>, "compat">): boolean {
+	return (
+		(model.compat as { supportsExplicitPromptCacheMode?: boolean } | undefined)?.supportsExplicitPromptCacheMode ===
+		true
+	);
+}
+
+/**
+ * Whether the Azure request may use the long tier: the 12h TTL in explicit mode, unless
+ * `compat.supportsLongCacheRetention: false`, and otherwise the 24h retention policy.
+ */
+export function azureSupportsLongCacheRetention(model: Model<Api>): boolean {
+	if (!azureSupportsExplicitPromptCacheMode(model)) return azureAcceptsExtendedRetention(model);
+	return (model.compat as { supportsLongCacheRetention?: boolean } | undefined)?.supportsLongCacheRetention !== false;
+}
+
 // GPT-6 Astra supports prompt cache breakpoints on Standard and PTU-M deployments; earlier models, GPT-5.6 included,
 // do not on provisioned deployments. Verified 2026-11-08 against the prompt-caching page above. A 12h TTL is
-// documented only for "supported Responses API deployments", so breakpoints keep the 30m default in implicit mode.
+// documented only for "supported Responses API deployments", so without the explicit-mode opt-in its breakpoints keep
+// the 30m default in implicit mode.
 const AZURE_BREAKPOINT_MODELS = new Set(["gpt-6-astra"]);
 
-/** TTL of the explicit breakpoints on the leading instructions of an Azure request, or undefined for none. */
+/** Whether an Azure Responses model gets 30m breakpoints on its leading instructions without explicit mode. */
+export function azureSupportsInstructionBreakpoints(model: Pick<Model<Api>, "id">): boolean {
+	return AZURE_BREAKPOINT_MODELS.has(model.id);
+}
+
+/** TTL of the 30m instruction breakpoints of an Azure model outside explicit mode (GPT-6 Astra), or undefined for none. */
 export function azureInstructionCacheTtl(
-	model: Pick<Model<Api>, "id">,
+	model: Pick<Model<Api>, "id" | "compat">,
 	options: Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "env"> | undefined,
 ): "30m" | undefined {
-	if (!AZURE_BREAKPOINT_MODELS.has(model.id)) return undefined;
+	if (azureSupportsExplicitPromptCacheMode(model) || !azureSupportsInstructionBreakpoints(model)) return undefined;
 	if (resolveCacheRetention(options?.cacheRetention, options?.env) === "none") return undefined;
 	const instructions = resolveInstructionCacheRetention(options);
 	return instructions === undefined || instructions === "none" ? undefined : "30m";

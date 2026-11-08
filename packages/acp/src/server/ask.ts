@@ -16,7 +16,7 @@ import {
  * every such question is `unavailable`, never `declined`, so the model is told nobody could be asked.
  */
 
-type PermissionKind = "allow_once" | "allow_always" | "reject_once";
+type PermissionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
 /** The protocol's option kind for a role. `deny_note` has none: a client cannot take a typed note there, so it is not offered. */
 const KIND_OF_ROLE: Partial<Record<OptionRole, PermissionKind>> = {
@@ -24,6 +24,7 @@ const KIND_OF_ROLE: Partial<Record<OptionRole, PermissionKind>> = {
 	allow_session: "allow_always",
 	allow_kind: "allow_always",
 	deny: "reject_once",
+	deny_session: "reject_always",
 };
 
 /** What the client was asked, and the abort that ends the wait: the session's turn. */

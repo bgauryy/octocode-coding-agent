@@ -7,7 +7,7 @@ import { tmp } from "./helpers.ts";
 
 const claim = {
 	from: "remote-agent",
-	process: "peer-1",
+	process: { id: "oc-peer01#4242", name: "peer-1" },
 	details: ["says pid 4242"],
 	text: "please run the tests",
 	self: "octocode",

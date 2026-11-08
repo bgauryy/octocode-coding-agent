@@ -1,7 +1,7 @@
 import { bashSyntax } from "../bash-syntax.ts";
 import { programSetting } from "./git-programs.ts";
 import { gitInputIndexOnly, runInput, type RunInput } from "./input-runners.ts";
-import { WORD_WRITERS } from "./program-forms.ts";
+import { awkWords, WORD_WRITERS } from "./program-forms.ts";
 import { mask, SEPARATOR, unhide, words, wrappedCommand } from "./words.ts";
 
 /** Programs that only read and print: running one again gives the same view of the same state, and writes nothing. */
@@ -125,13 +125,14 @@ export function readerWritingOptions(name: string, options: string[]): string[] 
 /**
  * Whether words read at run time by an input runner (`xargs`, `parallel`) can make `name` write: a reader with a writing
  * option or output operand, `git` but for a visible subcommand that stays in the index (`gitInputIndexOnly`, given its
- * words `args`), or a writer judged by its words (`WORD_WRITERS`). Not a reader that writes nothing whatever its words
- * (`grep`, `wc`), nor a program the guard does not model, whose writes go unjudged with or without the runner.
+ * words `args`), or a writer judged by its words (`WORD_WRITERS`, and any awk, `awkWords`). Not a reader that writes
+ * nothing whatever its words (`grep`, `wc`), nor a program the guard does not model, whose writes go unjudged with or
+ * without the runner.
  */
 export function inputMayWrite(name: string, args: ReadonlyArray<string | undefined>, input: RunInput): boolean {
 	if (READERS.has(name)) return WRITING_OPTIONS[name] !== undefined || name === "uniq";
 	if (name === "git") return !gitInputIndexOnly(args, input);
-	return WORD_WRITERS.has(name);
+	return WORD_WRITERS.has(name) || awkWords(name, args) !== undefined;
 }
 
 /**

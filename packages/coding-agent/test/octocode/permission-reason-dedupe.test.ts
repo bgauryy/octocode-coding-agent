@@ -30,6 +30,7 @@ async function askFor(command: string) {
 		spawnGrants: new Set(),
 		kinds: new Set(),
 		grants: new Map(),
+		denials: new Map(),
 		snapshotMs: undefined,
 		relay: false,
 		isSubagent: false,

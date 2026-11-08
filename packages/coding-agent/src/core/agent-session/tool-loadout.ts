@@ -17,7 +17,7 @@ import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.
 import { selectsToolPrefix } from "./tool-selection.ts";
 import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
-import { toolsToActivate, toToolInfo } from "./tool-loadout/activation.ts";
+import { companionFloor, toolsToActivate, toToolInfo, withCompanions } from "./tool-loadout/activation.ts";
 import { runPrepareLoadoutHooks } from "./tool-loadout/prepare-hooks.ts";
 import { buildBaseSystemPromptOptions } from "./tool-loadout/prompt-options.ts";
 
@@ -46,6 +46,8 @@ export class SessionToolLoadout {
 	private _allowlistFiltersMcp = false;
 	private _excludedTools?: (name: string) => boolean;
 	private readonly _excludedEntries: readonly string[];
+	/** Companions of the selected tools (`ToolDefinition.companionTools`): registered whatever the selection says. */
+	private _companionFloor: ReadonlySet<string> = new Set();
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	/** Declared tools whose declarations requests leave out, from `prepareLoadout` hooks. */
@@ -159,6 +161,19 @@ export class SessionToolLoadout {
 	 * tools registered but never active, so hook calls to a server still find them (see `_isActivatable`).
 	 */
 	private _isAllowedTool(name: string): boolean {
+		return this._isSelectedTool(name) || (this._companionFloor.has(name) && !this._excludedTools?.(name));
+	}
+
+	/** The companions of a registered native or base tool; an extension or SDK tool's `companionTools` are ignored. */
+	private _trustedCompanions(name: string): readonly string[] | undefined {
+		const entry = this._toolDefinitions.get(name);
+		if (!entry) return undefined;
+		const trusted = entry.sourceInfo.owner === "native" || this._baseToolDefinitions.get(name) === entry.definition;
+		return trusted ? entry.definition.companionTools : undefined;
+	}
+
+	/** Whether `--tools` and `--exclude-tools` select the tool, before companions are added. */
+	private _isSelectedTool(name: string): boolean {
 		if (this._excludedTools?.(name)) return false;
 		return !this._allowedTools || this._allowedTools(name) || (!this._allowlistFiltersMcp && isMcpToolName(name));
 	}
@@ -200,7 +215,8 @@ export class SessionToolLoadout {
 	 */
 	private _applyToolLoadout(toolNames: string[]): AgentTool[] {
 		const namespaceOf = (name: string) => this._toolDefinitions.get(name)?.definition.namespace?.name;
-		const tools = orderToolNames(toolNames, namespaceOf).flatMap((name) => {
+		const names = withCompanions(toolNames, (name) => this._trustedCompanions(name));
+		const tools = orderToolNames(names, namespaceOf).flatMap((name) => {
 			const tool = this._toolRegistry.get(name);
 			return tool && this._getToolExposure(name) !== "hidden" && this._isActivatable(name) ? [tool] : [];
 		});
@@ -294,9 +310,18 @@ export class SessionToolLoadout {
 		);
 		const previousActiveToolNames = this.host.session.getActiveToolNames();
 		const allowedTools = this._allowedTools;
+		const registeredTools = this.host.session.extensionRunner.getAllRegisteredTools();
+		// Only native and base tools may name companions: an extension tool's companions never get past `--tools`.
+		this._companionFloor = companionFloor(
+			[
+				...this._baseToolDefinitions.values(),
+				...registeredTools.filter((tool) => tool.sourceInfo.owner === "native").map((tool) => tool.definition),
+			],
+			(name) => this._isSelectedTool(name),
+		);
 
 		const { allCustomTools, definitions, promptSnippets, promptGuidelines } = buildToolDefinitionRegistry(
-			this.host.session.extensionRunner.getAllRegisteredTools(),
+			registeredTools,
 			this._customTools,
 			this._baseToolDefinitions,
 			(name) => this._isAllowedTool(name),

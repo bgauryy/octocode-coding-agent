@@ -4,14 +4,14 @@ import { bashSyntax } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { homeSpelling } from "../file-access.ts";
-import { gitLocation, optionValues } from "./destinations.ts";
+import { destinations, gitLocation, literalCommand, optionValues } from "./destinations.ts";
 import { gitOptionsEnd, operandsOf, SHELL_PROGRAMS, scriptOf, type Word } from "./program-forms.ts";
-import { base, wrappedCommand } from "./words.ts";
+import { base, fedToPipe, mask, nestedScripts, SEPARATOR, unhide, words, wrappedCommand } from "./words.ts";
 
 /**
  * The git commands in a bash command line that land commits on a branch, and where they act, for the `worktree.merge`
- * ask (`permission/landing.ts`). Read through the bash parse: wrappers, lists, `cd`, `git -C`, `git -c`, `sh -c` and
- * `eval`. It is a guard against mistakes, not a boundary: a script, a git alias or a directory the parse cannot follow
+ * ask (`permission/landing.ts`). Read through the bash parse: wrappers, lists, `cd`, `git -C`, `git -c`, `sh -c`, `eval`,
+ * a shell's heredoc, herestring or piped `echo` (as `shell/git-state.ts` reads them) and `find -exec`. It is a guard against mistakes, not a boundary: a script, a git alias or a directory the parse cannot follow
  * is not seen, and the session's normal rules apply to it. That includes a program word the shell computes (`$g merge`,
  * `${GIT} push . x:main`) or a shell alias: the result has no "uncertain" state, and the consumer (`permission/landing.ts`)
  * treats anything it cannot determine as no landing, so such a line yields nothing rather than a guess that would ask
@@ -237,68 +237,134 @@ const REF_MOVES: ReadonlyMap<string, (words: Word[]) => (SwitchedBranch | undefi
 	["reset", (words) => (resetMoves(words) ? [undefined] : [])],
 ]);
 
+/**
+ * For each shell given no `-c`, in line order, the scripts it reads on standard input: its heredoc or herestring, or what a
+ * pipe feeds it (`echo … | sh`), read as `shell/git-state.ts` reads them. The bash parse does not model heredocs, so this
+ * word reading supplies them.
+ */
+function stdinFeeds(text: string): string[][] {
+	const bodies: string[] = [];
+	const parts = mask(text, bodies).split(SEPARATOR);
+	const feeds: string[][] = [];
+	let piped: string[] = [];
+	for (let at = 0; at < parts.length; at += 2) {
+		const tokens = words(parts[at]);
+		const fromPipe = parts[at - 1] === "|" ? piped : [];
+		piped = fedToPipe(tokens, bodies);
+		const name = base(unhide(tokens[0] ?? ""));
+		if (SHELL_PROGRAMS.has(name) && scriptOf(tokens.map(unhide)) === undefined)
+			feeds.push(nestedScripts(name, tokens, bodies, fromPipe));
+	}
+	return feeds;
+}
+
+/** The stdin feeds of a line, the next one a shell reads, and the landings found in them. */
+interface StdinFeeds {
+	feeds: string[][];
+	next: number;
+	landings: GitLanding[];
+}
+
 function landingsIn(script: string, depth: number, env: NodeJS.ProcessEnv): GitLanding[] {
 	const found: GitLanding[] = [];
 	/** The branch each checkout was last switched to on this line, by the directories it acts on. */
 	const switched = new Map<string, SwitchedBranch>();
-	for (const part of bashSyntax(depth === 0 ? followingBareCd(script, env) : script).commands) {
-		const literals = part.tokens.map((word) => word.literal ?? homeSpelling(word.raw));
-		const programs = new Set<number>();
-		for (const index of bashCandidates(part, "deny").executables) {
-			programs.add(index);
-			const real = wrappedCommand(literals, index);
-			if (real !== undefined) programs.add(real);
-		}
-		for (const at of programs) {
-			const program = literals[at];
-			if (program === undefined) continue;
-			const name = base(program);
-			const rest = literals.slice(at + 1);
-			if (name === "git") {
-				const end = gitOptionsEnd(rest);
-				const sub = rest[end];
-				if (sub === undefined) continue;
-				const settings = [
-					...part.assignments.map(({ raw }) => raw),
-					...literals.slice(0, at).filter((word): word is string => word !== undefined),
-				];
-				const dirs = gitDirs(part, rest.slice(0, end), settings);
-				if (!dirs) continue;
-				const words = rest.slice(end + 1);
-				const key = dirs.join("\0");
-				if (sub === "switch" || sub === "checkout") {
-					const branch = switchOf(words);
-					if (branch) switched.set(key, branch);
-					// `-B` and `-C` reset an existing branch to the start point, which moves it.
-					if (branch && words.some((word) => word === "-B" || word === "-C" || word === "--force-create"))
-						found.push({ command: `git ${sub} -B`, dirs, switchedTo: branch });
-				} else if (REF_MOVES.has(sub)) {
-					const current = switched.get(key);
-					for (const moved of REF_MOVES.get(sub)!(words)) {
-						const branch = moved ?? current;
-						found.push({ command: `git ${sub}`, dirs, ...(branch ? { switchedTo: branch } : {}) });
-					}
-				} else if (LANDINGS.has(sub) && startsLanding(sub, words)) {
-					// `git rebase <upstream> <branch>` switches to `<branch>` first, and leaves HEAD there.
-					const rebased = sub === "rebase" ? rebaseBranch(words) : undefined;
-					if (rebased) switched.set(key, rebased);
-					const branch = switched.get(key);
+	const text = depth === 0 ? followingBareCd(script, env) : script;
+	const stdin: StdinFeeds = { feeds: stdinFeeds(text), next: 0, landings: [] };
+	for (const part of bashSyntax(text).commands) partLandings(part, { depth, env, switched, found, stdin });
+	// Which shell reads which feed is known only when both readings count the same shells; otherwise no feed is trusted.
+	if (stdin.next === stdin.feeds.length) found.push(...stdin.landings);
+	return found;
+}
+
+interface LineState {
+	depth: number;
+	env: NodeJS.ProcessEnv;
+	switched: Map<string, SwitchedBranch>;
+	found: GitLanding[];
+	stdin: StdinFeeds;
+}
+
+/** The landings of one simple command. */
+function partLandings(part: BashCommand, line: LineState): void {
+	const { depth, env, switched, found, stdin } = line;
+	const literals = part.tokens.map((word) => word.literal ?? homeSpelling(word.raw));
+	const programs = new Set<number>();
+	for (const index of bashCandidates(part, "deny").executables) {
+		programs.add(index);
+		const real = wrappedCommand(literals, index);
+		if (real !== undefined) programs.add(real);
+	}
+	for (const at of programs) {
+		const program = literals[at];
+		if (program === undefined) continue;
+		const name = base(program);
+		const rest = literals.slice(at + 1);
+		if (name === "git") {
+			const end = gitOptionsEnd(rest);
+			const sub = rest[end];
+			if (sub === undefined) continue;
+			const settings = [
+				...part.assignments.map(({ raw }) => raw),
+				...literals.slice(0, at).filter((word): word is string => word !== undefined),
+			];
+			const dirs = gitDirs(part, rest.slice(0, end), settings);
+			if (!dirs) continue;
+			const words = rest.slice(end + 1);
+			const key = dirs.join("\0");
+			if (sub === "switch" || sub === "checkout") {
+				const branch = switchOf(words);
+				if (branch) switched.set(key, branch);
+				// `-B` and `-C` reset an existing branch to the start point, which moves it.
+				if (branch && words.some((word) => word === "-B" || word === "-C" || word === "--force-create"))
+					found.push({ command: `git ${sub} -B`, dirs, switchedTo: branch });
+			} else if (REF_MOVES.has(sub)) {
+				const current = switched.get(key);
+				for (const moved of REF_MOVES.get(sub)!(words)) {
+					const branch = moved ?? current;
 					found.push({ command: `git ${sub}`, dirs, ...(branch ? { switchedTo: branch } : {}) });
 				}
-			} else if (depth < MAX_NESTING && part.dirs && (SHELL_PROGRAMS.has(name) || name === "eval")) {
-				const inner = name === "eval" ? (rest.includes(undefined) ? undefined : rest.join(" ")) : scriptOf(rest);
-				if (inner === undefined) continue;
-				const { dirs: outer } = part;
-				for (const landing of landingsIn(inner, depth + 1, env))
-					found.push({
-						...landing,
-						dirs: outer.flatMap((dir) => landing.dirs.map((each) => underDirectory(dir, each))),
+			} else if (LANDINGS.has(sub) && startsLanding(sub, words)) {
+				// `git rebase <upstream> <branch>` switches to `<branch>` first, and leaves HEAD there.
+				const rebased = sub === "rebase" ? rebaseBranch(words) : undefined;
+				if (rebased) switched.set(key, rebased);
+				const branch = switched.get(key);
+				found.push({ command: `git ${sub}`, dirs, ...(branch ? { switchedTo: branch } : {}) });
+			}
+		} else if (SHELL_PROGRAMS.has(name) || name === "eval") {
+			const script = name === "eval" ? (rest.includes(undefined) ? undefined : rest.join(" ")) : scriptOf(rest);
+			// A shell given no `-c` takes the next feed, wherever it runs, so the count stays aligned with `stdinFeeds`.
+			const fed = script === undefined && name !== "eval";
+			const inner = fed ? (stdin.feeds[stdin.next++] ?? []) : script === undefined ? [] : [script];
+			if (depth >= MAX_NESTING || !part.dirs) continue;
+			const { dirs: outer } = part;
+			for (const landing of inner.flatMap((each) => landingsIn(each, depth + 1, env)))
+				(fed ? stdin.landings : found).push({
+					...landing,
+					dirs: outer.flatMap((dir) => landing.dirs.map((each) => underDirectory(dir, each))),
+				});
+		} else if (depth < MAX_NESTING && name === "find") {
+			// `-exec git merge x ;` runs git where find runs, as `shell/mutation.ts` reads the payload; `-execdir` and `-okdir`
+			// run it under each starting point, and one that cannot be placed reports nothing.
+			const named = destinations(name, rest, operandsOf(rest));
+			for (const [index, payload] of (named?.payloads ?? []).entries()) {
+				const under = named?.runsUnder?.[index];
+				const dirs = under ? placedUnder(part.dirs, under.root) : part.dirs;
+				if (payload[0] !== undefined && (dirs || !under))
+					partLandings(literalCommand(payload, dirs), {
+						...line,
+						depth: depth + 1,
+						// A payload's shell reads find's input, never a feed of the line.
+						stdin: { feeds: [], next: 0, landings: [] },
 					});
 			}
 		}
 	}
-	return found;
 }
+
+/** `root` under each of `dirs` (where find runs); undefined when either cannot be placed. */
+const placedUnder = (dirs: string[] | undefined, root: string | undefined): string[] | undefined =>
+	dirs && root !== undefined ? dirs.map((dir) => underDirectory(dir, root)) : undefined;
 
 /**
  * The landing git commands of a bash line. A line the parser cannot read, or a git call whose directory it cannot place,

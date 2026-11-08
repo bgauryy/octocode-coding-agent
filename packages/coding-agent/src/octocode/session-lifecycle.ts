@@ -52,7 +52,8 @@ export function registerNativeSessionLifecycle(
 	api.on("agent_before_settle", async (event, ctx) => {
 		if (interactive(ctx, isSubagent) || event.outcome === "aborted") return undefined;
 		// A session abort (a signal to this process, a shutdown) fires ctx.signal, so `session_shutdown` runs next and stops the
-		// children; an interrupt for this agent ends the wait too.
+		// children; an interrupt for this agent ends the wait too, and so does a question from its coordinator (`team.interrupted`):
+		// the asker does not wait out the job, and the queued question continues the run.
 		const stop = ctx.signal ? AbortSignal.any([ctx.signal, team.interrupted]) : team.interrupted;
 		if (event.outcome === "error") {
 			// Handles are unref'd here as below, so the same ref'd timer keeps the process alive through the hold.

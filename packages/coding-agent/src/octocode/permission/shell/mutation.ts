@@ -4,6 +4,8 @@ import { bashSyntax, initializeBashSyntax } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { homeSpelling } from "../file-access.ts";
+import { awkEffect } from "./awk-program.ts";
+import type { ShellMutation } from "./mutation-types.ts";
 import { gitRefMove, gitRoleGlobal, gitUnread } from "./git-forms.ts";
 import { programSetting } from "./git-programs.ts";
 import { destinations, gitDestinations, literalCommand, optionValues, withoutLocations } from "./destinations.ts";
@@ -12,7 +14,6 @@ import {
 	changesGitConfig,
 	DESTINATION_ONLY,
 	FIND_ACTIONS,
-	gawkInPlace,
 	gitCommand,
 	GIT_MUTATING,
 	OPAQUE_WRITERS,
@@ -35,43 +36,6 @@ import { base, wrappedCommand } from "./words.ts";
 
 /** The shell entry points the extension wires into the team gate: this file's mutation reads and the parsed command list. */
 export { parsedShell } from "./commands.ts";
-
-/**
- * What a shell command changes, as far as its parse shows: a policy for read-only roles and team reservations, not a
- * sandbox. It sees redirections, `tee`, in-place editors, file-moving programs, git and package-manager commands that
- * change the tree, destinations named by options (`dd of=`, `curl -o`, `tar -C`, `git -C`, `git config`), commands
- * `find -exec` runs, and scripts passed to `sh -c` or `eval`. It does not see what an interpreter (`node script.js`,
- * `make`) does. A program name that is computed (`$X a b`, `$(…) a b`) is `uncertain`. `~` and `$HOME` spellings are
- * kept as `~` paths.
- */
-interface ShellMutation {
-	/** Paths the command writes, moves or removes, as written (relative to the command's cwd). */
-	writes: string[];
-	/** The `writes` that only create a directory (`mkdir`'s operands), for a policy that allows a folder it may fill. */
-	directories: string[];
-	/** Directories a change in `opaque` happens in (`.` for where the command runs, `git -C dir`'s repository): what the permission check classifies when no path is named. */
-	areas: string[];
-	/** Changes with no path to name (`git commit`, `sed -i`, `npm install`), one short description each. */
-	opaque: string[];
-	/** Git calls that are not a read a read-only role may run (`gitUnread`, `gitRoleGlobal`): the closed list only that role answers to, since most of them only read too (`git merge-base`) or stay in the repository (`git fetch`). */
-	unread: string[];
-	/** Where those calls run, for a guard about one directory. */
-	unreadAreas: string[];
-	/** Git commands that move a ref every worktree of the repository shares (`git branch -f`, `git update-ref`): `gitRefMove`. */
-	refMoves: string[];
-	/** Databases `sqlite3` opens for writing, as written; a command changes one with no other sign, so a caller decides which matter. */
-	databases: string[];
-	/** The command writes somewhere the parse could not resolve (`> $FILE`), or did not parse. */
-	uncertain: boolean;
-	/** The first reason for `uncertain` other than a `cd`: what the caller must change (`> $FILE`, a `$VAR` operand, a script the parse cannot read). */
-	uncertainBecause?: string;
-	/** `uncertain` because a relative path follows a `cd` the parse could not follow (a variable, `-`, `||`, a loop): the command can be written with absolute paths or without the `cd`. */
-	afterDirectoryChange?: true;
-	/** A relative write was also kept at the starting directory, because the `cd` before it is joined by `;` (or a newline) and may have failed; `&&` would settle it. */
-	afterUnjoinedCd?: true;
-	/** The parse gave up on (part of) the command: no parser, too large, timed out, or syntax it does not know. Its `writes` may be missing some. */
-	unparsed: boolean;
-}
 
 /** Marks the command `uncertain`, keeping the first reason. */
 function unsure(found: ShellMutation, because: string): void {
@@ -112,6 +76,7 @@ function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undef
 	for (const database of other.databases) place(into, database, dirs, moved, "databases");
 	into.uncertain ||= other.uncertain;
 	if (other.uncertainBecause) into.uncertainBecause ??= other.uncertainBecause;
+	if (other.awkUnread) into.awkUnread ??= other.awkUnread;
 	into.unparsed ||= other.unparsed;
 	if (other.afterDirectoryChange) into.afterDirectoryChange = true;
 	if (other.afterUnjoinedCd) into.afterUnjoinedCd = true;
@@ -180,6 +145,7 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 			writes: [],
 			areas: [],
 		};
+		const awk = awkEffect(name, rest);
 		if (name === "git") {
 			const move = gitRefMove(rest, sub, after);
 			if (move) found.refMoves.push(move);
@@ -232,9 +198,10 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 		} else if (name === "perl" && options.some((word) => /^-[a-zA-Z]*i/.test(word ?? ""))) {
 			changes("perl -i");
 			take(scriptedFiles(rest, /^-[a-zA-Z]*[eE]$/));
-		} else if (["awk", "gawk"].includes(name) && gawkInPlace(rest)) {
-			changes(`${name} -i inplace`);
-			take(scriptedFiles(rest, /^-[a-zA-Z]*[ef]$/));
+		} else if (awk) {
+			found.awkUnread ??= awk.because;
+			if (awk.inPlace) changes(awk.inPlace.description);
+			if (awk.inPlace) take(awk.inPlace.files);
 		} else if (OPAQUE_WRITERS.includes(name)) {
 			take(named.writes);
 			if (name === "ed" || name === "ex") take(operands);

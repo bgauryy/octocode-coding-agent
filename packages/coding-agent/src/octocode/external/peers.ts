@@ -2,8 +2,10 @@ import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { ApiClient } from "../api/client.ts";
+import { issueTicket, ownInstance } from "../api/identity.ts";
 import { probeInstances } from "../api/probe.ts";
 import { CLIENT_MARGIN_MS, WAIT_MS, WAITING_FOR_USER } from "../api/protocol.ts";
+import { ticketTarget } from "../api/registry-integrity.ts";
 import { apiDir, describeInstance, type InstanceRecord, listInstances, selectInstance } from "../api/registry.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { innermostWorktree } from "../worktrees/occupants.ts";
@@ -132,16 +134,30 @@ export class Peers {
 		signal?: AbortSignal,
 	): Promise<{ text: string; details: Record<string, unknown> }> {
 		const instances = this.instances();
-		const target = to === COORDINATOR ? await this.coordinator(ctx.cwd, instances) : selectInstance(instances, to);
-		const name = target.name ?? target.id;
-		if (target.pid === process.pid) throw notSent(`${name} is this session; name another.`);
+		const chosen = to === COORDINATOR ? await this.coordinator(ctx.cwd, instances) : selectInstance(instances, to);
+		const name = chosen.name ?? chosen.id;
+		if (chosen.pid === process.pid) throw notSent(`${name} is this session; name another.`);
+		// The ticket below lets the receiver confirm this call: only the record in its target's own file, repeated by no other, gets one.
+		let target: InstanceRecord;
+		try {
+			target = ticketTarget(apiDir(this.env), chosen);
+		} catch (error) {
+			throw notSent(errorMessage(error));
+		}
 		await this.policy.authorize({ name, cwd: target.cwd }, text, ctx, signal);
-		const own = instances.find((entry) => entry.pid === process.pid);
+		// This session's own API record: a record another process wrote with this pid does not change what it claims.
+		const own = ownInstance();
+		// The receiver calls this process back with it (`identity.confirm`) to check the claim is this process's own.
+		const ticket = issueTicket(target.id, target.socket ?? target.http?.url);
 		const params = {
 			text,
 			// The same name the reader answers to: the sender's own process name.
 			from: own?.name ?? process.title,
-			caller: { pid: process.pid, cwd: own?.cwd ?? ctx.cwd, ...(own ? { name: own.name, instanceId: own.id } : {}) },
+			caller: {
+				pid: process.pid,
+				cwd: own?.cwd ?? ctx.cwd,
+				...(own ? { name: own.name, instanceId: own.id, ticket: ticket.ticket } : {}),
+			},
 			// The receiver's user may take a while to decide: this bounds that wait, not the receiver's work.
 			timeoutMs: WAIT_MS.max,
 			...(options.replyRequired ? { replyRequired: true } : {}),
@@ -154,6 +170,7 @@ export class Peers {
 				...(signal ? { signal } : {}),
 			});
 		} catch (error) {
+			ticket.release();
 			const execution = isRecord(error) && isRecord(error.data) ? error.data.execution : undefined;
 			const notDelivered = execution === "not-sent" || (isRecord(error) && error.execution === "not-sent");
 			throw new Error(
@@ -162,8 +179,10 @@ export class Peers {
 			);
 		}
 		const queued = isRecord(receipt) ? receipt.queued : undefined;
+		// A follow-up repeats the same params (and ticket) until the receiver's user decides.
 		if (queued === WAITING_FOR_USER && isRecord(receipt))
-			void this.follow(client, name, { ...params, key: receipt.key });
+			void this.follow(client, name, { ...params, key: receipt.key }).finally(ticket.release);
+		else ticket.release();
 		const replyPath = own ? "" : " This session's API is off, so it cannot be answered; /api on turns it on.";
 		const fate =
 			queued === WAITING_FOR_USER

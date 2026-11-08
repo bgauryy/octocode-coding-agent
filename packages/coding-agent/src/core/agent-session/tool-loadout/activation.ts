@@ -51,3 +51,23 @@ export function toolsToActivate(input: ActivationInput): string[] {
 	}
 	return added;
 }
+
+type CompanionsOf = (name: string) => readonly string[] | undefined;
+
+/** The companions of every tool the selection keeps (`ToolDefinition.companionTools`): registered whatever it says. */
+export function companionFloor(
+	definitions: Iterable<Pick<ToolDefinition, "name" | "companionTools">>,
+	isSelected: (name: string) => boolean,
+): Set<string> {
+	const floor = new Set<string>();
+	for (const { name, companionTools } of definitions)
+		if (companionTools && isSelected(name)) for (const companion of companionTools) floor.add(companion);
+	return floor;
+}
+
+/** `names` with the companions of each name added after it, once. */
+export function withCompanions(names: readonly string[], companionsOf: CompanionsOf): string[] {
+	const result = new Set(names);
+	for (const name of names) for (const companion of companionsOf(name) ?? []) result.add(companion);
+	return [...result];
+}

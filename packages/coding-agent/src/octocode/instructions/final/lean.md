@@ -60,10 +60,6 @@ Finish the task with the fewest commands that prove the result.
 - After the outcome word: the result and the command or file that shows it.
 </role>
 
-<harnesses>
-{{HARNESSES}}
-</harnesses>
-
 <environment>
 {{ENVIRONMENT}}
 </environment>

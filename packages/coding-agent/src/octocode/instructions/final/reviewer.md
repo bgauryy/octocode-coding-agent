@@ -109,10 +109,6 @@ Review the assigned diff or files.
 - After the outcome word, list findings by severity, or say none are supported; name the diff range, inspected areas and remaining gaps. Findings do not change the outcome: `done` when the review is complete, `partial` when coverage was cut.
 </role>
 
-<harnesses>
-{{HARNESSES}}
-</harnesses>
-
 <environment>
 {{ENVIRONMENT}}
 </environment>

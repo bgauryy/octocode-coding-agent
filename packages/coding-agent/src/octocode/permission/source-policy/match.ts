@@ -7,6 +7,7 @@ import { agentCall } from "../../shared/agent-call.ts";
 import { fileChanges } from "../../shared/file-input.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { canonicalPath } from "../../shared/home/repo.ts";
+import { untilCommand } from "../../shared/until-command.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
@@ -50,6 +51,14 @@ export function operations(invocation: ToolInvocation): Operation[] {
 		return [{ name: call.type === "task" ? "Agent" : `agent.${call.type ?? "unknown"}`, input: call.input }];
 	}
 	if (invocation.toolName === "bash") return [{ name: input.type === "powershell" ? "PowerShell" : "Bash", input }];
+	// A timer's until-command runs as the bash call it is: the call is both `timer` and `Bash`, so a deny or ask on either
+	// name applies and an allow needs both. A timer without one is only a `timer` call.
+	const command = invocation.toolName === "timer" ? untilCommand(input) : undefined;
+	if (command)
+		return [
+			{ name: "timer", input },
+			{ name: "Bash", input: { command } },
+		];
 	if (invocation.toolName === "web") return [{ name: typeof input.url === "string" ? "WebFetch" : "WebSearch", input }];
 	return names(invocation.toolName).map((name) => ({
 		name,

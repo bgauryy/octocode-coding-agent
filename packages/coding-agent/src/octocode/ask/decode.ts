@@ -8,8 +8,8 @@ import type { AskAnswer } from "../shared/ask-answer.ts";
  * role the reply itself carries.
  */
 
-/** A permission dialog's answer, as `permission/ask/types.ts` names it: once, this call for the session, its kind for the session, deny (with a note), or undefined when dismissed. */
-type PermissionAnswer = "once" | "session" | "kind" | "deny" | { deny: string } | undefined;
+/** A permission dialog's answer, as `permission/ask/types.ts` names it: once, this call for the session, its kind for the session, deny (with a note), deny this call for the session, or undefined when dismissed. */
+type PermissionAnswer = "once" | "session" | "kind" | "deny" | "deny_session" | { deny: string } | undefined;
 
 type Answered = Extract<Reply, { picks: string[] }>;
 type Cancelled = Extract<Reply, { cancelled: CancelReason }>;
@@ -62,7 +62,8 @@ export function askUserResult(questions: readonly Question[], replies: readonly 
 
 /**
  * The permission answer for an `approval` question, by the role of the option picked: allow_once, allow_session and
- * allow_kind allow; deny denies; deny_note denies with the text typed as the agent's note (none typed: a plain deny).
+ * allow_kind allow; deny denies; deny_session denies and remembers it for the session; deny_note denies with the text
+ * typed as the agent's note (none typed: a plain deny).
  * Undefined (dismissed) for a cancelled or missing reply, a pick that is no option of the question, an option without
  * one of those roles, and any question that is not an approval.
  */
@@ -78,6 +79,8 @@ export function permissionAnswer(question: Question, reply: Reply | undefined): 
 			return "kind";
 		case "deny":
 			return "deny";
+		case "deny_session":
+			return "deny_session";
 		case "deny_note": {
 			const note = typedOf(reply);
 			return note ? { deny: note } : "deny";

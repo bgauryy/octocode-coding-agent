@@ -50,6 +50,24 @@ function expectedCause(prepared: Prepared, k: number, before: number): string | 
 	return switched("model", "model") ?? switched("provider", "provider");
 }
 
+/** When request `k` started: a cache lifetime runs from the start of the request that wrote or read the entry. */
+function startedAt(prepared: Prepared, k: number): number {
+	const entry = prepared.entries[prepared.requests[k]];
+	const message = asRecord(entry.message);
+	const finished = Date.parse(String(entry.timestamp));
+	return num(message.timestamp) || (Number.isFinite(finished) ? finished : 0) - num(message.durationMs);
+}
+
+/**
+ * Whether the cache request `before` left had expired when request `k` started. Checked before any expected cause: a
+ * compaction or thinking change after a long gap reads nothing because the entries expired, not because it lost them.
+ */
+function outlived(prepared: Prepared, k: number, before: number, reason: string): boolean {
+	if (/idle/.test(reason)) return true;
+	const lifetime = cacheLifetimeMs(prepared, before);
+	return lifetime !== undefined && startedAt(prepared, k) - startedAt(prepared, before) >= lifetime;
+}
+
 /** Whether request `k` read at least its tools and system prefix (estimated at the floor `CHARS_PER_TOKEN` gives). */
 function readItsPrefix(prepared: Prepared, k: number, cacheRead: number): boolean {
 	const layers = requestLayers(prepared, prepared.requests[k]);
@@ -73,12 +91,15 @@ function rewriteFindings(lane: Lane, prepared: Prepared): ProfileFinding[] {
 		const severity = resent >= REWRITE_HIGH_TOKENS ? "high" : "medium";
 		const reason = request?.missReason ?? "";
 		const expected = expectedCause(prepared, k, before);
-		if (!expected && /idle/.test(reason)) {
+		const switched = expected?.includes(" switch (") === true;
+		// A model or provider switch misses whatever the age; any other miss after the lifetime ran out is an expiry.
+		if (!switched && outlived(prepared, k, before, reason)) {
+			const idleMs = request?.idleMs ?? startedAt(prepared, k) - startedAt(prepared, before);
 			found.push({
 				id: `${lane.id}:idle:${k}`,
 				kind: "cache-idle-expiry",
 				severity,
-				title: `Cache expired after ${Math.round((request?.idleMs ?? 0) / 60_000)}m idle and ${resent} tokens were sent again`,
+				title: `Cache expired after ${Math.round(idleMs / 60_000)}m idle and ${resent} tokens were sent again`,
 				detail:
 					"The gap outlived the cache lifetime. Nothing to fix unless the agent could have been kept busy or used the 1h cache.",
 				agentId: lane.id,
@@ -98,7 +119,6 @@ function rewriteFindings(lane: Lane, prepared: Prepared): ProfileFinding[] {
 						: `${broken.kind} change`
 				: reason || "unknown cause");
 		rewrites++;
-		const switched = expected?.includes(" switch (") === true;
 		// A compaction, branch summary or thinking change rewrites the history only; one that also lost the prefix is no
 		// longer explained by it.
 		const prefixLost = expected !== undefined && !switched && !readItsPrefix(prepared, k, num(usage.cacheRead));

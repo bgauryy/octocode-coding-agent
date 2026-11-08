@@ -18,6 +18,8 @@ export interface Destinations {
 	unknown?: string;
 	/** Commands `find -exec` runs, with `{}` replaced by each starting point. */
 	payloads?: Word[][];
+	/** By payload: the starting point a `-execdir`/`-okdir` payload runs under (an unresolved one stays undefined); none for `-exec`/`-ok`, which run where find runs. */
+	runsUnder?: Array<{ root: Word } | undefined>;
 }
 
 /**
@@ -145,7 +147,7 @@ function findRoots(rest: Word[]): Word[] {
 /** What a `find` action writes: `-delete` removes under its starting points, `-fprint` and `-fls` write a file, `-exec` runs a command. */
 function findDestinations(rest: Word[]): Destinations {
 	const roots = findRoots(rest);
-	const found: Destinations = { writes: [], areas: [], payloads: [] };
+	const found: Destinations = { writes: [], areas: [], payloads: [], runsUnder: [] };
 	for (let at = 0; at < rest.length; at++) {
 		const word = rest[at];
 		if (word === "-delete") found.writes.push(...roots);
@@ -153,7 +155,7 @@ function findDestinations(rest: Word[]): Destinations {
 		else if (["-exec", "-execdir", "-ok", "-okdir"].includes(word ?? "")) {
 			const end = rest.findIndex((each, index) => index > at && (each === ";" || each === "+"));
 			const words = rest.slice(at + 1, end < 0 ? undefined : end);
-			for (const root of roots)
+			for (const root of roots) {
 				found.payloads!.push(
 					words.map((each) =>
 						each === undefined || root === undefined
@@ -163,6 +165,8 @@ function findDestinations(rest: Word[]): Destinations {
 							: each.replaceAll("{}", root),
 					),
 				);
+				found.runsUnder!.push(word === "-execdir" || word === "-okdir" ? { root } : undefined);
+			}
 			at = end < 0 ? rest.length : end;
 		}
 	}

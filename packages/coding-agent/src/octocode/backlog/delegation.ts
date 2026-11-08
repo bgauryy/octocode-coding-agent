@@ -19,9 +19,10 @@ export function heldItem({ store, session }: Backlog, ref: string): Item {
 }
 
 /**
- * The item a delegation names, checked and not yet claimed: one this session already holds as is, or an unheld `todo` or
- * `backlog` item with goal and why that `claimDelegated` can claim. An epic, an item held by another session, a finished
- * one, or one without goal or why is refused with what to do.
+ * The item a delegation names, checked and not yet claimed: one this session already holds, or an unheld `todo` or
+ * `backlog` item with goal and why that `claimDelegated` can claim; either with no open `dependsOn` item. An epic, an
+ * item held by another session, a finished one, one without goal or why, or one still waiting on a prerequisite (a held
+ * one too: its prerequisite may have been reopened since the claim) is refused with what to do.
  */
 export function checkDelegable(backlog: Backlog, ref: string): { item: Item; claimable: boolean } {
 	const item = backlog.store.get(ref);
@@ -30,7 +31,11 @@ export function checkDelegable(backlog: Backlog, ref: string): { item: Item; cla
 		throw new BacklogError(
 			`${item.ref} is an epic: it follows its items, so delegate one of them (list parentId ${item.ref}).`,
 		);
-	if (item.state !== "todo" && item.state !== "backlog") return { item: heldItem(backlog, ref), claimable: false };
+	if (item.state !== "todo" && item.state !== "backlog") {
+		const held = heldItem(backlog, ref);
+		refuseWaiting(backlog, held);
+		return { item: held, claimable: false };
+	}
 	const missing = [!item.goal.trim() && "a goal (the done criterion)", !item.why.trim() && "a why (the reason)"].filter(
 		Boolean,
 	);
@@ -38,7 +43,18 @@ export function checkDelegable(backlog: Backlog, ref: string): { item: Item; cla
 		throw new BacklogError(
 			`${item.ref} is ${item.state} and needs ${missing.join(" and ")} before it can be delegated: add ${missing.length > 1 ? "them" : "it"} with backlog update, then call again.`,
 		);
+	// Refused here, before the spawn is approved: the claim would refuse it after (`entity-write.ts`, Blocked by).
+	refuseWaiting(backlog, item);
 	return { item, claimable: true };
+}
+
+/** Refuses an item with an open `dependsOn` item, naming it and how to go on. */
+function refuseWaiting({ store }: Backlog, item: Item): void {
+	const open = store.openPrerequisites(item);
+	if (open.length)
+		throw new BacklogError(
+			`${item.ref} waits on ${open.join(", ")}: start it when ${open.length > 1 ? "they are" : "it is"} done (timer until item ${item.ref} ready), or drop the link with backlog update dependsOn.`,
+		);
 }
 
 /** Claims a checked unheld item for this session through the ordinary claim (`BacklogStore.update`), as the delegation. */

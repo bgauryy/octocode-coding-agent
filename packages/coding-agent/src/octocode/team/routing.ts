@@ -201,6 +201,9 @@ export function resolveTarget(
 	const inTeam = (member: Member) => !team || team.has(member.id) || member.id === parentId || member.id === answering;
 	const named = everyone.find((member) => member.id !== from && member.id === wanted);
 	if (named && to !== "all") return inTeam(named) ? [named] : outsideTeam(named.id, parentId);
+	// `parent` is the coordinator's id, never a role: once it left, the child is told so, and how to end its run.
+	if (to === "parent" && parentId !== undefined && !outside(from))
+		return renderInstruction("notices/mail/coordinator-left.md", { parent: parentId });
 	const others = members.filter((member) => member.id !== from);
 	if (to === "all") {
 		const tree = sessionTree(members, scope);

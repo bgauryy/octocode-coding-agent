@@ -1,11 +1,11 @@
-import { type Db, backlog } from "../../../../db/src/api.ts";
+import { type Db, agentRuns, backlog } from "../../../../db/src/api.ts";
 import { type Item, parseRef } from "./item.ts";
 import { getItem, list, liveHolder } from "./reads.ts";
 import { taskCounts } from "./tasks/reads.ts";
 
 /**
- * What a line about an item says beyond its own row: the prerequisites still open, its open steps, a claim whose holder
- * ended, and for a done item what is open beneath it. `hideParent` drops the `⊂B<n>` marker where the list is already
+ * What a line about an item says beyond its own row: the prerequisites still open, its open steps, the children working
+ * on it, a claim whose holder ended, and for a done item what is open beneath it. `hideParent` drops the `⊂B<n>` marker where the list is already
  * under that parent.
  */
 export interface ItemMarks {
@@ -13,13 +13,15 @@ export interface ItemMarks {
 	openSteps?: number;
 	stale?: boolean;
 	openBelow?: string[];
+	/** The children of a live session that work on the item now (`agent` `item`), newest first. */
+	workers?: string[];
 	hideParent?: boolean;
 }
 
 /**
  * The marks of `items`, by ref; an item with nothing to mark has no entry. `self` and `parents` are the reader's own
  * sessions, whose claims are never stale. A page costs a fixed few statements (steps, prerequisites, open items below
- * the done ones) plus one per distinct holder to check.
+ * the done ones, the children working on open ones) plus one per distinct holder to check.
  */
 export function itemMarks(
 	db: Db,
@@ -39,6 +41,10 @@ export function itemMarks(
 		repo,
 		items.filter((item) => item.state === "done").map((item) => item.rowId),
 	);
+	const workers = new Map<number, string[]>();
+	const unfinished = items.filter((item) => item.state !== "done").map((item) => item.seq);
+	for (const run of agentRuns.openForItems(db, repo, unfinished))
+		workers.set(run.seq, [...(workers.get(run.seq) ?? []), run.agentId]);
 	const live = new Map<string, boolean>();
 	const holderLives = (assignee: string) => {
 		if (!live.has(assignee)) live.set(assignee, liveHolder(db, assignee) !== undefined);
@@ -60,6 +66,8 @@ export function itemMarks(
 			mark.stale = true;
 		const openBelow = item.state === "done" ? below.get(item.rowId) : undefined;
 		if (openBelow?.length) mark.openBelow = openBelow.map((seq) => `B${seq}`);
+		const working = workers.get(item.seq);
+		if (working) mark.workers = working;
 		if (Object.keys(mark).length) marks.set(item.ref, mark);
 	}
 	return marks;

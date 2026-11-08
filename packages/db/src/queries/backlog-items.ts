@@ -147,19 +147,6 @@ function whereOf(filter: ItemFilter): { clause: string; args: Array<string | num
 	return { clause: where.join(" AND "), args };
 }
 
-/** Whether an item has children (`parent_id` is row `rowId`) or an item of `repo` depends on it (`ref`, its `B<seq>`). */
-export function hasDependants(db: DatabaseSync, repo: string, rowId: number, ref: string): boolean {
-	return (
-		db
-			.prepare(
-				`SELECT 1 FROM backlog WHERE parent_id = ?
-				 UNION ALL SELECT 1 FROM backlog_links l JOIN backlog b ON b.id = l.item
-				 WHERE l.relation = 'depends_on' AND json_extract(l.target, '$.id') = ? AND b.workspace_id = ? LIMIT 1`,
-			)
-			.get(rowId, ref, repo) !== undefined
-	);
-}
-
 /** The numbers among `seqs` whose item in `repo` is done. */
 export function doneSeqs(db: DatabaseSync, repo: string, seqs: readonly number[]): Set<number> {
 	if (!seqs.length) return new Set();

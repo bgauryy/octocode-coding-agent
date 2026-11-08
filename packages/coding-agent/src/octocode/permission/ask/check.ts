@@ -1,4 +1,4 @@
-import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../../shared/permission-updates.ts";
+import type { PermissionUpdateCommit } from "../../shared/permission-updates.ts";
 import type { ToolInvocation } from "../../../core/features/types.ts";
 import { interactive } from "../../shared/interactive.ts";
 import { withDialog } from "../../shared/locks.ts";
@@ -12,7 +12,7 @@ import type { PermissionRequest } from "../request.ts";
 import { grantableSource, sourceGrantKey } from "../provenance/grant.ts";
 import { type Snapshot, takeSnapshot } from "../snapshot.ts";
 import { deniedMessage, DISMISSED, forcingReasons, headlessMessage, withPurpose } from "./text.ts";
-import type { Asker, Dialog, PermissionResolver, ReplacementCheck, Verdict } from "./types.ts";
+import type { Asker, Dialog, PermissionResolver, PrepareUpdates, ReplacementCheck, Verdict } from "./types.ts";
 
 /** What the check pipeline needs of its `Permission`: live reads of its state, its grants and its audit step. */
 export interface CheckHost {
@@ -21,12 +21,12 @@ export interface CheckHost {
 	policy(): AbortController;
 	answeredSourceAsks(): WeakSet<ToolInvocation>;
 	resolver(): PermissionResolver | undefined;
-	prepareUpdates():
-		| ((ctx: Asker, updates: readonly SourcePermissionUpdate[], signal: AbortSignal) => Promise<PermissionUpdateCommit>)
-		| undefined;
+	prepareUpdates(): PrepareUpdates | undefined;
 	readonly spawnGrants: ReadonlySet<ActionClass>;
 	readonly kinds: Set<ActionClass>;
 	readonly grants: Map<string, string>;
+	/** The user's "Deny <label> for this session" answers, by grant key: given in place of the dialog they would answer. */
+	readonly denials: Map<string, string>;
 	readonly snapshotMs: number | undefined;
 	readonly relay: boolean;
 	readonly isSubagent: boolean;
@@ -215,7 +215,10 @@ export async function checkPermission(
 			!classes.some((each) => ["net.private", "upload.outside", "agent.spawn", "worktree.merge"].includes(each));
 		if (sourceAllows && [...targetClasses].every((each) => rule(each) === "allow"))
 			return { allowed: true, via: "policy", lasts: "call" };
-		if (classes.every((each) => rule(each) === "allow")) return { allowed: true, via: "mode", lasts: "call" };
+		// A class full asks about is allowed only in bypass: the audit says `bypass`, not `mode`.
+		const bypassOnly = classes.some((each) => decide("full", each) !== "allow");
+		if (classes.every((each) => rule(each) === "allow"))
+			return { allowed: true, via: bypassOnly ? "bypass" : "mode", lasts: "call" };
 		const covered = (each: ActionClass): boolean =>
 			(sourceAllows && !targetClasses.has(each)) ||
 			rule(each) === "allow" ||
@@ -226,6 +229,16 @@ export async function checkPermission(
 	};
 	const ready = automatic();
 	if (ready) return ready.allowed ? completeAllowed(ready) : ready;
+	// The user's remembered "Deny <label> for this session": the answer a dialog would get, so only where one would be shown.
+	const remembered = (): Verdict | undefined => {
+		const denied = grantKey === undefined ? undefined : host.denials.get(grantKey);
+		if (denied === undefined) return undefined;
+		const message = deniedMessage(request, host.mode(), undefined);
+		return decided(
+			{ allowed: false, via: "user", message, lasts: "session" },
+			`The user's answer for this session: ${denied}`,
+		);
+	};
 	if (source?.dontAsk)
 		return decided({ allowed: false, via: "policy", message: "Claude dontAsk mode refuses this unapproved call" });
 	const resolver = host.resolver();
@@ -287,6 +300,8 @@ export async function checkPermission(
 			return result;
 		}
 	}
+	const refused = remembered();
+	if (refused) return refused;
 	// A relayed child asks its parent through its own dialogs; any other subagent has no one to ask.
 	if (!(host.relay ? ctx.hasUI : interactive(ctx, host.isSubagent)))
 		return decided({
@@ -308,6 +323,8 @@ export async function checkPermission(
 		// A preceding dialog may have granted this scope while this call waited. A forcing reason is never granted.
 		const now = automatic();
 		if (now) return now.allowed ? completeAllowed(now) : now;
+		const deniedMeanwhile = remembered();
+		if (deniedMeanwhile) return deniedMeanwhile;
 		const answer = await (dialog ?? host.select)(ctx, asked);
 		if (answer === undefined || signal.aborted)
 			return decided({
@@ -327,6 +344,10 @@ export async function checkPermission(
 				});
 			host.grants.set(grantKey, grant.label);
 		}
+		if (answer === "deny_session") {
+			if (!grant?.deniable || !grantKey) return decided({ allowed: false, via: "cancelled", message: DISMISSED });
+			host.denials.set(grantKey, `denied ${grant.label}`);
+		}
 		if (answer === "kind") {
 			if (!action || forced() || classes.length > 1 || kindOf(action) === undefined)
 				return decided({
@@ -343,6 +364,8 @@ export async function checkPermission(
 				lasts: answer === "once" ? "call" : "session",
 			});
 		const note = typeof answer === "object" ? answer.deny : undefined;
-		return decided({ allowed: false, via: "user", message: deniedMessage(request, host.mode(), note) }, note);
+		const message = deniedMessage(request, host.mode(), note);
+		if (answer === "deny_session") return decided({ allowed: false, via: "user", message, lasts: "session" }, note);
+		return decided({ allowed: false, via: "user", message }, note);
 	}, signal);
 }

@@ -1,21 +1,24 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
+import { abortTurn } from "./bridge/abort.ts";
 import { boundedText } from "./bridge/bounded.ts";
+import type { ExternalFacts } from "./bridge/caller.ts";
 import { TurnCeilings } from "./bridge/ceiling.ts";
 import { callExternal } from "./bridge/external-call.ts";
-import { admission, callerFrom, externalFacts } from "./bridge/caller.ts";
 import { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
 import { historyPage } from "./bridge/history.ts";
 import type { ApiOptions } from "./bridge/options.ts";
+import { recordRead } from "./bridge/reads.ts";
 import { registerExternalMessageRenderer } from "./bridge/renderer.ts";
 import { sendMessage } from "./bridge/send.ts";
+import { tellAgent } from "./bridge/tell.ts";
+import { verifyCaller } from "./bridge/verify.ts";
 import { EventLog } from "./events.ts";
+import { confirmIdentity, publishOwnInstance } from "./identity.ts";
 import {
 	clampedParam,
 	DEFAULT_EVENT_TYPES,
 	ERR,
-	MESSAGE_KEY_MAX,
 	numberParam,
 	PROTOCOL_VERSION,
 	RpcError,
@@ -193,6 +196,7 @@ export class OctocodeApi {
 			(method, params, connection) => this.dispatch(method, params, connection),
 			this.log,
 			token,
+			(connection) => this.read("events.subscribe", {}, connection),
 		);
 		try {
 			const record: InstanceRecord = {
@@ -216,6 +220,7 @@ export class OctocodeApi {
 			this.server = server;
 			this.record = record;
 			writeRecord(this.dir, record);
+			publishOwnInstance(record);
 		} catch (error) {
 			await server.close();
 			throw new Error(`Octocode API could not start: ${errorMessage(error)}`, { cause: error });
@@ -231,6 +236,7 @@ export class OctocodeApi {
 		this.lastAssistantText = "";
 		this.pendingDelta = "";
 		this.receipts.end();
+		publishOwnInstance(undefined, record);
 		if (record) removeRecord(this.dir, record.id);
 		await server?.close();
 		this.log.close();
@@ -288,23 +294,19 @@ export class OctocodeApi {
 						streaming: connection.subscribe !== undefined,
 					},
 				};
+			case "identity.confirm":
+				return confirmIdentity(params);
 			case "status":
+				this.read(method, params, connection);
 				return this.status();
 			case "message.send":
 				return this.send(params, connection);
-			case "turn.abort": {
-				const ctx = this.session();
-				this.guardSession(params, ctx);
-				const key = stringParam(params, "key", { optional: true, max: MESSAGE_KEY_MAX });
-				if (key !== undefined && this.receipts.abort(key) === "cancelled")
-					return { aborted: false, cancelledPreparation: true };
-				const wasBusy = !ctx.isIdle();
-				ctx.abort();
-				return { aborted: wasBusy };
-			}
+			case "turn.abort":
+				return abortTurn(this.host(connection), params, connection);
 			case "external.call":
-				return callExternal(this.ceilings, params, () => this.session());
+				return callExternal(this.host(connection), params, connection);
 			case "messages.list":
+				this.read(method, params, connection);
 				return this.history(
 					clampedParam(params, "limit", { min: 1, max: HISTORY_MAX_PAGE }) ?? HISTORY_PAGE,
 					clampedParam(params, "before", { min: 0, max: Number.MAX_SAFE_INTEGER }),
@@ -316,6 +318,7 @@ export class OctocodeApi {
 				const types = params.types;
 				if (types !== undefined && (!Array.isArray(types) || types.some((type) => typeof type !== "string")))
 					throw new RpcError(ERR.invalidParams, "types must be an array of strings");
+				this.read(method, params, connection);
 				return connection.subscribe({
 					...(since !== undefined ? { since } : {}),
 					...(types ? { types: types as string[] } : {}),
@@ -325,37 +328,38 @@ export class OctocodeApi {
 				connection.unsubscribe?.();
 				return {};
 			case "agents.list":
+				this.read(method, params, connection);
 				return { agents: this.agents.list() };
 			case "agents.tell":
-				return this.tell(params);
+				return tellAgent({ ...this.host(connection), agents: this.agents }, params, connection);
 			default:
 				throw new RpcError(ERR.methodNotFound, `Unknown method ${method}`);
 		}
 	}
 
-	/** `agents.tell`: a long text is the team's to save and point to; a refusal (unknown agent, nobody reachable) is an RPC error. */
-	private async tell(params: Record<string, unknown>): Promise<unknown> {
-		const to = stringParam(params, "to")!;
-		const text = visibleControls(stringParam(params, "text")!);
-		const facts = externalFacts("external client", callerFrom(params), undefined, false);
-		await this.operations
-			.admit?.(admission(facts, text, this.ceilings.current()), this.session())
-			.catch((error: unknown) => {
-				throw new RpcError(ERR.unavailable, errorMessage(error), { execution: "not-sent" });
-			});
-		const result = await this.agents.tell(to, text);
-		this.audit({
-			method: "agents.tell",
-			to,
-			chars: text.length,
-			accepted: !(result && typeof result === "object" && "error" in result),
-		});
-		if (result && typeof result === "object" && typeof (result as { error?: unknown }).error === "string")
-			throw new RpcError(ERR.invalidParams, (result as { error: string }).error);
-		return result;
+	/** What `turn.abort`, `external.call` and `agents.tell` (`bridge/`) need of this API for a call on `connection`. */
+	private host(connection: Connection) {
+		return {
+			ceilings: this.ceilings,
+			receipts: this.receipts,
+			session: () => this.session(),
+			guardSession: (given: Record<string, unknown>, ctx: ExtensionContext) => this.guardSession(given, ctx),
+			verify: (facts: ExternalFacts, given: Record<string, unknown>) => this.verify(facts, given, connection),
+			audit: (data: Record<string, unknown>) => this.audit(data),
+		};
 	}
 
-	/** Records an API-started turn in the session (a `octocode-external` entry), so what an outside program caused can be reviewed. */
+	/** The caller's facts, confirmed with the instance it names (`bridge/verify.ts`); `timeoutMs` defaults to the client's own. */
+	private verify(facts: ExternalFacts, params: Record<string, unknown>, connection: Connection, timeoutMs?: number) {
+		return verifyCaller(facts, params, connection, this.record, timeoutMs);
+	}
+
+	/** Records a read (`bridge/reads.ts`): open to any process of this user, and named in the session's record. */
+	private read(method: string, params: Record<string, unknown>, connection: Connection): void {
+		recordRead((data) => this.audit(data), method, params, connection);
+	}
+
+	/** Records what an API client did in the session (a `octocode-external` entry): the turns it started, what it stopped and what it read. */
 	private audit(data: Record<string, unknown>): void {
 		try {
 			this.api.appendEntry(EXTERNAL_AUDIT_TYPE, { at: Date.now(), ...data });
@@ -378,6 +382,7 @@ export class OctocodeApi {
 				nextId: () => `x${++this.counter}`,
 				audit: (data) => this.audit(data),
 				transport: connection.transport,
+				verify: (facts, timeoutMs) => this.verify(facts, params, connection, timeoutMs),
 			},
 			params,
 		);

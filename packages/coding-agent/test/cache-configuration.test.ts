@@ -200,6 +200,54 @@ describe("cache configuration", () => {
 			const optedOut = azure("gpt-5.5", { compat: { supportsLongCacheRetention: false } });
 			expect(describeWith(optedOut, long)).not.toMatch(/\b24h\b/);
 		});
+		// GPT-6 Astra on Azure gets 30m explicit breakpoints on its instructions (`azureInstructionCacheTtl`) in implicit mode.
+		it("names Azure GPT-6 Astra's 30m instruction breakpoints only when the adapter sends them", () => {
+			const astra = getBuiltinModel("azure", "gpt-6-astra");
+			const longText = describeWith(astra, { cacheRetention: "long", instructionCacheRetention: "long" });
+			expect(longText).toContain("Provider-managed");
+			expect(longText).toContain("Instructions carry a 30m cache breakpoint.");
+			expect(longText).not.toMatch(/\b(12h|24h)\b/);
+			expect(describeWith(astra, { cacheRetention: "short", instructionCacheRetention: "short" })).toContain(
+				"Instructions carry a 30m cache breakpoint.",
+			);
+			expect(describeWith(astra, { cacheRetention: "long", instructionCacheRetention: "none" })).not.toContain(
+				"breakpoint",
+			);
+			expect(describeWith(astra, { cacheRetention: "none" })).not.toContain("breakpoint");
+			expect(describeWith(asApi("azure-openai-responses"), { cacheRetention: "long" })).not.toContain("breakpoint");
+		});
+		// `compat.supportsExplicitPromptCacheMode: true` on an Azure deployment: explicit mode with a request-wide TTL that
+		// every breakpoint inherits, so the request TTL is the longer of the instruction and history tiers.
+		it("names the Azure explicit-mode opt-in's request TTL", () => {
+			const optedIn = asApi("azure-openai-responses", {
+				id: "team-gpt-6",
+				compat: { supportsExplicitPromptCacheMode: true },
+			});
+			const long = describeWith(optedIn, { cacheRetention: "long", instructionCacheRetention: "long" });
+			expect(long).toContain("Explicit mode opted in; request TTL 12h covers instruction breakpoints and history.");
+			expect(describeWith(optedIn, { cacheRetention: "short", instructionCacheRetention: "long" })).toContain(
+				"request TTL 12h covers instruction breakpoints and history.",
+			);
+			expect(describeWith(optedIn, { cacheRetention: "short", instructionCacheRetention: "short" })).toContain(
+				"request TTL 30m covers instruction breakpoints and history.",
+			);
+			// Instructions `none` sends no breakpoints, so the text names none.
+			for (const history of ["short", "long"] as const) {
+				const text = describeWith(optedIn, { cacheRetention: history, instructionCacheRetention: "none" });
+				expect(text).toContain(`Explicit mode opted in; request TTL ${history === "long" ? "12h" : "30m"} covers history.`);
+				expect(text).not.toContain("breakpoint");
+			}
+			expect(describeWith(optedIn, { cacheRetention: "none", instructionCacheRetention: "long" })).toContain(
+				"Explicit mode with no breakpoints",
+			);
+			const capped = asApi("azure-openai-responses", {
+				id: "team-gpt-6",
+				compat: { supportsExplicitPromptCacheMode: true, supportsLongCacheRetention: false },
+			});
+			expect(describeWith(capped, { cacheRetention: "long", instructionCacheRetention: "long" })).toContain(
+				"request TTL 30m",
+			);
+		});
 		it("says provider-managed for Azure, Codex, Mistral, Google and generic completions", () => {
 			for (const api of [
 				"azure-openai-responses",

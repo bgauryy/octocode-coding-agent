@@ -520,16 +520,29 @@ describe("every catalog model gets its longest supported cache tier by default",
 		expect(plain.prompt_cache_retention).toBeUndefined();
 	});
 
+	it("reports a declared Azure long lifetime only where the adapter sends 24h", async () => {
+		const declared = { ...azureModel(), id: "prod-deployment", promptCache: { long: 86_400 } };
+		const payload = await rawPayload(declared, "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
+		expect(payload.prompt_cache_retention).toBeUndefined();
+		expect(resolveModelCapabilities(declared).cache.lifetimes.long).toBeUndefined();
+		const optedIn = { ...declared, compat: { supportsLongCacheRetention: true } };
+		const sent = await rawPayload(optedIn, "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
+		expect(sent.prompt_cache_retention).toBe("24h");
+		expect(resolveModelCapabilities(optedIn).cache.lifetimes.long).toBe(86_400);
+	});
+
 	/**
 	 * Microsoft: GPT-6 Astra supports prompt cache breakpoints on Standard and PTU-M deployments; earlier models,
 	 * GPT-5.6 included, do not on provisioned deployments. A 12h TTL is documented only for "supported Responses API
-	 * deployments", so Astra's breakpoints keep the 30m default and the request stays in implicit mode.
+	 * deployments", so Astra's breakpoints keep the 30m default and the request stays in implicit mode. Microsoft
+	 * documents the breakpoint only as `{"mode": "explicit"}`, with the TTL set request-wide through
+	 * `prompt_cache_options.ttl` (default 30m), so the Azure breakpoint carries no `ttl` key.
 	 */
 	const astra = () => ({ ...getBuiltinModel("azure", "gpt-6-astra"), baseUrl: "http://127.0.0.1:9/openai/v1" });
 	it("Azure gpt-6-astra: 30m instruction breakpoints in implicit mode", async () => {
 		const turn: Message[] = [{ role: "user", content: "hi", timestamp: 0 }];
 		const long = await rawPayload(astra(), "test-key", turn, DEFAULTS);
-		expect(firstBreakpoint(long)).toEqual({ mode: "explicit", ttl: "30m" });
+		expect(firstBreakpoint(long)).toStrictEqual({ mode: "explicit" });
 		expect(long.prompt_cache_options).toBeUndefined();
 		expect(long.prompt_cache_retention).toBeUndefined();
 		expect(long.prompt_cache_key).toBe("edge-session");
@@ -538,16 +551,34 @@ describe("every catalog model gets its longest supported cache tier by default",
 			cacheRetention: "short",
 			instructionCacheRetention: "short",
 		});
-		expect(firstBreakpoint(short)).toEqual({ mode: "explicit", ttl: "30m" });
+		expect(firstBreakpoint(short)).toStrictEqual({ mode: "explicit" });
 		const split = await rawPayload(astra(), "test-key", turn, {
 			...DEFAULTS,
 			instructionCacheBoundary: "environment",
 		});
 		const instructionBlocks = (split.input as Payload[])[0].content as Payload[];
-		expect(instructionBlocks.map((block) => block.prompt_cache_breakpoint)).toEqual([
-			{ mode: "explicit", ttl: "30m" },
-			{ mode: "explicit", ttl: "30m" },
+		expect(instructionBlocks.map((block) => block.prompt_cache_breakpoint)).toStrictEqual([
+			{ mode: "explicit" },
+			{ mode: "explicit" },
 		]);
+		expect(JSON.stringify(split.input)).not.toContain('"ttl"');
+	});
+
+	it("Azure gpt-6-astra: capabilities report the 30m instruction breakpoint tier the adapter sends", () => {
+		expect(resolveModelCapabilities(astra()).cache).toEqual({
+			mechanism: "explicit-breakpoint",
+			lifetimes: { short: 1800 },
+		});
+	});
+
+	it("OpenAI direct keeps the ttl key on a 30m instruction breakpoint", async () => {
+		const model = getBuiltinModel("openai", "gpt-6-astra");
+		const turn: Message[] = [{ role: "user", content: "hi", timestamp: 0 }];
+		const short = await rawPayload(model, "sk-test", turn, {
+			cacheRetention: "short",
+			instructionCacheRetention: "short",
+		});
+		expect(firstBreakpoint(short)).toStrictEqual({ mode: "explicit", ttl: "30m" });
 	});
 
 	it("Azure gpt-6-astra: no breakpoint when instructions or history are not cached", async () => {
@@ -578,12 +609,96 @@ describe("every catalog model gets its longest supported cache tier by default",
 		if (id !== "gpt-6-astra") expect(firstBreakpoint(payload)).toBeUndefined();
 	});
 
-	it.todo(
-		"Azure gpt-6-astra: 12h breakpoint TTL (user decision: Microsoft documents 12h only for 'supported Responses API deployments' and does not say whether PTU-M accepts it)",
+	/**
+	 * Standard pay-as-you-go deployments of GPT-5.6 and later accept breakpoints and a 12h request TTL; provisioned
+	 * GPT-5.6 deployments do not support breakpoints, and the adapter cannot tell them apart, so explicit mode is a
+	 * per-deployment opt-in: `compat.supportsExplicitPromptCacheMode: true`. The TTL stays request-wide and the
+	 * breakpoints carry no `ttl` key, as Microsoft documents them.
+	 */
+	const optedIn = (model: Model<"azure-openai-responses" | "openai-completions">): Model<"azure-openai-responses"> => {
+		const azureResponses = model as Model<"azure-openai-responses">;
+		return {
+			...azureResponses,
+			baseUrl: "http://127.0.0.1:9/openai/v1",
+			compat: { ...azureResponses.compat, supportsExplicitPromptCacheMode: true },
+		};
+	};
+	it.each(azureExplicitGeneration.map((model) => [model.id, optedIn(model)] as const))(
+		"Azure %s with compat.supportsExplicitPromptCacheMode: 12h request TTL and instruction breakpoints",
+		async (_id, model) => {
+			const payload = await rawPayload(model, "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
+			expect(payload.prompt_cache_options).toStrictEqual({ ttl: "12h" });
+			expect(payload.prompt_cache_retention).toBeUndefined();
+			expect(payload.prompt_cache_key).toBe("edge-session");
+			expect(firstBreakpoint(payload)).toStrictEqual({ mode: "explicit" });
+			expect(JSON.stringify(payload.input)).not.toContain('"ttl"');
+			expect(describePayloadLayers(model.api, payload)?.cacheMode).toBe("key+12h+breakpoint-12h");
+			expect(resolveModelCapabilities(model).cache).toEqual({
+				mechanism: "explicit-breakpoint",
+				lifetimes: { short: 1800, long: 43_200 },
+			});
+		},
 	);
-	it.todo(
-		"Azure GPT-5.6+/GPT-6 except Astra: breakpoints and a 12h TTL (user decision: Standard deployments accept them; provisioned GPT-5.6 deployments do not support breakpoints, and the adapter cannot tell the deployment types apart)",
+
+	it("Azure explicit opt-in: short retention keeps 30m, none selects explicit mode with no breakpoints", async () => {
+		const model = optedIn(azureModel());
+		const turn: Message[] = [{ role: "user", content: "hi", timestamp: 0 }];
+		const short = await rawPayload(model, "test-key", turn, {
+			cacheRetention: "short",
+			instructionCacheRetention: "short",
+		});
+		expect(short.prompt_cache_options).toBeUndefined();
+		expect(firstBreakpoint(short)).toStrictEqual({ mode: "explicit" });
+		const none = await rawPayload(model, "test-key", turn, {
+			cacheRetention: "none",
+			instructionCacheRetention: "long",
+		});
+		expect(none.prompt_cache_options).toStrictEqual({ mode: "explicit" });
+		expect(none.prompt_cache_key).toBeUndefined();
+		expect(firstBreakpoint(none)).toBeUndefined();
+	});
+
+	// Azure breakpoints carry no ttl of their own and inherit the request TTL, so the request TTL is the longer of the
+	// instruction and history tiers: long instructions behind short history keep their 12h.
+	it.each([
+		{ instructions: "long", history: "short" },
+		{ instructions: "short", history: "long" },
+	] as const)(
+		"Azure explicit opt-in: $instructions instructions with $history history send a 12h request TTL",
+		async ({ instructions, history }) => {
+			const payload = await rawPayload(optedIn(azureModel()), "test-key", [{ role: "user", content: "hi", timestamp: 0 }], {
+				cacheRetention: history,
+				instructionCacheRetention: instructions,
+			});
+			expect(payload.prompt_cache_options).toStrictEqual({ ttl: "12h" });
+			expect(firstBreakpoint(payload)).toStrictEqual({ mode: "explicit" });
+			expect(JSON.stringify(payload.input)).not.toContain('"ttl"');
+		},
 	);
+
+	it("Azure explicit opt-in: no instruction breakpoints and a 30m request for none instructions and short history", async () => {
+		const payload = await rawPayload(optedIn(azureModel()), "test-key", [{ role: "user", content: "hi", timestamp: 0 }], {
+			cacheRetention: "short",
+			instructionCacheRetention: "none",
+		});
+		expect(payload.prompt_cache_options).toBeUndefined();
+		expect(firstBreakpoint(payload)).toBeUndefined();
+	});
+
+	it("Azure explicit opt-in with compat.supportsLongCacheRetention: false stays at 30m", async () => {
+		const model = {
+			...optedIn(azureModel()),
+			compat: { supportsExplicitPromptCacheMode: true, supportsLongCacheRetention: false },
+		};
+		const payload = await rawPayload(model, "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
+		expect(payload.prompt_cache_options).toBeUndefined();
+		expect(payload.prompt_cache_retention).toBeUndefined();
+		expect(firstBreakpoint(payload)).toStrictEqual({ mode: "explicit" });
+		expect(resolveModelCapabilities(model).cache).toEqual({
+			mechanism: "explicit-breakpoint",
+			lifetimes: { short: 1800 },
+		});
+	});
 
 	/** Routes whose provider manages retention: nothing configurable to send beyond a routing key. */
 	it.each([

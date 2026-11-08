@@ -21,8 +21,7 @@ import type {
 	Usage,
 } from "@octocodeai/octocode-ai/compat";
 import { completeSimple, isContextOverflow } from "@octocodeai/octocode-ai/compat";
-import { convertToLlm } from "../messages.ts";
-import { SUMMARIZATION_SYSTEM_PROMPT, serializeConversation } from "./utils.ts";
+import { SUMMARIZATION_SYSTEM_PROMPT, serializeMessages } from "./utils.ts";
 import { inlineSummaryTokens, summaryTargetTokens } from "./checkpoint.ts";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "./summary-format.ts";
 
@@ -200,9 +199,8 @@ export async function generateSummaryWithUsage(
 	}
 
 	const buildPrompt = (messages: AgentMessage[]): string => {
-		// Serialize conversation to text so model doesn't try to continue it.
-		// Convert to LLM messages first (handles custom types like bashExecution, custom, etc.)
-		const conversationText = serializeConversation(convertToLlm(messages));
+		// Serialize conversation to text so model doesn't try to continue it; custom messages keep their type as the label.
+		const conversationText = serializeMessages(messages);
 		let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
 		if (previousSummary) {
 			promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
@@ -256,7 +254,7 @@ export async function generateTurnPrefixSummary(
 	const response = await completeWithOverflowTrim(
 		messages,
 		(remaining) =>
-			`# Conversation\n${serializeConversation(convertToLlm(remaining))}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${customInstructions ? `\n\nAdditional summary focus:\n${customInstructions}` : ""}`,
+			`# Conversation\n${serializeMessages(remaining)}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${customInstructions ? `\n\nAdditional summary focus:\n${customInstructions}` : ""}`,
 		model,
 		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache),
 		streamFn,

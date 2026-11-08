@@ -109,6 +109,8 @@ export function agentModes() {
 						)
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
+				// The delegation rules wait with `timer` (never sleep or poll), so the loadout keeps it whenever agent is active.
+				companionTools: ["timer"],
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({
 					type: "object",

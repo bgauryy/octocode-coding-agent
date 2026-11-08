@@ -13,8 +13,9 @@ import { hasProviderHeader, providerHeadersToRecord } from "../utils/headers.ts"
 import { getDeclaredTools, resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
 import {
 	type AzureEndpointOptions,
-	azureAcceptsExtendedRetention,
 	azureInstructionCacheTtl,
+	azureSupportsExplicitPromptCacheMode,
+	azureSupportsLongCacheRetention,
 	resolveAzureConfig,
 	resolveDeploymentName,
 } from "./azure-openai-config.ts";
@@ -25,6 +26,7 @@ import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./o
 import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "./openai-responses-shared/messages.ts";
 import { processResponsesStream } from "./openai-responses-shared/stream-processing.ts";
 import { convertResponsesTools, getResponsesToolSupport } from "./openai-responses-shared/tools.ts";
+import type { ResponsesRequest } from "./openai-responses/types.ts";
 import { buildBaseOptions, resolveSamplingParams } from "./simple-options.ts";
 
 const AZURE_TOOL_CALL_PROVIDERS = new Set([...RESPONSES_TOOL_CALL_PROVIDERS, "azure"]);
@@ -178,8 +180,26 @@ function buildParams(
 			supportsToolSearch,
 		}),
 	);
+	// Explicit mode is a per-deployment opt-in: provisioned GPT-5.6 deployments reject breakpoints and the adapter
+	// cannot tell them apart. Without it, only GPT-6 Astra gets 30m instruction breakpoints, in implicit mode.
+	const explicitMode = azureSupportsExplicitPromptCacheMode(model);
+	const { instructionCacheTtl, ...cache } = resolveOpenAIResponsesCacheFields(
+		{
+			supportsExplicitPromptCacheMode: explicitMode,
+			supportsLongCacheRetention: azureSupportsLongCacheRetention(model),
+		},
+		options,
+		false,
+	);
+	// Azure breakpoints inherit the request TTL, so it is the longer of the instruction and history tiers.
+	const promptCacheOptions =
+		explicitMode && instructionCacheTtl === "12h"
+			? { ...cache.prompt_cache_options, ttl: instructionCacheTtl }
+			: cache.prompt_cache_options;
 	const messages = convertResponsesMessages(model, context, AZURE_TOOL_CALL_PROVIDERS, {
-		instructionCacheTtl: azureInstructionCacheTtl(model, options),
+		instructionCacheTtl: explicitMode ? instructionCacheTtl : azureInstructionCacheTtl(model, options),
+		// Microsoft documents the breakpoint as `{"mode": "explicit"}` with the TTL set request-wide; 30m is the default.
+		omitBreakpointTtl: true,
 		instructionCacheBoundary: options?.instructionCacheBoundary,
 		grammarToolInputProperties,
 		supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
@@ -191,23 +211,14 @@ function buildParams(
 		},
 	});
 
-	const cache = resolveOpenAIResponsesCacheFields(
-		{
-			// Explicit mode is left out: provisioned GPT-5.6 deployments do not support breakpoints and the adapter cannot
-			// tell them apart. GPT-6 Astra's instruction breakpoints come from azureInstructionCacheTtl.
-			supportsExplicitPromptCacheMode: false,
-			supportsLongCacheRetention: azureAcceptsExtendedRetention(model),
-		},
-		options,
-		false,
-	);
-	const params: ResponseCreateParamsStreaming = {
+	const params: ResponsesRequest = {
 		model: deploymentName,
 		input: messages,
 		stream: true,
 		prompt_cache_key: cache.prompt_cache_key,
 		// oxlint-disable-next-line typescript/no-deprecated -- the 24h policy is the field pre-GPT-5.6 Azure models accept; `prompt_cache_options.ttl` is for GPT-5.6+
 		prompt_cache_retention: cache.prompt_cache_retention,
+		...(promptCacheOptions ? { prompt_cache_options: promptCacheOptions } : {}),
 		store: false,
 	};
 

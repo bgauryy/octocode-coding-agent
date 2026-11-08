@@ -110,7 +110,8 @@ export function readOnlyRoleRefusal(
 	const effect = shellMutation(command);
 	const root = workspaceRoot(cwd) ?? path.resolve(cwd);
 	const directories = new Set(effect.directories);
-	const changed = effect.writes.find((file) => {
+	// A database `sqlite3` opens for writing is a write too.
+	const changed = [...effect.writes, ...effect.databases].find((file) => {
 		const target = canonicalPath(shellPath(cwd, file));
 		if (!isWithin(target, canonicalPath(root)) && !underHome(target)) return false;
 		return directories.has(file) ? !mayCreateDirectory(target, cwd, env) : !mayWrite(target, cwd, env);
@@ -134,6 +135,10 @@ export function readOnlyRoleRefusal(
 	if (effect.uncertain)
 		return refusal(
 			`A shell write whose target the guard cannot resolve${effect.uncertainBecause ? `: ${effect.uncertainBecause}` : ""}; spell the path out`,
+		);
+	if (effect.awkUnread)
+		return refusal(
+			`An awk call outside the allowlist this role reads (${effect.awkUnread}); read with \`rg\` or \`jq\``,
 		);
 	return undefined;
 }

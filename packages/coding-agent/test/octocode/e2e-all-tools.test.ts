@@ -455,10 +455,13 @@ describe("the native paths that need a run of their own", () => {
 			{ text: "answered" },
 		];
 		const run = box.start(["--mode", "rpc"], { stdin: "pipe" });
+		// Only complete lines: the process may be mid-write of a long record, so the text after the last newline is
+		// not yet JSON (a parse of it made this test flaky under load).
 		const records = () =>
 			run
 				.stdout()
 				.split("\n")
+				.slice(0, -1)
 				.filter(Boolean)
 				.map((line) => JSON.parse(line) as Record<string, unknown>);
 		await until(() => records().some((one) => one.type === "rpc_ready"), "RPC to start");

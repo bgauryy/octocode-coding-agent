@@ -1,5 +1,4 @@
 import type { AgentEnd } from "../team/panel-state.ts";
-import type { ReportStatus } from "../instructions/report.ts";
 import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatCost, formatDuration, shortPath, toolCallCount } from "../shared/format.ts";
@@ -11,7 +10,7 @@ import type { BackgroundRun } from "./command.ts";
 import { withStopFacts } from "./budget.ts";
 import { hintEnd, hintOnStop, stopReason } from "./end-hint.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
-import type { AwaitedReply } from "./linger.ts";
+import type { AwaitedReply, LingerWindow } from "./linger.ts";
 import { providerHealth } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
@@ -69,9 +68,9 @@ export function startBackground(
 	details: RunDetails,
 	task: string,
 	launch: (signal: AbortSignal) => Promise<Outcome>,
-	finish: (outcome?: Outcome) => Promise<string>,
+	finish: (outcome?: Outcome, lingers?: boolean) => Promise<string>,
 	sessionId: string,
-	linger?: (outcome?: ReportStatus, awaited?: AwaitedReply) => string,
+	linger?: LingerWindow,
 ): void {
 	const { background, read } = runs;
 	const { identity } = run;
@@ -101,7 +100,9 @@ export function startBackground(
 			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
 			providerHealth.noteRun(run.route.model, outcome.error);
 			if (outcome.error) hintEnd(runs, identity.id, "failed");
-			const note = await finish(outcome);
+			const awaited = linger && !outcome.error ? awaitedReply(runs, identity.id, details) : undefined;
+			// Asked before the footer is written: a child that stays reachable has not ended, and its item's graph line says so.
+			const note = await finish(outcome, !outcome.error && (linger?.stays(outcome.outcome, awaited) ?? false));
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;
@@ -141,7 +142,7 @@ export function startBackground(
 			const next = outcome.error ? failedNext(run.route, outcome.error, Boolean(outcome.text)) : "";
 			const notices = noticeLines(details).join("\n");
 			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
-			const reachable = outcome.error ? "" : (linger?.(reported, awaitedReply(runs, identity.id, details)) ?? "");
+			const reachable = outcome.error ? "" : (linger?.(reported, awaited) ?? "");
 			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
@@ -168,11 +169,11 @@ export function startBackground(
 					...shown,
 					...reportFacts(details),
 				},
-				wake: !alreadyRead,
+				wake: runs.graph?.wakes(identity.id, !alreadyRead) ?? !alreadyRead,
 			});
 		} catch (error) {
 			if (identity.resultContract) details.structured = unavailableResult(identity.resultContract);
-			const note = await finish();
+			const note = await finish(undefined, entry.stoppedBy === PERMISSION_STOP && (linger?.stays() ?? false));
 			read.consume(identity.id);
 			const by = entry.stoppedBy;
 			if (!by) hintEnd(runs, identity.id, "failed");
@@ -203,7 +204,7 @@ export function startBackground(
 					...shown,
 					...reportFacts(details),
 				},
-				wake: !by,
+				wake: runs.graph?.wakes(identity.id, !by) ?? !by,
 			});
 		} finally {
 			background.delete(identity.id);

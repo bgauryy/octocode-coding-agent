@@ -351,6 +351,13 @@ export function nestedScripts(name: string, tokens: string[], bodies: string[], 
 	return scripts;
 }
 
+/** What one simple command (its words, masked) feeds a pipe into a shell: `echo`/`printf` arguments, or `cat`'s heredoc or herestring. */
+export function fedToPipe(tokens: string[], bodies: string[]): string[] {
+	const name = base(unhide(tokens[0] ?? ""));
+	if (name === "echo" || name === "printf") return [unhide(tokens.slice(1).join(" "))];
+	return name === "cat" ? stdinOf(tokens, bodies).map(unhide) : [];
+}
+
 /** Text a command feeds to the next one's standard input: `echo`/`printf` arguments, or its own heredoc or herestring. */
 export function stdinOf(tokens: string[], bodies: string[]): string[] {
 	const fed: string[] = [];

@@ -60,6 +60,26 @@ describe("coordinator planning graph", () => {
 		}
 	});
 
+	it("gives the coordination graph to the main session only: a subagent never plans, checks or runs one", () => {
+		for (const research of [FAKE_RESEARCH, undefined]) {
+			const sections = octocodePromptSections({ research, profiles: [], canDelegate: false });
+			const child = Object.values(sections).join("\n");
+			// The slot holds the subagent policy instead: it finishes its own task and starts no agents.
+			expect(sections.delegation).toContain("You are a subagent: finish your task yourself.");
+			for (const rule of [
+				"plan the work as a graph",
+				"Check the graph before you start it",
+				"Run the graph in waves",
+			]) {
+				expect(child).not.toContain(rule);
+			}
+		}
+	});
+
+	it("puts the coordinator's own work in the graph, not only its children's", () => {
+		for (const text of delegation()) expect(text).toContain("its owner (you or one child)");
+	});
+
 	it("states each planning rule once", () => {
 		for (const text of delegation()) {
 			expect(text.match(/disjoint files/g) ?? []).toHaveLength(1);

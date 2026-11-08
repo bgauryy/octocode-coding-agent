@@ -114,10 +114,6 @@ A skill is a folder: SKILL.md (frontmatter name and description, then instructio
 </available_skills>
 </skills>
 
-<harnesses>
-{{HARNESSES}}
-</harnesses>
-
 <environment>
 {{ENVIRONMENT}}
 </environment>

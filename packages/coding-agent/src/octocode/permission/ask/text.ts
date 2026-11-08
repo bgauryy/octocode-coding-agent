@@ -1,5 +1,6 @@
 import { PERMISSION_ENV } from "../../../../../common/src/env.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { renderInstruction } from "../../../core/prompt-template.ts";
 import { clipText } from "../../shared/util.ts";
 import { auditLines, NO_REASON, transcriptPurpose } from "../effect.ts";
 import { permissionHeader } from "../header.ts";
@@ -30,6 +31,8 @@ export const DENY_NOTE = "Deny and tell the agent why…";
 /** The title of the follow-up input after `DENY_NOTE`. */
 export const NOTE_TITLE = "Tell the agent why";
 export const sessionOption = (label: string): string => `Allow ${label} for this session`;
+/** "Deny messages from <process> for this session": the remembered answer for a grant that can also be refused. */
+export const denySessionOption = (label: string): string => `Deny ${label} for this session`;
 /** "Allow all shell commands for this session"; undefined when the class has no session-wide kind. */
 export const kindOption = (action: ActionClass): string | undefined => {
 	const kind = kindOf(action);
@@ -47,10 +50,14 @@ const shownReasons = (why: string): string =>
 		.map((reason) => shown(reason, 400))
 		.join("\n");
 
+/** What `bypass` does with worktree merges (`worktrees/merge.ts`), for its summary, its start line and `/status`; empty in any other mode. */
+export const bypassMergeLine = (mode: PermissionMode): string =>
+	mode === "bypass" ? renderInstruction("notices/landing/bypass-merges.md") : "";
+
 /** What a mode means, in one sentence: the model note and `/permissions` say it. */
 export function modeSummary(mode: PermissionMode): string {
 	if (mode === "bypass")
-		return "nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse.";
+		return `nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse. ${bypassMergeLine(mode)}`;
 	if (mode === "full")
 		return "nothing asks: destructive commands (rm -rf ~), private web fetches, browser control and a hook's ask all run without a prompt. Safeguards: the ⚠ counter, warning-colored activity lines and the audit log (/permissions log); a run with no UI has only the log. Invariants and hook denies still refuse.";
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits, credential-store reads and profile permissions also ask.`;
@@ -68,7 +75,7 @@ const startFlag = (mode: PermissionMode): string =>
 export const unaskedRunLine = (mode: PermissionMode): ((file: string | undefined) => string) | undefined =>
 	runsUnasked(mode)
 		? (file) =>
-				`octocode: permission mode ${mode}: every action runs without asking and is recorded in ${file ?? "this session (not saved to a file)"}; /permissions log lists them.\n`
+				`octocode: permission mode ${mode}: every action runs without asking and is recorded in ${file ?? "this session (not saved to a file)"}; /permissions log lists them.${mode === "bypass" ? ` ${bypassMergeLine(mode)}` : ""}\n`
 		: undefined;
 
 /** Reasons on this call that force an ask in the current mode. A reason only tightens. */
@@ -91,7 +98,7 @@ export function withPurpose<T extends PermissionRequest>(ctx: Asker, request: T)
 	};
 }
 
-/** The default dialog: allow once, allow exactly this for the session (when it can be named), deny, deny with a note. */
+/** The default dialog: allow once, allow exactly this for the session (when it can be named), deny, deny exactly this for the session (when the grant is deniable), deny with a note. */
 export async function selectAnswer(
 	ctx: Asker,
 	request: PermissionRequest,
@@ -105,7 +112,15 @@ export async function selectAnswer(
 	// A forced ask has no session answer, but the one a subagent's text names: that source for this session.
 	const grant = forced ? grantableSource(request, forcing) : request.grant;
 	const session = grant ? sessionOption(grant.label) : undefined;
-	const choices = [ALLOW_ONCE, ...(session ? [session] : []), ...(kind ? [kind] : []), DENY, DENY_NOTE];
+	const denial = !forced && request.grant?.deniable ? denySessionOption(request.grant.label) : undefined;
+	const choices = [
+		ALLOW_ONCE,
+		...(session ? [session] : []),
+		...(kind ? [kind] : []),
+		DENY,
+		...(denial ? [denial] : []),
+		DENY_NOTE,
+	];
 	// A relayed child sends the one-line header its parent reads to answer without a dialog (never shown).
 	const header =
 		relay && nonce !== "" && request.action
@@ -125,6 +140,7 @@ export async function selectAnswer(
 		...(kind ? { [kind]: "allow_kind" as const } : {}),
 		...(session ? { [session]: "allow_session" as const } : {}),
 		[DENY]: "deny",
+		...(denial ? { [denial]: "deny_session" as const } : {}),
 		[DENY_NOTE]: "deny_note",
 	};
 	const toolCallId = request.invocation?.toolCallId ?? request.toolCallId;
@@ -137,6 +153,7 @@ export async function selectAnswer(
 			...(session ? { session } : {}),
 			...(kind ? { kind } : {}),
 			deny: DENY,
+			...(denial ? { denySession: denial } : {}),
 			note: DENY_NOTE,
 			noteTitle: NOTE_TITLE,
 		}),

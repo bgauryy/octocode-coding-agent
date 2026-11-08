@@ -202,10 +202,13 @@ export function convertResponsesMessages<TApi extends Api>(
 				const text = parts.filter((part) => part.length > 0).join("\n\n");
 				if (text.length > 0) {
 					const ttl = options?.instructionCacheTtl;
+					const breakpoint = options?.omitBreakpointTtl
+						? { mode: "explicit" as const }
+						: { mode: "explicit" as const, ttl };
 					const block = (blockText: string) => ({
 						type: "input_text" as const,
 						text: sanitizeSurrogates(blockText),
-						prompt_cache_breakpoint: { mode: "explicit" as const, ttl },
+						prompt_cache_breakpoint: breakpoint,
 					});
 					// A named section starts a second block with its own breakpoint; the blocks join to the same text.
 					const fullText = getSystemMessageText(msg);

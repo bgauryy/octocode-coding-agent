@@ -1,10 +1,10 @@
-import { onSecond } from "../shared/clock.ts";
+import { onSecond } from "./clock.ts";
 
 /**
- * One follower of the shared database file for every timer waiting on something other processes write (a lease released,
- * a backlog item moved, an agent ended). It reads the file's change marker (`dbStamp`) on the shared clock, only while a
- * wait listens, and pokes the listeners when it moved: a hint to check now, never the answer. A scheduler calls `rebase`
- * after its own writes so they do not poke it back.
+ * One follower of the shared database file for every wait on something other processes write: a timer (a lease released,
+ * a backlog item moved, an agent ended) or the coordination-graph watch (`subagents/graph-watch.ts`). It reads the file's
+ * change marker (`dbStamp`) on the shared clock, only while a wait listens, and pokes the listeners when it moved: a hint
+ * to check now, never the answer. A scheduler calls `rebase` after its own writes so they do not poke it back.
  */
 export class DatabaseFollower {
 	private readonly listeners = new Set<() => void>();

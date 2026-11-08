@@ -7,7 +7,8 @@ import {
 	type Tool,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
-import { supportsPromptCaching } from "./model-match.ts";
+import { charsToTokens, ESTIMATED_IMAGE_TOKENS } from "../../utils/estimate.ts";
+import { isNovaExplicitCacheModel, supportsPromptCaching } from "./model-match.ts";
 import { longCacheTtl } from "./model-support.ts";
 
 /** Bedrock accepts at most four cache checkpoints per Claude request. */
@@ -70,4 +71,52 @@ export function addHistoryLookbackCachePoint(
 	if (previous?.role !== ConversationRole.USER || !previous.content?.length) return;
 	if (previous.content[previous.content.length - 1].cachePoint !== undefined) return;
 	previous.content.push({ cachePoint });
+}
+
+/**
+ * AWS lists a 20K-token cache limit for Amazon Nova ("Supported models, Regions, and explicit caching limits",
+ * https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html, fetched 2026-11-08) and does not document
+ * what happens past it.
+ */
+const NOVA_MAX_CACHED_TOKENS = 20_000;
+
+/** Estimated tokens of one Converse block, with the shared ratio; each binary blob (an image) counts as an image. */
+function estimateBlockTokens(block: object): number {
+	let blobs = 0;
+	const json = JSON.stringify(block, (_key, value: unknown) => {
+		if (value instanceof Uint8Array) {
+			blobs++;
+			return "";
+		}
+		return value;
+	});
+	return charsToTokens(json?.length ?? 0) + blobs * ESTIMATED_IMAGE_TOKENS;
+}
+
+/**
+ * Fails safe on Nova's undocumented over-limit behavior: removes every Nova cache point whose estimated prefix (the
+ * blocks before it in Converse order: tools, system, then messages) is not under 20K tokens. The prefix only grows,
+ * so once one point is over, every later one is too. The content itself is sent whole. Other models are left alone.
+ */
+export function capNovaCachePoints(
+	model: Model<"bedrock-converse-stream">,
+	tools: Tool[] | undefined,
+	system: SystemContentBlock[] | undefined,
+	messages: readonly Message[],
+): void {
+	if (!isNovaExplicitCacheModel(model)) return;
+	let prefixTokens = 0;
+	const keep = (block: { cachePoint?: CachePointBlock }): boolean => {
+		if (block.cachePoint !== undefined) return prefixTokens < NOVA_MAX_CACHED_TOKENS;
+		prefixTokens += estimateBlockTokens(block);
+		return true;
+	};
+	const filterInPlace = <T extends { cachePoint?: CachePointBlock }>(blocks: T[] | undefined): void => {
+		if (!blocks) return;
+		const kept = blocks.filter(keep);
+		blocks.splice(0, blocks.length, ...kept);
+	};
+	filterInPlace(tools);
+	filterInPlace(system);
+	for (const message of messages) filterInPlace(message.content);
 }

@@ -271,7 +271,10 @@ export async function writeSummary(
 						cacheCold(ctx.sessionManager, cacheTtlMs),
 					)
 				: undefined;
-			// Routed and cached as the session's own requests, so a provider that routes by session keeps it with them.
+			// Passes the session's preferences with history `none`, so octocode-ai sends no cache markers and the adapters drop
+			// their cache routing id (OpenCode still gets its `x-opencode-session` header, which its gateway requires): its
+			// prompt (the summarizer's system prompt over the serialized conversation) is never sent again, so nothing would read
+			// what it wrote.
 			const written =
 				shared ??
 				(await compact(
@@ -287,7 +290,7 @@ export async function writeSummary(
 					undefined,
 					undefined,
 					ctx.sessionManager.getSessionId(),
-					sessionCachePreferences(ctx, model, api.getSettings()),
+					{ ...sessionCachePreferences(ctx, model, api.getSettings()), cacheRetention: "none" },
 				));
 			// A cancelled compaction saves nothing, so a summary that returned after the cancel is not kept either.
 			if (event.signal.aborted) return undefined;

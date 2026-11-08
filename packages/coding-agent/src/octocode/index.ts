@@ -210,7 +210,7 @@ export default function octocode(host: ExtensionAPI): void {
 	const memoryTool = registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });
 	commands.add(
 		"status",
-		statusCommand(api, () =>
+		statusCommand(api, permission, () =>
 			[
 				`Octocode ${packageVersion() ?? ""}`.trim(),
 				`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
@@ -312,7 +312,7 @@ export default function octocode(host: ExtensionAPI): void {
 		signal.throwIfAborted();
 		return sourcePolicy.prepareUpdates(ctx as ExtensionContext, updates);
 	});
-	const messaging = messagePolicy({ hooks, permission, planning, provenance, team });
+	const messaging = messagePolicy({ api, hooks, permission, planning, provenance, team });
 	team.setMessageHook(messaging.beforeMessage);
 	if (!isSubagent) {
 		external = registerExternal(

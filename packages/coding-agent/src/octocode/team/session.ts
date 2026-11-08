@@ -26,6 +26,7 @@ import { type MessageHook, type Resumer, type SendResult, sendMessage } from "./
 import { Vouches } from "./session/vouches.ts";
 import { WaitingApprovals } from "./session/approvals.ts";
 import { TeamTicker, type TeamView } from "./ticker.ts";
+import { WakePace } from "./wake-pace.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
@@ -59,6 +60,8 @@ export class Team {
 		warn: (text) => this.mail.notice(text),
 	});
 	private readonly mail: Mail;
+	/** How often peers and the coordination graph (`subagents/graph-wake.ts`) may start this agent's turns while it is idle: one budget. */
+	readonly wakePace = new WakePace();
 	private readonly delivery: Delivery;
 	/** This agent's status, tool counts and usage, written with the heartbeat (`session/activity.ts`). */
 	private readonly activity: Activity;
@@ -117,6 +120,7 @@ export class Team {
 				checkIn: () => checkInConfig(api.getSettings().subagents, this.env, api),
 			},
 			this.mail,
+			this.wakePace,
 		);
 	}
 	private readonly vouches = new Vouches();
@@ -126,9 +130,9 @@ export class Team {
 		return this.vouches.vouch(id, secret);
 	}
 
-	/** Aborted while an interrupt waits for this agent's run to stop (`agent_before_settle` waits end early on it). */
+	/** Aborted while an interrupt waits for this agent's run to stop, or a question from its coordinator for its model (`agent_before_settle` waits end early on it). */
 	get interrupted(): AbortSignal {
-		return this.mail.interrupted;
+		return AbortSignal.any([this.mail.interrupted, this.mail.asked]);
 	}
 
 	get id(): string | undefined {
@@ -384,12 +388,8 @@ export class Team {
 		this.delivery.seen(this.database.current, messages);
 	}
 
-	onToolStart(): void {
-		this.activity.toolStarted();
-	}
-	setActivity(line: string | undefined): void {
-		this.activity.setLine(line);
-	}
+	readonly onToolStart = (): void => this.activity.toolStarted();
+	readonly setActivity = (line: string | undefined): void => this.activity.setLine(line);
 
 	readonly setModel = (route: string | undefined): void => this.activity.setModel(route);
 

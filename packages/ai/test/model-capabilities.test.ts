@@ -74,7 +74,8 @@ describe("model capabilities", () => {
 				long: 3600,
 			},
 		],
-		["Bedrock Nova", model("bedrock-converse-stream", { id: "amazon.nova-pro-v1" }), "implicit", {}],
+		["Bedrock Nova", model("bedrock-converse-stream", { id: "amazon.nova-pro-v1" }), "markers", { short: 300 }],
+		["Bedrock Nova Premier", model("bedrock-converse-stream", { id: "us.amazon.nova-premier-v1:0" }), "implicit", {}],
 		[
 			"OpenAI explicit mode",
 			model("openai-responses", { provider: "openai", compat: { supportsExplicitPromptCacheMode: true } }),

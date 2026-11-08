@@ -91,6 +91,20 @@ export async function spawnAgent(
 	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
 	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
 	const linked = itemLink(ctx, params.item);
+	// One child per item: a second one would race the first on its paths and its completion. A child that reported and
+	// stays reachable still owns it, since a message continues it; the call that resumes that child passes.
+	const refuseSecondChild = () => {
+		if (!linked) return;
+		for (const [child, ref] of runs.items)
+			if (ref === linked.ref && child !== resumed?.child.id && runs.running.has(child))
+				throw new Error(`${ref} is being worked on by ${child}: message or resume it, or wait for its report.`);
+		const parked = lingering.onItem(linked.ref);
+		if (parked !== undefined && parked !== resumed?.child.id)
+			throw new Error(
+				`${linked.ref} is with ${parked}, which reported and stays reachable: resume it (\`resume\` ${parked}), or end it with \`coordinate\` action \`stop\` first.`,
+			);
+	};
+	refuseSecondChild();
 	const plan = planRun(
 		env.getProfiles(),
 		resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
@@ -149,6 +163,7 @@ export async function spawnAgent(
 		}
 		// Parallel calls of one batch all passed the first check, and a foreground call may have waited long for its slot.
 		refuseOverSpend();
+		refuseSecondChild();
 		// The item is claimed only now: everything that could refuse the call has passed.
 		linked?.claim();
 		claimed = claimRun(
@@ -170,10 +185,14 @@ export async function spawnAgent(
 	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
 	let lateNote = "";
-	// With the report's outcome (the success paths), the item the child worked on gets the report noted on it.
-	const finish = (outcome?: SubagentOutcome) =>
-		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id)
-			.then((note) => `${note}${lateNote}`)
+	// With the report's outcome (the success paths), the item the child worked on gets the report noted on it; `lingers`: the child stays reachable after it.
+	const finish = (outcome?: SubagentOutcome, lingers?: boolean) =>
+		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers)
+			.then((note) => {
+				// A background report carrying a graph notice wakes the parent for it (`graph-wake.ts`).
+				if (params.background && linked?.notice) runs.graph?.mark(run.identity.id, linked.notice);
+				return `${note}${lateNote}`;
+			})
 			.finally(() => {
 				runs.live.delete(run.identity.id);
 				run.release();

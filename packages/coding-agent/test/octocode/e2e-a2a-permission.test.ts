@@ -45,6 +45,8 @@ afterEach((context) => {
 const ONCE = "Allow once";
 const ALL = "Allow all external messages for this session";
 const fromProcess = (name: string) => `Allow messages from ${name} for this session`;
+// Contract change (user decision 3): a confirmed process can also be denied for the session.
+const denyProcess = (name: string) => `Deny messages from ${name} for this session`;
 
 /** A session in `manual`, while the senders below stay in the default `full`. */
 async function manualSession(box: Sandbox): Promise<Session> {
@@ -106,7 +108,14 @@ describe("in manual mode", () => {
 		expect(dialog.title).toContain("Let this external message reach the agent?");
 		expect(dialog.title).toContain(`from ${sender.name} (external, not you)`);
 		expect(dialog.title).toContain("Run the suite.");
-		expect(dialog.options).toEqual([ONCE, fromProcess(sender.name), ALL, "Deny", expect.any(String)]);
+		expect(dialog.options).toEqual([
+			ONCE,
+			fromProcess(sender.name),
+			ALL,
+			"Deny",
+			denyProcess(sender.name),
+			expect.any(String),
+		]);
 		expect(reached(first)).toBe(false);
 		answer(receiver.run, dialog.id, ONCE);
 
@@ -308,7 +317,14 @@ describe("with nobody to ask, and in plan", () => {
 		const inPlan = script([{ text: "read in plan" }]);
 		expect(await send(sender, receiver, inPlan)).toContain("Waiting for");
 		await until(() => dialogs(receiver.run).length === 1, "the dialog");
-		expect(dialogs(receiver.run)[0].options).toEqual([ONCE, fromProcess(sender.name), ALL, "Deny", expect.any(String)]);
+		expect(dialogs(receiver.run)[0].options).toEqual([
+			ONCE,
+			fromProcess(sender.name),
+			ALL,
+			"Deny",
+			denyProcess(sender.name),
+			expect.any(String),
+		]);
 		answer(receiver.run, dialogs(receiver.run)[0].id, ONCE);
 		await until(() => reached(inPlan), "the message");
 		await close(receiver, sender);

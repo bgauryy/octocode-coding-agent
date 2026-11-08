@@ -45,7 +45,7 @@ export function involving(
 		)
 		.all(since, ...agentIds, ...agentIds) as Row[];
 	const deliveries = db.prepare(
-		"SELECT recipient, delivered_at, completed_at, dead_at FROM deliveries WHERE message = ? ORDER BY recipient",
+		"SELECT recipient, delivered_at, completed_at, dead_at, relay_to FROM deliveries WHERE message = ? ORDER BY recipient",
 	);
 	return rows.map((message) => ({ message, deliveries: deliveries.all(num(message.id)) as Row[] }));
 }

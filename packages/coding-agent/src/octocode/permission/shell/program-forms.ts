@@ -73,6 +73,16 @@ export const PACKAGE_CONFIG_WRITES = new Map([
 /** Programs that rewrite files they are given and name no destination a parse could follow. */
 export const OPAQUE_WRITERS = ["patch", "dd", "unzip", "wget", "rsync", "ed", "ex"];
 export const SHELL_PROGRAMS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
+/**
+ * The words of an awk call that `awk-program.ts` reads through its allowlist, or undefined when `name` (a base name) runs
+ * no awk: a name ending in `awk` (`gawk`, `goawk`, `original-awk`), a versioned one (`gawk-5.3.1`, `mawk-1.3.4`), or
+ * busybox's or toybox's `awk` applet, whose words follow the applet's name.
+ */
+export function awkWords(name: string, rest: readonly Word[]): readonly Word[] | undefined {
+	const awk = (word: Word) => word !== undefined && /awk$|^g?awk-[0-9.]+$|^mawk-/.test(word);
+	if (awk(name)) return rest;
+	return (name === "busybox" || name === "toybox") && awk(rest[0]) ? rest.slice(1) : undefined;
+}
 export const FIND_ACTIONS = new Set([
 	"-delete",
 	"-exec",
@@ -89,7 +99,7 @@ export const FIND_ACTIONS = new Set([
  * The writers whose writes `mutation.ts` reads from their words: operands, destinations, in-place and output options, a
  * shell's script. Behind an input runner (`xargs`, `parallel`) words read at run time can change what they write. The
  * readers with writing options are `read-only.ts`'s, which joins both (`inputMayWrite`). sed's script and in-place
- * files are read by `sed-script.ts`.
+ * files are read by `sed-script.ts`, and every awk (`awkWords`) by `awk-program.ts`.
  */
 export const WORD_WRITERS = new Set([
 	...ALL_OPERANDS,
@@ -100,8 +110,6 @@ export const WORD_WRITERS = new Set([
 	...WRITER_PROGRAMS,
 	"sed",
 	"perl",
-	"awk",
-	"gawk",
 	"curl",
 	"tar",
 	"tee",
@@ -138,15 +146,6 @@ export function gitCommand(rest: Word[]): { sub: Word; after: Word[] } {
 	return { sub: operands[0], after: operands.slice(1) };
 }
 
-/** `gawk -i inplace` (also `-iinplace`, `--include=inplace`) rewrites its input files. */
-export function gawkInPlace(words: Word[]): boolean {
-	return words.some(
-		(word, index) =>
-			(word === "-i" && /^inplace(?:\.awk)?$/.test(words[index + 1] ?? "")) ||
-			/^(?:-i|--include=)inplace(?:\.awk)?$/.test(word ?? ""),
-	);
-}
-
 /** Whether `git config` (its words after `config`, and its operands) writes: any form but a read flag or a single key. */
 export function changesGitConfig(rest: Word[], after: Word[]): boolean {
 	const subAt = rest.findIndex((word) => word === "config");
@@ -163,8 +162,8 @@ export function changesGitConfig(rest: Word[], after: Word[]): boolean {
 }
 
 /**
- * The files a program given a script (`perl -i`, `gawk -i inplace`) rewrites: its operands, without the script. The
- * script is the value of an option that `scriptOption` matches, or else the first operand.
+ * The files a program given a script (`perl -i`) rewrites: its operands, without the script. The script is the value of
+ * an option that `scriptOption` matches, or else the first operand. awk's in-place files are read by `awk-program.ts`.
  */
 export function scriptedFiles(words: Word[], scriptOption: RegExp): Word[] {
 	const files: Word[] = [];
@@ -176,9 +175,7 @@ export function scriptedFiles(words: Word[], scriptOption: RegExp): Word[] {
 			at++;
 		} else if (word === undefined || !word.startsWith("-")) files.push(word);
 	}
-	// `gawk -i inplace`'s value is not a file either.
-	const named = files.filter((file) => file !== "inplace" && file !== "inplace.awk");
-	return scripted ? named : named.slice(1);
+	return scripted ? files : files.slice(1);
 }
 
 /** The words that are not options (a `--` ends them); an unresolved word stays `undefined`. */

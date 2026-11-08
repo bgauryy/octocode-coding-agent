@@ -13,6 +13,8 @@ export class Mail {
 	private held: { batch: Message[]; parentId: string | undefined; onRejected?: () => void } | undefined;
 	/** Aborted while mail is held: a wait at the end of the run (background work) stops for it. */
 	private holding = new AbortController();
+	/** Aborted when a question from the coordinator reached a running session; renewed once the model is called with it. */
+	private asking = new AbortController();
 	/** Notices already handed to Octocode whose database acknowledgement still needs retrying. */
 	private notified: DeadLetter[] = [];
 	/** A dead-letter notice awaiting the host's asynchronous acceptance; do not hand it over twice. */
@@ -135,12 +137,27 @@ export class Mail {
 				// The run cannot be stopped: deliver it as a waking message instead.
 			}
 		}
-		return this.send(batch, parentId, false, onRejected);
+		const sent = this.send(batch, parentId, false, onRejected);
+		// The coordinator wants an answer, not a stopped job: a wait at the end of the run ends, and the queued question
+		// continues it. The job keeps running, and the next answer holds for it again.
+		if (sent && ctx && !ctx.isIdle() && batch.some((message) => message.replyRequired && message.from === parentId))
+			this.asking.abort();
+		return sent;
 	}
 
 	/** Aborted while an interrupt holds mail for the stopped run. */
 	get interrupted(): AbortSignal {
 		return this.holding.signal;
+	}
+
+	/** Aborted while a question from the coordinator waits for this agent's model (`deliver`). */
+	get asked(): AbortSignal {
+		return this.asking.signal;
+	}
+
+	/** The model is being called, so a question delivered before is in front of it: the next wait holds again. */
+	modelCalled(): void {
+		if (this.asking.signal.aborted) this.asking = new AbortController();
 	}
 
 	private send(batch: Message[], parentId: string | undefined, stopped: boolean, onRejected?: () => void): boolean {
@@ -181,6 +198,7 @@ export class Mail {
 		this.forUser.clear();
 		this.lastProvenancePrune = 0;
 		this.releaseInterrupt();
+		this.asking = new AbortController();
 		this.peers?.stop();
 	}
 

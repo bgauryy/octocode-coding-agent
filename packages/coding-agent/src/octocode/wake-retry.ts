@@ -6,6 +6,7 @@ import { interactive } from "./shared/interactive.ts";
 import {
 	AGENT_RESULT_TYPE,
 	EXTERNAL_MESSAGE_TYPE,
+	GRAPH_NOTICE_TYPE,
 	INTERNAL_MESSAGE_TYPE,
 	JOB_TYPE,
 	TIMER_TYPE,
@@ -21,6 +22,7 @@ export const WAKE_RETRY_MS = [1, 2, 5, 10, 30].map((minutes) => minutes * 60_000
 /** Messages that start a run with nobody at the keyboard: a report or mail recorded as delivered, whatever the turn then did. */
 const WAKES = new Set<string>([
 	AGENT_RESULT_TYPE,
+	GRAPH_NOTICE_TYPE,
 	INTERNAL_MESSAGE_TYPE,
 	EXTERNAL_MESSAGE_TYPE,
 	JOB_TYPE,

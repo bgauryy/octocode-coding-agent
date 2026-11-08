@@ -360,6 +360,28 @@ export function forItem(db: DatabaseSync, workspaceId: string, seq: number): Age
 	).map(decode);
 }
 
+/**
+ * The child runs started for items `seqs` of `workspaceId` that have not ended and whose agent or parent is still a
+ * member (a queued child has not joined yet; a run its crashed parent left open is not live), newest first: who works on
+ * each item of a page, in one statement. The one rule for "a live child run for an item": `resolveAgent` uses it too.
+ */
+export function openForItems(
+	db: DatabaseSync,
+	workspaceId: string,
+	seqs: readonly number[],
+): Array<{ seq: number; agentId: string }> {
+	if (seqs.length === 0) return [];
+	const rows = db
+		.prepare(
+			`SELECT r.backlog_seq, r.agent_id FROM agent_runs r
+			 WHERE r.backlog_workspace = ? AND r.backlog_seq IN (${seqs.map(() => "?").join(", ")}) AND r.kind = 'child' AND r.ended_at IS NULL
+			   AND (EXISTS (SELECT 1 FROM agents a WHERE a.id = r.agent_id) OR EXISTS (SELECT 1 FROM agents p WHERE p.id = r.parent_agent_id))
+			 ORDER BY r.started_at DESC, r.rowid DESC`,
+		)
+		.all(workspaceId, ...seqs) as Row[];
+	return rows.map((row) => ({ seq: num(row.backlog_seq), agentId: String(row.agent_id) }));
+}
+
 /** Deletes the runs that ended (or, never ended, began) before `cutoff`: the retention window (`retention.ts`). Returns how many went. */
 export function purgeBefore(db: DatabaseSync, cutoff: number): number {
 	return Number(db.prepare("DELETE FROM agent_runs WHERE COALESCE(ended_at, started_at) < ?").run(cutoff).changes);

@@ -4,6 +4,7 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { contentText, type Message } from "@octocodeai/octocode-ai";
+import { convertToLlm } from "../messages.ts";
 import { renderInstruction } from "../prompt-template.ts";
 
 // ============================================================================
@@ -140,6 +141,27 @@ export function serializeConversation(messages: Message[]): string {
 	}
 
 	return parts.join("\n\n");
+}
+
+/** A line terminator (CRLF as one) followed by a character that starts a non-empty line. */
+const LATER_LINE = /(\r\n|[\n\v\f\r\u001c-\u001e\u2028\u2029\u0085])(?=[^\n\v\f\r\u001c-\u001e\u2028\u2029\u0085])/gu;
+
+/**
+ * Serialize session messages for a summarizer: as `serializeConversation` after `convertToLlm`, except that a custom
+ * message (an extension's note or an external message) is labeled with its type, never as the user's, and every later
+ * non-empty line of its body is indented, so a role label inside it (`[User]:`, `[Assistant]:`) never starts a line.
+ * Every line terminator counts (CRLF, LF, CR, U+2028, U+2029, U+0085), since a model may read any of them as a break.
+ * Text that came from outside the conversation must not read to the summarizer as the user's own words.
+ */
+export function serializeMessages(messages: AgentMessage[]): string {
+	return messages
+		.map((message) => {
+			if (message.role !== "custom") return serializeConversation(convertToLlm([message]));
+			const text = contentText(message.content, "");
+			return text ? `[Message (${message.customType})]: ${text.replace(LATER_LINE, "$1  ")}` : "";
+		})
+		.filter(Boolean)
+		.join("\n\n");
 }
 
 // ============================================================================

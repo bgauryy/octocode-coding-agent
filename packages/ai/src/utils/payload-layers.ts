@@ -138,7 +138,10 @@ function openAiCacheMode(payload: Record_, breakpoint: Record_ | undefined, cont
 		payload.prompt_cache_retention,
 		options.ttl,
 		options.mode,
-		breakpoint ? `breakpoint-${typeof breakpoint.ttl === "string" ? breakpoint.ttl : "30m"}` : undefined,
+		// A breakpoint without its own ttl inherits the request TTL (Azure), whose default is 30m.
+		breakpoint
+			? `breakpoint-${[breakpoint.ttl, options.ttl].find((ttl) => typeof ttl === "string") ?? "30m"}`
+			: undefined,
 		markerMode(control),
 	].filter((part): part is string => typeof part === "string" && part !== "");
 	return parts.length > 0 ? parts.join("+") : undefined;

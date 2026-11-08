@@ -40,14 +40,16 @@ function waitText(item: Item, marks: ItemMarks): string {
 
 /**
  * `B14 [ongoing p1 bug] Title #tag ⊂B3 (from B12) (blocked by B5) (2 open steps) (you)`: the type shows unless it is feature, the
- * parent as `⊂B3`; `marks` (from `BacklogStore.marks`) add what the database says: open prerequisites, open steps, a stale claim.
+ * parent as `⊂B3`; `marks` (from `BacklogStore.marks`) add what the database says: open prerequisites, open steps, the
+ * children working on it (`(worked on by kid-1)`), a stale claim.
  */
 export function itemLine(item: Item, self?: string, parents?: ReadonlySet<string>, marks: ItemMarks = {}): string {
 	const tags = item.tags.map((tag) => ` #${tag}`).join("");
 	const type = item.type === "feature" ? "" : ` ${item.type}`;
 	const parent = item.parentId && !marks.hideParent ? ` ⊂${item.parentId}` : "";
 	const stale = marks.stale ? " (stale: holder ended)" : "";
-	return `${item.ref} [${item.closed ? "closed" : item.state} ${priorityName(item.priority)}${type}] ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${stale}`;
+	const workers = marks.workers ? ` (worked on by ${marks.workers.map(visibleControls).join(", ")})` : "";
+	return `${item.ref} [${item.closed ? "closed" : item.state} ${priorityName(item.priority)}${type}] ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${workers}${stale}`;
 }
 
 const ago = (at: number, now: number) => formatAgo(now - at);

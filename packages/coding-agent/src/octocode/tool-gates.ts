@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ToolAnnotations, ToolCallEvent } from "../core/features/index.ts";
+import { renderInstruction } from "../core/prompt-template.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import { permissionGate } from "./permission/gate.ts";
@@ -39,15 +40,33 @@ export interface ToolGatesOptions {
 }
 
 /**
- * A `timer` call with an until-command (its own, or a `check`'s trigger) is decided as the `bash` call that command is: the mode, a read-only role, the
- * provenance tripwire and the user's answer apply when it is set (`timer/conditions/command.ts` rechecks plan mode and the role
- * each time it runs). Any other timer call has no effect class.
+ * A `timer` call with an until-command (its own, or a `check`'s trigger) is decided as the `bash` call that command is: git
+ * state, reservations, PreToolUse hooks (as `Bash`), the mode, source rules, a read-only role, the provenance tripwire and the
+ * user's answer apply when it is set (`timer/conditions/command.ts` rechecks plan mode and the role each time it runs). Any
+ * other timer call has no effect class.
  */
 function timerOperation<T extends { toolName: string; input: Record<string, unknown> }>(event: T): T {
 	if (event.toolName !== "timer") return event;
 	const command = untilCommand(event.input);
 	return command ? { ...event, toolName: "bash", input: { command } } : event;
 }
+
+/**
+ * Runs `gate` on the bash form of a timer call (`timerOperation`). A rewrite of that command (a hook's `updatedInput`, the
+ * reservation gate's Node confinement) is refused: it would change only the bash form, never the timer's condition.
+ */
+const asBash =
+	(gate: Gate): Gate =>
+	async (event, ctx, prior) => {
+		const bash = timerOperation(event);
+		if (bash === event) return gate(event, ctx, prior);
+		const command = bash.input.command;
+		const verdict = await gate(bash, ctx, prior);
+		if (verdict?.block) return verdict;
+		return verdict?.rewritten || bash.input.command !== command
+			? { block: true, reason: renderInstruction("notices/timer/rewrite-refused.md") }
+			: verdict;
+	};
 
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
@@ -83,10 +102,13 @@ export function registerToolGates(
 		};
 	// Only an isolated run's parent hands its child the team workspace (`subagents/tool.ts` `Isolation`): its cwd is a private worktree.
 	const scope = env ?? process.env;
-	const gitState = gitStateGate({
+	const sharedTree = gitStateGate({
 		subagent: envFlag(scope, SUBAGENT_ENV),
 		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
 	});
+	// The invariants and hooks see a timer's until-command as the bash call it is.
+	const gitState = sharedTree && asBash(sharedTree);
+	const reservation = asBash(collab.reservationGate);
 	// A browser MCP call that opens a cloud metadata address: an invariant in every mode, on every entry path.
 	const metadata: Gate = async (event) => {
 		const reason = await browserMetadataRefusal(event.toolName, event.input);
@@ -94,10 +116,7 @@ export function registerToolGates(
 	};
 	// The invariants again for a command a hook rewrote.
 	const invariants: Gate = async (event, ctx) =>
-		planning?.gate(event) ??
-		(await gitState?.(event, ctx)) ??
-		(await collab.reservationGate(event, ctx)) ??
-		metadata(event, ctx);
+		planning?.gate(event) ?? (await gitState?.(event, ctx)) ?? (await reservation(event, ctx)) ?? metadata(event, ctx);
 	const permissionStep: Gate = (event, ctx, prior) =>
 		permissionGate({
 			permission,
@@ -114,9 +133,9 @@ export function registerToolGates(
 	const bodies: GateStepBodies = {
 		"plan-mode": async (event) => planning?.gate(event),
 		"git-state": gitState,
-		reservation: collab.reservationGate,
+		reservation,
 		metadata,
-		"pre-tool-use": hooks.preToolUse,
+		"pre-tool-use": asBash(hooks.preToolUse),
 		"plan-recheck": async (event) => planning?.gate(event),
 		permission: permissionStep,
 	};
@@ -159,9 +178,9 @@ export function registerToolGates(
 			if (refused) return refused;
 			const snapshots = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
 			if (snapshots.size) localReads.set(event.toolCallId, snapshots);
-			// A shell call's targets are only checked above; the `file` tool checks its own at write time. Between this
+			// A shell call's targets (a timer's until-command included) are only checked above; the `file` tool checks its own at write time. Between this
 			// point and the run, a batch's later approvals, a dialog or a peer's lock can change what the checks saw.
-			return event.toolName === "bash" || event.toolName === "powershell"
+			return event.toolName === "bash" || event.toolName === "powershell" || timerOperation(event) !== event
 				? { revalidate: () => audited(invariants)(event, ctx) }
 				: undefined;
 		} finally {

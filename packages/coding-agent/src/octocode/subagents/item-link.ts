@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { openBacklog } from "../backlog/context.ts";
+import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { attachReport, checkDelegable, claimDelegated } from "../backlog/delegation.ts";
+import { graphNotice } from "../backlog/graph-notice.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import { noteSavedRef } from "./ref-link.ts";
@@ -13,9 +14,23 @@ export interface ItemLink {
 	claim(): void;
 	/**
 	 * Notes the report on the item and, when the child's changes were saved on `ref`, links that ref there; the lines
-	 * the parent's footer gets (never throws: the report itself still arrives).
+	 * the parent's footer gets (never throws: the report itself still arrives). `lingers`: the child stays reachable after it.
 	 */
-	attach(outcome: SubagentOutcome | undefined, agent: string, ref?: string, patch?: string): string;
+	attach(outcome: SubagentOutcome | undefined, agent: string, ref?: string, patch?: string, lingers?: boolean): string;
+	/** The graph line the last `attach` added (what became ready, or what waits on an item its child left open). */
+	readonly notice: string | undefined;
+}
+
+/**
+ * What the end of `agent`'s run means for the items that wait on `ref` (`graphNotice`): ready ones, or ones its child left
+ * waiting. The report carries it and wakes the parent for it. Undefined when there is none or the backlog cannot be read.
+ */
+function itemGraphNotice(backlog: Backlog, ref: string, agent: string, lingers: boolean): string | undefined {
+	try {
+		return graphNotice(backlog, ref, agent, lingers);
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -32,8 +47,12 @@ export function itemLink(
 	const checked = checkDelegable(backlog, ref.trim());
 	const { ref: itemRef } = checked.item;
 	let claimed = false;
+	let notice: string | undefined;
 	return {
 		ref: itemRef,
+		get notice() {
+			return notice;
+		},
 		claim() {
 			if (!checked.claimable || claimed) return;
 			// Checked again: the item may have changed since the first look (another session may hold it now).
@@ -41,7 +60,7 @@ export function itemLink(
 			if (now.claimable) claimDelegated(backlog, now.item);
 			claimed = true;
 		},
-		attach(outcome, agent, ref, patch) {
+		attach(outcome, agent, ref, patch, lingers = false) {
 			const lines: string[] = claimed ? [`Claimed ${itemRef} for this session to delegate it.`] : [];
 			if (outcome) {
 				try {
@@ -65,6 +84,8 @@ export function itemLink(
 					lines.push(`Could not link ${ref} on ${itemRef}: ${errorMessage(error)}`);
 				}
 			}
+			notice = itemGraphNotice(backlog, itemRef, agent, lingers);
+			if (notice) lines.push(notice);
 			return lines.map((line) => `\n${line}`).join("");
 		},
 	};

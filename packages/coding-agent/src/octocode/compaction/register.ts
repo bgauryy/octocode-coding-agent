@@ -6,14 +6,7 @@ import type {
 	SessionBeforeCompactEvent,
 	SessionCompactEvent,
 } from "../../core/features/index.ts";
-import {
-	appliedFileOutcomes,
-	contextReads,
-	seenFiles,
-	sessionCleared,
-	sessionClearedAt,
-	type WorkedFile,
-} from "../files/reads.ts";
+import { appliedFileOutcomes, contextReads, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { writeSessionRecord } from "../shared/archive/record.ts";
 import { resolveToolPath } from "../shared/home.ts";
@@ -30,7 +23,7 @@ import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache
 import { shellParserReady } from "../permission/shell/mutation.ts";
 import { clearStaleResults, prefixRewritten } from "./clearing.ts";
 import { COMPACT_TOOL, CompactRequests } from "./compact-tool.ts";
-import { FallbackContinuity, latestCompaction, withoutCarriedNotes } from "./continuity.ts";
+import { FallbackContinuity } from "./continuity.ts";
 import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
 import {
@@ -54,7 +47,7 @@ import {
 import { liveStateLines } from "./live-state.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { carryFileLists, summaryMethodOf, windowBudget, writeSummary } from "./summary.ts";
-import { requestMessages } from "./thinking.ts";
+import { requestView } from "./request-view.ts";
 
 /**
  * Tool results and call arguments stay verbatim until Octocode compacts (a long result is bounded and spilled to a file when
@@ -256,15 +249,8 @@ export function registerCompaction(
 			contextWindow: ctx.model?.contextWindow,
 		});
 		if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
-		// Every request shows the results cleared on this branch as their placeholders, the same way each time, no
-		// thinking a compaction made stale (`thinking.ts`) and no continuity message a later compaction carried on.
-		const latest = latestCompaction(ctx.sessionManager);
-		const messages = requestMessages(
-			withoutCarriedNotes(event.messages, latest?.id, summaryMethodOf(latest?.details) !== undefined),
-			ctx.model,
-			sessionCleared(ctx.sessionManager),
-			sessionClearedAt(ctx.sessionManager),
-		);
+		// Every request shows the messages as `requestView` describes; the cache-sharing summary request uses it too.
+		const messages = requestView(event.messages, ctx.sessionManager, ctx.model);
 		return messages === event.messages ? undefined : { messages };
 	});
 	api.on("session_tree", async (_event, ctx) => {

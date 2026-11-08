@@ -13,6 +13,7 @@ import type { FileGuard } from "../files/tool/guard.ts";
 import { readOnlyCommand } from "../permission/shell/read-only.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { estimateTokens } from "../../core/compaction/tokens.ts";
+import { isVirtualModel } from "../../core/virtual-models.ts";
 import { trailingUpdateRewritesPrefix, type TranscriptModel } from "@octocodeai/octocode-ai";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -135,14 +136,15 @@ const CLEAR_ABOVE_CONTEXT_SHARE = 0.5;
  * Whether the request about to be made rewrites the history's cache entry anyway: the way the model's transcript is
  * sent changes the leading prompt for the trailing system updates (`trailingUpdateRewritesPrefix`: never for a model
  * that keeps them in the history, only when a collapsing model folds one into the leading message or changes its
- * tools), or the model is not the one that answered last (a model switch).
+ * tools), or the model is not the one that answered last (a model switch). A reply records the physical model that
+ * answered, so a virtual (routed) model is never compared with it: its router picks the physical model per request.
  */
 export function prefixRewritten(
 	messages: readonly unknown[],
-	model: (TranscriptModel & { provider?: string; id?: string }) | undefined,
+	model: (TranscriptModel & { provider?: string; id?: string; api?: string }) | undefined,
 ) {
 	if (trailingUpdateRewritesPrefix(messages.filter(isRecord) as { role: string }[], model)) return true;
-	if (!model?.provider || !model.id) return false;
+	if (!model?.provider || !model.id || (model.api !== undefined && isVirtualModel({ api: model.api }))) return false;
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];
 		if (!isRecord(message) || message.role !== "assistant") continue;

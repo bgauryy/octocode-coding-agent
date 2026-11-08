@@ -7,7 +7,16 @@ import { StringEnum } from "./schema.ts";
  * it crosses processes (RPC, ACP, the web workspace, a subagent's relay), so every string and array has a limit.
  */
 export const QUESTION_TYPES = ["text", "choice", "multi", "confirm", "approval"] as const;
-export const OPTION_ROLES = ["allow_once", "allow_session", "allow_kind", "deny", "deny_note", "yes", "no"] as const;
+export const OPTION_ROLES = [
+	"allow_once",
+	"allow_session",
+	"allow_kind",
+	"deny",
+	"deny_session",
+	"deny_note",
+	"yes",
+	"no",
+] as const;
 export const CANCEL_REASONS = ["declined", "aborted", "unavailable", "timeout"] as const;
 
 /** The roles each type may carry; a role on any other type means nothing and is never decoded. */
@@ -16,7 +25,7 @@ export const ROLES_BY_TYPE = {
 	choice: [],
 	multi: [],
 	confirm: ["yes", "no"],
-	approval: ["allow_once", "allow_session", "allow_kind", "deny", "deny_note"],
+	approval: ["allow_once", "allow_session", "allow_kind", "deny", "deny_session", "deny_note"],
 } as const satisfies Record<(typeof QUESTION_TYPES)[number], readonly (typeof OPTION_ROLES)[number][]>;
 
 /** Bounds, shared by the schemas below and by the sanitizer in front of a question another process sent. */

@@ -65,12 +65,13 @@ const isCall = (entry: AuditEntry): boolean =>
  * (a denial, an `invariant` refusal, a mode change, a ⚠ action, a call a person answered, a rollup) is always written.
  */
 export const isRoutine = (entry: AuditEntry): boolean =>
-	isCall(entry) && entry.allowed && !WARN_ACTIONS.has(entry.action) && entry.via !== "user";
+	isCall(entry) && entry.allowed && !WARN_ACTIONS.has(entry.action) && entry.via !== "user" && entry.via !== "bypass";
 
 const ENTRY_ACTIONS: readonly string[] = [...ACTION_CLASSES, "call", "mode", "invariant", "rollup"];
-/** Every `via` an entry has: a verdict's route (`mode`, `grant`, `user`, `headless`, `cancelled`), a hook, a typed command, a refusal, a report or a relayed answer. */
+/** Every `via` an entry has: a verdict's route (`mode`, `bypass`, `grant`, `user`, `headless`, `cancelled`), a hook, a typed command, a refusal, a report or a relayed answer. */
 const ENTRY_VIAS = [
 	"mode",
+	"bypass",
 	"grant",
 	"user",
 	"headless",

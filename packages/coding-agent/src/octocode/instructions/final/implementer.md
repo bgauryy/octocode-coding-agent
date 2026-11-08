@@ -122,10 +122,6 @@ Complete the assigned change.
 - After the outcome word: changed paths, behavior, each check with its actual result, checks you did not run, and any integration step. In an isolated worktree, identify the work to merge.
 </role>
 
-<harnesses>
-{{HARNESSES}}
-</harnesses>
-
 <environment>
 {{ENVIRONMENT}}
 </environment>

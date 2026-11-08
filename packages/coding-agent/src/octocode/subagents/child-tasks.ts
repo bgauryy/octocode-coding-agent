@@ -33,17 +33,22 @@ export function isolatedChildSteps(cwd: string, agent: string): string {
 	}
 }
 
-/** Capture worktree-local steps before cleanup; the usual item report and same-workspace adoption follow cleanup. */
+/**
+ * Capture worktree-local steps before cleanup; the usual item report and same-workspace adoption follow cleanup.
+ * `lingers`: the child stays reachable after its report (the item's graph line says so).
+ */
 export async function finishChildNotes(
 	ctx: Ctx,
 	isolation: { worktree?: { cwd: string }; finish(): Promise<string>; ref?: string; patch?: string },
 	linked: ItemLink | undefined,
 	outcome: SubagentOutcome | undefined,
 	agent: string,
+	lingers = false,
 ): Promise<string> {
 	const steps = isolation.worktree && !linked ? isolatedChildSteps(isolation.worktree.cwd, agent) : "";
 	const note = await isolation.finish();
-	return `${note}${reportNotes(ctx, linked, outcome, agent, isolation.ref, isolation.patch)}${steps}`;
+	const item = linked?.attach(outcome, agent, isolation.ref, isolation.patch, lingers) ?? "";
+	return `${note}${item}${adoptChildTasks(ctx, agent)}${steps}`;
 }
 
 /**
@@ -61,16 +66,4 @@ export function adoptChildTasks(ctx: Ctx, agent: string): string {
 	} catch (error) {
 		return `\nCould not move the open tasks of ${agent} to this session: ${errorMessage(error)}`;
 	}
-}
-
-/** The lines a finished run adds to the parent's footer: the report noted on its item, then its open tasks moved here. */
-function reportNotes(
-	ctx: Ctx,
-	linked: ItemLink | undefined,
-	outcome: SubagentOutcome | undefined,
-	agent: string,
-	ref: string | undefined,
-	patch: string | undefined,
-): string {
-	return `${linked?.attach(outcome, agent, ref, patch) ?? ""}${adoptChildTasks(ctx, agent)}`;
 }

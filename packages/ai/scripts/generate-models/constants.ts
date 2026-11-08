@@ -217,6 +217,11 @@ export const ANT_LING_RING_THINKING_LEVEL_MAP = {
 } as const;
 
 export const BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS = new Set(["anthropic.claude-opus-5"]);
+/** Bedrock models AWS no longer serves. A models.dev "deprecated" mark alone does not exclude a model AWS still serves.
+ * Sonnet 4: EOL 2026-10-14, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4.html */
+export const BEDROCK_END_OF_LIFE_MODEL_IDS = new Set(
+	["", "us.", "eu.", "apac.", "global."].map((prefix) => `${prefix}anthropic.claude-sonnet-4-20250514-v1:0`),
+);
 export const MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS = new Set(["gpt-5.6"]);
 export const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
 	"gpt-5.4",

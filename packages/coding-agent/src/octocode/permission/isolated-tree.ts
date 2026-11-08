@@ -59,7 +59,9 @@ export function isolatedTreeRefusal(
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
 	const command = optionalString(input.command) ?? "";
 	const effect = shellMutation(command, 0, env);
-	const found = [...effect.writes, ...effect.areas, ...effect.unreadAreas].find((file) => intoMain(file, true));
+	const found = [...effect.writes, ...effect.databases, ...effect.areas, ...effect.unreadAreas].find((file) =>
+		intoMain(file, true),
+	);
 	if (found !== undefined) return refusal(`Changing ${found} from the shell`, main);
 	if (effect.refMoves.length > 0)
 		return refusal(`\`${effect.refMoves[0]}\` (every worktree of this repository shares its refs)`, main);
@@ -68,7 +70,8 @@ export function isolatedTreeRefusal(
 			"A write to a relative path after a `cd` the guard cannot follow (it follows only `cd /abs/dir`, `cd ~/dir` or `cd ./dir` joined by `&&`: not a bare name, `..`, a variable, `cd -`, `||` or a loop)",
 			main,
 		);
-	if (!effect.uncertain) return undefined;
+	// An awk call outside its allowlist (`awkUnread`) is uncertain here too: its program or library may write the main tree.
+	if (!effect.uncertain && effect.awkUnread === undefined) return undefined;
 	const spelled = [main, env[TEAM_WORKSPACE_ENV]?.trim() ?? main];
 	const namesMain =
 		spelled.some((form) => command.includes(form)) ||

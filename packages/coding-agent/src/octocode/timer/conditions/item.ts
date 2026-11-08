@@ -53,6 +53,10 @@ export const itemSpec: ConditionSpec<Item> = {
 				lines.push(
 					open.length ? `${ref} waits on ${open.join(", ")}.` : `${ref} is ready: its dependsOn items are done.`,
 				);
+			} else if (condition.state === "done" && state === "closed") {
+				// A closed item never reaches done unless it is reopened and completed: the waiter hears it now, not at its deadline.
+				met = true;
+				lines.push(`${ref} is closed, not done.`);
 			} else {
 				met ||= state === condition.state;
 				lines.push(`${ref} is ${state}.`);

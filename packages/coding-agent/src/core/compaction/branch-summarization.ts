@@ -10,12 +10,7 @@ import type { AgentMessage, StreamFn } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
 import type { Model, SimpleStreamOptions, Usage } from "@octocodeai/octocode-ai/compat";
-import {
-	convertToLlm,
-	createBranchSummaryMessage,
-	createCompactionSummaryMessage,
-	createCustomMessage,
-} from "../messages.ts";
+import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage } from "../messages.ts";
 import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
 import { projectContextEntry } from "../session-manager/context.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
@@ -30,7 +25,7 @@ import {
 	type FileOperations,
 	formatFileOperations,
 	SUMMARIZATION_SYSTEM_PROMPT,
-	serializeConversation,
+	serializeMessages,
 } from "./utils.ts";
 
 // ============================================================================
@@ -301,10 +296,8 @@ export async function generateBranchSummary(
 		return { summary: "No content to summarize" };
 	}
 
-	// Transform to LLM-compatible messages, then serialize to text
-	// Serialization prevents the model from treating it as a conversation to continue
-	const llmMessages = convertToLlm(messages);
-	const conversationText = serializeConversation(llmMessages);
+	// Serialize to text so the model does not treat it as a conversation to continue; custom messages keep their type as the label.
+	const conversationText = serializeMessages(messages);
 
 	// Build prompt
 	let instructions: string;

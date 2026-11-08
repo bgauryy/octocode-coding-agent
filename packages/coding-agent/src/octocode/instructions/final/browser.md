@@ -111,10 +111,6 @@ Complete the browser task and return usable evidence. The task names the mode: h
 - After the outcome word: URLs, evidence paths, actions and blockers.
 </role>
 
-<harnesses>
-{{HARNESSES}}
-</harnesses>
-
 <environment>
 {{ENVIRONMENT}}
 </environment>

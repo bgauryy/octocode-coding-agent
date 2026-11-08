@@ -19,6 +19,11 @@ export interface ConvertResponsesMessagesOptions {
 	includeSystemPrompt?: boolean;
 	/** Explicit boundary on the leading instructions only; the calling adapter checks support. */
 	instructionCacheTtl?: "30m" | "12h";
+	/**
+	 * Leave `ttl` out of every breakpoint, so it inherits the request TTL (`prompt_cache_options.ttl`, default 30m); for
+	 * endpoints that document the breakpoint as `{ mode: "explicit" }` only (Azure).
+	 */
+	omitBreakpointTtl?: boolean;
 	/** First section of the leading prompt that starts a second explicit block; needs `instructionCacheTtl`. */
 	instructionCacheBoundary?: string;
 	grammarToolInputProperties?: ReadonlyMap<string, string>;

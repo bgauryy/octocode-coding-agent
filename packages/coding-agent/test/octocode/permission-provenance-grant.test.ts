@@ -202,11 +202,12 @@ describe("an outbound message whose text came from an agent", () => {
 		);
 	const send = (s: ReturnType<typeof session>, provenance: ReturnType<typeof createProvenance>) =>
 		messagePolicy({
+			api: { sendMessage: () => undefined },
 			hooks: {} as never,
 			permission: s.permission,
 			planning: { blocked: () => false },
 			provenance,
-			team: { reservation: () => undefined },
+			team: { reservation: () => undefined, members: () => [] },
 		}).authorizeExternal({ action: "prompt", id: "x", text: SPAN } as never, s.ctx, new AbortController().signal);
 
 	it("offers the agent's session grant, and once granted sends without asking again", async () => {

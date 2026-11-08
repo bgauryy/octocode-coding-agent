@@ -1,5 +1,9 @@
 import { type Api, type Model, resolveModelCapabilities, type StreamOptions } from "@octocodeai/octocode-ai";
-import { azureAcceptsExtendedRetention } from "@octocodeai/octocode-ai/api/azure-openai-config";
+import {
+	azureAcceptsExtendedRetention,
+	azureInstructionCacheTtl,
+	azureSupportsExplicitPromptCacheMode,
+} from "@octocodeai/octocode-ai/api/azure-openai-config";
 import {
 	type CachePreferenceLayer,
 	cacheEnvironmentPreferences,
@@ -73,6 +77,14 @@ function describeOpenAIResponses(model: Model<Api>, policy: Policy, subscription
 	if (subscription) return "Subscription credentials: API-only retention controls omitted.";
 	const cache = resolveModelCapabilities(model).cache;
 	const long = cache.lifetimes.long !== undefined;
+	if (cache.mechanism === "explicit-breakpoint" && model.api === "azure-openai-responses") {
+		// Azure breakpoints carry no TTL of their own: the request TTL, the longer of the two tiers, covers them and the history.
+		if (history === "none")
+			return "Explicit mode with no breakpoints: no caching at all, not even the provider's automatic cache.";
+		const ttl = long && (history === "long" || instructions === "long") ? "12h" : "30m";
+		const covers = instructions === "none" ? "history" : "instruction breakpoints and history";
+		return `Explicit mode opted in; request TTL ${ttl} covers ${covers}.`;
+	}
 	if (cache.mechanism === "explicit-breakpoint") {
 		const instruction = instructions === "none" ? undefined : instructions === "long" && long ? "12h" : "30m";
 		if (history === "none") {
@@ -102,7 +114,8 @@ export function describeCachePolicy(
 		effective = describeMarkers(policy.options, cache.lifetimes.long !== undefined);
 	} else if (
 		model.api === "openai-responses" ||
-		(model.api === "azure-openai-responses" && azureAcceptsExtendedRetention(model))
+		(model.api === "azure-openai-responses" &&
+			(azureSupportsExplicitPromptCacheMode(model) || azureAcceptsExtendedRetention(model)))
 	) {
 		effective = describeOpenAIResponses(model, policy.options, subscription);
 	} else {
@@ -111,6 +124,10 @@ export function describeCachePolicy(
 			(history === "none"
 				? "Optional cache writes disabled; the provider may still cache automatically."
 				: "Provider-managed retention; configurable durations are not verified.");
+		// GPT-6 Astra on Azure: explicit breakpoints on the instructions, in implicit mode.
+		const instructionTtl =
+			model.api === "azure-openai-responses" ? azureInstructionCacheTtl(model, policy.options) : undefined;
+		if (instructionTtl) effective += ` Instructions carry a ${instructionTtl} cache breakpoint.`;
 	}
 	return `Requested instructions: ${instructions} (${policy.sources.instructionCacheRetention}); history: ${history} (${policy.sources.cacheRetention}).\n${effective}\nCache reads and costs below are provider-reported; retention does not guarantee a hit.`;
 }

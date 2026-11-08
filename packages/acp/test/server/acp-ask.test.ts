@@ -13,6 +13,7 @@ const approval: Question = {
 		{ id: "s", label: "Session", role: "allow_session" },
 		{ id: "k", label: "Kind", role: "allow_kind" },
 		{ id: "d", label: "Deny", role: "deny" },
+		{ id: "ds", label: "Deny for the session", role: "deny_session" },
 		{ id: "n", label: "Deny with note", role: "deny_note" },
 	],
 };
@@ -65,6 +66,7 @@ describe("ACP ask", () => {
 			["s", "allow_always"],
 			["k", "allow_always"],
 			["d", "reject_once"],
+			["ds", "reject_always"],
 		]);
 		expect(replies).toEqual([{ id: "a", picks: ["s"] }]);
 	});

@@ -5,6 +5,7 @@ import { type ChildIdentity, identityBlock } from "../instructions/task.ts";
 import { existingLibrary } from "../shared/archive.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { AGENT_ID_ENV } from "../team/store/env.ts";
+import { IDENTITY_REMINDER_TYPE, latestReminderOnly } from "../shared/reminder-view.ts";
 import type { ResultContract } from "./result-schema.ts";
 import { browserModeLine, resultContractBlock } from "./task-text.ts";
 
@@ -49,7 +50,7 @@ export function assignmentText(
 export const SUBAGENT_ASSIGNMENT_ENV = "OCTOCODE_SUBAGENT_ASSIGNMENT";
 
 export const IDENTITY_ENTRY = "octocode-subagent-identity";
-export const IDENTITY_REMINDER_TYPE = "octocode-subagent-identity-reminder";
+export { IDENTITY_REMINDER_TYPE };
 
 interface IdentityRecord {
 	version: 1;
@@ -75,10 +76,6 @@ function latestIdentity(branch: readonly SessionEntry[], id: string): IdentityRe
 	return undefined;
 }
 
-function isReminder(message: unknown): boolean {
-	return isRecord(message) && message.role === "custom" && message.customType === IDENTITY_REMINDER_TYPE;
-}
-
 /** Registers the child's identity record and its reminder; a session that is not a subagent run records nothing. */
 export function registerIdentityReminder(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
 	const id = env[AGENT_ID_ENV];
@@ -102,9 +99,7 @@ export function registerIdentityReminder(api: ExtensionAPI, env: NodeJS.ProcessE
 		}
 	});
 	api.on("context", async (event) => {
-		const latest = event.messages.findLastIndex(isReminder);
-		if (latest < 0) return undefined;
-		const messages = event.messages.filter((message, at) => at === latest || !isReminder(message));
-		return messages.length === event.messages.length ? undefined : { messages };
+		const messages = latestReminderOnly(event.messages);
+		return messages === event.messages ? undefined : { messages };
 	});
 }

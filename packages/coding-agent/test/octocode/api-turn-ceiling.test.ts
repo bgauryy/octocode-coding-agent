@@ -91,8 +91,17 @@ const CONNECT = { action: "connect", command: "agent", args: [] };
 describe("with sessionApiTurnPermission set to workspace, a full session holds every API entry point to workspace", () => {
 	beforeEach(() => setting("workspace"));
 
+	// The call is admitted as an external message first (asked under the ceiling, as message.send and agents.tell are).
+	it("refuses external.call when nobody can be asked, and starts nothing", async () => {
+		const { client, externalCall } = await boot({ hasUI: false });
+		await expect(client.call("external.call", CONNECT)).rejects.toMatchObject({ data: { execution: "not-sent" } });
+		expect(externalCall).not.toHaveBeenCalled();
+	});
+
 	it("runs external.call under the ceiling: its agent's permission request is not answered for it", async () => {
-		const { client, permission, seen } = await boot({ hasUI: false });
+		// The one queued answer admits the call. The agent's own request then asks the user too (workspace mode asks), finds
+		// no queued answer, and the fake dialog closes unanswered: that, not a session without a UI, is the "cancelled".
+		const { client, permission, seen } = await boot({ hasUI: true, selects: [ALLOW_ONCE] });
 		await expect(client.call("external.call", CONNECT)).resolves.toEqual({ answer: "cancelled" });
 		expect(seen).toEqual([{ mode: "workspace", cap: "workspace" }]);
 		// The call is over: the session's own mode is back.
@@ -101,21 +110,21 @@ describe("with sessionApiTurnPermission set to workspace, a full session holds e
 	});
 
 	it("puts the external agent's request to the user, still under the ceiling while it runs", async () => {
-		const { client, permission, seen } = await boot({ hasUI: true, selects: ["Allow"] });
+		const { client, permission, seen } = await boot({ hasUI: true, selects: [ALLOW_ONCE, "Allow"] });
 		await expect(client.call("external.call", CONNECT)).resolves.toEqual({ answer: "selected" });
 		expect(seen).toEqual([{ mode: "workspace", cap: "workspace" }]);
 		expect(permission.turnCap.active).toBeUndefined();
 	});
 
 	it("releases the ceiling when the external call throws", async () => {
-		const { client, permission, externalCall } = await boot({ hasUI: true });
+		const { client, permission, externalCall } = await boot({ hasUI: true, selects: [ALLOW_ONCE] });
 		externalCall.mockRejectedValueOnce(new Error("agent crashed"));
 		await expect(client.call("external.call", CONNECT)).rejects.toMatchObject({ message: "agent crashed" });
 		expect(permission.turnCap.active).toBeUndefined();
 	});
 
 	it("keeps the ceiling of a turn message.send started when an external call ends meanwhile", async () => {
-		const { client, permission } = await boot({ hasUI: true, selects: [ALLOW_ONCE, "Allow"] });
+		const { client, permission } = await boot({ hasUI: true, selects: [ALLOW_ONCE, ALLOW_ONCE, "Allow"] });
 		await client.call("message.send", { text: "start" });
 		await vi.waitFor(() => expect(permission.turnCap.active).toBe("workspace"));
 		await client.call("external.call", CONNECT);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveRequests, prepare, type Entry } from "../../src/octocode/profiler/index.ts";
+import { cacheLifetimeMs } from "../../src/octocode/profiler/cache-lifetime.ts";
 import { minCacheableTokens } from "../../src/octocode/profiler/derive.ts";
 import { deriveInsights } from "../../src/octocode/profiler/insights.ts";
 import type { Lane } from "../../src/octocode/profiler/timeline.ts";
@@ -225,6 +226,32 @@ describe("profiler cache edge cases", () => {
 			expect(rewrite?.detail).not.toMatch(/stay cached/);
 		});
 
+		it("reports an idle expiry, not a lost prefix, when a compaction follows a gap longer than the cache lifetime", () => {
+			const t = new Transcript().start();
+			t.user("go");
+			t.assistant({ input: 10, cacheWrite: 30_000 });
+			t.tool("x".repeat(4000));
+			const kept = t.last;
+			t.assistant({ input: 10, cacheRead: 30_000, cacheWrite: 900 });
+			t.add({ type: "compaction", summary: "s".repeat(6000), firstKeptEntryId: kept, tokensBefore: 31_000 });
+			t.assistant({ input: 4, cacheRead: 0, cacheWrite: 28_000 }, {}, 10 * 60_000);
+			const found = findingsOf([laneOf(t)]);
+			expect(found.map((f) => f.kind)).toContain("cache-idle-expiry");
+			expect(found.filter((f) => f.kind === "cache-rewrite")).toEqual([]);
+		});
+
+		it("reports an idle expiry, not a lost prefix, when a thinking-level change follows a long gap", () => {
+			const t = new Transcript().start();
+			t.user("go");
+			t.assistant({ input: 10, cacheWrite: 30_000 });
+			t.add({ type: "thinking_level_change", thinkingLevel: "high" });
+			t.user("next");
+			t.assistant({ input: 10, cacheRead: 0, cacheWrite: 30_200 }, {}, 10 * 60_000);
+			const found = findingsOf([laneOf(t)]);
+			expect(found.map((f) => f.kind)).toContain("cache-idle-expiry");
+			expect(found.filter((f) => f.kind === "cache-rewrite")).toEqual([]);
+		});
+
 		it("names a provider switch with the same model id, low (probe F)", () => {
 			const t = new Transcript().start();
 			t.user("go");
@@ -270,6 +297,52 @@ describe("profiler cache edge cases", () => {
 			t.user("later");
 			t.assistant({ input: 10, cacheWrite: 30_100, cacheWrite1h: 30_100 }, {}, 70 * 60_000);
 			expect(kinds(t)).toContain("cache-idle-expiry");
+		});
+
+		it("reads a recorded marker without a TTL as 5m, not as an older 1h tier", () => {
+			const t = new Transcript().start();
+			t.user("go");
+			t.assistant({ input: 10, cacheWrite: 30_000, cacheWrite1h: 30_000 });
+			t.user("n");
+			t.assistant({ input: 10, cacheRead: 30_000 }, trace({}, ["m0"], "ephemeral"));
+			t.user("later");
+			t.assistant({ input: 10, cacheWrite: 30_100 }, trace({}, ["m0", "m1", "m2"], "ephemeral"), 10 * 60_000);
+			expect(kinds(t)).toContain("cache-idle-expiry");
+		});
+
+		it("reads an Anthropic write with no 1h part as 5m, not as an older 1h tier", () => {
+			const t = new Transcript().start();
+			t.user("go");
+			t.assistant({ input: 10, cacheWrite: 30_000, cacheWrite1h: 30_000 });
+			t.user("n");
+			t.assistant({ input: 10, cacheRead: 30_000, cacheWrite: 200 });
+			t.user("later");
+			t.assistant({ input: 10, cacheWrite: 30_300 }, {}, 10 * 60_000);
+			expect(kinds(t)).toContain("cache-idle-expiry");
+			const bedrock = new Transcript().start();
+			bedrock.user("go");
+			bedrock.assistant({ input: 10, cacheWrite: 30_000, cacheWrite1h: 30_000 }, { provider: "amazon-bedrock" });
+			bedrock.user("n");
+			bedrock.assistant(
+				{ input: 10, cacheRead: 30_000 },
+				{ provider: "amazon-bedrock", ...trace({}, ["m0"], "default") },
+			);
+			expect(cacheLifetimeMs(prepare(bedrock.entries), 1)).toBe(5 * 60_000);
+		});
+
+		it("stops carrying a tier back across a provider or model switch", () => {
+			const toModel = new Transcript().start();
+			toModel.user("go");
+			toModel.assistant({ input: 10, cacheWrite: 30_000, cacheWrite1h: 30_000 }, {}, 1000, "claude-opus-5-5");
+			toModel.user("n");
+			toModel.assistant({ input: 30_000 });
+			expect(cacheLifetimeMs(prepare(toModel.entries), 1)).toBe(5 * 60_000);
+			const toProvider = new Transcript().start();
+			toProvider.user("go");
+			toProvider.assistant({ input: 10, cacheWrite: 30_000, cacheWrite1h: 30_000 });
+			toProvider.user("n");
+			toProvider.assistant({ input: 30_000 }, { provider: "openai", api: "openai-responses" }, 1000, "gpt-5.6");
+			expect(cacheLifetimeMs(prepare(toProvider.entries), 1)).toBeUndefined();
 		});
 
 		const openai = (model: string) => ({ provider: "openai", api: "openai-responses", model });

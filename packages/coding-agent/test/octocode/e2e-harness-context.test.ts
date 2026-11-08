@@ -17,7 +17,7 @@ import {
  * What the agent receives in its first model request when harnesses and instruction files are present: project
  * instructions follow AGENTS.override.md > AGENTS.md and never CLAUDE.md; skills come from `.agents` and, only once the
  * Claude Code harness is switched on, from `.claude`; the `Harnesses:` line names every harness with its state; a
- * subagent receives the same. Real processes on the scripted model, a temporary home and project (trusted by `--trust`).
+ * subagent receives the same skills but no `Harnesses:` line. Real processes on the scripted model, a temporary home and project (trusted by `--trust`).
  */
 let endpoint: Endpoint;
 
@@ -156,7 +156,7 @@ describe("harness context in the first model request", () => {
 		expect(stateOf(after, "Pi"), after).toBe("on");
 	});
 
-	it("4: a subagent's first request carries the same skills list and harness states", async () => {
+	it("4: a subagent's first request carries the same skills list and no harnesses line", async () => {
 		const box = sandbox(endpoint);
 		skillFile(box.project, ".agents", "agents-demo");
 		skillFile(box.project, ".claude", "claude-demo");
@@ -178,12 +178,9 @@ describe("harness context in the first model request", () => {
 		expect(section(kid!.system, "skills")).toBe(section(parent!.system, "skills"));
 		expect(section(kid!.system, "skills")).toContain("agents-demo");
 		expect(kid!.system).not.toContain("claude-demo");
-		// A child adopts its parent's skill snapshot and discovers no external skills itself (core/discovery/sources.ts
-		// externalSkillsEnabled), so an off harness's found-item count, e.g. `Claude Code off (1 skill)`, appears only in the parent.
-		const stripCounts = (line: string) => line.replace(/ \([^)]*\)/g, "");
-		expect(stripCounts(harnessesLine(kid!.system)), "every harness has the same state in the child").toBe(
-			stripCounts(harnessesLine(parent!.system)),
-		);
-		expect(stateOf(harnessesLine(kid!.system), "Codex")).toBe("on");
+		// Only the main session can run /harness, so only its prompt names the harnesses (src/octocode/turn.ts).
+		expect(stateOf(harnessesLine(parent!.system), "Codex")).toBe("on");
+		expect(harnessesLine(kid!.system), "a child's prompt has no Harnesses: line").toBe("");
+		expect(kid!.system).not.toContain("/harness");
 	});
 });

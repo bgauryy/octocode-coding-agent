@@ -25,6 +25,13 @@ import { retakeReservation } from "./reservation.ts";
 /** Whom a finished run's unanswered `replyRequired` asks wait on: its parent, or only other agents. */
 export type AwaitedReply = "parent" | "peer";
 
+/** Opens a reported run's follow-up window and returns the report's line about it ("" when it does not linger). */
+export interface LingerWindow {
+	(outcome?: ReportStatus, awaited?: AwaitedReply): string;
+	/** Whether calling the window with the same arguments opens it: read before the report's footer is written. */
+	stays(outcome?: ReportStatus, awaited?: AwaitedReply): boolean;
+}
+
 interface LingeringRun {
 	until: number;
 	generation: number;
@@ -175,6 +182,12 @@ export class Lingering {
 		expire();
 	}
 
+	/** The lingering run started for backlog item `ref` (`agent` `item`), if one still is reachable. */
+	onItem(ref: string): string | undefined {
+		for (const [id, entry] of this.entries) if (entry.run.identity.item === ref && Date.now() < entry.until) return id;
+		return undefined;
+	}
+
 	/** Ends a run's window; whether it was lingering. */
 	forget(id: string): boolean {
 		clearTimeout(this.entries.get(id)?.timer);
@@ -191,11 +204,15 @@ export class Lingering {
 	}
 
 	/** Called when the run reported (with its outcome): it stays reachable for the window, and the report says so. */
-	window(run: Run, ctx: ExtensionContext): (outcome?: ReportStatus, awaited?: AwaitedReply) => string {
+	window(run: Run, ctx: ExtensionContext): LingerWindow {
 		const session = this.runs.session;
-		return (outcome?: ReportStatus, awaited?: AwaitedReply): string => {
-			const seconds = reachableSeconds(outcome, process.env, run.profile?.linger, awaited !== undefined);
-			if (session !== this.runs.session || seconds === 0) return "";
+		const secondsFor = (outcome?: ReportStatus, awaited?: AwaitedReply): number =>
+			session === this.runs.session
+				? reachableSeconds(outcome, process.env, run.profile?.linger, awaited !== undefined)
+				: 0;
+		const open = (outcome?: ReportStatus, awaited?: AwaitedReply): string => {
+			const seconds = secondsFor(outcome, awaited);
+			if (seconds === 0) return "";
 			this.sessionId ??= ctx.sessionManager.getSessionId();
 			this.notifier = ctx;
 			const id = run.identity.id;
@@ -218,6 +235,9 @@ export class Lingering {
 			});
 			return `\n\n${note}`;
 		};
+		return Object.assign(open, {
+			stays: (outcome?: ReportStatus, awaited?: AwaitedReply) => secondsFor(outcome, awaited) > 0,
+		});
 	}
 
 	/**

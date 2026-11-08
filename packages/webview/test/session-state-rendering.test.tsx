@@ -175,6 +175,60 @@ it("draws the terminal ask card on an awaiting ask: metadata, folded body, detai
 	);
 });
 
+it("draws the deny-this-process option of an external message's approval as a danger choice, and answers with it", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	const allow = "Allow messages from octocode-main-6c9a for this session";
+	const deny = "Deny messages from octocode-main-6c9a for this session";
+	await view.session({
+		...running,
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: {
+			kind: "approval",
+			title: "Let this external message reach the agent?",
+			id: "d6",
+			options: ["Allow once", allow, "Deny", deny],
+			allowsText: false,
+			optionInfo: [{}, {}, { danger: true }, { danger: true }],
+		},
+	});
+	expect(screen.getByRole("button", { name: deny })).toHaveClass("btn-danger");
+	expect(screen.getByRole("button", { name: allow })).toHaveClass("btn-primary");
+	await userEvent.click(screen.getByRole("button", { name: deny }));
+	await waitFor(() => expect(posted().at(-1)).toMatchObject({ action: "answer", dialogId: "d6", choice: deny }));
+});
+
+it("draws an approval question's deny_session option in the danger tone", async () => {
+	const view = controlView(activity());
+	await view.workspace();
+	const deny = "Deny messages from octocode-main-6c9a for this session";
+	await view.session({
+		...running,
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		awaiting: {
+			kind: "approval",
+			title: "Let this external message reach the agent?",
+			id: "d7",
+			options: [],
+			allowsText: false,
+			questions: [
+				{
+					id: "q1",
+					type: "approval",
+					question: "Let this external message reach the agent?",
+					options: [
+						{ id: "once", label: "Allow once", role: "allow_once" },
+						{ id: "deny", label: "Deny", role: "deny", tone: "danger" },
+						{ id: "deny-session", label: deny, role: "deny_session", tone: "danger" },
+					],
+				},
+			],
+		},
+	});
+	expect(screen.getByText(deny)).toHaveClass("danger");
+	expect(screen.getByText("Allow once")).not.toHaveClass("danger");
+});
+
 it("shows the broker's refusal of an answer the host first accepted, and takes a completed answer quietly", async () => {
 	const view = controlView(activity());
 	await view.workspace();

@@ -1,4 +1,4 @@
-import { base, BODY, mask, nestedScripts, SEPARATOR, stdinOf, unhide, words } from "./words.ts";
+import { base, BODY, fedToPipe, mask, nestedScripts, SEPARATOR, unhide, words } from "./words.ts";
 
 /** `git` options before the subcommand that take the next word as their value (`git -C dir add`). */
 const GIT_OPTION_ARGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"]);
@@ -71,12 +71,7 @@ export function gitStateMutation(command: string): string | undefined {
 		const tokens = words(parts[at]);
 		const fromPipe = parts[at - 1] === "|" ? piped : [];
 		const name = base(unhide(tokens[0] ?? ""));
-		piped =
-			name === "echo" || name === "printf"
-				? [unhide(tokens.slice(1).join(" "))]
-				: name === "cat"
-					? stdinOf(tokens, bodies).map(unhide)
-					: [];
+		piped = fedToPipe(tokens, bodies);
 		if (!name || BODY.test(name)) continue;
 		const found = mutationOf(tokens.map(unhide));
 		if (found) return found;

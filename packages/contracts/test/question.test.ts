@@ -86,7 +86,15 @@ describe("Question contract", () => {
 	});
 
 	it("names the roles each type decodes", () => {
-		expect(ROLES_BY_TYPE.approval).toEqual(["allow_once", "allow_session", "allow_kind", "deny", "deny_note"]);
+		// Contract change: deny_session ("Deny messages from <process> for this session") joined the approval roles.
+		expect(ROLES_BY_TYPE.approval).toEqual([
+			"allow_once",
+			"allow_session",
+			"allow_kind",
+			"deny",
+			"deny_session",
+			"deny_note",
+		]);
 		expect(ROLES_BY_TYPE.confirm).toEqual(["yes", "no"]);
 		expect([...ROLES_BY_TYPE.text, ...ROLES_BY_TYPE.choice, ...ROLES_BY_TYPE.multi]).toEqual([]);
 	});

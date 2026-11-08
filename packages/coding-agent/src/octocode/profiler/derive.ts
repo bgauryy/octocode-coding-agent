@@ -26,10 +26,10 @@ const KEEP_RECENT = 8;
 
 /**
  * The smallest prompt a provider caches; under it a provider reports zero cache tokens and that is no miss. Anthropic
- * documents it per model (also on Bedrock, Vertex and gateway ids, whose versions may use dots): 512 for Opus 5, Fable 5
+ * documents it per model (matched also on Bedrock, Vertex and gateway ids, whose versions may use dots): 512 for Opus 5, Fable 5
  * and 5.1, Mythos 5 and 5.1 and the 5.5 family; 2048 for Opus 4.7, Mythos Preview and the Haiku 3 line; 4096 for Opus
- * 4.5, Opus 4.6 and Haiku 4.5; 1024 for the other Claude models. Other providers use the 1024 their automatic caching
- * documents.
+ * 4.5, Opus 4.6 and Haiku 4.5; 1024 for the other Claude models. Bedrock ids get Anthropic's table by assumption,
+ * not checked against Bedrock's documentation. Other providers use the 1024 their automatic caching documents.
  */
 const MINIMUM_CACHEABLE: Array<[RegExp, number]> = [
 	[/claude-(opus-5|fable-5|mythos-5|(opus|sonnet|haiku)-5[-.]5)/i, 512],

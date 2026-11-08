@@ -21,6 +21,8 @@ export const JOB_TYPE = "octocode-bash-job";
 export const TIMER_TYPE = "octocode-timer";
 /** The custom message type of a background subagent's report (`subagents/handoff.ts`). */
 export const AGENT_RESULT_TYPE = "octocode-agent-result";
+/** The custom message that carries coordination-graph notices no waking report carried (`subagents/graph-wake.ts`). */
+export const GRAPH_NOTICE_TYPE = "octocode-graph-notice";
 /** Sender id for messages typed by the user with `/agents tell`. */
 export const USER_SENDER = "user";
 /** Sender id for messages from a local API client (`agents.tell`): not the user, and nobody to reply to. */

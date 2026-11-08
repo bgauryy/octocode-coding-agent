@@ -100,6 +100,11 @@ export class BacklogStore {
 		return itemMarks(this.db, this.repo, items, self, parents);
 	}
 
+	/** The `dependsOn` items of `item` that are missing or not done (a closed one counts as done), in link order. */
+	openPrerequisites(item: Item): string[] {
+		return backlog.openPrerequisites(this.db, this.repo, item.seq);
+	}
+
 	/** Done parents and dependants that need a second look because `item` is not done (`B3 (parent of B7)`). */
 	reviewNeeded(item: Item): string[] {
 		return reviewNeeded(this.db, this.repo, item);

@@ -161,7 +161,10 @@ describe("Fireworks models", () => {
 	});
 
 	it("keeps toggle-only Messages models without a verified fallback on budget-based thinking", async () => {
-		const model = getBuiltinModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+		// The catalog no longer ships a toggle-only Fireworks Messages model (nemotron-3-ultra-nvfp4 left it), so the
+		// case is a catalog model with its adaptive flag removed: the adapter's fallback, not catalog data, is under test.
+		const catalog = getBuiltinModel("fireworks", "accounts/fireworks/models/minimax-m3");
+		const model = { ...catalog, compat: { ...catalog.compat, forceAdaptiveThinking: undefined } };
 		expect(model.compat?.forceAdaptiveThinking).toBeUndefined();
 		let payload: Record<string, unknown> | undefined;
 		await streamSimple(
@@ -188,7 +191,7 @@ describe("Fireworks models", () => {
 	});
 
 	it("sets Fireworks-specific compat for session affinity and unsupported tool fields", () => {
-		const model = getBuiltinModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+		const model = getBuiltinModel("fireworks", "accounts/fireworks/models/minimax-m3");
 
 		expect(model.compat).toBeDefined();
 		expect(model.compat?.sendSessionAffinityHeaders).toBe(true);

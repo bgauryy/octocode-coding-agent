@@ -17,6 +17,13 @@ import { ReadReports, scratchRoot, sweepScratch } from "./handoff/scratch.ts";
 import { ReportQueue } from "./handoff.ts";
 import { LateReports } from "./late.ts";
 import { Lingering } from "./linger.ts";
+import { GraphWake } from "./graph-wake.ts";
+import { GraphWatch, linkedWhileWorking } from "./graph-watch.ts";
+import { GRAPH_NOTICE_TYPE } from "../shared/messages.ts";
+import { DatabaseFollower } from "../shared/database-follower.ts";
+import { dbStamp } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../config/database.ts";
+import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { runSubagent } from "./process.ts";
 import { SUBAGENT_STOP_GRACE_MS } from "./process/outcome.ts";
 import { buildAgentArgs, type ChildSession, childSession } from "./process/session.ts";
@@ -86,6 +93,9 @@ export function registerAgentTool(
 	// Per registration, not per module: a replaced session starts clean.
 	const panel = new AgentsView(team, runningWorkOf(api));
 	const budgets = new RunningBudgets();
+	// The current session, for graph wakes and the graph watch (`graph-wake.ts`, `graph-watch.ts`).
+	let current: ExtensionContext | undefined;
+	let backlog: Backlog | undefined;
 	const runs: AgentRuns = {
 		api,
 		team,
@@ -100,7 +110,30 @@ export function registerAgentTool(
 		session: 0,
 		changed: () => panel.setBackground([...runs.background.keys()]),
 		ended: (id, end) => team.approvals.noteEnd(id, end),
+		graph: new GraphWake(
+			(content) =>
+				void api.sendMessage(
+					{ customType: GRAPH_NOTICE_TYPE, content, display: false },
+					{ triggerTurn: true, deliverAs: "followUp" },
+				),
+			() => {
+				try {
+					return current?.isIdle() ?? true;
+				} catch {
+					// The session was replaced: nothing runs in it.
+					return true;
+				}
+			},
+			team.wakePace,
+		),
 	};
+	const follower = new DatabaseFollower(() => dbStamp(sharedAgentDb().file));
+	const watch = new GraphWatch({
+		backlog: () => (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined),
+		linked: (ref) => linkedWhileWorking(runs.items, (id) => runs.running.has(id) || runs.background.has(id), ref),
+		tell: (notice) => runs.graph?.tell(notice),
+		subscribe: (poke) => follower.subscribe(poke),
+	});
 	const { background } = runs;
 	api.on("tool_result", async (event, ctx) => {
 		if (!event.isError && background.size > 0) runs.read.observe(event.toolName, event.input, ctx.cwd, event.details);
@@ -191,7 +224,11 @@ export function registerAgentTool(
 		runs.reports.flush();
 	};
 	// A reload stops them without asking: their reports (now, or at the next start when late) say it was the reload.
-	const stopAll = (reason?: string) => stopRuns(reason === "reload" ? "the /reload" : "session shutdown");
+	// Stopping every child (plan mode, leaving, shutdown) is the session's own act: those reports, however late, force no graph wake.
+	const stopAll = async (reason?: string) => {
+		runs.graph?.stopping(background.keys());
+		await stopRuns(reason === "reload" ? "the /reload" : "session shutdown");
+	};
 	/** What this session offers a child: its permission state, its UI when a person can be asked, and its team's signature for the user's messages. */
 	const relayHost = (ctx: Pick<ExtensionContext, "hasUI" | "ui">): RelayHost => ({
 		permission,
@@ -211,8 +248,14 @@ export function registerAgentTool(
 		return undefined;
 	});
 	registerIdleItems(api, team, runs);
+	api.on("before_agent_start", async () => {
+		runs.graph?.turnStarted();
+		return undefined;
+	});
 	api.on("agent_settled", async () => {
 		runs.reports.retryExhausted();
+		// What the coordinator planned this turn: the items that wait, followed until an outside change ends a prerequisite.
+		watch.sync();
 		await late.take();
 	});
 	api.on("session_shutdown", async (event, ctx) => {
@@ -221,6 +264,8 @@ export function registerAgentTool(
 		// Reports still waiting in the batch window are saved for the next start, not lost with this runtime.
 		runs.reports.persist();
 		await stopAll(event.reason);
+		runs.graph?.stop();
+		watch.stop();
 		runs.reports.persist();
 		// A child still closing keeps its entry (and its slot) until it exits; its report waits for this session's next start.
 		runs.session += 1;
@@ -237,6 +282,10 @@ export function registerAgentTool(
 			);
 		if (forked) tell(forked);
 		lingering.reopen(ctx);
+		current = ctx;
+		backlog = undefined;
+		runs.graph?.start();
+		watch.sync();
 		panel.start(ctx);
 		runs.reports.start(
 			ctx.sessionManager,

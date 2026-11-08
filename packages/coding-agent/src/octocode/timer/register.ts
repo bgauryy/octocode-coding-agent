@@ -14,7 +14,7 @@ import { contentText } from "../shared/util.ts";
 import { conditionChecker, conditionWatcher } from "./condition.ts";
 import type { ConditionDeps } from "./conditions/types.ts";
 import { CHECK_CAPS, Judge, type SmallModel } from "./judge.ts";
-import { DatabaseFollower } from "./poke.ts";
+import { DatabaseFollower } from "../shared/database-follower.ts";
 import { wakeDetails, wakeText } from "./model.ts";
 import { renderTimerMessage } from "./render.ts";
 import { timerWorkRows } from "./work.ts";

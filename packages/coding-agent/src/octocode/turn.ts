@@ -128,8 +128,10 @@ export function registerTurnSetup(
 			}));
 		}
 		if (options.isSubagent) {
-			// Keep skill routing metadata; task-specific bodies are read only when needed.
+			// Keep skill routing metadata; task-specific bodies are read only when needed. A child cannot run /harness, so
+			// its prompt leaves out the harnesses line.
 			event.systemPromptOptions.sections.docs = "";
+			event.systemPromptOptions.sections.harnesses = "";
 			event.systemPromptOptions.skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
 		}
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;

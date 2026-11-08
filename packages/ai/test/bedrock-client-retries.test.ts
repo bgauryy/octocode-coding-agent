@@ -4,7 +4,7 @@ import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
 
 function config(maxRetries?: number) {
-	const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-20250514-v1:0") as
+	const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-6") as
 		| Model<"bedrock-converse-stream">
 		| undefined;
 	if (!model) throw new Error("bedrock model missing from the catalog");

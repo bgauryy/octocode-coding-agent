@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
+import { EXTERNAL_SENDER, INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Delivery } from "../../src/octocode/team/delivery.ts";
 import type { Mail } from "../../src/octocode/team/mail.ts";
 import type { Message } from "../../src/octocode/team/model.ts";
@@ -85,6 +85,7 @@ function recipient() {
 		settled: () => false,
 		notice: () => true,
 		forgetForUser: () => undefined,
+		modelCalled: () => undefined,
 		reportDeadLetters: () => undefined,
 		deliver: (batch: Message[], _parent: unknown, _ctx: unknown, onRejected?: () => void) => {
 			handed.push(batch);
@@ -187,6 +188,35 @@ describe("an idle agent's peer-started turns", () => {
 		me.store.send("user", ["me"], "from the user", { replyRequired: false, wake: true });
 		me.tick();
 		expect(me.texts()).toEqual([["first"], ["held", "from the user"]]);
+	});
+
+	// One admission of `agents.tell` to "all" reaches every idle agent in the session tree: each paces it as a peer's wake.
+	it("holds an API client's broadcast like a peer's wake, and hands it once the interval passed", () => {
+		const me = agent();
+		me.store.save(row(EXTERNAL_SENDER));
+		me.store.send("peer", ["me"], "first", wake);
+		me.tick();
+		me.read();
+		me.store.send(EXTERNAL_SENDER, ["me", "other"], "everyone: status?", wake);
+		me.tick();
+		expect(me.handed).toHaveLength(1);
+		me.clock.now += WAKE_INTERVAL_MS;
+		me.tick();
+		expect(me.texts()).toEqual([["first"], ["everyone: status?"]]);
+	});
+
+	it("never holds an API client's message to this agent alone, and the held broadcast goes with it", () => {
+		const me = agent();
+		me.store.save(row(EXTERNAL_SENDER));
+		me.store.send("peer", ["me"], "first", wake);
+		me.tick();
+		me.read();
+		me.store.send(EXTERNAL_SENDER, ["me", "other"], "everyone: status?", wake);
+		me.tick();
+		expect(me.handed).toHaveLength(1);
+		me.store.send(EXTERNAL_SENDER, ["me"], "you alone", wake);
+		me.tick();
+		expect(me.texts()).toEqual([["first"], ["everyone: status?", "you alone"]]);
 	});
 
 	it("never holds an interrupt", () => {

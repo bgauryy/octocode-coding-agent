@@ -326,6 +326,8 @@ Source-profile PreToolUse `updatedInput` now replaces Bash and generic tool argu
 
 Claude Bash payloads translate native timeout seconds to milliseconds and `background` to `run_in_background`. Rewrites translate those fields back and retain advisory `description` metadata. A nonempty replacement drops omitted execution options; unknown source fields cannot set native-only options. Both PreToolUse and PermissionRequest use this adapter. Negative timeout values are currently rejected. Host timeout defaults, maximums and background-job lifetime remain native; argument translation does not establish complete execution-lifecycle parity.
 
+A `timer` call with an until-command (its own, or a `check`'s trigger) reaches PreToolUse as the `bash` call that command runs as: `tool_name` `Bash` (native `pi_tool_name` `bash`), `tool_input` `{ "command": … }` and the timer's `tool_use_id`. A `Bash` matcher sees it, and its deny or ask applies as for a shell call ([permissions](permissions.md#modes)). A rewrite (`updatedInput`) of it is refused rather than applied, since it would never reach the timer's condition. A timer without an until-command keeps its own name and input.
+
 ## Claude failure and Stop feedback
 
 `StopFailure` observes a final error outcome after the session’s automatic recovery has finished. It receives `error: "unknown"` and, when present, the provider’s error message in `error_details` and `last_assistant_message`. The adapter does not infer structured vendor error categories from message text. Successful and aborted outcomes do not emit this event. Its output and exit status cannot block or continue the run; terminal-sequence output is unsupported. Native and Codex configs do not accept `StopFailure`.

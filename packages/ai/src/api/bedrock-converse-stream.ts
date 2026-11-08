@@ -29,6 +29,7 @@ import { buildBedrockClientConfig } from "./bedrock-converse-stream/client-confi
 import {
 	addHistoryLookbackCachePoint,
 	capLayeredCacheRetention,
+	capNovaCachePoints,
 	countCachePoints,
 	getCachePoint,
 } from "./bedrock-converse-stream/cache-points.ts";
@@ -39,7 +40,11 @@ import {
 	normalizeDiagnosticValue,
 } from "./bedrock-converse-stream/errors.ts";
 import { addCustomHeadersMiddleware, addResponseHeadersMiddleware } from "./bedrock-converse-stream/middleware.ts";
-import { isAnthropicClaudeModel, supportsAdaptiveThinking } from "./bedrock-converse-stream/model-match.ts";
+import {
+	isAnthropicClaudeModel,
+	supportsAdaptiveThinking,
+	supportsToolCachePoint,
+} from "./bedrock-converse-stream/model-match.ts";
 import { buildAdditionalModelRequestFields } from "./bedrock-converse-stream/request-fields.ts";
 import { redactProviderText } from "../utils/error-body.ts";
 import {
@@ -108,14 +113,18 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 				getCurrentTools(normalizedContext.messages),
 				options.toolChoice,
 				supportsStrictMode,
-				// A split prompt's base point covers the tools before it; its slot goes to the history lookback.
-				splitPrompt ? undefined : getCachePoint(model, instructionCacheRetention, options.env),
+				// A split prompt's base point covers the tools before it; its slot goes to the history lookback. Nova takes
+				// no point on tools; the system point covers them.
+				splitPrompt || !supportsToolCachePoint(model)
+					? undefined
+					: getCachePoint(model, instructionCacheRetention, options.env),
 			);
 			const historyCachePoint = getCachePoint(model, cacheRetention, options.env);
 			if (historyCachePoint) {
 				const usedPoints = countCachePoints(toolConfig?.tools, system, messages);
 				addHistoryLookbackCachePoint(messages, historyCachePoint, usedPoints);
 			}
+			capNovaCachePoints(model, toolConfig?.tools, system, messages);
 			let commandInput = {
 				modelId: model.id,
 				messages,

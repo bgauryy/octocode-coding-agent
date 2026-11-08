@@ -46,8 +46,11 @@ export interface PermissionRequest {
 	effect?: string;
 	undo?: string;
 	risk?: string;
-	/** Offered as "Allow <label> for this session"; `key` is what the grant matches next time. */
-	grant?: { key: string; label: string };
+	/**
+	 * Offered as "Allow <label> for this session"; `key` is what the grant matches next time. `deniable` also offers "Deny
+	 * <label> for this session": the user's remembered answer, given in place of a later dialog the grant would have answered.
+	 */
+	grant?: { key: string; label: string; deniable?: boolean };
 	/** Set when the request's provenance hit came from one subagent's report: the user may allow that source for the session. */
 	sourceGrant?: SourceGrant;
 	/** Issued by another tool (`parentToolCallId` set). */
