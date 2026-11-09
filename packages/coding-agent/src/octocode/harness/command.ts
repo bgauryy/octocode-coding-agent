@@ -4,12 +4,8 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
 import { getMcpSwitch, requestMcpReload } from "../../../../mcp/src/switch.ts";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
-import {
-	buildInventory,
-	type Inventory,
-	type InventoryItem,
-	renderInventory,
-} from "../../core/extensibility/inventory.ts";
+import { createConfiguration } from "../../configuration/index.ts";
+import { buildInventory, type InventoryItem, renderInventory } from "../../core/extensibility/inventory.ts";
 import { type SwitchScope, switchItem } from "../../core/extensibility/switch.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
@@ -34,8 +30,6 @@ const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
 const MARKETPLACE_ACTIONS = ["install", "update", "remove"];
 const SUBCOMMANDS: Array<[string, string]> = [
 	["list", "Print the inventory, or one section"],
-	["enable", "Switch items or a harness on (claude, codex, cursor, pi, agents, mcp-json)"],
-	["disable", "Switch items or a harness off"],
 	["install", "Install a marketplace plugin"],
 	["update", "Update a marketplace plugin"],
 	["remove", "Remove a marketplace plugin"],
@@ -45,11 +39,45 @@ const SUBCOMMANDS: Array<[string, string]> = [
 const USAGE = [
 	"Usage: /harness opens the switch list (text outside the terminal)",
 	`  /harness list [${Object.keys(SECTIONS).join("|")}|<text>]`,
-	"  /harness enable|disable <id|name|harness>... [--project] [--force]",
 	"  /harness install|update|remove <plugin@marketplace> [--yes]",
 	"  /harness hooks [events]",
 	"  /harness config",
 ].join("\n");
+
+/**
+ * The retired `/harness enable|disable` as the `/configuration` line that replaces it. A word that is an id already
+ * (`kind:name`) stays; a bare name resolves through the catalog when exactly one entry has that name.
+ */
+async function switchMoved(
+	action: string,
+	words: readonly string[],
+	catalog: ReturnType<typeof createConfiguration>,
+): Promise<string> {
+	const local = words.some((word) => word === "--local" || word === "--project");
+	const force = words.includes("--force");
+	const ids: string[] = [];
+	const unresolved: string[] = [];
+	for (const word of words.filter((candidate) => !candidate.startsWith("--"))) {
+		if (word.includes(":")) {
+			ids.push(word);
+			continue;
+		}
+		const named = (await catalog.list({ text: word })).filter(
+			(entry) => entry.id.slice(entry.id.indexOf(":") + 1).toLowerCase() === word.toLowerCase(),
+		);
+		// `claude` names a harness and its hooks row alike: the harness is what a bare name meant.
+		const harnesses = named.filter((entry) => entry.kind === "harness");
+		const pick = named.length === 1 ? named : harnesses.length === 1 ? harnesses : [];
+		if (pick.length === 1) ids.push(pick[0].id);
+		else unresolved.push(word);
+	}
+	const flags = `${local ? " --local" : ""}${force ? " --force" : ""}`;
+	const head = `/harness ${action} moved to /configuration.`;
+	if (unresolved.length)
+		return `${head} ${unresolved.map((word) => `"${word}"`).join(", ")} needs an id (kind:name, such as harness:claude, hook:<id>, plugin:<id>, skill:<name>, mcp:<name>): /configuration list <name> shows the ids.${ids.length ? ` Run /configuration ${action} ${ids.join(" ")}${flags} for the rest.` : ""}`;
+	if (!ids.length) return `${head} Run /configuration ${action} <id>... (/configuration list shows the ids).`;
+	return `${head} Run /configuration ${action} ${ids.join(" ")}${flags}.`;
+}
 
 type McpChange = { name: string; enabled: boolean; inProject: boolean };
 
@@ -80,29 +108,12 @@ async function reloadMcp(api: ExtensionAPI): Promise<string> {
 		.join("; ");
 }
 
-type Resolved = { item: InventoryItem } | { stale: true } | { error: string };
-
-/** The item a query names: its exact ID, else the one item with that name; a stale switch key is reported as such. */
-function resolve(inventory: Inventory, query: string): Resolved {
-	const byId = inventory.items.find((item) => item.id === query);
-	if (byId) return { item: byId };
-	if (inventory.stale.includes(query)) return { stale: true };
-	const named = inventory.items.filter((item) => item.name?.toLowerCase() === query.toLowerCase());
-	if (named.length === 1) return { item: named[0] };
-	if (named.length > 1)
-		return { error: `Several items are named ${query}; use an ID: ${named.map((item) => item.id).join(", ")}` };
-	return { error: `Nothing is named ${query}; /harness list shows the IDs.` };
-}
-
 /**
  * `/harness`: one place to see and switch what extends a session: plugins, hooks, skills, MCP servers and extensions.
  * Settings-backed switches (plugins, hooks, skills, extensions) apply on `/reload`, so a batch of them costs one reload
  * and one prompt-cache rebuild; MCP switches go to the MCP owner, which opens or closes the connection at once.
  */
 export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, api: ExtensionAPI): void {
-	// The last listing, so `enable`/`disable` completions offer real IDs and names without rebuilding the inventory.
-	let known: InventoryItem[] = [];
-
 	async function load(ctx: ExtensionCommandContext) {
 		const agentDir = getAgentDir();
 		const manager = SettingsManager.create(ctx.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
@@ -114,7 +125,6 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			projectTrusted: ctx.isProjectTrusted(),
 			mcp: getMcpSessionStatus(api.events),
 		});
-		known = inventory.items;
 		return { agentDir, manager, inventory };
 	}
 
@@ -159,59 +169,6 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 		await runMcp(false);
 		if (!lines.length) return;
 		say(ctx, `${lines.join("\n")}${settingsChanged ? "\nRun /reload to apply." : ""}`, failed ? "warning" : "info");
-	}
-
-	async function switchCommand(on: boolean, words: string[], ctx: ExtensionCommandContext): Promise<void> {
-		const flags = words.filter((word) => word.startsWith("--"));
-		const queries = words.filter((word) => !word.startsWith("--"));
-		const unknown = flags.filter((flag) => flag !== "--local" && flag !== "--project" && flag !== "--force");
-		if (!queries.length || unknown.length)
-			return say(ctx, `${unknown.length ? `Unknown option ${unknown.join(" ")}.\n` : ""}${USAGE}`, "warning");
-		const scope: SwitchScope = flags.includes("--local") || flags.includes("--project") ? "project" : "global";
-		let harnessSwitched = false;
-		const { agentDir, manager, inventory } = await load(ctx);
-		const before = savedSettings(manager);
-		const lines: string[] = [];
-		const mcpChanges: McpChange[] = [];
-		let failed = false;
-		for (const query of queries) {
-			const resolved = resolve(inventory, query);
-			try {
-				if ("stale" in resolved) {
-					manager.setToggle(scope, query, undefined);
-					lines.push(`Removed the stale switch ${query}.`);
-					continue;
-				}
-				if ("error" in resolved) {
-					failed = true;
-					lines.push(resolved.error);
-					continue;
-				}
-				const found = resolved.item;
-				// MCP switches wait for the end of the batch, so they can be saved for a reload rather than applied twice.
-				if (found.kind === "mcp")
-					mcpChanges.push({ name: found.name ?? found.label, enabled: on, inProject: scope === "project" });
-				else if (found.kind === "harness") {
-					lines.push(switchHarness(found, on, scope, manager, { cwd: ctx.cwd, agentDir }));
-					harnessSwitched = true;
-				}
-				// Rows show the loaded session, which a switch saved before the last reload may differ from, so the switch
-				// is always written; comparing the saved files afterwards decides whether a reload is needed.
-				else
-					lines.push(
-						switchItem(found, on, scope, manager, { cwd: ctx.cwd, agentDir, force: flags.includes("--force") }),
-					);
-			} catch (error) {
-				failed = true;
-				lines.push(errorMessage(error));
-			}
-		}
-		await manager.flush();
-		const settingsChanged = savedSettings(manager) !== before;
-		if (harnessSwitched && settingsChanged) lines.push(await reloadMcp(api));
-		if (!settingsChanged && lines.length && !failed)
-			lines.push("The saved settings already matched; nothing to reload.");
-		await finish(ctx, { lines, failed, settingsChanged, mcpChanges });
 	}
 
 	async function marketplace(words: string[], ctx: ExtensionCommandContext): Promise<void> {
@@ -298,7 +255,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 
 	commands.add("harness", {
 		description: "Switch plugins, hooks, skills, MCPs, extensions",
-		argumentHint: "[list|enable|disable|install|update|remove|hooks|config]",
+		argumentHint: "[list|install|update|remove|hooks|config]",
 		dialog: "interaction",
 		complete: (prefix): AutocompleteItem[] | null => {
 			const match = /^(\S+)\s+(.*)$/s.exec(prefix);
@@ -308,32 +265,27 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				items?.map((item) => ({ ...item, value: `${action} ${item.value}` })) ?? null;
 			if (action === "list") return prefixWith(wordCompletions(Object.keys(SECTIONS), rest));
 			if (action === "hooks") return prefixWith(wordCompletions(["events"], rest));
-			if (action !== "enable" && action !== "disable") return null;
-			const words = rest.split(/\s+/);
-			const last = words.pop() ?? "";
-			const head = [action, ...words].join(" ");
-			const items = known.length
-				? known
-				: getMcpSessionStatus(api.events).map((server) => ({
-						id: `mcp:${server.name}`,
-						name: server.name,
-						label: server.name,
-					}));
-			const choices = items
-				.filter((item) => !("locked" in item && item.locked))
-				.map((item): [string, string] => [item.name ?? item.id, item.label]);
-			return wordCompletions(choices, last)?.map((item) => ({ ...item, value: `${head} ${item.value}` })) ?? null;
+			return null;
 		},
 		handler: async (args, ctx) => {
 			const [action = "", ...words] = args.split(/\s+/).filter(Boolean);
-			if (action === "enable" || action === "disable") return switchCommand(action === "enable", words, ctx);
+			if (action === "enable" || action === "disable") {
+				const { manager } = await load(ctx);
+				const catalog = createConfiguration({
+					cwd: ctx.cwd,
+					agentDir: getAgentDir(),
+					settings: manager,
+					projectTrusted: ctx.isProjectTrusted(),
+				});
+				return say(ctx, await switchMoved(action, words, catalog), "warning");
+			}
 			if (MARKETPLACE_ACTIONS.includes(action)) return marketplace([action, ...words], ctx);
 			if (action === "hooks") {
 				if (words[0] === "events" && words.length === 1) return say(ctx, hookEventsReport());
 				if (words.length)
 					return say(
 						ctx,
-						'Usage: /harness hooks [events] (inspection only). Switch hooks with /harness enable|disable <id> (IDs: /harness list hooks); "disableAllHooks": true in a hook file turns them all off.',
+						'Usage: /harness hooks [events] (inspection only). Switch hooks with /configuration enable|disable hook:<id> (IDs: /configuration list hook); "disableAllHooks": true in a hook file turns them all off.',
 						"warning",
 					);
 				return say(ctx, hooks.report(ctx.cwd));

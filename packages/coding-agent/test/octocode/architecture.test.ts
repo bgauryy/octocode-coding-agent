@@ -65,8 +65,8 @@ const ALLOWED: Record<string, string[]> = {
 	sessions: ["shared", "files", "subagents", "backlog", "archive"],
 	backlog: ["shared"],
 	trust: ["shared"],
-	// Rebuilds a stored session's profiler source from the team's message model.
-	profiler: ["team"],
+	// Rebuilds a stored session's profiler source from the team's message model; entry names from `shared`.
+	profiler: ["shared", "team"],
 	workspace: ["shared", "backlog", "team", "subagents", "profiler"],
 	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler"],
 	remote: ["shared", "web-daemon", "workspace"],

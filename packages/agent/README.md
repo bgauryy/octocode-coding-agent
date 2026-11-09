@@ -1,16 +1,8 @@
 # @octocodeai/octocode-agent-core
 
-Stateful agent with tool execution and event streaming. Built on `@octocodeai/octocode-ai`.
+The agent loop: a stateful `Agent` that streams a model response, runs tool calls, queues steering input and emits events. It builds on `@octocodeai/octocode-ai` and receives models, tools and policy from its host. The package is private and bundled into `@octocodeai/octocodecode`; contributors import it as a workspace. Application files and settings: [CONFIGURATIONS.md](../coding-agent/docs/configuration.md).
 
-This package receives models, tools and policy from its host. For the coding-agent application's files and settings, use [CONFIGURATIONS.md](../../CONFIGURATIONS.md).
-
-## Installation
-
-```bash
-npm install @octocodeai/octocode-agent-core
-```
-
-## Quick Start
+## Quick start
 
 ```typescript
 import { Agent } from "@octocodeai/octocode-agent-core";
@@ -23,16 +15,12 @@ const model = models.getModel("anthropic", "claude-sonnet-4-6");
 if (!model) throw new Error("Model not found");
 
 const agent = new Agent({
-	initialState: {
-		systemPrompt: "You are a helpful assistant.",
-		model,
-	},
+	initialState: { systemPrompt: "You are a helpful assistant.", model },
 	streamFn: models.streamSimple.bind(models),
 });
 
 agent.subscribe((event) => {
 	if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-		// Stream just the new text chunk
 		process.stdout.write(event.assistantMessageEvent.delta);
 	}
 });
@@ -40,35 +28,43 @@ agent.subscribe((event) => {
 await agent.prompt("Hello!");
 ```
 
-## Core Concepts
+## How a run works
 
-### AgentMessage vs LLM Message
+`AgentMessage` is the agent's own message type: the LLM roles (`user`, `assistant`, `toolResult`) plus app-specific roles added by declaration merging. Before every provider request the loop converts it to what the model understands.
 
-The agent works with `AgentMessage`, a flexible type that can include:
-
-- Standard LLM messages (`user`, `assistant`, `toolResult`)
-- Custom app-specific message types via declaration merging
-
-LLMs only understand `user`, `assistant`, and `toolResult`. The `convertToLlm` function bridges this gap by filtering and transforming messages before each LLM call.
-
-### Message Flow
-
+```mermaid
+flowchart LR
+  A["AgentMessage[]"] --> B["transformContext (optional): prune, inject"]
+  B --> C["convertToLlm (required for custom roles): filter, convert"]
+  C --> D["Message[]"] --> E[LLM]
+  E --> F{tool calls?}
+  F -- yes --> G["beforeToolCall → execute → afterToolCall"]
+  G --> H["finishTurn → turn_end"]
+  F -- no --> H
+  H --> I{steering, follow-up or continue?}
+  I -- yes --> B
+  I -- no --> J[agent_end]
 ```
-AgentMessage[] → transformContext() → AgentMessage[] → convertToLlm() → Message[] → LLM
-                    (optional)                           (required)
-```
 
-1. **transformContext**: Prune old messages, inject external context
-2. **convertToLlm**: Filter out UI-only messages, convert custom types to LLM format
+## Exports
 
-## Documentation
+| Export                                                                   | Purpose                                                                                       |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `Agent`                                                                  | Stateful wrapper: state, `prompt()`, `continue()`, queues, `subscribe()`, `abort()`           |
+| `agentLoop`, `agentLoopContinue`, `runAgentLoop`, `runAgentLoopContinue` | Low-level loop without the `Agent` class                                                      |
+| `runToolCall`                                                            | Run one tool call through the hooks (hosts use it to adapt MCP tools)                         |
+| `streamProxy`                                                            | `streamFn` that goes through a backend proxy                                                  |
+| `setDefaultStreamFn`                                                     | Default `streamFn` for agents created without one                                             |
+| `createEventBus`                                                         | Channel-keyed event bus with no Node dependency                                               |
+| `AgentToolExecutionError`                                                | Error that keeps structured `details` on a failed tool                                        |
+| Types                                                                    | `AgentMessage`, `AgentTool`, `AgentState`, `AgentEvent`, `AgentContext`, `AgentLoopConfig`, … |
 
-| Page                                                       | Covers                                                                                                                    |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| [Event flow](docs/events.md)                               | `prompt()` and tool-call event sequences, request preparation, turn finalization, `continue()`, queued input, event types |
-| [Options, state and methods](docs/options-and-state.md)    | Agent options, agent state, prompting, state management, budgets, control, event subscription                             |
-| [Steering, messages and tools](docs/messages-and-tools.md) | Steering and follow-up input, custom message types, tools, tool errors, MCP tools                                         |
-| [Proxy and low-level API](docs/proxy-and-low-level.md)     | Proxy usage and the low-level agent loop                                                                                  |
+## Pages
+
+| Page                     | Covers                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| [API](docs/api.md)       | Options, state, methods, steering and follow-up, custom messages, tools, proxy, low-level loop |
+| [Events](docs/events.md) | Event sequences, tool hooks, request preparation, turn finalization, `continue()`, event types |
 
 ## License
 

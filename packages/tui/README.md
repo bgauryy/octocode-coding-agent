@@ -1,88 +1,119 @@
 # @octocodeai/octocode-tui
 
-Minimal terminal UI framework with differential rendering and synchronized output for flicker-free interactive CLI applications.
+Terminal UI framework: components, input handling and a differential renderer with synchronized output (CSI 2026, no flicker). The coding agent hosts command routing and configuration; see its [terminal UI guide](../coding-agent/docs/tui.md).
 
-This package owns terminal components and input/rendering primitives. The coding-agent host owns command routing, configuration discovery and MCP management; see [CONFIGURATIONS.md](../../CONFIGURATIONS.md) and its [terminal UI guide](../coding-agent/docs/tui.md).
+| Page                                                         | Covers                                                                             |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| [Core API](docs/core-api.md)                                 | `TUI` and renderers, colors, alternate-screen layouts, overlays, mouse, focus, IME |
+| [Components](docs/components.md)                             | Built-in components and their key bindings                                         |
+| [Input, rendering and terminals](docs/input-and-terminal.md) | Input flow, render loop, pacing, `Terminal`, tmux, utilities                       |
 
-## Features
-
-- **Interchangeable Renderers**: Shared `TUI` interface with main-screen and alternate-screen implementations
-- **Differential Rendering**: Updates only changed lines or viewport rows
-- **Application-owned Scrolling**: Alternate-screen viewport supports mouse, trackpad, and keyboard navigation
-- **Synchronized Output**: Uses CSI 2026 for atomic screen updates (no flicker)
-- **Bracketed Paste Mode**: Handles large pastes correctly with markers for >10 line pastes
-- **Component-based**: Simple Component interface with render() method
-- **Theme Support**: Components accept theme interfaces for customizable styling
-- **Built-in Components**: Text, TruncatedText, Input, Editor, Markdown, Loader, SelectList, SettingsList, MouseRegion, Spacer, Image, Box, Container, VStack, HStack, ScrollView
-- **Inline Images**: Renders images in terminals that support Kitty or iTerm2 graphics protocols
-- **Autocomplete Support**: File paths and slash commands
-
-## Quick Start
+## Quick start
 
 ```typescript
-import { type TUI, Text, Editor, ProcessTerminal, TuiMainScreen, matchesKey } from "@octocodeai/octocode-tui";
+import { Editor, matchesKey, ProcessTerminal, Text, TuiMainScreen, type TUI } from "@octocodeai/octocode-tui";
 
-// Create terminal
-const terminal = new ProcessTerminal();
+const id = (s: string) => s;
+const tui: TUI = new TuiMainScreen(new ProcessTerminal());
 
-// Create the default main-screen renderer through the shared TUI interface
-const tui: TUI = new TuiMainScreen(terminal);
-
-// Add components
 tui.addChild(new Text("Welcome to my app!"));
-
-import { defaultEditorTheme as editorTheme } from "./test/test-themes.ts";
-const editor = new Editor(tui, editorTheme);
-editor.onSubmit = (text) => {
-	console.log("Submitted:", text);
-	tui.addChild(new Text(`You said: ${text}`));
-};
+const editor = new Editor(tui, {
+	borderColor: id,
+	selectList: { selectedPrefix: id, selectedText: id, description: id, scrollInfo: id, noMatch: id },
+});
+editor.onSubmit = (text) => tui.addChild(new Text(`You said: ${text}`));
 tui.addChild(editor);
+tui.setFocus(editor); // the focused component receives keyboard input
 
-// Focus the editor so it receives keyboard input
-tui.setFocus(editor);
-
-// In raw mode Ctrl+C doesn't send SIGINT — intercept it here to allow exit
+// Raw mode sends Ctrl+C as input, not SIGINT: exit here.
 tui.addInputListener((data) => {
 	if (matchesKey(data, "ctrl+c")) {
 		tui.stop();
 		process.exit(0);
 	}
+	return undefined;
 });
-
-// Start
 tui.start();
 ```
 
-## Documentation
+## Renderers
 
-| Page                                                         | Covers                                                                                                                                                |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Core API](docs/core-api.md)                                 | The `TUI` interface and renderers, colors and styles, alternate-screen layouts, overlays, the component interface, mouse input, focus and IME support |
-| [Built-in components](docs/components.md)                    | Container, Box, Text, TruncatedText, Input, Editor, Markdown, loaders, SelectList, SettingsList, Spacer, Image                                        |
-| [Input, rendering and terminals](docs/input-and-terminal.md) | Autocomplete, key detection, rendering modes and pacing, the terminal interface, multiplexers, utilities                                              |
-| [Custom components](docs/custom-components.md)               | Handling input, line width, ANSI codes, caching, and the chat example                                                                                 |
+| Renderer        | Buffer            | Scrolling                                     | Mouse |
+| --------------- | ----------------- | --------------------------------------------- | ----- |
+| `TuiMainScreen` | Main              | Terminal scrollback                           | No    |
+| `TuiAltScreen`  | Alternate (fixed) | Application-owned (`ScrollView`, wheel, keys) | Yes   |
+
+Both implement `TUI`; choose one only where the application is constructed.
+
+## Render loop
+
+```mermaid
+flowchart LR
+  A[requestRender] --> B{Keyboard input?}
+  B -- yes --> D
+  B -- no --> C[Coalesce, 40 ms minimum]
+  C --> D[Render children at terminal width]
+  D --> E[Composite overlays, resolve cursor]
+  E --> F[Diff against previous frame]
+  F --> G[Write inside CSI 2026 begin/end]
+```
+
+## Writing a component
+
+Implement [`Component`](docs/core-api.md#component-interface).
+
+| Rule                             | How                                                                                       |
+| -------------------------------- | ----------------------------------------------------------------------------------------- |
+| No line wider than `width`       | `truncateToWidth()`, `wrapTextWithAnsi()`; measure with `visibleWidth()` (all ANSI-aware) |
+| Styles do not carry across lines | Reapply per line; the renderer appends an SGR and OSC 8 reset to each line                |
+| Cache lines keyed by width       | Drop the cache in `invalidate()`                                                          |
+| Keyboard input                   | `handleInput(data)` with `matchesKey(data, Key.up)`                                       |
+| Text cursor or IME               | Implement `Focusable` ([IME support](docs/core-api.md#focusable-interface-ime-support))   |
+
+```typescript
+import { Key, matchesKey, truncateToWidth, type Component } from "@octocodeai/octocode-tui";
+
+class Menu implements Component {
+	private selected = 0;
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+	onSelect?: (index: number) => void;
+
+	constructor(private items: string[]) {}
+
+	handleInput(data: string): void {
+		if (matchesKey(data, Key.up)) this.selected = Math.max(0, this.selected - 1);
+		else if (matchesKey(data, Key.down)) this.selected = Math.min(this.items.length - 1, this.selected + 1);
+		else if (matchesKey(data, Key.enter)) this.onSelect?.(this.selected);
+		this.invalidate();
+	}
+
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
+		this.cachedWidth = width;
+		this.cachedLines = this.items.map((item, i) =>
+			truncateToWidth(`${i === this.selected ? "> " : "  "}${item}`, width),
+		);
+		return this.cachedLines;
+	}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+	}
+}
+```
+
+`test/chat-simple.ts` is a full chat example (Markdown messages, loader, editor with autocomplete): `node test/chat-simple.ts`.
 
 ## Development
 
 ```bash
-# From the repository root: install dependencies and run the checks
-yarn install
-yarn run check
-
-# From packages/tui: run the tests and the demo
-yarn run test
-node test/chat-simple.ts
+yarn install && yarn run check   # repository root
+yarn run test                    # packages/tui
+yarn run test:tmux               # multiplexer tests only
 ```
 
-### Native helpers
+Platform helpers for modifier-key state and clipboard access ship as prebuilds; each page explains how to rebuild it: [macOS](native/darwin/README.md), [Linux](native/linux/README.md), [Windows](native/win32/README.md).
 
-Platform helpers for modifier-key state and clipboard access ship as prebuilds; each page explains how to rebuild it: [macOS](native/darwin/README.md), [Linux](native/linux/README.md) and [Windows](native/win32/README.md).
-
-### Debug logging
-
-Set `OCTOCODE_TUI_WRITE_LOG` to capture the raw ANSI stream written to stdout.
-
-```bash
-OCTOCODE_TUI_WRITE_LOG=/tmp/tui-ansi.log node test/chat-simple.ts
-```
+Set `OCTOCODE_TUI_WRITE_LOG` to copy the raw ANSI stream to a file: `OCTOCODE_TUI_WRITE_LOG=/tmp/tui-ansi.log node test/chat-simple.ts`.

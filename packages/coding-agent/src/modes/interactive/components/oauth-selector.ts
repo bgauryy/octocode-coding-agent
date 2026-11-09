@@ -102,7 +102,10 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		if (mode === "sign-in") {
 			this.addChild(
 				new TruncatedText(
-					theme.fg("muted", "Account or API key. /model chooses a model once you are signed in."),
+					theme.fg(
+						"muted",
+						"Subscription, account or API key. Type to search (chatgpt, copilot). Then /model picks a model.",
+					),
 					1,
 					0,
 				),
@@ -151,7 +154,8 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 			? fuzzyFilter(
 					this.allProviders,
 					query,
-					(provider) => `${provider.name} ${provider.id} ${provider.authType} ${provider.method?.name ?? ""}`,
+					(provider) =>
+						`${provider.name} ${provider.id} ${provider.authType} ${provider.method?.name ?? ""} ${provider.detail ?? ""}`,
 				)
 			: this.allProviders;
 		this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, Math.max(0, this.filteredProviders.length - 1)));

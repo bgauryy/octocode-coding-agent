@@ -1,78 +1,42 @@
 # @octocodeai/octocode-telemetry
 
-Vendor-neutral telemetry contracts and typed schema utilities for Octocode packages.
+Vendor-neutral telemetry contracts and typed schema utilities. The host chooses what to collect and export (see [configuration](../coding-agent/docs/configuration.md) and [environment variables](../coding-agent/docs/environment-variables.md)). The package has no exporter, no global current-span state and no backend dependency; code passes a context explicitly.
 
-This library supplies contracts and implementations; the host chooses what to collect and export. Coding-agent preferences and environment overrides are documented in [CONFIGURATIONS.md](../../CONFIGURATIONS.md) and [environment variables](../coding-agent/docs/environment-variables.md).
-
-This package provides:
-
-- an explicit, callback-based `TelemetryContext` / `TelemetrySpan` contract;
-- a shared `NOOP_TELEMETRY_CONTEXT`;
-- opaque cross-process propagation and span links;
-- counters, up-down counters, histograms, and typed metric schemas;
-- a reference `InMemoryTelemetryContext` implementation;
-- serializable schema definitions with inferred TypeScript types;
-- no exporter, global current-span state, or dependency on a telemetry backend.
-
-Applications can use the in-memory reference or provide an adapter for OpenTelemetry, Sentry, logs, or another backend. Octocode packages pass telemetry contexts explicitly and define their domain schemas separately.
-
-## Documentation
-
-This README covers installation, the concepts and the core context API. Further pages:
-
-| Page                                                       | Covers                                                                                                          |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| [Adapters](docs/adapters.md)                               | The adapter contract, the no-op context, the in-memory reference adapter, stored telemetry, adapter conformance |
-| [Propagation and metrics](docs/propagation-and-metrics.md) | Cross-process propagation, span links, counters, histograms, typed metric schemas                               |
-| [Typed schemas](docs/schemas.md)                           | Span schemas, start and completion attributes, schema metadata                                                  |
-| [API reference](docs/api-reference.md)                     | Exported types, values, schema helpers and the testing subpath                                                  |
-
-## Installation
+| Page                         | Covers                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| [Adapters](docs/adapters.md) | Adapter contract, no-op and in-memory contexts, stored telemetry, conformance |
+| [Schemas](docs/schemas.md)   | Typed spans, start and end attributes, schema metadata, typed metrics         |
 
 ```bash
 npm install @octocodeai/octocode-telemetry
 ```
 
-## Telemetry Concepts
+## Concepts
 
-Telemetry describes what a program did while it was running. This package models that work using spans, attributes, events, statuses, and explicit context:
+| Concept      | Meaning                                                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| Span         | Timed record of one operation; ends when the callback settles           |
+| Parent/child | Spans started from a span nest into a tree                              |
+| Attribute    | Named fact on a span (`provider: "openai"`)                             |
+| Event        | Named, durationless occurrence during a span, with optional attributes  |
+| Status       | `ok` or `error` (with optional name and message)                        |
+| Context      | Handle that says where new work belongs; starting from it makes a child |
 
-| Concept                    | Plain-language meaning                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Span**                   | A timed record of one operation, such as loading an account or making an AI request. It begins before the work and ends when the work finishes.                      |
-| **Parent and child spans** | Operations can contain smaller operations. A request span might contain a cache lookup and a database query. Together they form a tree showing where time was spent. |
-| **Attribute**              | A named fact attached to a span, such as `provider: "openai"`, `cache.hit: true`, or `item_count: 12`. Attributes describe the operation and its result.             |
-| **Event**                  | A named occurrence at a point during a span, such as `retry.scheduled` or `cache.lookup`. Events have no duration and may carry their own attributes.                |
-| **Status**                 | The operation's outcome: `ok` or `error`. An error status may include an error name and message.                                                                     |
-| **Context**                | A handle identifying where new work belongs in the span tree. Starting a span from a context makes it a child of that context.                                       |
+Telemetry is diagnostics, not state. An adapter maps these concepts to OpenTelemetry, Sentry, logs or another backend.
 
-For example, loading an account could produce this telemetry:
+## Core API
 
-```text
-example.account.load                         span
-├─ attributes: account.id=123, found=true   facts about the span
-├─ event: example.cache.lookup              occurrence during the span
-│  └─ attribute: cache.hit=false            fact about the event
-└─ status: ok                               final outcome
-```
-
-A span is diagnostic data, not business state. An adapter translates these generic concepts into the corresponding concepts used by OpenTelemetry, Sentry, logs, or another backend.
-
-## Core Context API
-
-A `TelemetryContext` starts a span around a callback. The callback receives a `TelemetrySpan`, which is also the explicit parent context for child spans. Contexts optionally expose their adapter's `metrics?: TelemetryMetrics` and `propagation?: TelemetryPropagation` capabilities; child spans and extracted parents carry the same capabilities. A `TelemetryContext` adapter starts root spans; hosts retain this adapter. Invocation contexts and octocode-ai request options carry a `TelemetrySpan`, never the adapter. A tracing adapter that only implements `startSpan()` is still valid.
+`TelemetryContext.startSpan(options, callback)` runs the callback inside a span; the callback's `TelemetrySpan` is the explicit parent for child spans. Hosts keep the adapter; invocation contexts and `octocode-ai` request options carry a `TelemetrySpan`, never the adapter. A context may expose `metrics` and `propagation`; children and extracted parents share them. An adapter implementing only `startSpan()` is valid.
 
 ```typescript
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@octocodeai/octocode-telemetry";
 
-async function loadAccount(accountId: string, telemetryContext: TelemetryContext = NOOP_TELEMETRY_CONTEXT) {
-	return telemetryContext.startSpan(
-		{
-			name: "example.account.load",
-			attributes: { "example.account.id": accountId },
-		},
+async function loadAccount(id: string, telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) {
+	return telemetry.startSpan(
+		{ name: "example.account.load", attributes: { "example.account.id": id } },
 		async (span) => {
-			const account = await readAccount(accountId);
+			span.addEvent("example.cache.lookup", { "example.cache.hit": false });
+			const account = await readAccount(id);
 			span.setAttributes({ "example.account.found": account !== undefined });
 			return account;
 		},
@@ -80,69 +44,84 @@ async function loadAccount(accountId: string, telemetryContext: TelemetryContext
 }
 ```
 
-Pass the callback span to lower-level work to create explicit nesting:
+There is no `end()`: the span stays open until the callback's value or promise settles. A thrown error or rejection is an `error` status; for an expected failure returned as a value, call `span.setStatus({ status: "error", error: { name, message } })`.
+
+## Propagation and links
+
+An adapter may implement `TelemetryPropagation` (`context.propagation`): `inject(context)` returns a `TelemetryCarrier` (an opaque JSON-safe `Record<string, string>`) or `undefined`; `extract(carrier)` returns a receiver-owned parent context.
+
+```mermaid
+sequenceDiagram
+  participant C as Caller
+  participant W as Transport
+  participant P as Provider
+  C->>C: startSpan rpc.client
+  C->>W: JSON of inject(span)
+  W->>P: carrier only
+  P->>P: extract(carrier).startSpan rpc.server
+```
 
 ```typescript
-return telemetryContext.startSpan({ name: "example.parent" }, async (parentSpan) => {
-	return parentSpan.startSpan({ name: "example.child" }, async (childSpan) => {
-		childSpan.addEvent("example.cache.lookup", { "example.cache.hit": true });
-		return performWork();
-	});
+// caller and provider: InMemoryTelemetryContext instances
+await caller.startSpan({ name: "rpc.client" }, async (span) => {
+	const wire = JSON.stringify(caller.inject(span));
+	await provider.extract(JSON.parse(wire)).startSpan({ name: "rpc.server" }, (s) => handle(s));
 });
 ```
 
-There is no public `end()` method. `startSpan()` owns settlement and keeps the span open until the callback's value or promise settles. For an expected failure represented by a normal return value, set the status explicitly:
+- Send only the carrier, never a context or span. Format is the adapter's (W3C `traceparent` fits). Both methods are synchronous.
+- `inject` returns `undefined` for roots, no-op and unsupported contexts. Absent or unknown carriers extract to the adapter's root. Extraction checks only that required keys hold strings. Trace metadata is diagnostics, never authorization; transports own size limits.
+- A link relates work without changing its parent: `SpanOptions.links` at creation or `span.addLink({ context, attributes })` later. Targets are any `TelemetryContext` (a span or extracted remote parent). Settled targets stay linkable; a settled source ignores `addLink()`. The typed starter's callback supports `addLink()`; initial links need the low-level `startSpan()`.
+- `NOOP_TELEMETRY_PROPAGATION` returns `undefined` on inject and `NOOP_TELEMETRY_CONTEXT` on extract.
+
+## Metrics
+
+An adapter may implement `TelemetryMetrics` (`context.metrics`); applications configure one adapter for all capabilities, and child spans keep it.
 
 ```typescript
-return telemetryContext.startSpan({ name: "example.save" }, async (span) => {
-	const result = await save();
-	if (!result.ok) {
-		span.setStatus({
-			status: "error",
-			error: { name: "SaveError", message: result.reason },
-		});
-	}
-	return result;
-});
+const metrics = telemetry.metrics; // TelemetryMetrics | undefined (InMemoryTelemetryContext also has the factories directly)
+const bytes = metrics.counter("network.bytes", { description: "Encoded bytes", unit: "By" });
+bytes.add(size, { direction: "out" });
+metrics.upDownCounter("calls.active").add(1);
+metrics.histogram("call.duration", { unit: "ms", boundaries: [1, 10, 100, 1000] }).record(ms, { method: "read" }, span);
 ```
+
+| Instrument      | Method                                 | Notes                                                                                    |
+| --------------- | -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `counter`       | `add(value, attributes?)`              | Non-negative increments                                                                  |
+| `upDownCounter` | `add(value, attributes?)`              | Signed                                                                                   |
+| `histogram`     | `record(value, attributes?, context?)` | Signed; `context` correlates an exemplar; `boundaries` finite, strictly increasing hints |
+
+Factories and recording are synchronous and trust typed inputs (malformed input is unspecified). `NOOP_TELEMETRY_METRICS` discards everything. Use low-cardinality attributes (direction, method), never request or user ids, prompts or paths, and record only values business code already has. Typed metrics: [schemas](docs/schemas.md#typed-metrics).
+
+## Exports
+
+| Group       | Exports                                                                                                                                                                                                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Core        | `TelemetryContext`, `TelemetrySpan`, `SpanOptions`, `SpanLink`, `SpanAttributes`, `AttributeValue`, `SpanStatus`, `NOOP_TELEMETRY_CONTEXT`                                                                                                                                                             |
+| Propagation | `TelemetryCarrier`, `TelemetryPropagation`, `NOOP_TELEMETRY_PROPAGATION`                                                                                                                                                                                                                               |
+| Metrics     | `TelemetryMetrics`, `TelemetryCounter`, `TelemetryUpDownCounter`, `TelemetryHistogram`, `InstrumentOptions`, `HistogramOptions`, `NOOP_TELEMETRY_METRICS`                                                                                                                                              |
+| Store       | `TelemetryStore`, `StoredSpan`, `StoredTrace`, `TraceQuery`, `MetricQuery`, `StoredMetric`                                                                                                                                                                                                             |
+| In-memory   | `InMemoryTelemetryContext`, `RecordedTelemetrySpan`, `RecordedTelemetryEvent`, `RecordedTelemetryLink`, `RecordedTelemetryMeasurement`                                                                                                                                                                 |
+| Schemas     | `defineTelemetrySchema`, `createTypedSpanStarter`, `createTypedMetrics`, `TypedSpanStarter`, `TypedTelemetryMetrics`, `SchemaTelemetrySpan`, `SchemaTelemetryCounter`, `SchemaTelemetryHistogram`, `Telemetry*Definition` and `TelemetrySchema*` types, `Infer*Attributes`, `ExactTelemetryAttributes` |
+| `/render`   | `renderTrace(spans)`                                                                                                                                                                                                                                                                                   |
+| `/testing`  | `createTelemetryAdapterConformance`, `TelemetryAdapterFixture`, `TelemetryAdapterFixtureFactory`, `TelemetryAdapterConformanceCase`                                                                                                                                                                    |
 
 ## Package integration
 
-Package ownership is intentionally split:
+`@octocodeai/octocode-ai` is the only workspace package that uses this one: provider request options take a parent `TelemetrySpan` as `telemetry`, and `AI_TELEMETRY_SCHEMA` is exported from its root and `./models` entry points. Its span names keep the upstream `pi.ai.*` prefix; adapters may translate them without changing the emitted vocabulary.
 
-- `@octocodeai/octocode-telemetry` owns the vendor-neutral contract, no-op and in-memory reference contexts, schema utilities, and adapter conformance suite;
-- `@octocodeai/octocode-ai` accepts a parent `TelemetrySpan` through `telemetry` in provider request options and exports `AI_TELEMETRY_SCHEMA` from its root and `./models` entry points;
-- `@octocodeai/octocode-agent-core` retains its existing agent-loop and session instrumentation and schemas.
+## Security and portability
 
-```typescript
-import { AI_TELEMETRY_SCHEMA } from "@octocodeai/octocode-ai/models";
-```
-
-The AI schema uses `pi.ai.*` names, kept from the upstream project. Adapters may translate them to backend conventions without changing the emitted vocabulary.
-
-## Security and Portability
-
-Telemetry is diagnostics, not durable application state. Do not persist a `TelemetryContext`, `TelemetrySpan`, or backend-native trace object in records, messages, snapshots, or deferred handles. An injected `TelemetryCarrier` may cross a transport or be stored as optional diagnostic correlation data. Changing adapters may lose correlation; carriers are not application state.
-
-Attribute values are intentionally limited to primitive scalars and arrays. Domain instrumentation should avoid prompts, completions, tool arguments or output, file contents, provider payloads, headers, credentials, and free-form error details unless its schema and data policy explicitly allow them.
-
-The package does not use `AsyncLocalStorage` or another runtime-specific ambient context API. It is suitable for Node.js, Bun, browsers, and workers; backend adapters remain responsible for their own runtime compatibility.
+- Do not persist a context, span or backend-native trace object in records, messages, snapshots or deferred handles. A carrier may cross a transport or be stored as optional correlation data.
+- Attributes are scalars and arrays. Avoid prompts, completions, tool arguments or output, file contents, provider payloads, headers, credentials and free-form errors unless a schema and data policy allow them.
+- No `AsyncLocalStorage` or ambient context, so it suits Node.js, Bun, browsers and workers; adapters own their runtime compatibility.
 
 ## Development
 
-From this package directory:
-
 ```bash
-yarn test
-yarn run build
+yarn test && yarn run build   # packages/telemetry
+yarn run check                # repository root
 ```
 
-Repository-wide type checking, formatting, linting, and smoke checks run with:
-
-```bash
-yarn run check
-```
-
-## License
-
-MIT
+MIT licensed.

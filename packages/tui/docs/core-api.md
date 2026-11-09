@@ -2,206 +2,28 @@
 
 Part of the [`@octocodeai/octocode-tui` guide](../README.md).
 
-## TUI interface and renderers
+## TUI interface
 
-`TUI` is the shared interface for component management, focus, overlays, input, lifecycle, terminal queries, and rendering. Choose a concrete renderer only when constructing the application:
+`TUI` is shared by `TuiMainScreen` (main buffer, keeps scrollback) and `TuiAltScreen` (fixed-height viewport in the alternate buffer; on stop it restores the main buffer and prints the whole final document).
 
-- `TuiMainScreen` renders into the main terminal buffer and preserves terminal scrollback.
-- `TuiAltScreen` renders a fixed-height viewport in the alternate terminal buffer with application-owned scrolling. When stopped, it restores the main buffer and prints the complete final document.
+| Member                                                                        | Purpose                                                                                   |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `addChild` / `removeChild` / `clear`                                          | Manage root components                                                                    |
+| `start()` / `stop({ preserveScreen? })`                                       | Lifecycle; `preserveScreen` leaves output for another TUI taking over the terminal        |
+| `requestRender(force?)` / `renderNow(force?)`                                 | Schedule or run a frame; `force` repaints everything                                      |
+| `setFocus(component \| null)`                                                 | Choose the keyboard target                                                                |
+| `showOverlay` / `hideOverlay` / `hasOverlay`                                  | [Overlays](#overlays)                                                                     |
+| `addInputListener(fn)` / `removeInputListener(fn)`                            | See input before the focused component; `fn` returns `{ consume?, data? }` or `undefined` |
+| `setShowHardwareCursor` / `setClearOnShrink`                                  | Cursor and shrink behavior (getters exist)                                                |
+| `onDebug`                                                                     | Called on Shift+Ctrl+D before input reaches the focused component                         |
+| `onRenderError(error, component)`                                             | Called once per distinct render failure                                                   |
+| `queryTerminalColors({ timeoutMs, onLateReply? })`                            | Reads foreground, background and ANSI 0-15 colors                                         |
+| `onTerminalColorSchemeChange(fn)` / `setTerminalColorSchemeNotifications(on)` | Light/dark scheme reports                                                                 |
+| `mode`, `fullRedraws`, `terminal`, `children`                                 | Read-only state                                                                           |
 
-```typescript
-import { type TUI, TuiAltScreen, TuiMainScreen } from "@octocodeai/octocode-tui";
+A component that throws in `render` does not stop the frame: it draws as `⚠ <Component> failed to render: <first error line>` until it renders again. Without an `onRenderError` listener the error is appended to `octocode-tui-render-errors.log` in the log directory given to the renderer, else the system temp folder. A direct `render()` call outside a frame still throws.
 
-const tui: TUI = new TuiMainScreen(terminal);
-// To use an application-owned viewport in the alternate terminal buffer instead:
-// const tui: TUI = new TuiAltScreen(terminal);
-
-tui.addChild(component);
-tui.removeChild(component);
-tui.start();
-tui.stop();
-tui.requestRender(); // Request a re-render
-
-// Global debug key handler (Shift+Ctrl+D)
-tui.onDebug = () => console.log("Debug triggered");
-```
-
-A component that throws from `render` during a frame does not stop the others: it is drawn as one line, `⚠ <Component> failed to render: <first line of the error>`, until it renders again. The error goes to `tui.onRenderError` (a `RenderErrorListener`, `(error, component) => void`) once per distinct failure; without a listener it is appended to `octocode-tui-render-errors.log` in the log directory passed to the renderer's constructor, else the system temporary folder. A direct `render()` call outside a frame still throws ([`render-isolation.ts`](../src/tui/render-isolation.ts)).
-
-## Colors and terminal styles
-
-Colors are values that can be converted or mixed before terminal rendering:
-
-```typescript
-import {
-	colorToRgb,
-	foregroundAnsi,
-	getTerminalColorMode,
-	mixColors,
-	parseColor,
-	rgbColor,
-	styleText,
-} from "@octocodeai/octocode-tui";
-
-const accent = parseColor("oklch(70% 0.12 220)");
-const background = parseColor("#20242a");
-const foreground = mixColors(accent, background, 0.2);
-
-const text = styleText("Ready", { fg: foreground, bg: background, bold: true }, getTerminalColorMode());
-```
-
-`Color` is an indexed ANSI color, an sRGB color, or an OKLCH color. Every color converts to sRGB, so color math such as `mixColors()` always works. Indices 0-15 follow the user's terminal palette, so their sRGB values are approximations. `styleText()` converts colors to truecolor or 256-color output based on the requested terminal mode.
-
-`parseColor()` also accepts OKHSL, as in `okhsl(250 60% 55%)`; `okhslColor()` builds it in code and `colorToOkhsl()` reads any color's OKHSL channels. OKHSL saturation is relative to the most the sRGB gamut allows at the hue and lightness, so every value is in gamut and equal saturation looks equally colorful across hues. OKHSL colors are converted to sRGB when created.
-
-Conversions are not cached. OKLCH colors, especially ones outside the sRGB gamut, are more expensive to convert than sRGB or indexed colors. For colors used on every render, convert once and reuse the result:
-
-```typescript
-const { r, g, b } = colorToRgb(mixColors(accent, background, 0.2));
-const foreground = rgbColor(r, g, b); // cheap to render repeatedly
-const foregroundCode = foregroundAnsi(foreground, getTerminalColorMode());
-```
-
-`shimmerText()` paints plain text with a soft light band that sweeps left to right, for a "working" label. Each cell mixes `base` toward `peak` by a cosine falloff from the band's center; the band's position comes from `now` (default `Date.now()`), so the caller redraws on its own timer, such as a `Loader`'s frame interval, and every shimmer on the same clock moves in step:
-
-```typescript
-import { shimmerText } from "@octocodeai/octocode-tui";
-
-const label = shimmerText("Working", {
-	base: parseColor("#a7b0bc"),
-	peak: parseColor("#e6edf3"),
-	mode: getTerminalColorMode(),
-	periodMs: 2000, // one sweep, including `padding` cells on each side (default 2000)
-	halfWidth: 5, // band half-width in cells (default 5)
-	padding: 10, // cells travelled before and after the text (default 10)
-});
-```
-
-`getTerminalColorMode()` returns `"none"` when `NO_COLOR` is non-empty or `TERM=dumb`, otherwise `"truecolor"` or `"256color"`. In `"none"` mode `foregroundAnsi`, `backgroundAnsi` and `styleText` write no color sequence, and `shimmerText` returns its text unchanged; bold, dim, italic, underline and inverse still apply. A `ScrollView` without `scrollbarTrackStyle` and `scrollbarThumbStyle` draws a faint track and a plain thumb, so the host chooses any scrollbar color.
-
-## Alternate-screen viewport layouts
-
-`TuiAltScreen` can render an explicit terminal-height layout. `VStack` and `HStack` allocate constrained regions, while `ScrollView` owns scrolling for one region. These semantics are intentionally unavailable on `TuiMainScreen`, where the terminal owns scrollback.
-
-```typescript
-import { Container, isViewportTUI, ScrollView, Text, VStack } from "@octocodeai/octocode-tui";
-
-const transcript = new Container();
-transcript.addChild(new Text("History"));
-
-const editorAndFooter = new VStack([editor, new Text("status")]);
-
-if (isViewportTUI(tui)) {
-	tui.setLayoutRoot(
-		new VStack([
-			{
-				component: new ScrollView(transcript, {
-					follow: "end",
-					primary: true,
-					overscroll: "chain",
-				}),
-				basis: 0,
-				grow: 1,
-				minSize: 1,
-			},
-			{
-				component: editorAndFooter,
-				basis: "auto",
-				shrink: 1,
-				minSize: 1,
-			},
-		]),
-	);
-}
-```
-
-Stack entries support `basis`, `grow`, `shrink`, `minSize`, `maxSize`, and responsive `visible` callbacks. Mouse-wheel input targets the scroll view under the pointer and unused delta chains to outer scroll views by default. The primary scroll view receives the alternate-screen keyboard navigation actions and wheel input over non-scrollable regions. It can also jump between OSC 133 semantic prompt markers, matching common terminal prompt-navigation shortcuts. Press `Ctrl+Shift+F` to open or close its bordered search panel. The panel shows the configured previous/next shortcuts and provides clickable arrow controls; by default, `Enter`/`Ctrl+G` and `Shift+Enter`/`Ctrl+Shift+G` move between matches, and `Escape` also closes search. `TuiAltScreenOptions.searchMatchStyle` and `searchCurrentMatchStyle` customize match highlighting, while `searchNavigationButtonStyle` styles each arrow button and receives its hover state. `TuiAltScreenOptions.scrollToEndIndicator` renders a clickable label centered on the last row of a `follow: "end"` primary scroll view while it is scrolled away from the end; clicking it resumes end-following.
-
-Layout geometry is rebuilt for each requested frame. Stateful components are retained, and their existing rendered-line caches remain effective. Calling `render(width)` directly on these layout components produces an unbounded document, which is also used when alt mode restores the main screen.
-
-## Overlays
-
-Overlays render components on top of existing content without replacing it. Useful for dialogs, menus, and modal UI.
-
-```typescript
-// Show overlay with default options (centered, max 80 cols)
-const handle = tui.showOverlay(component);
-
-// Show overlay with custom positioning and sizing
-// Values can be numbers (absolute) or percentage strings (e.g., "50%")
-const handle = tui.showOverlay(component, {
-  // Sizing
-  width: 60,              // Fixed width in columns
-  width: "80%",           // Width as percentage of terminal
-  minWidth: 40,           // Minimum width floor
-  maxHeight: 20,          // Maximum height in rows
-  maxHeight: "50%",       // Maximum height as percentage of terminal
-
-  // Anchor-based positioning (default: 'center')
-  anchor: 'bottom-right', // Position relative to anchor point
-  offsetX: 2,             // Horizontal offset from anchor
-  offsetY: -1,            // Vertical offset from anchor
-
-  // Percentage-based positioning (alternative to anchor)
-  row: "25%",             // Vertical position (0%=top, 100%=bottom)
-  col: "50%",             // Horizontal position (0%=left, 100%=right)
-
-  // Absolute positioning (overrides anchor/percent)
-  row: 5,                 // Exact row position
-  col: 10,                // Exact column position
-
-  // Margin from terminal edges
-  margin: 2,              // All sides
-  margin: { top: 1, right: 2, bottom: 1, left: 2 },
-
-  // Responsive visibility
-  visible: (termWidth, termHeight) => termWidth >= 100  // Hide on narrow terminals
-
-  // Focus behavior
-  nonCapturing: true       // Don't auto-focus when shown
-});
-
-// OverlayHandle methods
-handle.hide();              // Permanently remove the overlay
-handle.setHidden(true);     // Temporarily hide (can show again)
-handle.setHidden(false);    // Show again after hiding
-handle.isHidden();          // Check if temporarily hidden
-handle.focus();             // Focus and bring to visual front
-handle.unfocus();           // Release focus to normal fallback
-handle.unfocus({ target: baseComponent }); // Release this overlay to a specific component
-handle.unfocus({ target: null });   // Release this overlay and leave focus empty
-handle.isFocused();         // Check if overlay has focus
-handle.getBounds();         // Get last rendered terminal-relative bounds
-
-handle.unfocus();
-// Overlay loses focus; TUI falls back to another visible capturing overlay or the previous focus target.
-
-handle.unfocus({ target: null });
-// Overlay loses focus; no component receives input until focus is set again.
-
-// A focused visible overlay reclaims keyboard input after temporary replacement UI
-// releases focus. If you want a specific component to receive input while overlays remain
-// visible, call handle.unfocus({ target: component }).
-
-// Hide topmost overlay
-tui.hideOverlay();
-
-// Check if any visible overlay is active
-tui.hasOverlay();
-```
-
-**Anchor values**: `'center'`, `'top-left'`, `'top-right'`, `'bottom-left'`, `'bottom-right'`, `'top-center'`, `'bottom-center'`, `'left-center'`, `'right-center'`
-
-**Resolution order**:
-
-1. `minWidth` is applied as a floor after width calculation
-2. For position: absolute `row`/`col` > percentage `row`/`col` > `anchor`
-3. `margin` clamps final position to stay within terminal bounds
-4. `visible` callback controls whether overlay renders (called each frame)
-
-## Component Interface
-
-All components implement:
+## Component interface
 
 ```typescript
 interface Component {
@@ -212,109 +34,161 @@ interface Component {
 }
 ```
 
-| Method                | Description                                                                                                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `render(width)`       | Returns an array of strings, one per line. Each line **must not exceed `width`** or the TUI will error. Use `truncateToWidth()` or manual wrapping to ensure this. |
-| `handleInput?(data)`  | Called when the component has focus and receives keyboard input. The `data` string contains raw terminal input (may include ANSI escape sequences).                |
-| `handleMouse?(event)` | Called by `TuiAltScreen` for normalized pointer input targeted at the component.                                                                                   |
-| `invalidate()`        | Required. Clear any cached render state so the next `render()` starts from scratch. Components without cached render state can use an empty implementation.        |
+| Method                | Contract                                                                    |
+| --------------------- | --------------------------------------------------------------------------- |
+| `render(width)`       | One string per line, none wider than `width`                                |
+| `handleInput?(data)`  | Focused components get raw input, possibly ANSI escapes                     |
+| `handleMouse?(event)` | Alternate-screen pointer input aimed at the component                       |
+| `invalidate()`        | Required: clear cached render state (an empty body is fine without a cache) |
 
-The TUI appends a full SGR reset and OSC 8 reset at the end of each rendered line. Styles do not carry across lines. If you emit multi-line text with styling, reapply styles per line or use `wrapTextWithAnsi()` so styles are preserved for each wrapped line.
+The renderer ends every line with an SGR and OSC 8 reset, so styles never span lines.
 
-## Mouse Input
+## Colors
 
-`TuiAltScreen` normalizes SGR mouse input and hit-tests components and overlays. Events contain component-local `x`/`y`, absolute `screenX`/`screenY`, bounds, button, modifiers, click count, and wheel delta. `TuiMainScreen` does not capture mouse input because the terminal owns its scrollback.
+`Color` is an indexed ANSI color (0-15 follow the user's palette, so their sRGB values are approximate), sRGB, OKLCH or OKHSL; all convert to sRGB, so `mixColors()` always works.
+
+- Parse and build: `parseColor("#20242a" | "oklch(70% 0.12 220)" | "okhsl(250 60% 55%)")`, `rgbColor`, `indexedColor`, `oklchColor`, `okhslColor`; mix with `mixColors(a, b, t)`; convert with `colorToRgb`, `colorToHex`, `colorToOklch`, `colorToOkhsl`.
+- Emit: `foregroundAnsi`, `backgroundAnsi`, `styleText(text, style, mode)`. `getTerminalColorMode()` is `"truecolor"`, `"256color"` or `"none"` (`NO_COLOR` non-empty or `TERM=dumb`). In `"none"` no color is written and `shimmerText` returns its text; bold, dim, italic, underline and inverse still apply.
+- Conversions are not cached and out-of-gamut OKLCH is the costliest: for per-frame colors convert once with `colorToRgb()` and reuse `rgbColor(r, g, b)`.
+- `shimmerText(text, { base, peak, mode, now, periodMs = 2000, halfWidth = 5, padding = 10 })` sweeps a light band across a "working" label. `now` defaults to `Date.now()`; the caller redraws on its own timer, so shimmers on one clock move together.
 
 ```typescript
-import type { TuiMouseEvent, TuiMouseEventResult } from "@octocodeai/octocode-tui";
-
-handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-  if (event.type === "click" && event.button === "left") {
-    this.expanded = !this.expanded;
-    return { handled: true };
-  }
-  if (event.type === "press" && event.button === "left") {
-    return { handled: true, capture: true, focus: true };
-  }
-  if (event.type === "drag") {
-    this.updateFromPointer(event.x, event.y);
-    return { handled: true, render: true };
-  }
-  return undefined;
-}
+const accent = parseColor("oklch(70% 0.12 220)");
+const bg = parseColor("#20242a");
+const text = styleText("Ready", { fg: mixColors(accent, bg, 0.2), bg, bold: true }, getTerminalColorMode());
 ```
 
-Returning `handled` suppresses renderer-level fallback behavior. `capture` keeps subsequent drag and release events routed to the same component. `focus` requests keyboard focus. The optional `render` flag controls repainting: press, click, drag, and wheel default to rendering; move and release do not. Set `render: true` for a hover state that visibly changed, or `render: false` for a handled no-op. Render requests are coalesced and terminal output remains differential.
+## Alternate-screen layouts
 
-Unhandled gestures retain alternate-screen defaults: wheel input scrolls the nearest `ScrollView` and chains unused delta, primary-button drags select text, OSC 8 links open before parent click handlers, and unhandled right-click preserves configured paste behavior. A click is emitted only when press/release completes without a drag.
-
-Use `MouseRegion` to add mouse behavior without changing a component's rendering:
+`VStack`, `HStack` and `ScrollView` only apply under `TuiAltScreen`; check with `isViewportTUI(tui)` and call `setLayoutRoot()`. Without a layout root the renderer scrolls one document.
 
 ```typescript
-const collapsible = new MouseRegion(content, (event) => {
+tui.setLayoutRoot(
+	new VStack([
+		{
+			component: new ScrollView(transcript, { follow: "end", primary: true, overscroll: "chain" }),
+			basis: 0,
+			grow: 1,
+			minSize: 1,
+		},
+		{ component: editorAndFooter, basis: "auto", shrink: 1, minSize: 1 },
+	]),
+);
+```
+
+| Option                                                                       | Where                 | Effect                                                                        |
+| ---------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
+| `basis`, `grow`, `shrink`, `minSize`, `maxSize`, `visible`                   | Stack entry           | Size and responsive visibility                                                |
+| `follow: "none" \| "end"`                                                    | `ScrollView`          | Follow streaming output while at the bottom                                   |
+| `primary`                                                                    | `ScrollView`          | Receives keyboard navigation and wheel over non-scrollable regions            |
+| `overscroll: "chain" \| "contain"`                                           | `ScrollView`          | Whether unused wheel delta passes to an outer view                            |
+| `scrollbarTrackStyle`, `scrollbarThumbStyle`                                 | `ScrollView`          | Scrollbar colors (defaults: faint track, plain thumb)                         |
+| `searchMatchStyle`, `searchCurrentMatchStyle`, `searchNavigationButtonStyle` | `TuiAltScreenOptions` | Search highlighting and arrow buttons                                         |
+| `scrollToEndIndicator`                                                       | `TuiAltScreenOptions` | Clickable label on the last row while a `follow: "end"` view is scrolled away |
+| `copyOnSelect`                                                               | `TuiAltScreenOptions` | Copy drag selections with OSC 52 (default on)                                 |
+
+The primary view also jumps between OSC 133 prompt markers. `Ctrl+Shift+F` opens or closes its search panel; `Enter`/`Ctrl+G` and `Shift+Enter`/`Ctrl+Shift+G` move between matches, `Escape` closes.
+
+Layout geometry is rebuilt each frame; stateful components and their line caches are kept. Calling `render(width)` on a layout component directly gives an unbounded document, which alt mode uses when it restores the main screen.
+
+## Overlays
+
+Overlays draw over existing content (dialogs, menus).
+
+```typescript
+const handle = tui.showOverlay(component, { width: "80%", anchor: "bottom-right", margin: 2, maxHeight: 20 });
+handle.setHidden(true);
+handle.unfocus({ target: null });
+```
+
+| Option                   | Meaning                                                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `width`, `maxHeight`     | Columns/rows, or a percentage string such as `"50%"`                                                                                     |
+| `minWidth`               | Floor applied after the width is computed                                                                                                |
+| `anchor`                 | `center` (default), `top-left`, `top-right`, `bottom-left`, `bottom-right`, `top-center`, `bottom-center`, `left-center`, `right-center` |
+| `offsetX`, `offsetY`     | Offset from the anchor                                                                                                                   |
+| `row`, `col`             | Absolute number or percentage; absolute beats percentage beats `anchor`                                                                  |
+| `margin`                 | Number or `{ top, right, bottom, left }`; clamps the final position inside the terminal                                                  |
+| `visible(width, height)` | Checked every frame                                                                                                                      |
+| `nonCapturing`           | Do not take focus when shown                                                                                                             |
+
+| `OverlayHandle`                | Effect                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `hide()`                       | Remove permanently                                                        |
+| `setHidden(bool)`/`isHidden()` | Hide or show again                                                        |
+| `focus()` / `isFocused()`      | Focus and raise to the front                                              |
+| `unfocus()`                    | Release focus to another visible capturing overlay or the previous target |
+| `unfocus({ target })`          | Release to `target`; `null` leaves focus empty                            |
+| `getBounds()`                  | Last rendered terminal-relative bounds                                    |
+
+A focused visible overlay reclaims input after temporary replacement UI releases focus; to keep another component focused while overlays stay visible, call `unfocus({ target: component })`.
+
+## Mouse input
+
+`TuiAltScreen` normalizes SGR mouse input and hit-tests components and overlays. `TuiMainScreen` does not capture the mouse. `TuiMouseEvent` carries component-local `x`/`y`, absolute `screenX`/`screenY`, bounds, button, modifiers, click count and wheel delta. A click is emitted only when press and release complete without a drag.
+
+| Result field | Effect                                                                             |
+| ------------ | ---------------------------------------------------------------------------------- |
+| `handled`    | Suppress the renderer's default                                                    |
+| `capture`    | Route later drag and release events to this component                              |
+| `focus`      | Request keyboard focus                                                             |
+| `render`     | Repaint; default true for press, click, drag and wheel, false for move and release |
+
+Unhandled gestures keep defaults: wheel scrolls the nearest `ScrollView` and chains leftover delta, primary-button drags select text, OSC 8 links open before parent click handlers, right-click keeps the configured paste behavior.
+
+```typescript
+const region = new MouseRegion(content, (event) => {
 	if (event.type !== "click" || event.button !== "left") return undefined;
 	expanded = !expanded;
 	return { handled: true };
 });
 ```
 
-`Container` and `Box` route events to nested children using geometry recorded by the last rendered frame, so pointer motion does not rerender children merely to hit-test them. Explicit `VStack`, `HStack`, and `ScrollView` layouts use the alternate-screen layout frame directly.
+`MouseRegion` adds mouse behavior without changing rendering. `Container` and `Box` route events with geometry recorded by the last frame, so pointer motion does not re-render children.
 
-## Focusable Interface (IME Support)
+## Focusable interface (IME support)
 
-Components that display a text cursor and need IME (Input Method Editor) support should implement the `Focusable` interface:
+A component with a text cursor implements `Focusable` so the hardware cursor, which IME candidate windows follow, lands in the right place.
 
 ```typescript
-import { CURSOR_MARKER, type Component, type Focusable, renderFakeCursor } from "@octocodeai/octocode-tui";
-
 class MyInput implements Component, Focusable {
-	focused: boolean = false; // Set by TUI when focus changes
-
+	focused = false; // set by the TUI
 	render(width: number): string[] {
 		const marker = this.focused ? CURSOR_MARKER : "";
-		// Emit marker right before the fake cursor
-		return [`> ${beforeCursor}${marker}${renderFakeCursor(atCursor)}${afterCursor}`];
+		return [`> ${before}${marker}${renderFakeCursor(atCursor)}${after}`];
 	}
-
 	invalidate(): void {}
 }
 ```
 
-When a `Focusable` component has focus, TUI:
+```mermaid
+flowchart LR
+  A[Focus changes] --> B[focused = true]
+  B --> C[Scan output for CURSOR_MARKER]
+  C --> D[Move hardware cursor there]
+  D --> E{showHardwareCursor?}
+  E -- yes --> F[Show it, drop the fake cursor after the marker]
+  E -- no --> G[Keep it hidden, fake cursor stays]
+```
 
-1. Sets `focused = true` on the component
-2. Scans rendered output for `CURSOR_MARKER` (a zero-width APC escape sequence)
-3. Positions the hardware terminal cursor at that location
-4. Shows the hardware cursor only when `showHardwareCursor` is enabled
+The hardware cursor is hidden by default. Some terminals need it visible for IME positioning: pass `showHardwareCursor` to the renderer constructor or call `setShowHardwareCursor(true)`. `Editor` and `Input` already implement `Focusable`.
 
-`renderFakeCursor()` wraps the cursor cell in zero-width markers. TUI renders them as reverse video. When `showHardwareCursor` is enabled, TUI removes the fake cursor that directly follows `CURSOR_MARKER`, so the focused component shows only the terminal cursor. Fake cursors without a preceding `CURSOR_MARKER` stay visible.
-
-The hardware cursor remains hidden by default. This keeps the fake cursor rendering, while still positioning the hardware cursor for terminals that track IME candidate windows with hidden cursors. Some terminals require a visible hardware cursor for IME positioning; enable it with the renderer constructor's `showHardwareCursor` argument or `setShowHardwareCursor(true)`. The `Editor` and `Input` built-in components already implement this interface.
-
-**Container components with embedded inputs:** When a container component (dialog, selector, etc.) contains an `Input` or `Editor` child, the container must implement `Focusable` and propagate the focus state to the child:
+A container holding an `Input` or `Editor` must implement `Focusable` and forward `focused` to the child, or IME candidate windows appear in the wrong place:
 
 ```typescript
-import { Container, type Focusable, Input } from "@octocodeai/octocode-tui";
-
 class SearchDialog extends Container implements Focusable {
-	private searchInput: Input;
-
-	// Propagate focus to child input for IME cursor positioning
+	private searchInput = new Input();
 	private _focused = false;
-	get focused(): boolean {
+	get focused() {
 		return this._focused;
 	}
 	set focused(value: boolean) {
 		this._focused = value;
 		this.searchInput.focused = value;
 	}
-
 	constructor() {
 		super();
-		this.searchInput = new Input();
 		this.addChild(this.searchInput);
 	}
 }
 ```
-
-Without this propagation, typing with an IME (Chinese, Japanese, Korean, etc.) will show the candidate window in the wrong position.

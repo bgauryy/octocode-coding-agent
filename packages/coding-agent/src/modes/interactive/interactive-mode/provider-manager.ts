@@ -92,10 +92,18 @@ export async function showProviderManager(
 					const configured = runtime.getProviderAuthStatus(id).configured;
 					const method = runtime.isUsingOAuth(id) ? "account" : "key";
 					const count = modelCount(host, id);
+					// A saved credential outlives its provider when a models.json entry is removed or renamed.
+					const state = !runtime.getProvider(id)
+						? "saved credential · provider not defined (removed from models.json?)"
+						: configured
+							? `${method} · ${credentialSource(host, id)}`
+							: saved.some((entry) => entry.providerId === id)
+								? "saved credential could not be read"
+								: "not configured";
 					return {
 						id: providerRowId(id),
 						name: nameOf(id),
-						detail: `${configured ? `${method} · ${credentialSource(host, id)}` : "not configured"} · ${count} ${count === 1 ? "model" : "models"}`,
+						detail: `${state} · ${count} ${count === 1 ? "model" : "models"}`,
 						badge: disabled ? "disabled" : "enabled",
 						tone: disabled ? ("muted" as const) : ("success" as const),
 					};
@@ -146,7 +154,7 @@ export async function showProviderManager(
 				const file = view.files[Number(key)];
 				if (file && !choice.key && choice.id === fileRowId(Number(key))) {
 					host.showStatus(
-						`${file.origin} models.json: ${file.path}${file.exists ? "" : " (not found; create it to define providers)"}. Edit it, then open /model to refresh models (or restart). See docs/custom-provider.md.`,
+						`${file.origin} models.json: ${file.path}${file.exists ? "" : " (not found; create it to define providers)"}. Edit it, then open /model to refresh models (or restart). See docs/models.md.`,
 					);
 				}
 			}

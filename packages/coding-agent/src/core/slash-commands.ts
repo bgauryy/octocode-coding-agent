@@ -57,7 +57,12 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentKind: "path",
 	},
 	{ name: "help", description: "Find commands", argumentHint: "[search]" },
-	{ name: "settings", description: "Open settings" },
+	{
+		name: "configuration",
+		description: "Enable, disable, set and add configuration",
+		argumentHint: "[list|get|enable|disable|set|unset|add|remove] [--local]",
+		argumentValues: ["list", "get", "enable", "disable", "set", "unset", "add", "remove"],
+	},
 	{
 		name: "model",
 		description: "Choose the AI model",
@@ -113,7 +118,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Connect, enable or disable AI providers",
 		argumentHint: "[provider|pi]",
 	},
-	{ name: "logout", description: "Remove a provider credential" },
+	{ name: "logout", description: "Remove a saved provider credential", argumentHint: "[provider]" },
 	{
 		name: "new",
 		description: "Start a new session",

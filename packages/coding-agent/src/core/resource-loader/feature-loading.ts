@@ -24,10 +24,10 @@ import { SettingsManager } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 
 /** Where users learn the replacement for a user code extension. */
-const EXTENSIONS_REMOVED = "User code extensions are not supported; use plugins and hooks (see PLUGINS.md).";
+const EXTENSIONS_REMOVED = "User code extensions are not supported; use plugins and hooks (see docs/plugins.md).";
 /** The same for Pi's TypeScript extensions and hooks, which Octocode lists but never loads. */
 const PI_EXTENSION_NOT_LOADED =
-	"Pi extension, not loaded. Octocode does not run Pi TypeScript extensions or hooks; convert it to a hooks.json entry or a plugin (see PLUGINS.md).";
+	"Pi extension, not loaded. Octocode does not run Pi TypeScript extensions or hooks; convert it to a hooks.json entry or a plugin (see docs/plugins.md).";
 
 /** The resource loader configuration that feature registration reads; fixed after construction. */
 export interface FeatureLoadingConfig {

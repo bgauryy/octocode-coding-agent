@@ -14,7 +14,8 @@ export function opencodeGoProvider(): Provider<OpenCodeGoApi> {
 	return createProvider<OpenCodeGoApi>({
 		id: "opencode-go",
 		name: "OpenCode Go",
-		auth: { apiKey: envApiKeyAuth("OpenCode API key", apiKeyEnvVars("opencode-go")) },
+		// Go is a subscription: subscribing in the Console issues the key.
+		auth: { apiKey: envApiKeyAuth("OpenCode Go API key", apiKeyEnvVars("opencode-go"), "https://opencode.ai/console") },
 		models: Object.values(OPENCODE_GO_MODELS),
 		api: {
 			"anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),

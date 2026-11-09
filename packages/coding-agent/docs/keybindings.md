@@ -6,7 +6,7 @@ Run `/keys` to see the active shortcuts for the main editor and application.
 
 ## Assign keybindings
 
-Create `<agent-dir>/keybindings.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration locations](../../../CONFIGURATIONS.md).
+Create `keybindings.json` in the agent directory. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration](configuration.md#agent-directory).
 
 Map each action identifier to one key or a list of keys:
 
@@ -26,6 +26,13 @@ A configured value replaces the default for that action. Use an empty list to di
 ```
 
 After editing the file, run `/reload` to apply the changes to the active session.
+
+```mermaid
+flowchart LR
+    D[built-in defaults] --> P["Pi: ~/.pi/keybindings.json, ~/.pi/agent/keybindings.json"] --> O["Octocode: keybindings.json"]
+```
+
+Per action, the rightmost file that sets it wins.
 
 Octocode also reads Pi's `~/.pi/agent/keybindings.json` (then `~/.pi/keybindings.json`) beneath its own file, action by action, when the agent directory is the default one: an action set in Octocode's file wins. There is no project keybindings file.
 

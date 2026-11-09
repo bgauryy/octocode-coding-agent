@@ -193,7 +193,9 @@ describe("defaultTools setting", () => {
 			const session = await createSession([], { tools }, [], true);
 			try {
 				await session.bindExtensions({});
-				expect(session.getActiveToolNames().sort()).toEqual([...tools].sort());
+				// `agent` brings its companion `timer` (docs/native-features.md, companionTools).
+				const companions = tools.includes("agent") ? ["timer"] : [];
+				expect(session.getActiveToolNames().sort()).toEqual([...tools, ...companions].sort());
 			} finally {
 				await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 				session.dispose();

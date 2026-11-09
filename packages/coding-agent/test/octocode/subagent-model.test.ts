@@ -179,6 +179,22 @@ describe("subagent thinking", () => {
 		expect(model(undefined, "p/big:high")).toBe("p/big:high");
 	});
 
+	it("lets a model argument's :off beat the profile's level, and says when the model cannot turn thinking off", () => {
+		const model = plan(reasoning);
+		// `lean` is small:low; the call's own suffix wins.
+		expect(model("lean", "p/tiny:off")).toBe("p/tiny:off");
+		// A model whose catalog has no `off` runs at the level it supports; the route says so.
+		const noOff = reasoning.map((entry) => ({ ...entry, thinkingLevelMap: { off: null } }));
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		const ctx = {
+			modelRegistry: { getAvailable: () => noOff, getProvider: () => undefined } as never,
+			model: parent as never,
+		};
+		const route = planRun(profiles, { profile: "lean", model: "p/tiny:off" }, ctx).route;
+		expect(route.model).toBe("p/tiny:minimal");
+		expect(route.via).toBe("model argument: p/tiny:off; the model does not support off, so it runs at minimal");
+	});
+
 	it("routes a task without a profile or model to the medium purpose, and a profile without a model to the parent's", () => {
 		const ctx = (models: readonly object[]) => ({
 			modelRegistry: { getAvailable: () => models, getProvider: () => undefined } as never,

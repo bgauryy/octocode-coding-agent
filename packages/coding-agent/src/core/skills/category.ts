@@ -1,22 +1,36 @@
 import { isUnderPath } from "../../../../common/src/paths.ts";
-import { getNativeSkillsDir } from "../../config.ts";
+import { getNativeSkillsDir, getOctocodeSkillsDir } from "../../config.ts";
 
 /**
  * Where a skill comes from, as agents and users see it:
  * - `core`: shipped inside Octocode itself (`native-skills/`), part of how the agent works;
- * - `external`: everything else (user and project folders, Claude and Codex folders, packages, settings, flags).
+ * - `octocode`: the public Octocode skill collection of the installed research CLI (resource source `builtin`);
+ * - `workspace`: the project's own skills (scope `project`: `.octocode/skills/`, `.agents/skills/`, `.claude/skills/`, ...);
+ * - `global`: everything else (the user's folders, other tools' user folders, packages, settings, `--skill`).
  */
-export type SkillCategory = "core" | "external";
+export type SkillCategory = "core" | "octocode" | "workspace" | "global";
 
-/** Display and catalog order: the agent's own skills first, external skills last (they lose descriptions first). */
-export const SKILL_CATEGORIES: readonly SkillCategory[] = ["core", "external"];
+/** Display and catalog order: Octocode's own skills first, then the project's, then the user's. */
+export const SKILL_CATEGORIES: readonly SkillCategory[] = ["core", "octocode", "workspace", "global"];
 
-let coreRoot: string | undefined;
+let roots: { core: string; octocode: string | undefined } | undefined;
 
-/** The category of a loaded skill (or a skill file), from its path. */
-export function skillCategory(skill: { filePath: string }): SkillCategory {
-	coreRoot ??= getNativeSkillsDir();
-	return isUnderPath(skill.filePath, coreRoot) ? "core" : "external";
+function categoryRoots(): { core: string; octocode: string | undefined } {
+	roots ??= { core: getNativeSkillsDir(), octocode: getOctocodeSkillsDir() };
+	return roots;
+}
+
+/** The category of a loaded skill (or a skill file), from its path and the loader's source and scope. */
+export function skillCategory(skill: {
+	filePath: string;
+	sourceInfo?: { source: string; scope: string };
+}): SkillCategory {
+	const { core, octocode } = categoryRoots();
+	if (isUnderPath(skill.filePath, core)) return "core";
+	// Built-in extensions share the `builtin` source but have no file (`<builtin:id>`); a builtin file is a collection skill.
+	const collectionFile = skill.sourceInfo?.source === "builtin" && !skill.filePath.startsWith("<builtin:");
+	if (collectionFile || (octocode && isUnderPath(skill.filePath, octocode))) return "octocode";
+	return skill.sourceInfo?.scope === "project" ? "workspace" : "global";
 }
 
 /** The skills in category order, keeping their order within a category. */

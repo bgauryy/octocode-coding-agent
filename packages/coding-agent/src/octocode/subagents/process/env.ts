@@ -47,6 +47,23 @@ import { CHILD_OWNED_ENV, NESTING_ENV, nestingOf } from "./child-env.ts";
 import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
 import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 
+/** Asks the Anthropic API for its cache-miss reason (`ai/src/api/anthropic-messages/cache-diagnostics.ts`). */
+const CACHE_DIAGNOSTICS_ENV = "OCTOCODE_CACHE_DIAGNOSTICS";
+
+/**
+ * The retention a child starts with. A child's median gap between requests is seconds, so the 5-minute history entry
+ * outlives it and the 1-hour write premium buys nothing; its instructions stay long because siblings of a role share
+ * them for longer. Only the shipped default changes: a user's setting (file, provider, model, environment) wins as
+ * configured, and a child that lingers or resumes keeps the long history because its next request may follow a pause.
+ */
+export function childCachePreferences(
+	policy: { options: CachePreferences; sources: Partial<Record<keyof CachePreferences, string>> },
+	lingers: boolean,
+): CachePreferences {
+	if (lingers || policy.sources.cacheRetention !== "defaults") return policy.options;
+	return { cacheRetention: "short", instructionCacheRetention: policy.options.instructionCacheRetention };
+}
+
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
 export interface Identity {
 	resultContract?: ResultContract;
@@ -131,6 +148,8 @@ export function subagentProcessEnv(
 		...(identity?.cachePreferences?.instructionCacheRetention
 			? { [INSTRUCTION_CACHE_RETENTION_ENV]: identity.cachePreferences.instructionCacheRetention }
 			: {}),
+		// Children ask the provider why a request missed the cache (Anthropic API only) so a cold start can be attributed; a user value wins.
+		[CACHE_DIAGNOSTICS_ENV]: inherited[CACHE_DIAGNOSTICS_ENV] ?? "on",
 		...(profile?.hooks ? { [SUBAGENT_HOOKS_ENV]: "1" } : {}),
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
 		// A lean child's prompt is its role and task only: no memory notes are injected either.

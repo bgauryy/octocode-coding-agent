@@ -101,7 +101,7 @@ describe("policy flags each agent derives from its profile and servers", () => {
 		publishRoles([{ ...RESEARCH_ENTRY, name: "octocode" }]);
 		onTestFinished(() => publishRoles([]));
 		const unselected = await sections({ isSubagent: true }, natives, [server("octocode", "unselected")]);
-		expect(unselected.research).toContain("Search with bash (`rg`, `fd`)");
+		expect(unselected.research).toContain("Search with bash when the location is unknown");
 		const connecting = await sections({ isSubagent: true }, natives, [server("octocode", "connecting")]);
 		expect(connecting.research).not.toContain("Search with bash");
 		// Same as a disabled server: an agent that cannot reach the server is told how to research without it.

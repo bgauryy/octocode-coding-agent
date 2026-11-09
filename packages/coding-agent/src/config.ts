@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
 import { normalizePath } from "../../common/src/paths.ts";
@@ -96,6 +97,23 @@ export function getSubagentsDir(): string {
 export function getNativeSkillsDir(): string {
 	if (isBunBinary) return join(getPackageDir(), "native-skills");
 	return join(getSourceOrDistDir(), "octocode", "native-skills");
+}
+
+/**
+ * The public Octocode skill collection (`octocode-research`, `octocode-roast`, ...): `skills/` of the installed
+ * `octocode` research CLI package, or `skills/` next to a standalone executable, which `stage-binary` fills from it.
+ * Undefined when neither exists, so a build without the research CLI lists no collection.
+ */
+export function getOctocodeSkillsDir(): string | undefined {
+	let dir: string;
+	try {
+		dir = isBunBinary
+			? join(getPackageDir(), "skills")
+			: join(dirname(createRequire(getPackageJsonPath()).resolve("octocode/package.json")), "skills");
+	} catch {
+		return undefined; // The research CLI package is not installed.
+	}
+	return existsSync(dir) ? dir : undefined;
 }
 
 /** The entry file this process was started with, symlinks resolved (an installed `bin` links to the bundle). */

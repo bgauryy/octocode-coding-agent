@@ -10,6 +10,7 @@ import {
 	type CredentialInfo,
 	type CredentialStore,
 } from "@octocodeai/octocode-ai";
+import { unwatchFile, watchFile } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
@@ -318,6 +319,25 @@ export class AuthStorage implements CredentialStore {
 		} catch {
 			return false;
 		}
+	}
+
+	/**
+	 * Calls `onChange` when the file changes after this call, e.g. another Octocode process saved or removed a
+	 * credential. Polls the file's revision with an unreferenced timer, so it never keeps the process alive. Returns the stop function.
+	 * Only revisions are compared: no credential is read or logged.
+	 */
+	watch(onChange: () => void, intervalMs = 1000): () => void {
+		const path = this.authPath;
+		if (!path) return () => {};
+		let seen = getFileRevision(path);
+		const listener = () => {
+			const revision = getFileRevision(path);
+			if (revision === seen) return;
+			seen = revision;
+			onChange();
+		};
+		watchFile(path, { interval: intervalMs, persistent: false }, listener);
+		return () => unwatchFile(path, listener);
 	}
 
 	/** List credential metadata without resolving configured key values. */

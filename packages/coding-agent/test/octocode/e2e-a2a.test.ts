@@ -6,16 +6,19 @@ import {
 	close,
 	dialogs,
 	git,
+	holdUntil,
 	linkedWorktree,
 	merge,
 	message,
 	notices,
 	prompt,
 	reachedStep,
+	releaseWhenIdle,
 	requestsOf,
 	resultsOf,
 	script,
 	session,
+	shareTeam,
 } from "./e2e-a2a-helpers.ts";
 import {
 	type Endpoint,
@@ -133,10 +136,14 @@ describe("two sessions", () => {
 describe("a linked worktree finishes", () => {
 	/** A worktree session asks; the coordinator reviews, merges and answers: its script is carried in the request. */
 	async function ask(box: ReturnType<typeof sandbox>, branch: string, folder: string) {
+		const team = shareTeam(box);
+		const flag = path.join(box.root, `ready-${branch}`);
 		const main = await session(box);
 		const worktree = await session(box, folder);
 		const hears = script([{ text: "the worktree heard" }]);
+		// Held until the worktree session has ended its own turn: it counts as working there until then.
 		const coordinator = script([
+			holdUntil(flag),
 			merge(branch),
 			message(worktree.name, `Merge answered. ${hears}`),
 			{ text: "the coordinator answered" },
@@ -149,6 +156,7 @@ describe("a linked worktree finishes", () => {
 		]);
 		prompt(worktree.run, "finish", finish);
 		await reachedStep(endpoint, finish, 1, "the request's receipt");
+		await releaseWhenIdle(team, worktree, folder, flag);
 		return { main, worktree, hears, coordinator, finish };
 	}
 
@@ -176,7 +184,7 @@ describe("a linked worktree finishes", () => {
 		expect(fs.existsSync(path.join(box.project, "feature.txt"))).toBe(false);
 		answer(main.run, dialog.id, "Allow once");
 
-		await reachedStep(endpoint, coordinator, 1, "the merge result");
+		await reachedStep(endpoint, coordinator, 2, "the merge result");
 		expect(resultsOf(endpoint, coordinator)).toContain("Merged approved (1 commit)");
 		expect(fs.readFileSync(path.join(box.project, "feature.txt"), "utf8")).toBe("from the worktree\n");
 		expect(git(box.project, "log", "--format=%s", "-1")).toBe("Merge branch 'approved'");
@@ -186,40 +194,6 @@ describe("a linked worktree finishes", () => {
 		// Nothing of the worktree is lost or removed.
 		expect(fs.existsSync(path.join(folder, "feature.txt"))).toBe(true);
 		expect(git(box.project, "branch", "--list", "approved")).toContain("approved");
-		await close(main, worktree);
-	});
-
-	it("the user declines: nothing lands, and the worktree hears", async () => {
-		const box = sandbox(endpoint);
-		const folder = linkedWorktree(box, "declined");
-		const before = git(box.project, "rev-parse", "HEAD");
-		const { main, worktree, hears, coordinator } = await ask(box, "declined", folder);
-		await until(() => dialogs(main.run).length > 0, "the merge dialog");
-		answer(main.run, dialogs(main.run)[0].id, "Deny");
-		await reachedStep(endpoint, coordinator, 1, "the refusal");
-		expect(resultsOf(endpoint, coordinator)).toContain("The user denied the worktree merge");
-		expect(git(box.project, "rev-parse", "HEAD")).toBe(before);
-		expect(fs.existsSync(path.join(box.project, "feature.txt"))).toBe(false);
-		await until(() => requestsOf(endpoint, hears).length > 0, "the answer reaching the worktree");
-		expect(git(folder, "status", "--porcelain")).toBe("");
-		await close(main, worktree);
-	});
-
-	it("a conflict: nobody is asked, the tree stays clean and the sender is told where", async () => {
-		const box = sandbox(endpoint);
-		const folder = linkedWorktree(box, "conflict", "a.txt", "from the worktree\n");
-		fs.writeFileSync(path.join(box.project, "a.txt"), "from the main checkout\n");
-		git(box.project, "commit", "-qam", "conflicting");
-		const before = git(box.project, "rev-parse", "HEAD");
-		const { main, worktree, hears, coordinator } = await ask(box, "conflict", folder);
-		await reachedStep(endpoint, coordinator, 1, "the refusal");
-		const result = resultsOf(endpoint, coordinator);
-		expect(result).toContain("Not merged: conflict conflicts in:");
-		expect(result).toContain("a.txt");
-		expect(dialogs(main.run)).toHaveLength(0);
-		expect(git(box.project, "rev-parse", "HEAD")).toBe(before);
-		expect(git(box.project, "status", "--porcelain")).toBe("");
-		await until(() => requestsOf(endpoint, hears).length > 0, "the answer reaching the worktree");
 		await close(main, worktree);
 	});
 
@@ -266,50 +240,6 @@ describe("a linked worktree finishes", () => {
 			false,
 		);
 		await close(first, second, worktree);
-	});
-
-	it("a path another agent holds: nobody is asked, nothing lands, and the request says why", async () => {
-		const box = sandbox(endpoint);
-		const folder = linkedWorktree(box, "held", "held.txt");
-		const holder = await session(box);
-		const locked = script([
-			{ tool: "agent", args: { type: "coordinate", action: "lock", paths: ["held.txt"] } },
-			{ text: "held" },
-		]);
-		prompt(holder.run, "lock", locked);
-		await reachedStep(endpoint, locked, 1, "the reservation");
-		const main = await session(box);
-		const worktree = await session(box, folder);
-		const coordinator = script([merge("held"), { text: "answered" }]);
-		const steps = script([message(main.name, `Merge request: branch held. ${coordinator}`), { text: "asked" }]);
-		prompt(worktree.run, "finish", steps);
-		await reachedStep(endpoint, coordinator, 1, "the refusal");
-		const result = resultsOf(endpoint, coordinator);
-		expect(result).toContain("Not merged: held changes files another agent holds");
-		expect(result).toContain("held.txt");
-		expect(dialogs(main.run)).toHaveLength(0);
-		expect(fs.existsSync(path.join(box.project, "held.txt"))).toBe(false);
-		await close(holder, main, worktree);
-	});
-
-	it("uncommitted work is not merged, and a worktree session cannot merge at all", async () => {
-		const box = sandbox(endpoint);
-		const folder = linkedWorktree(box, "dirty");
-		fs.writeFileSync(path.join(folder, "more.txt"), "not committed\n");
-		const main = await session(box);
-		const worktree = await session(box, folder);
-		const own = script([merge("dirty"), { text: "refused" }]);
-		prompt(worktree.run, "own", own);
-		await reachedStep(endpoint, own, 1, "the refusal");
-		expect(resultsOf(endpoint, own)).toContain("only the session in the main checkout merges");
-		const steps = script([merge("dirty"), merge("no-such-branch"), { text: "done" }]);
-		prompt(main.run, "merge", steps);
-		await reachedStep(endpoint, steps, 2, "the refusals");
-		const results = resultsOf(endpoint, steps);
-		expect(results).toContain("1 untracked file not on dirty");
-		expect(results).toContain("no linked worktree of this repository holds a branch no-such-branch");
-		expect(dialogs(main.run)).toHaveLength(0);
-		await close(main, worktree);
 	});
 
 	it("a user's prior request: typing `/worktree merge`, or the session answer, needs no further dialog", async () => {

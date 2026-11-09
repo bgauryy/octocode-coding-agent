@@ -203,6 +203,8 @@ export function DaemonShell({ access }: { access: string }) {
 						load={api.config}
 						save={api.saveSetting}
 						saveCredential={api.saveCredential}
+						saveProvider={api.saveProvider}
+						signIn={api.signIn}
 						repos={repos.status === "ready" ? repos.value.repos : undefined}
 					/>
 				)}

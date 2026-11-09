@@ -1,9 +1,18 @@
 import { type TSchema, Type } from "typebox";
 import { StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
-import { type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
+import { CloseInputSchema, type EntityInput, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { BacklogError, parseRef } from "./item.ts";
+
+/**
+ * The `close` parameter, rebuilt as a plain object: spreading the contract schema into `Type.Optional` leaked its
+ * `~optional` marker into the declaration.
+ */
+export const closeField = Type.Object(CloseInputSchema.properties, {
+	additionalProperties: false,
+	description: "update: end an unneeded item",
+});
 
 /**
  * A link as the model may write it: `target` is a path, URL or item id (or, from older callers, a reference object);
@@ -62,8 +71,8 @@ function completionField() {
 					type: "string",
 					description: 'What ran and its result; start "not applicable" if nothing ran',
 				},
-				files: { type: "array", items: { type: "string" }, description: "Paths changed" },
-				lesson: { type: "string", description: "Reuse next time" },
+				files: { type: "array", items: { type: "string" } },
+				lesson: { type: "string" },
 				replaces: { type: "integer", description: "Completion id to correct" },
 			},
 			additionalProperties: false,
@@ -97,7 +106,8 @@ export function updatesField() {
 
 /**
  * Every field an `items` entry may carry: the single add's fields, so a per-item `type`, parent, links, origin or note
- * works as well as a default beside `items`. Update-only fields (`version`, `close`, `completion`) are refused.
+ * works as well as a default beside `items`, and `completion` for an entry added as done (a single add takes it too).
+ * Update-only fields (`version`, `close`) are refused.
  */
 export const ITEM_ENTRY_FIELDS: readonly string[] = [
 	"title",
@@ -115,6 +125,7 @@ export const ITEM_ENTRY_FIELDS: readonly string[] = [
 	"links",
 	"from",
 	"note",
+	"completion",
 ];
 
 /** The states a subagent may set: claiming and closing items its coordinator holds. */

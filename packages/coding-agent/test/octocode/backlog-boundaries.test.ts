@@ -39,6 +39,12 @@ describe("backlog input and retrieval boundaries", () => {
 		expect(changed).not.toHaveBeenCalled();
 	});
 
+	it("ships a close schema without TypeBox's internal optional marker", () => {
+		const { tool } = setup();
+		expect(JSON.stringify(tool.parameters)).not.toContain("~optional");
+		expect(Value.Check(tool.parameters, { op: "update", id: "B1", close: { kind: "obsolete", text: "t" } })).toBe(true);
+	});
+
 	it("refreshes only after successful mutations", async () => {
 		const { call, changed } = setup();
 		await expect(call({ op: "add" })).rejects.toThrow(/title/);

@@ -666,10 +666,15 @@ describe("every catalog model gets its longest supported cache tier by default",
 	] as const)(
 		"Azure explicit opt-in: $instructions instructions with $history history send a 12h request TTL",
 		async ({ instructions, history }) => {
-			const payload = await rawPayload(optedIn(azureModel()), "test-key", [{ role: "user", content: "hi", timestamp: 0 }], {
-				cacheRetention: history,
-				instructionCacheRetention: instructions,
-			});
+			const payload = await rawPayload(
+				optedIn(azureModel()),
+				"test-key",
+				[{ role: "user", content: "hi", timestamp: 0 }],
+				{
+					cacheRetention: history,
+					instructionCacheRetention: instructions,
+				},
+			);
 			expect(payload.prompt_cache_options).toStrictEqual({ ttl: "12h" });
 			expect(firstBreakpoint(payload)).toStrictEqual({ mode: "explicit" });
 			expect(JSON.stringify(payload.input)).not.toContain('"ttl"');
@@ -677,10 +682,15 @@ describe("every catalog model gets its longest supported cache tier by default",
 	);
 
 	it("Azure explicit opt-in: no instruction breakpoints and a 30m request for none instructions and short history", async () => {
-		const payload = await rawPayload(optedIn(azureModel()), "test-key", [{ role: "user", content: "hi", timestamp: 0 }], {
-			cacheRetention: "short",
-			instructionCacheRetention: "none",
-		});
+		const payload = await rawPayload(
+			optedIn(azureModel()),
+			"test-key",
+			[{ role: "user", content: "hi", timestamp: 0 }],
+			{
+				cacheRetention: "short",
+				instructionCacheRetention: "none",
+			},
+		);
 		expect(payload.prompt_cache_options).toBeUndefined();
 		expect(firstBreakpoint(payload)).toBeUndefined();
 	});

@@ -167,8 +167,18 @@ export function registerCompaction(
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
 		const cacheTtlMs = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
-		return writeSummary(api, event, ctx, from, continuity, parentId, cacheTtlMs, () =>
-			liveStateLines(ctx, event.branchEntries, workSince),
+		// Long instructions outlive short history: the instruction entry lasts the model's long tier.
+		const instructionTtlMs = promptCacheTtlMs(lifetimes.of(ctx.model), { [CACHE_RETENTION_ENV]: "long" });
+		return writeSummary(
+			api,
+			event,
+			ctx,
+			from,
+			continuity,
+			parentId,
+			cacheTtlMs,
+			() => liveStateLines(ctx, event.branchEntries, workSince),
+			instructionTtlMs,
 		);
 	});
 

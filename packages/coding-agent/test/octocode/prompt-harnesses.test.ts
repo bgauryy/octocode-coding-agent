@@ -22,12 +22,13 @@ const status = (overrides: Partial<HarnessStatus>): HarnessStatus => ({
 const harnesses: HarnessStatus[] = [
 	status({}),
 	status({ id: "claude", label: "Claude Code", on: false, switchable: true, found: { skill: 1, mcp: 2 } }),
-	status({ id: "codex", label: "Codex", on: true, projectOnly: true, switchable: true }),
+	status({ id: "codex", label: "Codex", on: true, projectOnly: true, switchable: true, found: { mcp: 1 } }),
+	status({ id: "mcp-json", label: "root .mcp.json", on: true, switchable: true }),
 	status({ id: "cursor", label: "Cursor", on: false, switchable: true }),
 ];
 
 const LINE =
-	"Harnesses: Octocode on · Claude Code off (1 skill, 2 MCP servers) · Codex on for this project · Cursor off. The user switches them with /harness.";
+	"Harnesses: Octocode on · Claude Code off (1 skill, 2 MCP servers) · Codex on for this project · root .mcp.json on, nothing found · Cursor off. The user switches them with /harness.";
 
 /**
  * The `Harnesses:` line tells the main session which harnesses exist and that the user switches them with /harness.

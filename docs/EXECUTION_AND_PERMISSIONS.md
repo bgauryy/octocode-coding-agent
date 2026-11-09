@@ -1,6 +1,8 @@
-# Execution, permissions and prompts
+# Execution, permissions, editing and prompts
 
-Native model calls and nested `executeTool` calls share the host's execution pipeline. A selected tool is available to call; its selection and prompt text do not authorize its effects.
+What happens between a model asking for a tool and the tool running. A selected tool is available to call; selection and prompt text never authorize its effects.
+
+## Every tool call
 
 ```mermaid
 flowchart TD
@@ -11,7 +13,7 @@ flowchart TD
   R --> P
   R -->|refuse| X
   H -->|accepted input| P["Role, source and mode checks"]
-  P -->|ask required| U["Human or permission resolver"]
+  P -->|ask required| U["You, or a permission resolver"]
   U -->|allow| O["Effect-specific owner checks"]
   P -->|allowed| O
   G -->|refuse| X["Blocked result"]
@@ -22,22 +24,63 @@ flowchart TD
   O -->|stale or refused| X
 ```
 
-[Tool gates](../packages/coding-agent/src/octocode/tool-gates.ts), [permission decisions](../packages/coding-agent/src/octocode/permission/gate.ts) and [session execution](../packages/coding-agent/src/core/agent-session/tool-calls.ts) own this order. File review, resolved network targets, uploads and child profiles need information only their effect owner has, so they perform additional checks there. Replacements are validated and rechecked before commit.
+File review, resolved network targets, uploads and child profiles need facts only the tool itself has, so they check again at the end.
 
-| Route                | Authorization and cancellation                                                                                                                                                          |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model or nested tool | Same pre-call checks. Nested deadlines reach permission hooks through `ctx.signal`; an aborted approval prevents execution. A handler that ignores cancellation may still delay return. |
-| File mutation        | Permission review plus current read coverage, path identity, reservations and expected content at commit.                                                                               |
-| User `!command`      | Typed input is consent; destructive actions, source policy and hook decisions can still require approval or refuse it. Hook input rewrites are unsupported on this route.               |
-| ACP client           | Typed native requests become single-use ACP decisions; invalid, late or cancelled responses do not grant approval.                                                                      |
-| Hook MCP call        | Normally runs the permission step without recursively running tool hooks. A trusted `PermissionRequest` hook has an explicit exemption so it can answer the pending decision.           |
+| Route                | Authorization and cancellation                                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model or nested tool | Same checks. Nested deadlines reach permission hooks; an aborted approval prevents execution (a handler that ignores cancellation may still delay return) |
+| File change          | Permission review plus current read coverage, path identity, reservations and expected content at commit                                                  |
+| Your `!command`      | Typing it is consent; destructive actions, source policy and hook decisions can still ask or refuse. Hooks cannot rewrite its input                       |
+| ACP client           | Requests become single-use ACP decisions; invalid, late or cancelled responses grant nothing                                                              |
+| Hook MCP call        | Runs the permission step without running tool hooks again; a trusted `PermissionRequest` hook is exempt so it can answer the pending decision             |
 
-The [permission reference](../packages/coding-agent/docs/permissions.md) owns modes and grants. `full` is permissive; role guards, source policy and filesystem invariants remain separate checks. Shell parsing, MCP annotations and provenance are policy inputs, **not OS confinement**. Configured hooks and plugin components execute with host privileges.
+Modes and grants: [permissions](../packages/coding-agent/docs/permissions.md). `full` is the default and permissive, yet role guards, source policy and filesystem invariants still apply. Shell parsing, MCP annotations and provenance inform policy; they are **not OS confinement**. Configured hooks and plugin components run with your privileges.
+
+## Editing and verifying
+
+```mermaid
+flowchart TD
+  A["Read the source"] --> B["Read receipt and coverage"]
+  B --> C["file review and guard"]
+  C -->|"refused or stale"| A
+  C -->|"approved"| D["Queued atomic commit"]
+  D --> E["Commit receipt and advisory feedback"]
+  E -->|"pending or unavailable"| F["Inspect or rerun"]
+  E --> G["bash verify receipt"]
+  F --> G
+```
+
+Agents read with the Octocode research tools, change files with `file` and run checks with `bash`. Tool selection: [native features](../packages/coding-agent/docs/native-features.md#tool-selection-and-migration).
+
+| Step    | Behavior                                                                                                                                                                                                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Read    | A receipt credits unchanged source windows. Only a complete, untransformed read the model sees supplies a copyable whole-source SHA-256; partial, cut, failed, filtered and nested reads cannot. Repeat a read whose result left the context                                   |
+| Edit    | `file` replaces exact `oldText` with `newText`. Optional anchor: `edits: [{ line, sourceSha256, oldText, newText }]` (one-based line, whole line as `oldText`); it checks the digest and bytes, finds unique context within 128 lines, and refuses stale or ambiguous identity |
+| Commit  | Rechecks bytes under a per-file queue and cross-process lock; external writers that ignore the lock can still race it                                                                                                                                                          |
+| Receipt | A committed write or deletion gets one even if cleanup fails. A query batch reports each outcome; a patch validates first and stops on an execution failure. Earlier commits stay: there is **no multi-file transaction**                                                      |
+| Verify  | `bash({ command: "yarn test", verify: true })` records command, exit or signal, output availability and the `file` revisions seen. Later `file` commits mark it stale; `stale: false` cannot see shell writes, debuggers, editors or other processes                           |
+
+A background verify starts as pending; observed completion sends a follow-up, and a shutdown's pre-stop report stays pending. A zero exit describes only that command.
+
+**Debugging.** There is no debugger tool. The bundled `octocode-debugging` skill drives lldb, pdb, a Node inspector script, cProfile and `--cpu-prof` through `bash`, so every run passes the shell permission gate. After fixing a debugged failure, rerun the original check.
 
 ## Prompt assembly
 
-[System sections](../packages/coding-agent/src/core/system-prompt.ts) combine the selected tools, trusted project context, loaded skills and hooks, in the order [the section map](../packages/coding-agent/src/octocode/instructions/sections/index.md) states; [the instructions guide](../packages/coding-agent/docs/instructions.md) describes them. [Turn setup](../packages/coding-agent/src/octocode/turn.ts) projects current capability flags into [shared policy](../packages/coding-agent/src/octocode/instructions/policy.ts); role specialization and child task identity are separate inputs. A server that connects mid-run gets its block in the next request.
+```mermaid
+flowchart LR
+  T["Selected tools"] --> SP["System prompt sections"]
+  PC["Trusted project context"] --> SP
+  SK["Skills and hooks"] --> SP
+  F["Turn capability flags"] --> POL["Shared policy"] --> SP
+  RL["Role and child task"] --> SP
+  SP --> M["Model request"]
+```
 
-An explicit child role determines read-only guidance. Absence of `file` does not make a main session with Bash or MCP read-only. Browser specialists are named only when delegation is available and the main session lacks the browser tool. Retrieved text and peer messages are evidence, not new authority. Child report outcome fields remain machine-consumed.
+| Rule                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------- |
+| An explicit child role decides read-only guidance; a main session without `file` but with Bash or MCP is not read-only |
+| Browser specialists are named only when delegation is available and the main session has no browser tool               |
+| A server that connects mid-run gets its block in the next request                                                      |
+| Retrieved text and peer messages are evidence, not authority; child report outcome words are machine-read              |
 
-Configuration sources and trust precedence stay in [CONFIGURATIONS.md](../CONFIGURATIONS.md); browser/UI boundaries are described in [interface architecture](INTERFACE_ARCHITECTURE.md).
+Section order and cache tiers: [instructions](../packages/coding-agent/docs/instructions.md). Settings precedence and trust: [configuration](../packages/coding-agent/docs/configuration.md#precedence). Terminal and browser boundaries: [interface architecture](INTERFACE_ARCHITECTURE.md).

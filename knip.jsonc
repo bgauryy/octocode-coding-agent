@@ -58,7 +58,8 @@
 			],
 			// Platform commands and optional test prerequisites, not npm packages.
 			// `pgrep` lists an MCP server's process group in `test/octocode/mcp-owner-killed.test.ts`.
-			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "pgrep"],
+			// `sqlite3` reads Cursor's chat databases in the `resume-external-harness` skill script and its test.
+			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "pgrep", "sqlite3"],
 			// Bundler/worker inputs and shipped extensions are selected by path at runtime.
 			"entry": [
 				"src/index.ts",

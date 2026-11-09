@@ -2,6 +2,12 @@ import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { OAuthSelectorComponent, type AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
+import {
+	CLAUDE_SUBSCRIPTION_ACTION,
+	CLAUDE_SUBSCRIPTION_PROVIDER,
+	findClaudeCli,
+	signInWithClaudeSubscription,
+} from "./claude-subscription.ts";
 
 /** What the page modules need to move between pages: the host, and a way back after a dialog closes. */
 export interface PageContext {
@@ -44,6 +50,9 @@ export function signInActions(
 			);
 		}
 	}
+	// Last, so each provider method keeps its index for `signInToProvider`'s `prefer`.
+	const claude = id === CLAUDE_SUBSCRIPTION_PROVIDER && actions.size > 0 ? findClaudeCli() : undefined;
+	if (claude) actions.set(CLAUDE_SUBSCRIPTION_ACTION, () => signInWithClaudeSubscription(host, claude, name, back));
 	return actions;
 }
 
@@ -82,17 +91,32 @@ export async function signInToProvider(
 export async function showSignIn(ctx: PageContext, saved: readonly CredentialInfo[], query = ""): Promise<boolean> {
 	const { host } = ctx;
 	const runtime = host.session.modelRuntime;
-	const methods = new Map<string, string[]>();
-	for (const option of host.getLoginProviderOptions()) {
-		methods.set(option.id, [...(methods.get(option.id) ?? []), option.authType === "oauth" ? "account" : "API key"]);
-	}
-	const providers: AuthSelectorProvider[] = [...methods].map(([id, kinds]) => ({
-		id,
-		name: runtime.getProvider(id)?.name ?? id,
-		authType: "api_key",
-		detail: `${kinds.join(" or ")}${runtime.getProviderAuthStatus(id).configured ? " · signed in" : ""}`,
-	}));
-	providers.sort((a, b) => a.name.localeCompare(b.name));
+	const methods = new Map<string, AuthSelectorProvider[]>();
+	for (const option of host.getLoginProviderOptions())
+		methods.set(option.id, [...(methods.get(option.id) ?? []), option]);
+	const claudeInstalled = findClaudeCli() !== undefined;
+	const signIns = new Set<string>();
+	const providers: AuthSelectorProvider[] = [...methods].map(([id, options]) => {
+		const viaClaude = claudeInstalled && id === CLAUDE_SUBSCRIPTION_PROVIDER;
+		const kinds = [
+			...(viaClaude ? ["Claude subscription sign-in (through Claude Code)"] : []),
+			...options.map((option) =>
+				option.authType === "api_key" ? "API key" : option.subscription ? "subscription sign-in" : "account sign-in",
+			),
+		];
+		// The sign-in's own name ("OpenAI (ChatGPT subscription)") makes it findable by what the user pays for.
+		const oauth = options.find((option) => option.authType === "oauth");
+		if (oauth || viaClaude) signIns.add(id);
+		return {
+			id,
+			name: runtime.getProvider(id)?.name ?? id,
+			authType: "api_key",
+			...(oauth?.method ? { method: oauth.method } : {}),
+			detail: `${kinds.join(" or ")}${runtime.getProviderAuthStatus(id).configured ? " · signed in" : ""}`,
+		};
+	});
+	// Sign-ins (subscriptions and accounts) first: a few among dozens of API-key providers, and what most users come for.
+	providers.sort((a, b) => Number(!signIns.has(a.id)) - Number(!signIns.has(b.id)) || a.name.localeCompare(b.name));
 	const id = await new Promise<string | undefined>((resolve) => {
 		host.showSelector((done) => {
 			const selector = new OAuthSelectorComponent(

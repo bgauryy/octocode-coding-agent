@@ -16,6 +16,10 @@ export const CONFIG_CSS = `/* Settings view */
 .config-edit input { flex: 1 1 200px; min-width: 0; padding: 6px 10px; }
 .config-edit select, .panel-header select { padding: 6px 10px; max-width: 100%; }
 .config-edit > p { flex-basis: 100%; margin: 0; }
+.config-methods { margin: 0; font-size: 12px; }
+.config-signin { display: grid; gap: 6px; }
+.config-signin-live { display: grid; gap: 6px; }
+.config-signin p { margin: 0; overflow-wrap: anywhere; }
 .panel > .callout { margin: 12px 16px 0; }
 @media (forced-colors: active) { .config-row { border-bottom-color: CanvasText; } }
 `;

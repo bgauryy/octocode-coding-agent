@@ -69,7 +69,7 @@ import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
 import { registerModelsTool } from "./subagents/models-tool.ts";
 import type { AgentProfile } from "./subagents/profiles.ts";
-import { registerIdentityReminder } from "./subagents/identity-reminder.ts";
+import { registerChildSession } from "./subagents/child-session.ts";
 import { loadSessionProfiles } from "./subagents/session-profiles.ts";
 import { registerHarnessSync } from "./subagents/harness-sync.ts";
 import { type AgentControl, budgetsThrough, mergeThrough, registerAgentTool } from "./subagents/tool.ts";
@@ -334,7 +334,7 @@ export default function octocode(host: ExtensionAPI): void {
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
 	// paths to the file lists Octocode carries into its summary. Octocode writes the summary itself.
 	registerCompactTool(api, registerCompaction(api, guard, isSubagent, team.parentId), isSubagent);
-	if (isSubagent) registerIdentityReminder(api);
+	if (isSubagent) registerChildSession(api);
 	registerArchiveCommand(commands);
 	registerArchiveTool(api, memoryTool);
 	const closeArchive = registerArchiveLifecycle(api, {

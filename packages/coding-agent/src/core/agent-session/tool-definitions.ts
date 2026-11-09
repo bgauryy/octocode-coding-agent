@@ -115,12 +115,14 @@ const rankIn = (list: readonly string[], name: string) => {
 };
 
 /**
- * The order tools are declared in, so that a parent and its children declare the same bytes for as long as possible
- * (the tool declarations lead the cached prompt prefix): role-invariant tools in a fixed order, then other tools in the
- * given order, then MCP tools (namespace `mcp__<server>`) sorted by namespace, servers whose entry gives tools roles first
- * (every agent that has MCP tools gets those), and name, then
- * role-variant tools. MCP registration and activation order follows connection timing, which would otherwise change the
- * declared tools, and so the cached prefix, between sessions of one configuration.
+ * The order tools are declared in, so that sessions and children of one configuration declare the same bytes (the tool
+ * declarations lead the cached prompt prefix): role-invariant tools in a fixed order, then other tools in the given
+ * order, then MCP tools (namespace `mcp__<server>`) sorted by namespace and name, with servers whose entry gives tools
+ * roles first (every agent that has MCP tools gets those), then role-variant tools. MCP registration and activation
+ * order follows connection timing, which would otherwise change the declared tools, and so the cached prefix, between
+ * sessions of one configuration. The benefit is stability across sessions and reuse between siblings of one profile;
+ * a parent and a child do not share a cached run, because their system text differs early and no breakpoint ends the
+ * shared tool bytes.
  */
 export function orderToolNames(names: Iterable<string>, namespaceOf: (name: string) => string | undefined): string[] {
 	const first: Array<{ name: string; rank: number }> = [];

@@ -12,11 +12,12 @@ import { repoKey } from "../shared/home/repo.ts";
 import { resultBlock, resultText } from "../shared/render.ts";
 import { parseSkillBlock } from "../../core/agent-session/prompt-expansion.ts";
 import { shortPath } from "../shared/format.ts";
-import { oneLine, plural } from "../shared/render/text.ts";
+import { oneLine } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
 import { textResult } from "../shared/util.ts";
 import { type CatalogSkill, SkillCatalog, closeNames } from "./catalog.ts";
-import { skillHeader, skillInstructions, skillOrigin } from "./render.ts";
+import { skillHeader, skillInstructions, skillLoadSummary, skillOrigin } from "./render.ts";
+import { type SkillCategory, skillCategory } from "../../core/skills/category.ts";
 
 /** Names listed when nothing is close to the requested one. */
 const LISTED_NAMES = 20;
@@ -28,6 +29,10 @@ interface SkillDetails {
 	lines: number;
 	/** Where the skill came from (`skillOrigin`), shown on the row. */
 	origin?: string;
+	/** Its listing group (`skillCategory`): core, octocode, workspace or global. */
+	category?: SkillCategory;
+	/** Its description as listed, shown above the instructions. */
+	description?: string;
 }
 
 /** `skill:name`, `/skill:name` and `/name` name the same skill as `name`: the forms users type. */
@@ -125,6 +130,8 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 						baseDir,
 						lines,
 						origin: skillOrigin(skill),
+						category: skillCategory(skill),
+						...(skill.description?.trim() ? { description: skill.description.trim() } : {}),
 					} satisfies SkillDetails,
 				);
 			},
@@ -138,11 +145,11 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 				const lines = details?.lines ?? instructions.split("\n").length;
 				return {
 					...head,
-					outcome: {
-						text: [`Loaded ${plural(lines, "line")}`, details?.origin].filter(Boolean).join(" \u00b7 "),
-						tone: "muted",
-					},
+					outcome: { text: skillLoadSummary({ ...details, lines }), tone: "muted" },
 					blocks: [
+						...(details?.description
+							? [{ type: "text" as const, text: details.description, tone: "muted" as const }]
+							: []),
 						...(details?.location
 							? [{ type: "path" as const, text: `file: ${details.location}`, label: "file", path: details.location }]
 							: []),
@@ -162,12 +169,16 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 				// The row shows the instructions: the `<skill>` wrapper and its path preamble are for the model.
 				const instructions = skillInstructions(parseSkillBlock(text)?.content ?? text);
 				const lines = details?.lines ?? instructions.split("\n").length;
-				// The collapsed row stays short enough for its expand hint; the file is the first line of the expanded body.
-				const file = details?.location ? `${shortPath(details.location)}\n\n` : "";
+				// The collapsed row stays short enough for its expand hint; the expanded body opens with what the skill is for
+				// and where its file is, then its instructions.
+				const preface = [details?.description, details?.location ? shortPath(details.location) : undefined]
+					.filter(Boolean)
+					.map((line) => `${line}\n\n`)
+					.join("");
 				return resultBlock(theme, context, {
-					summary: [`Loaded ${plural(lines, "line")}`, details?.origin].filter(Boolean).join(" \u00b7 "),
+					summary: skillLoadSummary({ ...details, lines }),
 					summaryColor: "customMessageText",
-					body: `${file}${instructions}`,
+					body: `${preface}${instructions}`,
 					max: 0,
 					...timingOf(result.details),
 				});

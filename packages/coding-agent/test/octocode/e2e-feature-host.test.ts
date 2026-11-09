@@ -144,7 +144,7 @@ describe("extension files in settings and discovery directories", () => {
 		);
 		const { result } = await load({ settings: { extensions: [file] } });
 		expect(result.warnings).toEqual([
-			{ path: file, warning: expect.stringMatching(/^Ignored extension\. .*PLUGINS\.md\)\.$/) },
+			{ path: file, warning: expect.stringMatching(/^Ignored extension\. .*docs\/plugins\.md\)\.$/) },
 		]);
 		expect(result.errors).toEqual([]);
 		expect(fs.existsSync(ran)).toBe(false);

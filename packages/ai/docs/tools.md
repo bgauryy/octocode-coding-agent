@@ -157,15 +157,7 @@ for await (const event of s) {
 }
 ```
 
-**Important notes about partial tool arguments:**
-
-- During `toolcall_delta` events, `arguments` contains the best-effort parse of partial JSON
-- Fields may be missing or incomplete - always check for existence before use
-- String values may be truncated mid-word
-- Arrays may be incomplete
-- Nested objects may be partially populated
-- At minimum, `arguments` will be an empty object `{}`, never `undefined`
-- The Google provider does not support function call streaming. Instead, you will receive a single `toolcall_delta` event with the full arguments.
+Partial arguments during `toolcall_delta` are a best-effort parse: fields may be missing, strings truncated mid-word, arrays and nested objects incomplete; the value is at least `{}`, never `undefined`. Check each field before use. Google does not stream function calls: it sends one `toolcall_delta` with the full arguments.
 
 ## Validating Tool Arguments
 

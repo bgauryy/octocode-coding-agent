@@ -110,16 +110,18 @@ function sourceLabel(provenance: Pick<Provenance, "scope" | "origin" | "hostPlug
 }
 
 /**
- * The label for a loaded file that discovery does not list: Octocode's core skills (`core`), a package, the user or project folder, the Claude or Codex skill folder, a flag (`--skill`,
+ * The label for a loaded file that discovery does not list: Octocode's core skills (`core`), the Octocode skill
+ * collection (`octocode`), a package, the user or project folder, the Claude or Codex skill folder, a flag (`--skill`,
  * `--prompt-template`) or a path that the `skills`/`prompts` settings name. The core label follows `skillCategory`.
  */
 export function sourceInfoLabel(info: { source: string; scope: string; path?: string } | undefined): string {
 	if (!info) return "other";
 	// Skills the application ships itself are handed to the loader as extra paths; they are its core, not the user's.
-	const category = info.path ? skillCategory({ filePath: info.path }) : "external";
+	const category = info.path ? skillCategory({ filePath: info.path, sourceInfo: info }) : undefined;
 	if (category === "core") return "core";
 	if (info.source.startsWith("npm:") || info.source.startsWith("git:")) return `package ${info.source}`;
-	if (info.source === "builtin") return "builtin";
+	// Built-in extensions share the `builtin` source with the Octocode skill collection.
+	if (info.source === "builtin") return category === "octocode" ? "octocode" : "builtin";
 	// The native extension adds the other hosts' user skill folders as extra paths too.
 	if (info.path && isUnderPath(info.path, join(claudeConfigDir(), "skills"))) return "claude global";
 	if (info.path && isUnderPath(info.path, join(codexConfigDir(), "skills"))) return "codex global";

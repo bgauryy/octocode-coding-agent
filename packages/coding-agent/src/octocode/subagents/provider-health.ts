@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
-import type { Api, Model } from "@octocodeai/octocode-ai";
+import type { Api, Model, Usage } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -8,12 +8,21 @@ import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sani
 import { currentPrice, type ModelRef } from "./model.ts";
 
 /**
- * A provider refused the credential itself: 401/403, an invalid or expired key, or no credit. Narrower than the
- * report's MODEL_REFUSED, which also covers unknown models: a model-level refusal says nothing about the other models
- * of that provider.
+ * The account cannot pay for the request (402, "Insufficient account funds", no credit or quota left): the key is
+ * fine, funds or a plan are missing, and every model of that provider fails the same way.
  */
-const CREDENTIAL_REFUSED =
-	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|expired|insufficient[ _](?:quota|credit|balance)|billing/i;
+export const BILLING_ERROR =
+	/\b402\b|payment required|insufficient[ _](?:account[ _])?(?:quota|credit|balance|funds)|billing|out of credit/i;
+
+/** The provider refused the key itself: 401/403, an invalid, expired or unauthorized key. */
+export const CREDENTIAL_ERROR =
+	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|permission[ _]denied|expired/i;
+
+/**
+ * A provider refused the credential or the account: a credential error or no funds. Narrower than a request refusal:
+ * a model-level or request-shape refusal says nothing about the other models of that provider.
+ */
+const CREDENTIAL_REFUSED = new RegExp(`${CREDENTIAL_ERROR.source}|${BILLING_ERROR.source}`, "i");
 const CHECK_TIMEOUT_MS = 20_000;
 /** How long a credential refusal steers routing away from its provider: a `/providers` since then is not otherwise seen. */
 const REFUSAL_ROUTING_MS = 15 * 60_000;
@@ -26,23 +35,46 @@ export interface ProviderStatus {
 	detail?: string;
 }
 
+/** A client error other than a timeout (408) or a rate limit (429): the provider rejected the request itself. */
+const CLIENT_ERROR = /\b4(?!08|29)\d\d\b/;
+
+/** A run that spent no token: its first request failed, so its error is about the route, not the task. */
+export const spentNothing = (usage: Usage | undefined): boolean =>
+	!usage || usage.input + usage.output + usage.cacheRead + usage.cacheWrite === 0;
+
+/**
+ * A run refused before any token with a client error (an account setting, an unknown or disabled model): the same
+ * request to that model fails again, whatever the task.
+ */
+export const refusedBeforeWork = (error: string, nothingSpent: boolean): boolean =>
+	nothingSpent && CLIENT_ERROR.test(error);
+
+const withoutThinking = (model: string) => model.replace(/:(?:off|minimal|low|medium|high|xhigh|max)$/, "");
+
 /** Provider error text reaches the model listing: credentials are redacted, nothing is cut. */
 const clean = (text: string) => redactSecrets(sanitizeTerminalText(text)).replace(/\s+/g, " ").trim();
 
 /** What this process last learned about each provider's credential; the latest run or check replaces older news. */
 export class ProviderHealth {
 	private readonly status = new Map<string, ProviderStatus>();
+	/** `provider/id` of models that refused a run before any token, and when. */
+	private readonly models = new Map<string, number>();
 
 	/**
-	 * A finished subagent run on `model` ("provider/id"; undefined when it ran on this session's model): success clears a
-	 * refusal, a credential refusal marks the provider, other failures say nothing.
+	 * A finished subagent run on `model` ("provider/id[:level]"; undefined when it ran on this session's model): success
+	 * clears a refusal, a credential refusal marks the provider, a client error before any token (`nothingSpent`) marks
+	 * the model, other failures say nothing.
 	 */
-	noteRun(model: string | undefined, error?: string): void {
+	noteRun(model: string | undefined, error?: string, nothingSpent = false): void {
 		const provider = model?.includes("/") ? model.slice(0, model.indexOf("/")) : undefined;
-		if (!provider) return;
-		if (!error) this.status.set(provider, { ok: true, at: Date.now(), via: "run" });
-		else if (CREDENTIAL_REFUSED.test(error))
+		if (!model || !provider) return;
+		const ref = withoutThinking(model);
+		if (!error) {
+			this.status.set(provider, { ok: true, at: Date.now(), via: "run" });
+			this.models.delete(ref);
+		} else if (CREDENTIAL_REFUSED.test(error))
 			this.status.set(provider, { ok: false, at: Date.now(), via: "run", detail: clean(error) });
+		else if (refusedBeforeWork(error, nothingSpent)) this.models.set(ref, Date.now());
 	}
 
 	/** A live check: any failure counts, since the request was the smallest one the provider accepts. */
@@ -60,10 +92,14 @@ export class ProviderHealth {
 	}
 
 	/**
-	 * Whether `provider` refused its credential in the last `REFUSAL_ROUTING_MS` (a run or check said so; a timeout or
-	 * other failure does not count): routing then prefers other providers (`RouteInput.refused`).
+	 * Whether, in the last `REFUSAL_ROUTING_MS`, model `id` of `provider` refused a run before any token, or (unless
+	 * `proven`: the parent's own provider, whose session proves it) `provider` refused its credential (a run or check said
+	 * so; a timeout or other failure does not count): routing then prefers other models (`usableModels`).
 	 */
-	refused(provider: string): boolean {
+	refused(provider: string, id?: string, proven = false): boolean {
+		const at = id === undefined ? undefined : this.models.get(`${provider}/${id}`);
+		if (at !== undefined && Date.now() - at < REFUSAL_ROUTING_MS) return true;
+		if (proven) return false;
 		const status = this.status.get(provider);
 		return (
 			status !== undefined &&
@@ -84,8 +120,12 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	const source = status.via === "list" ? "model list" : status.via === "check" ? "check" : "subagent run";
 	if (status.ok && status.via === "list") return ` ✓ credential accepted (${source}, ${when}; credit not tested)`;
 	if (status.ok) return ` ✓ credential worked (${source}, ${when})`;
-	const refused = status.detail && CREDENTIAL_REFUSED.test(status.detail);
-	return ` ✗ ${refused ? "credential refused" : "check failed"} (${source}, ${when}): ${status.detail ?? "no detail"}${refused ? " — fix with /providers" : ""}`;
+	const detail = status.detail ?? "";
+	const billing = BILLING_ERROR.test(detail);
+	const refused = billing || CREDENTIAL_REFUSED.test(detail);
+	const label = billing ? "out of funds" : refused ? "credential refused" : "check failed";
+	const fix = billing ? " — add funds or a plan with the provider" : refused ? " — fix with /providers" : "";
+	return ` ✗ ${label} (${source}, ${when}): ${status.detail ?? "no detail"}${fix}`;
 }
 
 /**
@@ -121,7 +161,7 @@ type CheckRegistry = Pick<ModelRegistry, "streamSimple"> &
 	Partial<Pick<ModelRegistry, "getProvider" | "getProviderAuth">>;
 
 /** A refusal a model list cannot disprove: listing models works without credit or quota. */
-const BILLING_REFUSED = /insufficient[ _](?:quota|credit|balance)|billing|quota/i;
+const BILLING_REFUSED = new RegExp(`${BILLING_ERROR.source}|quota`, "i");
 
 /**
  * Whether the provider's own model list accepted the credential, without an inference request. Only a success counts:

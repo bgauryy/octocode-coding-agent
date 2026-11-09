@@ -19,7 +19,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} remove <source> [-l]      Remove a package from settings
   ${APP_NAME} update [source|self]      Update Octocode, packages, or model catalogs
   ${APP_NAME} list                      List installed packages from settings
-  ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
+  ${APP_NAME} configuration [verb]      List, enable, disable, set or add configuration (--local, --json)
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
   ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
   ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in

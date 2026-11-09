@@ -22,6 +22,7 @@ import {
 	type Harness,
 	getToolResult as toolResult,
 } from "./harness.ts";
+import { getMcpSwitch } from "../../../mcp/src/switch.ts";
 
 const TINY_PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
@@ -273,15 +274,15 @@ describe("AgentSession MCP integration", () => {
 		expect(getMcpSessionStatus(api!.events)).toMatchObject([
 			{ name: "docs", enabled: true, state: "connected", exposure: "direct", toolCount: 3 },
 		]);
-		await harness.session.prompt("/mcp enable docs");
+		await getMcpSwitch(api!.events)!({ name: "docs", enabled: true, inProject: false });
 		expect(servers).toHaveLength(1);
-		await harness.session.prompt("/mcp disable docs");
+		await getMcpSwitch(api!.events)!({ name: "docs", enabled: false, inProject: false });
 		expect(saved.at(-1)).toEqual({ enabled: false });
 		expect(getMcpSessionStatus(api!.events)).toMatchObject([{ enabled: false, state: "disabled" }]);
 		expect(nestedToolNames(harness)).not.toContain("mcp__docs__search");
 		await harness.session.prompt("/mcp exposure docs direct");
 		expect(saved.at(-1)).toEqual({ exposure: "direct" });
-		await harness.session.prompt("/mcp enable docs");
+		await getMcpSwitch(api!.events)!({ name: "docs", enabled: true, inProject: false });
 		expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search");
 		await harness.session.prompt("/mcp exposure docs hidden");
 		expect(nestedToolNames(harness)).not.toContain("mcp__docs__search");

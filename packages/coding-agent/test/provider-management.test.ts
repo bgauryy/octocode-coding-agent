@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GLYPH, Input, setKeybindings } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { getBuiltinCommand } from "../src/core/slash-commands.ts";
-import { getLoginProviderOptions } from "../src/modes/interactive/interactive-mode/login-flow.ts";
+import { getLoginProviderOptions, showOAuthSelector } from "../src/modes/interactive/interactive-mode/login-flow.ts";
 import { removeProviderCredential } from "../src/modes/interactive/interactive-mode/provider-actions.ts";
 import { showProviderManager } from "../src/modes/interactive/interactive-mode/provider-manager.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -74,7 +74,7 @@ function manager() {
 		showStatus: vi.fn(),
 		showError: vi.fn(),
 		updateAvailableProviderCount: vi.fn(),
-		ui: { requestRender: vi.fn() },
+		ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn() },
 		getLoginProviderOptions: () => getLoginProviderOptions(createFakeHost(value)),
 	};
 	return {
@@ -128,8 +128,74 @@ describe("provider setup flow", () => {
 	beforeEach(() => {
 		setKeybindings(new KeybindingsManager());
 		home = mkdtempSync(join(tmpdir(), "providers-home-"));
+		// A developer's installed `claude` must not change what the pages offer; tests that need it put one here.
+		mkdirSync(join(home, "bin"));
+		vi.stubEnv("PATH", join(home, "bin"));
 	});
-	afterEach(() => rmSync(home, { recursive: true, force: true }));
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(home, { recursive: true, force: true });
+	});
+
+	/** A stand-in `claude` on PATH whose `setup-token` exits with `code`. */
+	const installClaude = (code: number) => {
+		const file = join(home, "bin", "claude");
+		writeFileSync(file, `#!/bin/sh\n[ "$1" = setup-token ] || exit 9\nexit ${code}\n`);
+		chmodSync(file, 0o755);
+	};
+
+	it("signs in with a Claude subscription by handing the terminal to `claude setup-token`, then asks for its token", async () => {
+		installClaude(0);
+		const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+		try {
+			const { host, value } = manager();
+			const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+			choose(await pageAt(value, 0), "+ Add a provider");
+			const picker = await pageAt(value, 1);
+			for (const key of "claude") picker.handleInput(key);
+			expect(rows(picker).filter((line) => line.includes("Anthropic"))).toEqual([
+				expect.stringContaining("Anthropic · Claude subscription sign-in (through Claude Code) or API key"),
+			]);
+			picker.handleInput(ENTER);
+			await vi.waitFor(() => expect(value.showExtensionSelector).toHaveBeenCalled());
+			const [title, labels] = value.showExtensionSelector.mock.calls[0];
+			expect(title).toBe("Sign in to Anthropic");
+			expect(labels).toEqual(["Add API key", "Sign in with your Claude subscription — browser, through Claude Code"]);
+			// Choosing nothing returns to the main page.
+			(await pageAt(value, 2)).handleInput(ESC);
+			await run;
+		} finally {
+			stdout.mockRestore();
+		}
+	});
+
+	it("runs `claude setup-token` from the Anthropic page and saves nothing when it fails", async () => {
+		const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+		try {
+			for (const [code, opened] of [
+				[0, true],
+				[3, false],
+			] as const) {
+				installClaude(code);
+				const { host, value } = manager();
+				const run = showProviderManager(host, "anthropic", { sourceEnvironment: sourceEnvironment() });
+				choose(await pageAt(value, 0), "Sign in with your Claude subscription");
+				await run;
+				await vi.waitFor(() => expect(opened ? value.showApiKeyLoginDialog : value.showError).toHaveBeenCalled());
+				// The terminal went to the child and came back.
+				expect(value.ui.stop).toHaveBeenCalledOnce();
+				expect(value.ui.start).toHaveBeenCalledOnce();
+				if (opened) {
+					expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("anthropic", "Anthropic", expect.any(Function));
+				} else {
+					expect(value.showError).toHaveBeenCalledWith("claude setup-token exited with code 3; nothing was saved.");
+					expect(value.showApiKeyLoginDialog).not.toHaveBeenCalled();
+				}
+			}
+		} finally {
+			stdout.mockRestore();
+		}
+	});
 
 	it("names provider access /providers and keeps each command under one name", () => {
 		expect(getBuiltinCommand("providers")?.name).toBe("providers");
@@ -157,7 +223,8 @@ describe("provider setup flow", () => {
 		expect(output).toMatch(/Octocode .*auth\.json.* on/);
 		expect(output).toMatch(/Pi .*auth\.json.* on/);
 		expect(output).toMatch(/COPILOT_GITHUB_TOKEN .* off/);
-		expect(output).toMatch(/Codex CLI +~\/\.codex → sign in with OpenAI Codex/);
+		// Sign in with ChatGPT on OpenAI superseded the legacy Codex provider.
+		expect(output).toMatch(/Codex CLI +~\/\.codex → sign in with OpenAI(?! Codex)/);
 		expect(output).toContain("Octocode models.json");
 		expect(output).toContain("/home/test/.octocode/models.json");
 		expect(output).toContain("not verified");
@@ -189,8 +256,12 @@ describe("provider setup flow", () => {
 		choose(page, "+ Add a provider");
 		const picker = await pageAt(value, 1);
 		expect(textOf(picker)).toContain("Sign in — choose a provider");
-		expect(textOf(picker)).toContain("OpenAI Codex");
-		picker.handleInput(DOWN);
+		// Providers with a sign-in come first, then API-key-only ones, each group by name.
+		expect(rows(picker).filter((line) => /OpenAI|Anthropic/.test(line))).toEqual([
+			expect.stringContaining("OpenAI · account sign-in or API key"),
+			expect.stringContaining("OpenAI Codex · account sign-in"),
+			expect.stringContaining("Anthropic · API key"),
+		]);
 		picker.handleInput(DOWN);
 		picker.handleInput(ENTER);
 		await run;
@@ -207,13 +278,30 @@ describe("provider setup flow", () => {
 		expect(textOf(codexPage)).not.toContain("SECRET-NEVER-SHOWN");
 		choose(codexPage, "Codex CLI");
 		await codexRun;
-		expect(value.showLoginDialog).toHaveBeenCalledWith("openai-codex", "OpenAI Codex", expect.any(Function));
+		expect(value.showLoginDialog).toHaveBeenCalledWith("openai", "OpenAI", expect.any(Function));
 
 		const claudeRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const claudePage = await pageAt(value, 1);
+		expect(textOf(claudePage)).toMatch(/Claude Code +~\/\.claude → add an API key for Anthropic/);
 		choose(claudePage, "Claude Code");
 		await claudeRun;
 		expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("anthropic", "Anthropic", expect.any(Function));
+
+		// With the Claude Code CLI installed, the row offers its subscription sign-in beside the API key.
+		installClaude(0);
+		const subscriptionRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const subscriptionPage = await pageAt(value, 2);
+		expect(textOf(subscriptionPage)).toMatch(
+			/Claude Code +~\/\.claude → sign in with your Claude subscription or an API key/,
+		);
+		choose(subscriptionPage, "Claude Code");
+		await vi.waitFor(() => expect(value.showExtensionSelector).toHaveBeenCalled());
+		const [title, labels] = value.showExtensionSelector.mock.calls.at(-1) ?? [];
+		expect(title).toBe("Sign in to Anthropic");
+		expect(labels).toEqual(["Add API key", "Sign in with your Claude subscription — browser, through Claude Code"]);
+		// Choosing nothing returns to the main page.
+		(await pageAt(value, 3)).handleInput(ESC);
+		await subscriptionRun;
 	});
 
 	it("a source's page toggles Pi through settings and reapplies the sources; Octocode has no toggle", async () => {
@@ -323,6 +411,44 @@ describe("provider setup flow", () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
+	});
+
+	it("says a saved credential whose provider is no longer defined cannot be used", async () => {
+		const { host, value, runtime } = manager();
+		runtime.listCredentials.mockResolvedValue([
+			{ providerId: "openai", type: "api_key" },
+			{ providerId: "gone-gateway", type: "api_key" },
+		]);
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const page = await pageAt(value, 0);
+		expect(textOf(page)).toMatch(/gone-gateway +saved credential · provider not defined/);
+		page.handleInput(ESC);
+		await run;
+	});
+
+	it("the sign-in picker names subscription and account sign-ins and finds them by the sign-in's name", async () => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "+ Add a provider");
+		const picker = await pageAt(value, 1);
+		expect(textOf(picker)).toMatch(/OpenAI · account sign-in or API key/);
+		for (const key of "chatgpt") picker.handleInput(key);
+		expect(rows(picker).filter((line) => /OpenAI|Anthropic/.test(line))).toEqual([
+			expect.stringContaining("OpenAI Codex · account sign-in"),
+		]);
+		picker.handleInput(ESC);
+		(await pageAt(value, 2)).handleInput(ESC);
+		await run;
+	});
+
+	it("/logout [provider] opens the saved-credential picker filtered by the provider and labels rows as saved", async () => {
+		const { host, value } = manager();
+		await showOAuthSelector(host, "logout", "open");
+		const picker = await pageAt(value, 0);
+		expect(textOf(picker)).toContain("> open");
+		expect(textOf(picker)).toMatch(/OpenAI · saved API key/);
+		expect(textOf(picker)).not.toContain("configured");
+		picker.handleInput(ESC);
 	});
 
 	it("filters model selection to the chosen provider", async () => {

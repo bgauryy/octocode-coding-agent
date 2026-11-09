@@ -15,7 +15,7 @@ export function opencodeProvider(): Provider<OpenCodeApi> {
 	return createProvider<OpenCodeApi>({
 		id: "opencode",
 		name: "OpenCode Zen",
-		auth: { apiKey: envApiKeyAuth("OpenCode API key", apiKeyEnvVars("opencode")) },
+		auth: { apiKey: envApiKeyAuth("OpenCode API key", apiKeyEnvVars("opencode"), "https://opencode.ai/console") },
 		models: [...Object.values(OPENCODE_MODELS), ...Object.values(OPENCODE_CLASSIFIER_MODELS)],
 		api: {
 			"anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),

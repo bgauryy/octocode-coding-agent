@@ -65,6 +65,8 @@ export function registerBacklogDigest(api: ExtensionAPI, options: BacklogOptions
 	api.on("before_agent_start", () => {
 		const content = pending;
 		pending = undefined;
+		// A session run without the tool (`defaultTools: ["-backlog"]`, `/configuration disable tool:backlog`, `octocode --disable tool:backlog`) has no use for the board's orientation.
+		if (!api.getActiveTools().includes("backlog")) return undefined;
 		return content ? { message: { customType: BACKLOG_DIGEST_TYPE, content, display: false } } : undefined;
 	});
 }

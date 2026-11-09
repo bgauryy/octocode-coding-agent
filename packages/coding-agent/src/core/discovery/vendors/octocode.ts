@@ -28,7 +28,10 @@ import type { Vendor } from "./types.ts";
 
 const roots = (input: DiscoverInput) => productRoots(input, "octocode");
 
-/** `.octocode/skills` (and the repository root's from a subdirectory), the global directory's, then Octocode's home. */
+/**
+ * `.octocode/skills` (and the repository root's from a subdirectory), the global directory's, Octocode's home, then the
+ * Octocode skill collection, which ranks below them and above the user copies other tools install.
+ */
 function skills(input: DiscoverInput): ConfigItem[] {
 	const project = roots(input).find((root) => root.scope === "project");
 	const global = { product: "octocode", scope: "global", origin: "octocode" } as const;
@@ -41,6 +44,9 @@ function skills(input: DiscoverInput): ConfigItem[] {
 			? skillItemsIn([join(project.dir, "skills"), ...collectAncestorProjectSkillDirs(input.cwd)], project, input)
 			: []),
 		...skillItemsIn(globalDirs, global, input),
+		...(input.builtinSkillsDir
+			? skillItemsIn([input.builtinSkillsDir], { product: "octocode", scope: "builtin", origin: "bundled" }, input)
+			: []),
 	];
 }
 

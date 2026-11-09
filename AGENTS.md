@@ -19,7 +19,7 @@ A coding agent forked from [Pi](https://github.com/earendil-works/pi). `../octoc
 | `contracts/`, `telemetry/` | serializable contracts and schemas | hold DB, provider, DOM or permission code |
 | `webview/` | browser state, transport, rendering | execute, authenticate or authorize |
 
-Paths are under `packages/`. Docs: [CONFIGURATIONS.md](CONFIGURATIONS.md), the [docs index](packages/coding-agent/docs/index.md), package READMEs for public API, `docs/FEATURES.md` for cross-package designs.
+Paths are under `packages/`. Docs: the [docs index](packages/coding-agent/docs/index.md) (configuration: `docs/configuration.md`), package READMEs for public API, `docs/FEATURES.md` for cross-package designs.
 
 ## Changing code
 
@@ -28,7 +28,7 @@ Paths are under `packages/`. Docs: [CONFIGURATIONS.md](CONFIGURATIONS.md), the [
 - **Database:** `prepare(...)`, `db.exec(...)` and `node:sqlite` imports (type imports too) live only in `packages/db/src/`. Search `queries/` before adding a named function; one statement in one place; delete a query with its last caller; features use `type Db`. Enforced by `check:db-boundary` and oxlint (only `team/peer-leases.ts` is exempt).
 - **Names:** no `@earendil-works/*`, `@mariozechner/*` or upstream Pi services. New code says Octocode; Pi stays only for compatibility, attribution or history.
 - **Instructions:** plain language, condition beside action. Tool descriptions own tool mechanics; policy does not repeat them. No reply template for every task. Machine fields (report outcomes, `to: "parent"`, `parentId`) change only with all their consumers.
-- **Configuration:** use the existing path helpers and loaders; keep global/workspace precedence, project trust, and definitions apart from control-only MCP overrides. Update CONFIGURATIONS.md and the owning reference. Test mutations in isolated user directories, never the real home.
+- **Configuration:** use the existing path helpers and loaders; keep global/workspace precedence, project trust, and definitions apart from control-only MCP overrides. Update `docs/configuration.md` and the owning reference. Test mutations in isolated user directories, never the real home.
 - **Tools and commands:** check registration and RPC consumers separately. Reads use Octocode local tools, mutations `file`; `bash` is the only tool factory. One name per slash command, no aliases, built-ins one word (exception: `/clear` and `/reset` run `/new`). The package root exports only the CLI and RPC. Document tool enablement, MCP exposure and browser routing in [native features](packages/coding-agent/docs/native-features.md).
 - **Lint:** files stay within 400 lines (tests exempt): split, never add an exception. `import/no-cycle` counts type-only cycles: move the shared type to a leaf. Silence a rule only on its line with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
 
@@ -49,7 +49,7 @@ Node 24.15+ (Node 24 line); setup and model-data hydration per [DEVELOPMENT.md](
 - Run builds and full suites in the background; send long output to `.octocode/tmp/` and read it by search or line range. After a wave of changes, run the full e2e: focused runs miss stale expectations elsewhere.
 - Report failures and skipped checks. Never weaken assertions or thresholds; change a test only for an intended contract change.
 - An MCP tool that refuses twice or disconnects: restart it with `mcp`, then fall back to bash and say so.
-- Docs: verify commands, paths and links against their owners; no dated counts in `docs/`. After browser source changes, run `yarn run generate:workspace` and the webview and contracts tests.
+- Docs: shipped pages (`packages/coding-agent/docs/`, `docs/`) are for users: explain each feature, Mermaid for flows and tables for options over prose, no repository paths; verify commands and links against their owners; no dated counts in `docs/`. After browser source changes, run `yarn run generate:workspace` and the webview and contracts tests.
 
 ## Generated files and releases
 
@@ -59,8 +59,8 @@ Change the generator, never its output (`yarn workspace @octocodeai/octocodecode
 - `generate:prompts` (also run by every build) writes each agent's exact prompt to `.octocode/tmp/agent-prompts/`: read it after changing a prompt, tool description or MCP preset.
 - After rebuilding the sibling `octocode-mcp` or browser server: `yarn workspace @octocodeai/octocode-mcp run generate:compact` (`--check`, `--drop-stale`, `--accept <tool.field>`), then `generate:prompts`. Overrides never rewrite upstream text to fit a size limit.
 
-`@octocodeai/octocodecode` is the only public package; every other workspace is bundled into it. Its `link:` dependencies, `.github/octocode-ref` and `octocodeRelease` in `packages/coding-agent/package.json` tie it to the sibling `octocode` repository. `yarn run publish` (`publish:dry` rehearses) writes the manifest only into the tarball and publishes after that tarball installs and runs a real session.
+`@octocodeai/octocodecode` is the only public package; every other workspace is bundled into it. Its `link:` dependencies and `octocodeRelease` in `packages/coding-agent/package.json` tie it to the sibling `octocode` repository. `yarn run publish` (`publish:dry` rehearses) writes the manifest only into the tarball and publishes after that tarball installs and runs a real session.
 
 ## Dogfooding
 
-Research this repository with the local Octocode MCP server (`octocode-local` Reflect usage in `.octocode/REFLECT.md`,
+Research this repository with the Octocode MCP server the session declares. While working, record tool errors, retries, wrong turns and choices that were not the best in `.octocode/REFLECT.md` (its header says how), and fix each cause in its owner or file a backlog item.

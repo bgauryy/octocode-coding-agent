@@ -77,12 +77,16 @@ function relativeLink(folder, target, anchor) {
 	return `${path.startsWith(".") ? path : `./${path}`}${anchor ? `#${anchor}` : ""}`;
 }
 
+const MARKDOWN_LINK = /\]\(([^)\s]+)\)/g;
+/** A link that leaves the file system or stays in the page: an URL scheme, an anchor or an absolute path. */
+const NOT_RELATIVE = /^(?:[a-z][a-z0-9+.-]*:|#|\/)/i;
+
 /** Rewrite each relative Markdown link in the file; `replace` returns the new target, or undefined to keep the link. */
 function rewriteRelativeLinks(file, replace) {
 	let rewritten = 0;
 	const contents = readFileSync(file, "utf8");
-	const updated = contents.replace(/\]\(([^)\s]+)\)/g, (link, target) => {
-		if (/^(?:[a-z][a-z0-9+.-]*:|#|\/)/i.test(target)) return link;
+	const updated = contents.replace(MARKDOWN_LINK, (link, target) => {
+		if (NOT_RELATIVE.test(target)) return link;
 		const [path, anchor] = target.split("#");
 		const replacement = replace(path, anchor);
 		if (replacement === undefined) return link;
@@ -162,6 +166,14 @@ export function findPackageProblems(packageDirectory) {
 		"dist/licenses/THIRD_PARTY_NOTICES.md",
 	]) {
 		if (!existsSync(join(packageDirectory, required))) problems.push(`missing ${required}`);
+	}
+	// Installed agents and the npm page read these docs: every relative link must reach a file in the tarball.
+	for (const file of markdownFiles(packageDirectory)) {
+		for (const [, target] of readFileSync(file, "utf8").matchAll(MARKDOWN_LINK)) {
+			const path = target.split("#")[0];
+			if (NOT_RELATIVE.test(target) || !path || existsSync(resolve(dirname(file), path))) continue;
+			problems.push(`broken documentation link: ${relative(packageDirectory, file).split(sep).join("/")} -> ${target}`);
+		}
 	}
 	if (!existsSync(join(packageDirectory, "dist/native"))) problems.push("missing the native terminal helpers");
 	const javascript = (directory) =>

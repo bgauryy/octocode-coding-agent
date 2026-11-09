@@ -29,7 +29,7 @@ describe("research guidance without Octocode CLI usage", () => {
 
 	it("without a research server, uses bash search and gh or web", () => {
 		const text = research({ research: false });
-		expect(text).toContain("- Search with bash (`rg`, `fd`)");
+		expect(text).toContain("- Search with bash when the location is unknown");
 		expect(text).toContain("- Use `web` (or the `gh` CLI in bash when available)");
 	});
 

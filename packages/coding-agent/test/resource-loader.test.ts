@@ -94,7 +94,7 @@ describe("DefaultResourceLoader", () => {
 			expect(loader.getExtensions().warnings).toEqual([
 				{
 					path: join(packageRoot, "extensions", "package-extension.ts"),
-					warning: `Ignored extension shipped by package ${packageRoot}. User code extensions are not supported; use plugins and hooks (see PLUGINS.md).`,
+					warning: `Ignored extension shipped by package ${packageRoot}. User code extensions are not supported; use plugins and hooks (see docs/plugins.md).`,
 				},
 			]);
 		});

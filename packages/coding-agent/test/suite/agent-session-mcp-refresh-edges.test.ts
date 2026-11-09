@@ -47,11 +47,11 @@ describe("AgentSession MCP refresh edges", () => {
 	});
 
 	it("F3-a2: a server disabled and enabled again between two requests appends nothing", async () => {
-		const { harness, callable, turn, thin } = await setup(fresh());
+		const { harness, callable, turn, thin, switchMcp } = await setup(fresh());
 		const block = newestMcps(await turn("start"));
-		await harness.session.prompt("/mcp disable docs");
+		await switchMcp("docs", false);
 		await vi.waitFor(() => expect(callable()).not.toContain("mcp__docs__search"));
-		await harness.session.prompt("/mcp enable docs");
+		await switchMcp("docs", true);
 		await vi.waitFor(() => expect(callable()).toContain("mcp__docs__search"));
 		const updates = await turn("after re-enable");
 		expect(mcpsPatches(updates)).toEqual([]);
@@ -62,13 +62,13 @@ describe("AgentSession MCP refresh edges", () => {
 	});
 
 	it("F3-a3: a server disabled for one request comes back with its block once and one current status", async () => {
-		const { harness, callable, turn } = await setup(fresh());
+		const { harness, callable, turn, switchMcp } = await setup(fresh());
 		const block = newestMcps(await turn("start"));
-		await harness.session.prompt("/mcp disable docs");
+		await switchMcp("docs", false);
 		await vi.waitFor(() => expect(callable()).not.toContain("mcp__docs__search"));
 		await turn("while disabled");
 		expect(newestMcps(harness.session.messages)).toBeUndefined();
-		await harness.session.prompt("/mcp enable docs");
+		await switchMcp("docs", true);
 		await vi.waitFor(() => expect(callable()).toContain("mcp__docs__search"));
 		const back = await turn("after re-enable");
 		expect(mcpsPatches(back)).toEqual([block]);

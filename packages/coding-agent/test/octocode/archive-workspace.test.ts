@@ -76,7 +76,7 @@ it("exposes one tool and retains scoped write checks and plan classification", a
 	const ctx = fakeCtx({ cwd: root });
 	const run = (input: object) =>
 		tool.execute("call", { goal: "remember", reason: "user preference", ...input }, undefined, undefined, ctx);
-	await expect(run({ op: "set", source: "events", title: "bad" })).rejects.toThrow("Only source memories");
+	await expect(run({ op: "set", source: "events", title: "bad" })).rejects.toThrow("set works on source memories only");
 	expect((await run({ op: "set", source: "memories", title: "remember amber" })).content[0].text).toMatch(
 		/Saved M1 \(workspace/,
 	);

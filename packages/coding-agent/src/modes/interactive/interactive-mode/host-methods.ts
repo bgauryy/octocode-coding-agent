@@ -30,7 +30,6 @@ import * as sessionCommands from "./session-commands.ts";
 import * as sessionNavigation from "./session-navigation.ts";
 import * as sessionRender from "./session-render.ts";
 import * as sessionWindow from "./session-window.ts";
-import * as settingsSelector from "./settings-selector.ts";
 import * as startup from "./startup.ts";
 import * as startupChecks from "./startup-checks.ts";
 import * as statusIndicators from "./status-indicators.ts";
@@ -194,7 +193,6 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	showPackageUpdateNotification: startupChecks.showPackageUpdateNotification,
 	showSelector: viewState.showSelector,
 	showSessionSelector: sessionNavigation.showSessionSelector,
-	showSettingsSelector: settingsSelector.showSettingsSelector,
 	showStartupNoticesIfNeeded: startupChecks.showStartupNoticesIfNeeded,
 	showStatus: statusIndicators.showStatus,
 	showStatusIndicator: statusIndicators.showStatusIndicator,

@@ -10,7 +10,7 @@
  */
 
 import { join } from "node:path";
-import type { Credential } from "@octocodeai/octocode-ai";
+import type { Credential, ProviderAuth } from "@octocodeai/octocode-ai";
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { Value } from "typebox/value";
@@ -21,13 +21,16 @@ import {
 	type ConfigSetting,
 	type ConfigSnapshot,
 	type CredentialSourceStatus,
+	type ProviderAuthMethods,
 	type ProviderCredentialStatus,
 	type SettingsFileError,
 } from "@octocodeai/octocode-contracts/config";
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/config-value.ts";
+import { discoveryInput } from "../../core/discovery/service.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
+import { readProviderOrigins, type ProviderOriginsView } from "./provider-origins.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
 import { repoKey } from "../shared/home/repo.ts";
 
@@ -39,6 +42,10 @@ export interface ConfigStatusOptions {
 	env?: NodeJS.ProcessEnv;
 	/** The keychain to report on and to recognise references of; default: this platform's. `null`: none. */
 	keychain?: KeychainBackend | null;
+	/** Pi's configuration folders; default: the ones discovery uses for `agentDir` (none for an explicit home). */
+	piDirs?: readonly string[];
+	/** The home directory for the sources' file checks; default: the real one. */
+	home?: string;
 }
 
 const CREDENTIALS_ERROR = "auth.json could not be read; only environment variables are shown.";
@@ -118,15 +125,54 @@ function mergeSources(...lists: CredentialSourceStatus[][]): CredentialSourceSta
 	});
 }
 
-function providerRows(stored: StoredSources, env: NodeJS.ProcessEnv): ProviderCredentialStatus[] {
-	const known = new Map(builtinProviders().map((provider) => [provider.id, provider.name]));
-	const ids = [...known.keys(), ...[...stored.byProvider.keys()].filter((id) => !known.has(id)).sort()];
+/** The sign-ins a provider offers, as names and a public link. Nothing is resolved, so no command or request runs. */
+function authMethods(auth: ProviderAuth | undefined): ProviderAuthMethods | undefined {
+	if (!auth) return undefined;
+	const { oauth, apiKey } = auth;
+	const keyPage = apiKey?.keyPage && /^https:\/\/\S+$/.test(apiKey.keyPage) ? apiKey.keyPage : undefined;
+	const methods: ProviderAuthMethods = {
+		...(oauth
+			? {
+					oauth: {
+						name: oauth.name,
+						...(oauth.isSubscription ? { isSubscription: true } : {}),
+						...(oauth.loginLabel ? { loginLabel: oauth.loginLabel } : {}),
+					},
+				}
+			: {}),
+		...(apiKey ? { keyAuth: { name: apiKey.name, ...(keyPage ? { keyPage } : {}) } } : {}),
+	};
+	return methods.oauth || methods.keyAuth ? methods : undefined;
+}
+
+function providerRows(
+	stored: StoredSources,
+	origins: ProviderOriginsView,
+	env: NodeJS.ProcessEnv,
+): ProviderCredentialStatus[] {
+	const providers = new Map(builtinProviders().map((provider) => [provider.id, provider]));
+	const known = new Map([...providers].map(([id, provider]) => [id, provider.name]));
+	const extra = new Set([...stored.byProvider.keys(), ...origins.origins.keys(), ...origins.disabled]);
+	const ids = [...known.keys(), ...[...extra].filter((id) => !known.has(id)).sort()];
 	return ids.map((provider) => {
 		const sources = mergeSources(stored.byProvider.get(provider) ?? [], envSources(provider, env));
+		const found = origins.origins.get(provider) ?? [];
+		// A models.json entry counts only when it sets a key; a definition alone says nothing about credentials.
+		const configured = sources.length > 0 || found.some((origin) => origin.file === "auth-json" || origin.hasKey);
 		const name = known.get(provider);
 		// The credential endpoint accepts only ids its schema accepts; the page must not offer edits it would refuse.
 		const editable = Value.Check(ProviderIdSchema, provider) ? {} : { editable: false };
-		return { provider, ...(name ? { name } : {}), configured: sources.length > 0, ...editable, sources };
+		const auth = authMethods(providers.get(provider)?.auth);
+		return {
+			provider,
+			...(name ? { name } : {}),
+			configured,
+			...editable,
+			sources,
+			...(found.length > 0 ? { origins: found } : {}),
+			...(origins.disabled.has(provider) ? { disabled: true } : {}),
+			...(auth ? { auth } : {}),
+		};
 	});
 }
 
@@ -153,13 +199,26 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 	const settingsErrors: SettingsFileError[] = manager
 		.drainErrors()
 		.map(({ scope }) => ({ scope: scope === "project" ? "workspace" : "global", message: SETTINGS_ERROR }));
+	const origins = await readProviderOrigins({
+		agentDir: options.agentDir,
+		piDirs:
+			options.piDirs ??
+			discoveryInput({ cwd: options.cwd ?? options.agentDir, agentDir: options.agentDir, projectTrusted: false })
+				.piRoots,
+		...(options.home ? { home: options.home } : {}),
+		// Only entries that give a usable credential: signed-out, keyless and unset-reference entries are not an origin.
+		octocodeAuthIds: [...stored.byProvider].filter(([, sources]) => sources.length > 0).map(([id]) => id),
+		settings: manager,
+	});
+	const credentialsError = stored.error ?? origins.error;
 
 	return {
 		protocolVersion: CONFIG_PROTOCOL_VERSION,
 		generatedAt: Date.now(),
 		keychainAvailable: keychain !== undefined && keychain !== null,
-		providers: providerRows(stored, env),
-		...(stored.error ? { credentialsError: stored.error } : {}),
+		providers: providerRows(stored, origins, env),
+		sources: origins.sources,
+		...(credentialsError ? { credentialsError } : {}),
 		settings: settingRows(manager),
 		...(settingsErrors.length > 0 ? { settingsErrors } : {}),
 		...(options.cwd !== undefined ? { workspace: { repo: repoKey(options.cwd).name, trusted } } : {}),

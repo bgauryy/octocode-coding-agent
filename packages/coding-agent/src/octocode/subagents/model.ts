@@ -2,6 +2,7 @@ import { activeRates } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
 import { DAY_MS } from "../shared/util.ts";
 import { type Catalog, listedCost, lookup } from "./catalog.ts";
+import { closeModels } from "./close-models.ts";
 
 /** A model the parent can use, as Octocode's model registry lists it (prices per million tokens). */
 export interface ModelRef {
@@ -251,13 +252,21 @@ export function modelLabel(details: { model?: string; fallback?: string; refused
 		: (model ?? "");
 }
 
-/** The models a purpose or a preferred model may route to: those of a provider that refused its credential are skipped, except the parent's own. */
+/** `ProviderHealth.refused`: the model, or unless `proven` its provider's credential, was just refused. */
+export type Refused = (provider: string, id?: string, proven?: boolean) => boolean;
+/** The models a purpose or a preferred model may route to: refused ones are skipped, the parent's own never (it runs). */
 export const usableModels = <T extends ModelRef>(
 	available: readonly T[],
 	parent: ModelRef | undefined,
-	refused: ((provider: string) => boolean) | undefined,
+	refused: Refused | undefined,
 ): readonly T[] =>
-	refused ? available.filter((model) => model.provider === parent?.provider || !refused(model.provider)) : available;
+	refused
+		? available.filter(
+				(model) =>
+					(model.provider === parent?.provider && model.id === parent.id) ||
+					!refused(model.provider, model.id, model.provider === parent?.provider),
+			)
+		: available;
 
 /** `provider/id` (plus any `:thinking` suffix) for a requested `provider/id` or bare id, or undefined when no available model matches. */
 export function resolveModel(
@@ -279,24 +288,7 @@ export function resolveModel(
 	return undefined;
 }
 
-/** Available `provider/id` values that share name parts with the request, best first. */
-export function closeModels(requested: string, available: readonly ModelRef[], limit = 8): string[] {
-	const parts = (text: string) =>
-		text
-			.toLowerCase()
-			.split(/[^a-z0-9]+/)
-			.filter(Boolean);
-	const wanted = new Set(parts(requested));
-	const ranked = available
-		.map((model, index) => ({
-			name: `${model.provider}/${model.id}`,
-			index,
-			score: parts(`${model.provider}/${model.id}`).filter((part) => wanted.has(part)).length,
-		}))
-		.filter((entry) => entry.score > 0)
-		.sort((a, b) => b.score - a.score || a.index - b.index);
-	return [...new Set(ranked.map((entry) => entry.name))].slice(0, limit);
-}
+export { closeModels };
 
 interface RouteInput {
 	explicit?: string | undefined;
@@ -304,11 +296,8 @@ interface RouteInput {
 	available: readonly ModelRef[];
 	parent?: ModelRef | undefined;
 	catalog?: Catalog | undefined;
-	/**
-	 * Providers whose credential was just refused (`ProviderHealth.refused`): a purpose or a profile's preferred model
-	 * skips them; an explicit model and the parent's own provider (its session proves the credential) are kept.
-	 */
-	refused?: ((provider: string) => boolean) | undefined;
+	/** Just refused (`usableModels`): a purpose or preferred model skips it; an explicit model is kept. */
+	refused?: Refused | undefined;
 	/** Level for a route whose call and profile carry no `:thinking` suffix (`subagentThinking()`). */
 	thinking?: string | undefined;
 }

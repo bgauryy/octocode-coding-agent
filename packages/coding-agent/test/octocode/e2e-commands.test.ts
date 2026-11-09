@@ -135,7 +135,7 @@ const CASES: Record<string, Case> = {
 	},
 	// Terminal commands that open a picker or menu.
 	help: { check: asks(/\/btw\s+Ask a quick side question/) },
-	settings: { check: asks(/Skill commands/) },
+	configuration: { check: asks(/Interface and session/) },
 	model: { check: asks(/Models from configured providers/) },
 	effort: { check: asks(/Thinking Level/) },
 	modelsettings: { check: asks(/Model settings/) },

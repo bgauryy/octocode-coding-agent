@@ -20,7 +20,7 @@ describe("prompt", () => {
 		});
 		// The research section routes code search to the server and keeps a fallback for a missing tool.
 		expect(root).toContain(
-			"- Use the research tools (`mcp__research__*`) to check code before you rely on it: search with `search_code` and read source you will edit with `read_file`, instead of `rg`, `grep`, `find`, `ls`, `cat` or `sed -n` in bash, unless you verified they cannot do it. A quick look at one known file or a command's output can stay in bash. Their descriptions route each question, including sources outside this checkout.",
+			"- Research, checks and quality work use the research tools (`mcp__research__*`): search with `search_code` and read source you will edit with `read_file`. A quick fetch of one known file or a command's output may use bash. Their descriptions route each question, including sources outside this checkout.",
 		);
 		expect(root).toContain(
 			"- If one of these tools fails or is missing, say so and restart its server; if it still fails, fall back to bash search (`rg`, `fd`, `sed -n`).",
@@ -72,7 +72,7 @@ describe("prompt", () => {
 		const child = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		expect(child).toContain("You are a subagent");
 		// Without Octocode MCP, research falls back to bash; no removed core tool is named.
-		expect(child).toContain("Search with bash (`rg`, `fd`) when the location is unknown");
+		expect(child).toContain("Search with bash when the location is unknown");
 		expect(child).toContain(
 			"Use `web` (or the `gh` CLI in bash when available) for GitHub and package registry lookups",
 		);
@@ -181,7 +181,7 @@ describe("prompt", () => {
 			"`.octocode/tmp/`, a topic's `.octocode/<topic>/tmp/`, or Markdown files under `.octocode/`",
 		);
 		expect(reader).toContain("`.octocode/tmp/` or a topic's `.octocode/<topic>/tmp/` (to unpack");
-		expect(reader).toContain("unless you verified they cannot do it");
+		expect(reader).toContain("A quick fetch of one known file or a command's output may use bash");
 		// It limits only the writers this agent has: here `file` and MCP but no shell.
 		expect(
 			octocodePrompt({
@@ -236,7 +236,7 @@ describe("prompt", () => {
 	it("states the report contract once, in the child's task, and nowhere in the policy, lean prompt or roles", () => {
 		const contract = reportContract();
 		expect(contract).toMatch(
-			/^Your final answer is your report and reaches your coordinator by itself\. Start it with the outcome word itself and a period, colon or dash, not a heading or a sentence: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\); then the answer or changes, verification, a `Noticed:` line \(anything surprising, risky or wrong you saw, even outside your task, or `none`\), and the decisions or questions left for your coordinator\./,
+			/^Your final answer is your report and reaches your coordinator by itself\. Start it with the outcome word itself and a period, colon or dash, not a heading or a sentence: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\); then the answer or changes with the source of each claim \(path:line, command, URL\), verification, a `Noticed:` line \(anything surprising, risky or wrong you saw, even outside your task, or `none`\), and the decisions or questions left for your coordinator\./,
 		);
 		// The machine-consumed outcome words and the preview size the parent keeps.
 		expect(contract).toContain("`blocked` report");
@@ -320,7 +320,9 @@ describe("prompt", () => {
 			const protocols = input.canDelegate ? 1 : 0;
 			expect(prompt.match(/- Lead with the result\./g) ?? []).toHaveLength(protocols);
 			expect(prompt.match(/Send an update only when it changes what the user knows/g) ?? []).toHaveLength(protocols);
-			expect(prompt.match(/Say what you verified and what you did not\./g) ?? []).toHaveLength(protocols);
+			expect(
+				prompt.match(/Say what you verified and what you did not, with each claim's source beside it\./g) ?? [],
+			).toHaveLength(protocols);
 			expect(prompt.match(/A finding gives location, trigger, impact, cause and fix/g) ?? []).toHaveLength(protocols);
 			expect(
 				prompt.match(/A blocker gives the situation, evidence, your assessment and what you need from whom\./g) ?? [],
@@ -363,7 +365,7 @@ describe("prompt", () => {
 		expect(child).not.toContain("end a turn only when the next step needs the user");
 		// The team's status and the summary go to the user; a child's report contract already asks for verification.
 		expect(root).toContain(
-			"- While agents, jobs or items you started are open, end a reply with a status table (agent or job, item, state) only if their state changed since your last reply. When the work closes, end with a TL;DR of 2 to 4 lines: what changed, checks and results, what is left.",
+			"- While agents, jobs or items you started are open, end a reply with a status table (agent or job, item, state) only if their state changed since your last reply. When the work closes in a reply longer than one screen, end with a TL;DR of 2 to 4 lines: what changed, checks and results, what is left; a shorter reply's first line is its summary.",
 		);
 		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
@@ -435,7 +437,7 @@ describe("prompt", () => {
 			canSave: true,
 		});
 		const writerOnly = [
-			"ask before adding a dependency the request or project instructions do not allow",
+			"before adding a dependency the request or project instructions do not allow, ask",
 			"Leave the code clean",
 		];
 		for (const prompt of [root, writer]) for (const rule of writerOnly) expect(prompt).toContain(rule);

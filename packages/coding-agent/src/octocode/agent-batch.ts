@@ -21,6 +21,16 @@ export function tasksSchema(): TSchema & { description: string } {
 	} as unknown as TSchema & { description: string };
 }
 
+/**
+ * A row's head word: `error` when the entry never ran; otherwise the child's own outcome when it is not `done`
+ * (`failed`, `partial`, `blocked`), so a child that ran and failed does not read `ok`; else `ok`.
+ */
+function rowLabel(each: { ok: boolean; details?: unknown }): string {
+	if (!each.ok) return "error";
+	const outcome = isRecord(each.details) ? each.details.outcome : undefined;
+	return typeof outcome === "string" && outcome && outcome !== "done" ? outcome : "ok";
+}
+
 const textOf = (result: Result) =>
 	result.content
 		.filter((part) => part.type === "text")
@@ -112,7 +122,7 @@ export async function runBatch(
 		return { goal, ok: false, text: errorMessage(each.reason) };
 	});
 	const text = outcomes
-		.map((each, index) => `#${index + 1} ${each.ok ? "ok" : "error"}: ${each.goal}\n${each.text}`)
+		.map((each, index) => `#${index + 1} ${rowLabel(each)}: ${each.goal}\n${each.text}`)
 		.join("\n\n");
 	if (outcomes.every((each) => !each.ok)) throw new Error(text);
 	return {

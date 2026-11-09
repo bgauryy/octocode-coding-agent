@@ -1,6 +1,6 @@
 # Development
 
-Part of the [`@octocodeai/octocode-ai` guide](../README.md).
+Part of the [`@octocodeai/octocode-ai`](../README.md) guide. For contributors to this repository.
 
 ## Adding a New Provider
 
@@ -43,20 +43,16 @@ Each catalog fetch times out after 60 seconds (`scripts/generate-models/fetchers
 
 The local Ollama tests are opt-in: they run only with `OCTOCODE_LOCAL_LLM=1`, after `ollama pull gpt-oss:20b`, and `OCTOCODE_NO_LOCAL_LLM` still disables them (`test/local-ollama.ts`).
 
-Create or update test files to cover the new provider:
+Cover the new provider in `test/`:
 
-- `stream.test.ts` - Basic streaming and tool use
-- `tokens.test.ts` - Token usage reporting
-- `abort.test.ts` - Request cancellation
-- `empty.test.ts` - Empty message handling
-- `context-overflow.test.ts` - Context limit errors
-- `image-limits.test.ts` - Image support (if applicable)
-- `unicode-surrogate.test.ts` - Unicode handling
-- `tool-call-without-result.test.ts` - Orphaned tool calls
-- `image-tool-result.test.ts` - Images in tool results
-- `total-tokens.test.ts` - Token counting accuracy
-- `cross-provider-handoff.test.ts` - Cross-provider context replay
-- `providers.test.ts` - Provider listing and auth resolution
+| Test                                                                                         | Covers                                               |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `stream.test.ts`                                                                             | Streaming and tool use                               |
+| `tokens.test.ts`, `total-tokens.test.ts`                                                     | Usage reporting and counting                         |
+| `abort.test.ts`, `empty.test.ts`, `context-overflow.test.ts`                                 | Cancellation, empty messages, context limit errors   |
+| `unicode-surrogate.test.ts`, `tool-call-without-result.test.ts`, `image-tool-result.test.ts` | Unicode, orphaned tool calls, images in tool results |
+| `cross-provider-handoff.test.ts`                                                             | Context replay across providers                      |
+| `providers.test.ts`                                                                          | Provider listing and auth resolution                 |
 
 For `cross-provider-handoff.test.ts`, add at least one provider/model pair. If the provider exposes multiple model families (for example GPT and Claude), add at least one pair per family.
 
@@ -87,3 +83,51 @@ Update this package's documentation:
 ## Shared stream framing
 
 Provider SSE framing for Anthropic, OpenAI Responses, Codex SSE and Mistral is shared in `src/utils/server-sent-events.ts`. Adapters retain their own event schemas, completion validation and errors. Mistral initial HTTP requests use the shared retry policy; a stream that has emitted content is never replayed automatically.
+
+## Faux provider
+
+`fauxProvider()` builds an in-memory provider with scripted responses for tests and demos.
+
+```typescript
+import {
+	createModels,
+	fauxAssistantMessage,
+	fauxProvider,
+	fauxText,
+	fauxThinking,
+	fauxToolCall,
+} from "@octocodeai/octocode-ai";
+
+const faux = fauxProvider({ tokensPerSecond: 50 }); // pacing optional
+const models = createModels();
+models.setProvider(faux.provider);
+const model = faux.getModel();
+
+faux.setResponses([
+	fauxAssistantMessage([fauxThinking("Inspect first."), fauxToolCall("echo", { text: "package.json" })], {
+		stopReason: "toolUse",
+	}),
+]);
+const first = await models.complete(model, context, { sessionId: "session-1", cacheRetention: "short" });
+
+faux.appendResponses([fauxAssistantMessage([fauxText("Here is the summary.")])]);
+for await (const event of models.stream(model, context)) console.log(event.type);
+
+// Several models for model-switching tests
+const multi = fauxProvider({
+	provider: "faux-multi",
+	models: [
+		{ id: "faux-fast", reasoning: false },
+		{ id: "faux-thinker", reasoning: true },
+	],
+});
+const thinker = multi.getModel("faux-thinker");
+```
+
+| Behavior    | Detail                                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Queue       | Responses are consumed in request start order; `setResponses` replaces the queue, `appendResponses` adds. An empty queue returns an assistant error with `errorMessage: "No more faux responses queued"` |
+| Inspection  | `faux.models`, `faux.getModel(id?)`, `faux.getPendingResponseCount()`, `faux.state.callCount`                                                                                                            |
+| Usage       | Estimated at about 1 token per 4 characters; with `sessionId` and `cacheRetention` not `"none"`, cache reads and writes are simulated                                                                    |
+| Streaming   | Tool arguments stream as `toolcall_delta` chunks; each chunk takes its own microtask unless `tokensPerSecond` paces it                                                                                   |
+| Concurrency | One scripted flow per handle; use separate providers with distinct `provider` ids for concurrent flows                                                                                                   |

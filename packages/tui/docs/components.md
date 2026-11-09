@@ -1,355 +1,106 @@
-# Built-in Components
+# Built-in components
 
-Part of the [`@octocodeai/octocode-tui` guide](../README.md). To write your own, see [Custom components](custom-components.md).
+Part of the [`@octocodeai/octocode-tui` guide](../README.md). To write your own, see [Writing a component](../README.md#writing-a-component). Styling arguments are functions `(text) => string`.
 
-## Container
+| Component                                       | Constructor                                                                | Notes                                                                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `Container`                                     | `new Container()`                                                          | `addChild`, `removeChild`                                                                                       |
+| `Box`                                           | `new Box(paddingX = 1, paddingY = 1, bgFn?)`                               | Padding and background for children; `setBgFn`                                                                  |
+| `Text`                                          | `new Text(text, paddingX = 1, paddingY = 1, bgFn?)`                        | Wraps words; `setText`, `setCustomBgFn`, `setHangingIndent(true)` keeps a line's leading spaces on wrapped rows |
+| `TruncatedText`                                 | `new TruncatedText(text, paddingX = 0, paddingY = 0)`                      | One line cut to the width: status lines, headers                                                                |
+| `Spacer`                                        | `new Spacer(lines = 1)`                                                    | Empty lines                                                                                                     |
+| `Input`                                         | `new Input(options?)`                                                      | Options `secret`, `prompt` (`"> "`), `placeholder`, `placeholderStyle`; `onSubmit`, `setValue`, `getValue`      |
+| `Editor`                                        | `new Editor(tui, theme, options?)`                                         | `tui` is required for height-aware scrolling                                                                    |
+| `Markdown`                                      | `new Markdown(text, paddingX, paddingY, theme, defaultStyle?, options?)`   | `setText`                                                                                                       |
+| `Loader`                                        | `new Loader(tui, spinnerFn, messageFn, message = "Loading…", indicator?)`  | `start`, `stop`, `setMessage`                                                                                   |
+| `CancellableLoader`                             | Same as `Loader`                                                           | Escape aborts: `signal`, `aborted`, `onAbort`                                                                   |
+| `SelectList`                                    | `new SelectList(items, maxVisible, theme, layout?, options?)`              | `onSelect`, `onCancel`, `onSelectionChange`, `setFilter`                                                        |
+| `SettingsList`                                  | `new SettingsList(items, maxVisible, theme, onChange, onCancel, options?)` | `updateValue(id, value)`                                                                                        |
+| `Image`                                         | `new Image(base64, mimeType, theme, options?)`                             | PNG, JPEG, GIF, WebP; see [images](#image)                                                                      |
+| `ScrollView`, `VStack`, `HStack`, `MouseRegion` | —                                                                          | [Core API](core-api.md#alternate-screen-layouts)                                                                |
 
-Groups child components.
+`Input` never holds a control character: typed and pasted text drop them, and `setValue` strips C0, DEL and C1 controls (line breaks become spaces, a tab four spaces), so a stored label cannot write a terminal sequence.
 
-```typescript
-const container = new Container();
-container.addChild(component);
-container.removeChild(component);
-```
+## Key bindings
 
-## Box
+| Key                                        |       `Input`       |                        `Editor`                        |
+| ------------------------------------------ | :-----------------: | :----------------------------------------------------: |
+| `Enter`                                    |       Submit        |                         Submit                         |
+| `Shift+Enter` / `Ctrl+Enter` / `Alt+Enter` |          —          | New line (terminal-dependent; Alt+Enter most reliable) |
+| `Tab`                                      |          —          |                      Autocomplete                      |
+| `Ctrl+A` / `Ctrl+E`                        |   Line start/end    |                     Line start/end                     |
+| `Ctrl+W` or `Alt+Backspace`                |  Delete word back   |                    Delete word back                    |
+| `Alt+D` or `Alt+Delete`                    |          —          |                  Delete word forward                   |
+| `Ctrl+U` / `Ctrl+K`                        | Delete to start/end |                  Delete to start/end                   |
+| `Ctrl+Left/Right`, `Alt+Left/Right`        |      Word move      |                   Arrows, word move                    |
+| `Ctrl+]` / `Ctrl+Alt+]`                    |          —          |   Jump forward/backward to the next typed character    |
 
-Container that applies padding and background color to all children.
-
-```typescript
-const box = new Box(
-	1, // paddingX (default: 1)
-	1, // paddingY (default: 1)
-	(text) => chalk.bgGray(text), // optional background function
-);
-box.addChild(new Text("Content"));
-box.setBgFn((text) => chalk.bgBlue(text)); // Change background dynamically
-```
-
-## Text
-
-Displays multi-line text with word wrapping and padding.
-
-```typescript
-const text = new Text(
-	"Hello World", // text content
-	1, // paddingX (default: 1)
-	1, // paddingY (default: 1)
-	(text) => chalk.bgGray(text), // optional background function
-);
-text.setText("Updated text");
-text.setCustomBgFn((text) => chalk.bgBlue(text));
-text.setHangingIndent(true); // wrapped rows keep the leading spaces of the line they continue
-```
-
-## TruncatedText
-
-Single-line text that truncates to fit viewport width. Useful for status lines and headers.
-
-```typescript
-const truncated = new TruncatedText(
-	"This is a very long line that will be truncated...",
-	0, // paddingX (default: 0)
-	0, // paddingY (default: 0)
-);
-```
-
-## Input
-
-Single-line text input with horizontal scrolling.
-
-```typescript
-const input = new Input();
-input.onSubmit = (value) => console.log(value);
-input.setValue("initial");
-input.getValue();
-```
-
-Clicking positions the cursor and gives the input keyboard focus in alternate-screen mode.
-
-The value never holds a control character: typed and pasted text drop them, and `setValue` removes C0, DEL and C1 controls (line breaks become spaces, a tab four spaces), so a stored name or label cannot write a terminal sequence when the input draws it.
-
-**Key Bindings:**
-
-- `Enter` - Submit
-- `Ctrl+A` / `Ctrl+E` - Line start/end
-- `Ctrl+W` or `Alt+Backspace` - Delete word backwards
-- `Ctrl+U` - Delete to start of line
-- `Ctrl+K` - Delete to end of line
-- `Ctrl+Left` / `Ctrl+Right` - Word navigation
-- `Alt+Left` / `Alt+Right` - Word navigation
-- Arrow keys, Backspace, Delete work as expected
+In alternate-screen mode, clicking positions the cursor and focuses an `Input`, and `Editor` also accepts clicks on autocomplete rows.
 
 ## Editor
 
-Multi-line text editor with autocomplete, file completion, paste handling, and vertical scrolling when content exceeds terminal height.
-
 ```typescript
-interface EditorTheme {
-  borderColor: (str: string) => string;
-  selectList: SelectListTheme;
-}
-
-interface EditorOptions {
-  paddingX?: number;  // Horizontal padding (default: 0)
-}
-
-const editor = new Editor(tui, theme, options?);  // tui is required for height-aware scrolling
-editor.onSubmit = (text) => console.log(text);
-editor.onChange = (text) => console.log("Changed:", text);
-editor.disableSubmit = true; // Disable submit temporarily
+const editor = new Editor(tui, { borderColor: (s) => chalk.blue(s), selectList: selectTheme }, { paddingX: 1 });
+editor.onSubmit = (text) => send(text);
+editor.onChange = (text) => draft(text);
+editor.disableSubmit = true; // temporarily
 editor.setAutocompleteProvider(provider);
-editor.borderColor = (s) => chalk.blue(s); // Change border dynamically
-editor.setPaddingX(1); // Update horizontal padding dynamically
-editor.getPaddingX();  // Get current padding
-// Draw the border rows yourself; `standard()` draws the editor's own (scroll markers, a subclass's override)
 editor.borderDecorator = (edge, width, hiddenLineCount, standard) =>
-  hiddenLineCount > 0 ? standard() : chalk.blue("─".repeat(width));
-editor.visibleLineCount; // Text rows the last render drew between the top and bottom border
+	hiddenLineCount > 0 ? standard() : chalk.blue("─".repeat(width));
 ```
 
-**Features:**
+| Member                                     | Purpose                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------- |
+| `EditorOptions`                            | `paddingX` (default 0), `autocompleteMaxVisible`                                |
+| `borderColor`, `setPaddingX`/`getPaddingX` | Change style and padding at runtime                                             |
+| `borderDecorator`                          | Draws a border row itself; `standard()` draws the editor's own (scroll markers) |
+| `visibleLineCount`                         | Text rows drawn between the borders in the last render                          |
 
-- Click-to-position cursor and clickable autocomplete rows in alternate-screen mode
-- Multi-line editing with word wrap
-- Slash command autocomplete (type `/`)
-- File path autocomplete (press `Tab`)
-- Large paste handling (>10 lines creates `[paste #1 +50 lines]` marker); control characters other than newlines are removed from pasted text
-- Horizontal lines above/below editor
-- Fake cursor rendering (hidden real cursor)
-
-**Key Bindings:**
-
-- `Enter` - Submit
-- `Shift+Enter`, `Ctrl+Enter`, or `Alt+Enter` - New line (terminal-dependent, Alt+Enter most reliable)
-- `Tab` - Autocomplete
-- `Ctrl+K` - Delete to end of line
-- `Ctrl+U` - Delete to start of line
-- `Ctrl+W` or `Alt+Backspace` - Delete word backwards
-- `Alt+D` or `Alt+Delete` - Delete word forwards
-- `Ctrl+A` / `Ctrl+E` - Line start/end
-- `Ctrl+]` - Jump forward to character (awaits next keypress, then moves cursor to first occurrence)
-- `Ctrl+Alt+]` - Jump backward to character
-- Arrow keys, Backspace, Delete work as expected
+Pastes over 10 lines become a `[paste #1 +50 lines]` marker (shorter long pastes show `[paste #N <chars> chars]`); control characters other than newlines are removed from pasted text. Autocomplete: see [input](input-and-terminal.md#autocomplete).
 
 ## Markdown
 
-Renders markdown with syntax highlighting and theming support.
+Supports headings, emphasis, code blocks, lists, links, blockquotes, tables (rule under the header, rules between rows only when a row wraps) and task lists (`☐` / `✔`, done items struck through). HTML tags render as text. Rendered lines are cached.
+
+| Theme field (`MarkdownTheme`)                                        | Styles                                                      |
+| -------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `heading`, `link`, `linkUrl`, `code`, `codeBlock`, `codeBlockBorder` | Headings, links, code                                       |
+| `quote`, `quoteBorder`, `hr`, `listBullet`                           | Blocks                                                      |
+| `bold`, `italic`, `strikethrough`, `underline`                       | Inline styles                                               |
+| `highlightCode?(code, lang?)`                                        | Syntax highlighting; long lines wrap under the block indent |
+| `codeBlockLabel?`, `alert?`, `codeBlockIndent?`                      | Language label, GitHub alerts, indent (`"  "`)              |
+
+`MarkdownOptions`: `preserveOrderedListMarkers` (also keeps task lists as source `[ ]`/`[x]`), `preserveBackslashEscapes`, `transform(markdown, availableWidth)`. `DefaultTextStyle`: `color`, `bgColor`, `bold`, `italic`, `strikethrough`, `underline`.
+
+## SelectList and SettingsList
 
 ```typescript
-interface MarkdownTheme {
-	heading: (text: string) => string;
-	link: (text: string) => string;
-	linkUrl: (text: string) => string;
-	code: (text: string) => string;
-	codeBlock: (text: string) => string;
-	codeBlockBorder: (text: string) => string;
-	quote: (text: string) => string;
-	quoteBorder: (text: string) => string;
-	hr: (text: string) => string;
-	listBullet: (text: string) => string;
-	bold: (text: string) => string;
-	italic: (text: string) => string;
-	strikethrough: (text: string) => string;
-	underline: (text: string) => string;
-	highlightCode?: (code: string, lang?: string) => string[];
-}
-
-interface DefaultTextStyle {
-	color?: (text: string) => string;
-	bgColor?: (text: string) => string;
-	bold?: boolean;
-	italic?: boolean;
-	strikethrough?: boolean;
-	underline?: boolean;
-}
-
-const md = new Markdown(
-	"# Hello\n\nSome **bold** text",
-	1, // paddingX
-	1, // paddingY
-	theme, // MarkdownTheme
-	defaultStyle, // optional DefaultTextStyle
-);
-md.setText("Updated markdown");
-```
-
-**Features:**
-
-- Headings, bold, italic, code blocks, lists, links, blockquotes
-- HTML tags rendered as plain text
-- Optional syntax highlighting via `highlightCode`; long code lines wrap under the block indent and the line's own indentation
-- Tables with a rule under the header; rules between rows appear only when a row wraps
-- Task lists as `☐` / `✔` (done items struck through), or the source `[ ]` / `[x]` with `preserveOrderedListMarkers`
-- Padding support
-- Render caching for performance
-
-## Loader
-
-Animated loading spinner.
-
-```typescript
-const loader = new Loader(
-	tui, // TUI instance for render updates
-	(s) => chalk.cyan(s), // spinner color function
-	(s) => chalk.gray(s), // message color function
-	"Loading...", // message (default: "Loading...")
-);
-loader.start();
-loader.setMessage("Still loading...");
-loader.stop();
-```
-
-## CancellableLoader
-
-Extends Loader with Escape key handling and an AbortSignal for cancelling async operations.
-
-```typescript
-const loader = new CancellableLoader(
-	tui, // TUI instance for render updates
-	(s) => chalk.cyan(s), // spinner color function
-	(s) => chalk.gray(s), // message color function
-	"Working...", // message
-);
-loader.onAbort = () => done(null); // Called when user presses Escape
-doAsyncWork(loader.signal).then(done);
-```
-
-**Properties:**
-
-- `signal: AbortSignal` - Aborted when user presses Escape
-- `aborted: boolean` - Whether the loader was aborted
-- `onAbort?: () => void` - Callback when user presses Escape
-
-## SelectList
-
-Interactive selection list with keyboard navigation.
-
-```typescript
-interface SelectItem {
-	value: string;
-	label: string;
-	description?: string;
-}
-
-interface SelectListTheme {
-	selectedPrefix: (text: string) => string;
-	selectedText: (text: string) => string;
-	description: (text: string) => string;
-	scrollInfo: (text: string) => string;
-	noMatch: (text: string) => string;
-}
-
-const list = new SelectList(
-	[
-		{ value: "opt1", label: "Option 1", description: "First option" },
-		{ value: "opt2", label: "Option 2", description: "Second option" },
-	],
-	5, // maxVisible
-	theme, // SelectListTheme
-);
-
-list.onSelect = (item) => console.log("Selected:", item);
-list.onCancel = () => console.log("Cancelled");
-list.onSelectionChange = (item) => console.log("Highlighted:", item);
-list.setFilter("opt"); // Filter items
-```
-
-**Controls:**
-
-- Mouse move/wheel: Highlight rows in alternate-screen mode
-- Click: Select a row
-- Arrow keys: Navigate
-- Enter: Select
-- Escape: Cancel
-
-## SettingsList
-
-Settings panel with value cycling and submenus.
-
-```typescript
-interface SettingItem {
-	id: string;
-	label: string;
-	description?: string;
-	currentValue: string;
-	values?: string[]; // If provided, Enter/Space cycles through these
-	submenu?: (currentValue: string, done: (selectedValue?: string) => void) => Component;
-}
-
-interface SettingsListTheme {
-	label: (text: string, selected: boolean) => string;
-	value: (text: string, selected: boolean) => string;
-	description: (text: string) => string;
-	cursor: string;
-	hint: (text: string) => string;
-}
+const list = new SelectList([{ value: "a", label: "Option A", description: "First" }], 5, theme);
+list.onSelect = (item) => use(item);
 
 const settings = new SettingsList(
 	[
 		{ id: "theme", label: "Theme", currentValue: "dark", values: ["dark", "light"] },
-		{ id: "model", label: "Model", currentValue: "gpt-4", submenu: (val, done) => modelSelector },
+		{ id: "model", label: "Model", currentValue: "gpt-4", submenu: (value, done) => modelPicker(value, done) },
 	],
-	10, // maxVisible
-	theme, // SettingsListTheme
-	(id, newValue) => console.log(`${id} changed to ${newValue}`),
-	() => console.log("Cancelled"),
+	10,
+	theme,
+	(id, value) => save(id, value),
+	() => close(),
 );
-settings.updateValue("theme", "light");
 ```
 
-**Controls:**
-
-- Mouse move/wheel: Highlight rows in alternate-screen mode
-- Click: Activate a row
-- Arrow keys: Navigate
-- Enter/Space: Activate (cycle value or open submenu)
-- Escape: Cancel
-
-## Spacer
-
-Empty lines for vertical spacing.
-
-```typescript
-const spacer = new Spacer(2); // 2 empty lines (default: 1)
-```
+| List           | Theme fields                                                                                                      | Controls                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `SelectList`   | `selectedPrefix`, `selectedText`, `description`, `scrollInfo`, `noMatch` (optional `matchHighlight`, `directory`) | Arrows move, `Enter` selects, `Escape` cancels; mouse move/wheel highlights, click selects (alternate screen) |
+| `SettingsList` | `label(text, selected)`, `value(text, selected)`, `description`, `cursor`, `hint`                                 | Arrows move, `Enter`/`Space` cycles `values` or opens the `submenu`, `Escape` cancels; mouse as above         |
 
 ## Image
 
-Renders images inline for terminals that support the Kitty graphics protocol (Kitty, Ghostty, WezTerm) or iTerm2 inline images. Falls back to a text placeholder on unsupported terminals, and also when the data is not plain base64, since other bytes could end the terminal's image sequence early.
+Inline images use the Kitty graphics protocol (Kitty, Ghostty, WezTerm) or iTerm2 inline images; other terminals, and data that is not plain base64, get a text placeholder. `ImageOptions`: `maxWidthCells`, `maxHeightCells`, `filename`. Dimensions come from the header; `setImageTranscoder()` converts formats a terminal cannot show.
 
-```typescript
-interface ImageTheme {
-	fallbackColor: (str: string) => string;
-}
-
-interface ImageOptions {
-	maxWidthCells?: number;
-	maxHeightCells?: number;
-	filename?: string;
-}
-
-const image = new Image(
-	base64Data, // base64-encoded image data
-	"image/png", // MIME type
-	theme, // ImageTheme
-	options, // optional ImageOptions
-);
-tui.addChild(image);
-```
-
-Supported formats: PNG, JPEG, GIF, WebP. Dimensions are parsed from the image headers automatically.
-
-### Image capability detection
-
-`getCapabilities().images` returns `"kitty"`, `"iterm2"`, or `null`. Environment hints include `TERM=xterm-kitty`, so Kitty sessions can be recognized without local window variables.
-
-On interactive stdin and stdout, `ProcessTerminal` also sends a Kitty graphics query with a one-pixel PNG. It shares the keyboard negotiation's device-attributes sentinel and does not wait before accepting input. A matching `OK` enables Kitty images; an error or a device-attributes reply without a graphics acknowledgement disables them. If neither reply arrives, environment detection remains in effect. The query does not display or store the pixel. See the [Kitty protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/#querying-support-and-available-transmission-mediums).
-
-The optional third callback to `Terminal.start(onInput, onResize, onCapabilitiesChange)` reports capability changes. The TUI uses it to invalidate mounted components, query cell dimensions, and repaint images in both renderers. Custom components that choose an image or text fallback during construction should reconsider that choice in `invalidate()`.
-
-Explicit capability overrides take precedence. Automatic probing is skipped for redirected streams, tmux/screen (inside tmux, Kitty images use passthrough and Unicode placeholders; see [Terminal multiplexers](input-and-terminal.md#terminal-multiplexers)), Rex, and terminals detected as using the iTerm2 image protocol. `OCTOCODE_IMAGE_PROTOCOL=kitty`, `iterm2`, or `none` forces the corresponding choice; `auto` keeps detection enabled.
-
-### Alternate-screen image compatibility
-
-`TuiAltScreen` supports inline images and partial viewport cropping in terminals that implement the Kitty graphics protocol, including Kitty and Ghostty. iTerm2's inline-image protocol does not provide operations to delete an existing placement or crop its source while scrolling. To prevent stale images from remaining over repainted content, `TuiAltScreen` renders image components as text placeholders in iTerm2. `TuiMainScreen` continues to render iTerm2 inline images normally.
+- `getCapabilities().images` is `"kitty"`, `"iterm2"` or `null`, from environment hints such as `TERM=xterm-kitty`.
+- On interactive stdin and stdout, `ProcessTerminal` sends a one-pixel Kitty query that shares the device-attributes sentinel. `OK` enables Kitty; an error or an unacknowledged reply disables it; no reply keeps the environment guess. Nothing is shown or stored. Redirected streams, tmux/screen, Rex and iTerm2 terminals skip it.
+- `OCTOCODE_IMAGE_PROTOCOL=kitty|iterm2|none` forces a choice (`auto` keeps detection); explicit capability overrides win.
+- A capability change (the `Terminal.start` third callback) invalidates components, re-queries cell size and repaints. Components that pick image or text at construction should re-decide in `invalidate()`.
+- `TuiAltScreen` supports Kitty images with vertical cropping, but draws iTerm2 images as text (iTerm2 cannot delete or crop placements while scrolling); `TuiMainScreen` still draws them. tmux: [images in tmux](input-and-terminal.md#images-in-tmux).

@@ -5,10 +5,8 @@ import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../package-m
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 
 export type ResourceType = "extensions" | "skills" | "prompts" | "themes";
-export type ConfigWriteScope = "global" | "project";
 export type SettingsScope = "user" | "project";
 export type ProjectOverrideState = "inherit" | "load" | "unload";
-export type ScopedResolvedPaths = Record<ConfigWriteScope, ResolvedPaths>;
 
 export const RESOURCE_TYPES = ["extensions", "skills", "prompts", "themes"] as const satisfies readonly ResourceType[];
 
@@ -29,7 +27,7 @@ export interface ResourceItem {
 	subgroupKey: string;
 }
 
-export interface ResourceSubgroup {
+interface ResourceSubgroup {
 	type: ResourceType;
 	label: string;
 	items: ResourceItem[];
@@ -164,8 +162,3 @@ export function buildGroups(resolved: ResolvedPaths, agentDir: string): Resource
 
 	return groups;
 }
-
-export type FlatEntry =
-	| { type: "group"; group: ResourceGroup }
-	| { type: "subgroup"; subgroup: ResourceSubgroup; group: ResourceGroup }
-	| { type: "item"; item: ResourceItem };

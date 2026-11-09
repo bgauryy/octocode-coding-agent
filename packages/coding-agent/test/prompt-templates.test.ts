@@ -435,7 +435,7 @@ describe("parseCommandArgs", () => {
 
 describe("expandPromptTemplate", () => {
 	test("qualifies core and extension collisions while preserving source and arguments", () => {
-		const templates = ["settings", "custom", "review"].map((name) => ({
+		const templates = ["configuration", "custom", "review"].map((name) => ({
 			name,
 			description: name,
 			content: `${name}: $1 / $2`,
@@ -444,16 +444,16 @@ describe("expandPromptTemplate", () => {
 		}));
 		const reserved = [{ name: "custom", invocationName: "custom:1" }];
 		const commands = getPromptCommands(templates, reserved);
-		expect(commands.map((command) => command.name)).toEqual(["prompt:settings", "prompt:custom", "review"]);
-		expect(commands[0].sourceName).toBe("settings");
+		expect(commands.map((command) => command.name)).toEqual(["prompt:configuration", "prompt:custom", "review"]);
+		expect(commands[0].sourceName).toBe("configuration");
 		expect(commands[0].template).toBe(templates[0]);
-		expect(expandPromptTemplate('/prompt:settings "two words" value', templates, reserved)).toBe(
-			"settings: two words / value",
+		expect(expandPromptTemplate('/prompt:configuration "two words" value', templates, reserved)).toBe(
+			"configuration: two words / value",
 		);
 		expect(expandPromptTemplate("/prompt:custom a b", templates, reserved)).toBe("custom: a / b");
 		expect(expandPromptTemplate("/review a b", templates, reserved)).toBe("review: a / b");
 		expect(expandPromptTemplate("/prompt:review a b", templates, reserved)).toBe("/prompt:review a b");
-		expect(expandPromptTemplate("/settings a b", templates, reserved)).toBe("/settings a b");
+		expect(expandPromptTemplate("/configuration a b", templates, reserved)).toBe("/configuration a b");
 	});
 
 	test("keeps qualified prompts distinct from extension names and duplicate templates", () => {

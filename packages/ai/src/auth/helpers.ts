@@ -1,4 +1,4 @@
-import type { ApiKeyAuth, Credential, OAuthAuth } from "./types.ts";
+import type { ApiKeyAuth, AuthInteraction, Credential, OAuthAuth } from "./types.ts";
 
 /** Signed-out account registrations are not authentication credentials. */
 export function isActiveCredential(credential: Credential | undefined): credential is Credential {
@@ -11,11 +11,13 @@ export function isActiveCredential(credential: Credential | undefined): credenti
  * Providers with non-standard resolution (provider env, ambient files, IAM)
  * write their own `ApiKeyAuth`.
  */
-export function envApiKeyAuth(name: string, envVars: readonly string[]): ApiKeyAuth {
+export function envApiKeyAuth(name: string, envVars: readonly string[], keyPage?: string): ApiKeyAuth {
 	return {
 		name,
+		...(keyPage ? { keyPage } : {}),
 		login: async (interaction) => {
 			interaction.signal.throwIfAborted();
+			if (keyPage) showKeyPage(interaction, keyPage, name);
 			const key = await interaction.prompt({ type: "secret", message: `Enter ${name}` });
 			interaction.signal.throwIfAborted();
 			return { type: "api_key", key };
@@ -33,6 +35,18 @@ export function envApiKeyAuth(name: string, envVars: readonly string[]): ApiKeyA
 			return undefined;
 		},
 	};
+}
+
+/**
+ * Points the user at the page where the provider issues keys: hosts open it in the browser (an `auth_url` event) and
+ * show the address, so a key can be created and pasted without searching for the page.
+ */
+export function showKeyPage(interaction: Pick<AuthInteraction, "notify">, url: string, name: string): void {
+	interaction.notify({
+		type: "auth_url",
+		url,
+		instructions: `Create or copy your ${name} on this page, then paste it here.`,
+	});
 }
 
 /**

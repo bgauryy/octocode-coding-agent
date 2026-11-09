@@ -301,7 +301,8 @@ export class ResourceSettings {
 	}
 
 	private getResourcePattern(item: ResourceItem): string {
-		if (item.metadata.source === "builtin") return item.path;
+		// A built-in extension is named `builtin:<id>`; a skill of the Octocode collection, relative to its folder.
+		if (item.metadata.source === "builtin" && !item.metadata.baseDir) return item.path;
 		const scope = item.metadata.scope as "user" | "project";
 		const baseDir = item.metadata.baseDir ?? this.getTopLevelBaseDir(scope);
 		return relative(baseDir, item.path);

@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { getOctocodeSkillsDir } from "../config.ts";
 import { BUILTIN_FEATURES, NATIVE_FEATURE } from "./resource-loader/builtins.ts";
 import type { Theme } from "../theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
@@ -74,6 +75,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
 			builtinExtensions: this.builtinFeatures.map((feature) => feature.id),
+			builtinSkillsDir: nativeFeatures ? getOctocodeSkillsDir() : undefined,
 		});
 		this.disabledFeatures = new Set(options.disabledFeatures);
 		this.collections = new ResourceCollections({

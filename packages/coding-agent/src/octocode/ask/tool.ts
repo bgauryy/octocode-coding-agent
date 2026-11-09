@@ -20,8 +20,8 @@ const MAX_OPTIONS = 4;
 const MAX_QUESTIONS = 4;
 /** What a question asks for: free text, one option, or several. */
 const QUESTION_TYPES = ["text", "choice", "multi"] as const;
-/** An option the UI already offers as its write-in row. */
-const OTHER = /^\s*(other|something else)\b/i;
+/** An option that is only the write-in row the UI already offers: a bare "Other" or "Other (specify)", not "Other tools only". */
+const OTHER = /^\s*(other|something else)\s*(\([^)]*\))?\s*:?\s*$/i;
 
 export function formatAnswers(result: AskResult): string {
 	const answered = result.answers.map(answerLine);
@@ -51,11 +51,11 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 			promptSnippet: renderInstruction("tools/ask-user/snippet.md"),
 			description:
 				"Put one or more questions to the user and get the answers this turn; use it instead of ending a reply or report with a question. Batch related, self-contained questions. " +
-				`Decisions: 2-${MAX_OPTIONS} options (none for free text), each clear on its own, the recommendation your evidence and project instructions support, first, labelled ' (Recommended)'; the UI adds a write-in, so never add "Other". At most ${MAX_QUESTIONS} questions.`,
+				`Decisions: 2-${MAX_OPTIONS} options (none for free text), the recommendation your evidence and project instructions support first, labelled ' (Recommended)'; the UI adds the write-in. At most ${MAX_QUESTIONS} questions; more are refused.`,
 			parameters: Type.Object({
 				forward: Type.Optional(
 					Type.Number({
-						description: "A child's message number: its question, word for word, above your first question",
+						description: "A child's message number: its question, verbatim, above your first",
 					}),
 				),
 				questions: Type.Array(
@@ -88,7 +88,11 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				// `type` text, or no options, is a free-text question that opens its editor directly; multi means nothing without options.
 				let skippedOptions = 0;
 				const dropped = { duplicate: 0, other: 0, over: 0 };
-				const asked = params.questions.slice(0, MAX_QUESTIONS);
+				if (params.questions.length > MAX_QUESTIONS)
+					throw new Error(
+						`askUser takes at most ${MAX_QUESTIONS} questions; got ${params.questions.length}. Ask the ${MAX_QUESTIONS} that matter most, then ask the rest after the answers.`,
+					);
+				const asked = params.questions;
 				const questions: AskQuestion[] = asked
 					.filter((q) => q.question.trim())
 					.map((q) => {
@@ -104,6 +108,11 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 							else return seen.add(key);
 							return false;
 						});
+						// Free text takes no options; a choice needs a real alternative.
+						if (q.type !== "text" && (q.options?.length ?? 0) > 0 && options.length === 1)
+							throw new Error(
+								`askUser question "${clip(q.question, 60)}" has one usable option; give 2-${MAX_OPTIONS} distinct options, or none for free text.`,
+							);
 						return {
 							question: q.question,
 							options,
@@ -129,15 +138,8 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				const result: AskResult = askUserResult(asking, await ask(ctx, asking, signal ? { signal } : {}));
 				// Empty questions and options are not asked: say how many, so a missing answer is not mistaken for a skipped one.
 				const skippedQuestions = asked.length - questions.length;
-				const overQuestions = params.questions.length - asked.length;
 				const skipped = [
 					skippedQuestions > 0 && plural(skippedQuestions, "empty question"),
-					overQuestions > 0 &&
-						plural(
-							overQuestions,
-							`question past the first ${MAX_QUESTIONS}`,
-							`questions past the first ${MAX_QUESTIONS}`,
-						),
 					skippedOptions > 0 && plural(skippedOptions, "option with an empty label", "options with an empty label"),
 					dropped.duplicate > 0 && plural(dropped.duplicate, "duplicate option"),
 					dropped.other > 0 && `${plural(dropped.other, '"Other" option')} (the UI adds a write-in)`,

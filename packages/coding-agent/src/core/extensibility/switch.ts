@@ -1,4 +1,5 @@
 import { builtinEffect } from "../features/builtin-ids.ts";
+import { CORE_SKILL_SOURCE } from "./core-skill-items.ts";
 import { VENDORS } from "../discovery/vendors/registry.ts";
 import { vendorDefaultOn } from "../discovery/vendors/switch.ts";
 import { type VendorId, vendorToggleId } from "../discovery/vendors/types.ts";
@@ -9,7 +10,7 @@ import { isSwitchedOn } from "./toggles.ts";
 
 export type SwitchScope = "global" | "project";
 
-/** A whole harness for `/harness enable|disable <vendor>`: writes `harness:<id>`. */
+/** A whole harness (`harness:<id>`), switched from the `/harness` list or `/configuration`. */
 export interface VendorSwitchTarget {
 	vendor: VendorId;
 	label: string;
@@ -39,10 +40,14 @@ export function blockedReason(item: InventoryItem, scope: SwitchScope): string |
 	if (item.locked) return item.locked;
 	// The MCP owner writes a project override for any server, so both scopes reach every MCP row.
 	if (item.kind === "mcp") return undefined;
-	if (item.resource)
+	if (item.resource) {
+		// A project entry would name the installed file, which a project's settings must not carry.
+		if (scope === "project" && item.resource.metadata.source === CORE_SKILL_SOURCE)
+			return "a core skill ships with Octocode: switch it globally.";
 		return scope === "global" && item.resource.metadata.scope === "project"
 			? "comes from this project: switch it for this project."
 			: undefined;
+	}
 	// A project host key (`hooks:claude`) still reaches the project's own hook files.
 	if (scope === "project" && !item.install && !item.project && !/^hooks:[a-z]+$/.test(item.id))
 		return "not part of this repository: switch it globally.";

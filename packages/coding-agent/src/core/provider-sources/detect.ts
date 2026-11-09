@@ -47,7 +47,8 @@ const TOOLS: readonly ToolDefinition[] = [
 	{
 		id: "codex-cli",
 		label: "Codex CLI",
-		action: { kind: "sign-in", providerId: "openai-codex", alternativeProviderIds: ["openai-chatgpt"] },
+		// Sign in with ChatGPT on the OpenAI provider superseded the legacy Codex provider.
+		action: { kind: "sign-in", providerId: "openai", alternativeProviderIds: ["openai-codex"] },
 		paths: (at) => [fromEnv(at, "CODEX_HOME", join(at.home, ".codex"))],
 	},
 	{

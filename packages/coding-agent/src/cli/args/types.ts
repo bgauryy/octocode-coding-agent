@@ -27,6 +27,10 @@ export interface Args {
 	models?: string[];
 	tools?: string[];
 	excludeTools?: string[];
+	/** `--enable`, `--disable` and `--set key=value`: configuration for this run only (`configuration/run-flags.ts`). */
+	enable?: string[];
+	disable?: string[];
+	set?: string[];
 	noTools?: boolean;
 	noBuiltinTools?: boolean;
 	/** The start mode `--permission-mode` or `--dangerously-skip-permissions` (`bypass`) chose. */

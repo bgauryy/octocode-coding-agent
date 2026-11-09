@@ -12,6 +12,8 @@ import { buildGroups } from "../package-manager/resource-groups.ts";
 import { SWITCHABLE_BUILTIN_IDS, builtinEffect } from "../features/builtin-ids.ts";
 import { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
+import { getOctocodeSkillsDir } from "../../config.ts";
+import { collectionSkillDetail, coreSkillItems } from "./core-skill-items.ts";
 import { hostInstalledPlugins } from "./host-plugins.ts";
 import { vendorItems } from "../../octocode/harness/vendor-items.ts";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
@@ -175,7 +177,7 @@ async function piSkillItems(input: DiscoverInput, cwd: string, home?: string): P
 				label: name,
 				on: skill.enabled,
 				detail: `Pi (global) · ${tildePath(skill.path, home)}`,
-				locked: "Pi's own settings decide this skill; /harness disable pi switches every Pi skill off.",
+				locked: "Pi's own settings decide this skill; switching the Pi harness (harness:pi) off drops every Pi skill.",
 			});
 		}
 	}
@@ -196,6 +198,7 @@ async function resourceItems(
 		agentDir,
 		settingsManager: manager,
 		builtinExtensions,
+		builtinSkillsDir: getOctocodeSkillsDir(),
 	}).resolve(async () => "skip");
 	const groups = buildGroups(resolved, agentDir);
 	const rows = (type: "extensions" | "skills") =>
@@ -213,7 +216,7 @@ async function resourceItems(
 									depth: 0,
 									label: resource.displayName,
 									on: resource.enabled,
-									detail: `${group.label} · ${tildePath(resource.path)}`,
+									detail: collectionSkillDetail(resource) ?? `${group.label} · ${tildePath(resource.path)}`,
 									...(resource.metadata.scope === "project" ? { project: true as const } : {}),
 									resource,
 								}
@@ -243,7 +246,11 @@ interface McpRowSource {
 	exposure: string;
 	scope?: string;
 	source: string;
+	/** `core`, `workspace` or `global`, as skills are grouped (the MCP owner's `mcpServerGroup`). */
+	group?: string;
 }
+
+const groupLabel = (group: string): string => group.charAt(0).toUpperCase() + group.slice(1);
 
 /**
  * One `mcp:<name>` row per MCP server in the session's registry snapshot. The MCP owner keeps its own `enabled` setting
@@ -258,13 +265,18 @@ function mcpItems(servers: readonly McpRowSource[], home?: string): InventoryIte
 		depth: 0,
 		label: server.name,
 		on: server.enabled,
+		// Group first, as the skill rows name their folder: `Core · connected · 14 tools · direct · built in`.
 		detail: [
+			server.group ? groupLabel(server.group) : undefined,
 			server.state,
 			`${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`,
 			server.exposure,
-			server.scope ?? "configured",
-			server.scope === "default" ? "built in" : tildePath(server.source, home),
-		].join(" · "),
+			server.scope === "default"
+				? "built in"
+				: `${server.scope === "extension" ? "plugin " : ""}${tildePath(server.source, home)}`,
+		]
+			.filter(Boolean)
+			.join(" · "),
 	}));
 }
 
@@ -289,6 +301,7 @@ export async function buildInventory(options: {
 		projectTrusted: options.projectTrusted,
 		...(options.home ? { home: options.home } : {}),
 		...(options.settings.toggles ? { toggles: options.settings.toggles } : {}),
+		builtinSkillsDir: getOctocodeSkillsDir(),
 	});
 	const statuses = harnessStatuses(input);
 	const items = [
@@ -320,12 +333,10 @@ export async function buildInventory(options: {
 			(host) => statuses.find((status) => status.id === host)?.on !== false,
 			options.home,
 		),
-		...(await resourceItems(
-			options.manager,
-			options.cwd,
-			options.agentDir,
-			await piSkillItems(input, options.cwd, options.home),
-		)),
+		...(await resourceItems(options.manager, options.cwd, options.agentDir, [
+			...coreSkillItems(options.manager),
+			...(await piSkillItems(input, options.cwd, options.home)),
+		])),
 		...mcpItems(options.mcp ?? [], options.home),
 	];
 	const ids = new Set(items.map((item) => item.id));
@@ -343,7 +354,7 @@ export async function buildInventory(options: {
 }
 
 /**
- * The inventory as text, grouped by heading, one ID per row for `/harness enable|disable <id>`. `items` narrows the
+ * The inventory as text, grouped by heading, one ID per row. `items` narrows the
  * rows (`/harness list skills`); stale switches, ignored keys and diagnostics show only in the full listing.
  */
 export function renderInventory(inventory: Inventory, items: readonly InventoryItem[] = inventory.items): string {
@@ -362,7 +373,7 @@ export function renderInventory(inventory: Inventory, items: readonly InventoryI
 	if (full && inventory.stale.length)
 		lines.push(
 			"",
-			"Stale switches (they match nothing now; /harness enable <id> clears one):",
+			"Stale switches (they match nothing now; remove the key from `toggles` in settings.json to clear one):",
 			...inventory.stale.map((id) => `  ${id}`),
 		);
 	if (full && inventory.ignored.length)
@@ -374,7 +385,7 @@ export function renderInventory(inventory: Inventory, items: readonly InventoryI
 	if (full && inventory.notes.length) lines.push("", "Diagnostics:", ...inventory.notes.map((note) => `  ${note}`));
 	lines.push(
 		"",
-		"/harness enable|disable <id|name>... [--project] [--force] · MCP switches (and a harness's MCP servers) apply now; /reload applies the rest",
+		"/harness in the terminal switches these rows; elsewhere /configuration enable|disable <kind:name>... [--local] (/configuration list shows its ids) · MCP switches apply now; /reload applies the rest",
 	);
 	return lines.join("\n");
 }

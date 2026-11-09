@@ -1,10 +1,8 @@
 # Octocode Code
 
-A terminal coding agent that researches code before it changes it, and splits big work across a team of subagents and git worktrees.
+A terminal coding agent that researches code before it changes it, and splits big work across a team of subagents and git worktrees. Fork of [Pi](https://github.com/earendil-works/pi) with the Octocode features built in.
 
-**The full guide, with diagrams of how it works, is the [main README on GitHub](https://github.com/bgauryy/octocodecode#readme).**
-
-## Install
+## Install and first run
 
 Needs Node 24.15 or later (Node 24 line).
 
@@ -14,19 +12,99 @@ cd your-project
 octocode
 ```
 
-Trust the folder when asked, then `/providers` to connect an AI provider, `/model` to pick a model, and type your task. `/octocode auth login` connects GitHub for code search. `/help` lists every command.
+> [!NOTE]
+> Octocode first asks whether you trust the folder. Until you do, it reads nothing from it: no `AGENTS.md`, settings, MCP servers, hooks or skills.
 
-The package installs `octocode` and `octocode-api`. If the separate `octocode` research package is installed globally, npm reports `EEXIST` for the shared command name: remove that package first, or install with `--force`.
+1. `/providers` connects an AI provider (browser sign-in or API key).
+2. `/model` picks the model, then type your task.
+3. Optional: `/octocode auth login` connects GitHub for code search.
+4. `/help` lists every command.
 
-## What it does
+Run it without the terminal UI, for scripts and CI:
 
-- **Octocode research out of the box:** local, AST, LSP, GitHub and package search through the built-in `octocode` MCP server.
-- **Tools:** `bash`, a guarded `file` writer with `/rewind` checkpoints, `web`, `agent`, `backlog`, `archive`, smart `timer` wake-ups.
-- **Teams:** subagents with roles (researcher, implementer, reviewer, browser, lean), file locks, team mail, isolated worktrees, a backlog the coordinator drives.
-- **Extend:** any MCP server, skills, Claude and Codex plugins and hooks, and the setup of Pi, Claude Code, Codex and Cursor through `/harness`.
-- **Models:** hosted providers with OAuth or API keys, local llama.cpp and Ollama, layered prompt caching with warming.
-- **Interfaces:** terminal, `/web` workspace, `/remote` links, tmux, ACP for editors, print, JSON and RPC modes, a local session API.
+```sh
+octocode -p "Summarize what changed on this branch"
+git diff main | octocode -p "Review this diff for bugs"   # piped stdin is read first
+octocode --trust -p "..."                                 # headless runs need a trusted folder
+```
 
-Documentation ships in this package under `docs/`; start with [docs/index.md](docs/index.md).
+The package installs `octocode` and `octocode-api`. If the separate `octocode` research package is installed globally, npm reports `EEXIST` for the shared command name: remove that package first, or install with `--force`. `octocode --version` shows which one runs.
+
+## How a turn works
+
+Every tool call passes one permission gate; a refusal comes back to the model as a result, not a crash. The model can hand bounded work to subagents, each its own process with its own saved session.
+
+```mermaid
+flowchart LR
+  U(["You: terminal, /web, editor"]) --> S["Session"]
+  S --> P["Prompt: instructions, tools,<br/>MCP, AGENTS.md, history"]
+  P --> M{{"Model"}}
+  M -->|tool calls| G{"Permission gate<br/>mode, trust, reservations"}
+  G -->|allowed| T["Tool<br/>file, bash, web, MCP..."]
+  G -->|asks| U
+  G -->|refused| R["Result to the model"]
+  T --> R
+  R --> S
+  T -.->|checkpoint| C[("/rewind")]
+  M -->|"agent task"| K["Subagents<br/>researcher, implementer,<br/>reviewer, browser, lean"]
+  K -->|"report: done, partial,<br/>blocked, failed"| S
+  K <-.->|"team mail, file reservations"| K
+  K -.->|"isolate: own worktree"| W[("refs/octocode/id")]
+```
+
+## Features
+
+| Feature               | What you get                                                                            | Start with                                   | Page                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Octocode research     | Local, AST, LSP, GitHub and package search, on by default                               | just ask; `/octocode auth login`             | [research CLI](docs/native-features.md#the-octocode-research-cli)                              |
+| Tools                 | `bash`, guarded `file` writer, `web`, `agent`, `backlog`, `archive`, `timer`, `askUser` | `--tools`, `--exclude-tools`                 | [tool selection](docs/native-features.md#tool-selection-and-migration)                         |
+| Subagents             | Children with roles, model routes, request budgets, check-ins                           | ask for parallel work; `/agents`             | [subagents](docs/native-features.md#subagents)                                                 |
+| Worktrees             | Parallel sessions on separate branches, one team                                        | `--worktree <name>`; `/worktree`             | [worktrees](docs/native-features.md#worktrees)                                                 |
+| Team and locks        | File reservations, team mail, backlog-driven coordination                               | `/agents`                                    | [communication](docs/native-features.md#communication-and-results)                             |
+| Backlog and web board | Durable work items and a live board                                                     | `/web`                                       | [web workspace](docs/web-workspace.md)                                                         |
+| Memory and archive    | Notes, searchable history, compaction summaries                                         | `/memory`                                    | [memory](docs/memory.md)                                                                       |
+| MCP                   | Any stdio or Streamable HTTP server                                                     | `/mcp`; `octocode mcp add`                   | [MCP](docs/mcp.md)                                                                             |
+| Skills                | On-demand instructions for a kind of work                                               | `/harness list skills`                       | [skills](docs/skills.md)                                                                       |
+| Hooks                 | Your commands on lifecycle events                                                       | `/harness hooks`                             | [hooks](docs/hooks.md)                                                                         |
+| Plugins               | Claude and Codex plugins and marketplaces                                               | `octocode marketplace add`                   | [plugins](docs/plugins.md)                                                                     |
+| Harnesses             | Reuse Pi, Claude Code, Codex, Cursor and `.agents` setup                                | `/harness`                                   | [configuration](docs/configuration.md#pi-configuration-fallback)                               |
+| Providers and models  | Hosted providers, OAuth, local llama.cpp and Ollama, routing                            | `/providers`, `/model`, `/modelsettings`     | [providers](docs/providers.md), [models](docs/models.md)                                       |
+| Prompt caching        | Stable prefixes shared across agents, cache warming                                     | `/status`                                    | [prompt caching](docs/prompt-caching.md)                                                       |
+| Permissions           | Modes `full`, `workspace`, `manual`; folder trust; plan mode; checkpoints               | `/permissions`, `/trust`, `/plan`, `/rewind` | [permissions](docs/permissions.md)                                                             |
+| Sessions              | Resume, fork, tree, compaction, side questions                                          | `/resume`, `/fork`, `/compact`, `/btw`       | [commands](docs/commands.md#session)                                                           |
+| Configuration         | One place to enable, disable and set anything                                           | `/configuration`                             | [configuration](docs/configuration.md#changing-configuration)                                  |
+| Terminal and tmux     | Full-screen UI, panes for forks and worktrees                                           | `/fork pane`, `/worktree open <name> pane`   | [TUI](docs/tui.md), [tmux](docs/tmux.md)                                                       |
+| Web and remote        | Browser workspace, control or view-only links                                           | `/web`, `/remote`                            | [web](docs/web-workspace.md), [remote](docs/remote.md)                                         |
+| Editors and scripts   | ACP, RPC, JSON Lines, session API                                                       | `--mode acp`, `--mode rpc`, `octocode-api`   | [CLI](docs/cli.md), [ACP](docs/acp.md), [RPC](docs/rpc.md), [session API](docs/session-api.md) |
+
+## Everyday commands
+
+| Command                             | Does                                                        |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `/providers`, `/model`, `/effort`   | Connect a provider, pick the model, set reasoning effort    |
+| `/plan <task>`                      | Keep the agent read-only until you approve a plan           |
+| `/rewind [turns]`, `/diff`          | Restore or inspect checkpointed file changes                |
+| `/permissions <mode>`               | Switch `full`, `workspace` or `manual`                      |
+| `/resume`, `/fork`, `/tree`, `/new` | Find, branch and start sessions                             |
+| `/compact`, `/context`              | Compact context now; see what fills the window              |
+| `/btw <question>`                   | Side question outside the conversation                      |
+| `/agents`, `/worktree`              | Watch the team; manage parallel worktrees                   |
+| `/mcp`, `/harness`                  | MCP servers; skills, hooks, plugins and other agents' setup |
+| `/configuration`                    | Enable, disable, set and add any configuration              |
+| `/web`, `/remote`                   | Open the web workspace; share a link                        |
+| `/help [search]`                    | Every command the host offers                               |
+
+Shell: `octocode mcp add <name> -- <command>`, `octocode marketplace add`, `octocode trust add <path>`, `octocode completion bash|zsh|fish`. Full lists: [commands](docs/commands.md) and [CLI flags and modes](docs/cli.md).
+
+## Documentation
+
+Start with the [documentation index](docs/index.md).
+
+| Need                         | Page                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| A task in a few steps        | [how to](docs/how-to.md)                                                                                                     |
+| Every command and flag       | [commands](docs/commands.md), [CLI](docs/cli.md)                                                                             |
+| Settings, files, environment | [configuration](docs/configuration.md), [settings](docs/settings.md), [environment variables](docs/environment-variables.md) |
+| Terms                        | [glossary](docs/GLOSSARY.md)                                                                                                 |
 
 MIT; original Pi copyright notices are retained in [LICENSE](LICENSE). Licenses of the third-party code compiled into the bundle are in `dist/licenses/THIRD_PARTY_NOTICES.md`.

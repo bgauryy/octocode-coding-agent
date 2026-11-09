@@ -1,45 +1,35 @@
-# Octocode Packages
+# Octocode packages
 
-Octocode packages install and distribute skills, prompt templates, and themes as one unit. Use a package when a customization should be shared through npm or git, or when several resources belong together.
+A package distributes skills, prompt templates and themes through npm or git as one unit. It is not a [plugin](plugins.md): a package's `hooks/hooks.json` and Claude or Codex plugin manifests are not loaded. Add that directory as a plugin instead.
 
-These native packages are not Claude/OpenAI plugin manifests. Their `hooks/hooks.json` files and Claude Mods modules are not automatically loaded. See [plugins](plugins.md) for explicit local plugin configuration, [hooks](hooks.md) for event execution, and the [design](../../../docs/PLUGINS_MODS_HOOKS.md) for how the formats relate.
+A package is a directory or npm package with conventional resource folders, an optional `octocode` key in `package.json` (the legacy `pi` key is still read) and its own runtime dependencies. There is no package gallery.
 
-A package is an ordinary directory or npm package. It can expose conventional resource directories, declare explicit paths under the `octocode` key in `package.json`, and carry its own runtime dependencies.
-
-## Install and manage packages
-
-Install from npm, git, or a local path:
+## Install and manage
 
 ```bash
 octocode install npm:@example/octocode-tools@1.0.0
 octocode install git:github.com/example/octocode-tools@v1
-octocode install ./local-package
+octocode install ./local-package --local
+octocode list
+octocode remove npm:@example/octocode-tools
+octocode update --extensions
 ```
 
-`octocode list` shows configured packages. Use `octocode remove <source>` to remove one and `octocode update --extensions` to reconcile package installations. See Command Line for every package command and option.
+`octocode update --extensions` reconciles package installations; [Command line](cli.md) lists every option.
 
-Personal installs are written to `~/.octocode/octocodecode/settings.json`. Add `--local` or `-l` to write the package declaration to `.octocode/settings.json`. Octocode reads declarations from that file only after project trust is granted.
+| Source | Example                                     | Behavior                                                                     |
+| ------ | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| npm    | `npm:@example/octocode-tools@1.0.0`         | Installed under the Octocode npm directory; a versioned spec is pinned       |
+| git    | `git:github.com/example/octocode-tools@v1`  | Cloned and reconciled to the ref; a tag or commit is pinned, updates keep it |
+| URL    | `https://github.com/example/octocode-tools` | Treated as a git source                                                      |
+| Local  | `./octocode-tools`                          | Loaded from the resolved path without copying                                |
 
-Project packages are installed and loaded only after project trust is resolved. Packages can include skills that instruct the model to run programs. Review third-party package source before installing it. Review project package declarations before granting project trust.
-
-User code extensions are not supported, so a package's extension code is ignored with a warning; its skills, prompts and themes still load. Built-in features are switched in the `extensions` setting or with `octocode config`, never by a CLI flag: `-e` and `--extension` are unknown options. See [built-in features](configuration.md#built-in-features).
-
-## Choose a source
-
-| Source | Example                                     | Behavior                                      |
-| ------ | ------------------------------------------- | --------------------------------------------- |
-| npm    | `npm:@example/octocode-tools@1.0.0`         | Installed under the Octocode npm directory    |
-| git    | `git:github.com/example/octocode-tools@v1`  | Cloned and reconciled to the selected ref     |
-| URL    | `https://github.com/example/octocode-tools` | Treated as a git source                       |
-| Local  | `./octocode-tools`                          | Loaded from the resolved path without copying |
-
-Versioned npm specifications are pinned. Git tags and commits are also pinned; package updates reconcile the checkout but do not move a configured ref.
-
-Relative local paths resolve from the settings file that contains them. A directory follows normal package discovery rules.
+- Personal installs go to `~/.octocode/octocodecode/settings.json`. `--local` (`-l`) writes `.octocode/settings.json`, which loads only in a trusted project.
+- Relative local paths resolve from the settings file that holds them.
+- Packages can carry skills that tell the model to run programs. Read third-party source before installing it, and project package declarations before trusting a project.
+- Package code is never run: user code extensions are unsupported, so extension code in a package is ignored with a warning; its skills, prompts and themes still load. Built-in features are switched with `octocode configuration` (`enable extension:<name>`), not a CLI flag. See [changing configuration](configuration.md#changing-configuration).
 
 ## Create a package
-
-The simplest package uses conventional directories:
 
 ```text
 my-octocode-package/
@@ -49,9 +39,7 @@ my-octocode-package/
 └── themes/
 ```
 
-Without an `octocode` manifest, Octocode discovers skill directories, Markdown prompts, and JSON themes from those directories.
-
-Use an explicit manifest when resources live elsewhere or need filtering:
+Without an `octocode` key, Octocode reads `skills/`, `prompts/` and `themes/`. Declare paths when resources live elsewhere:
 
 ```json
 {
@@ -60,23 +48,18 @@ Use an explicit manifest when resources live elsewhere or need filtering:
 		"skills": ["./resources/skills"],
 		"prompts": ["./resources/prompts/*.md"],
 		"themes": ["./resources/themes/*.json"]
-	}
+	},
+	"peerDependencies": { "@octocodeai/octocodecode": "*" }
 }
 ```
 
-Paths are relative to the package root. Arrays accept glob patterns and exclusions. List dot-prefixed or symlinked resource roots directly when traversal through a glob would not discover them.
+Paths are relative to the package root. Arrays accept globs and exclusions; list dot-prefixed or symlinked roots directly, because globs skip them. List host packages such as `@octocodeai/octocodecode` in `peerDependencies`.
 
-Octocode does not operate a package gallery; install packages by their npm or Git source. The `octocode` manifest declares the resources this runtime loads.
+Octocode installs `dependencies` of npm and git sources; local packages are not installed or modified. Installed packages load with separate module roots, so do not share a dependency instance between packages or resolve another package's undeclared dependency. Design each resource with [Skills](skills.md), [Prompt templates](prompt-templates.md) and [Themes](themes.md).
 
-## Declare dependencies
+## Select resources
 
-Octocode installs a package's `dependencies` when it installs an npm or Git source. Local packages are not installed or modified, so their dependency tree remains the package author's responsibility.
-
-Installed packages load with separate module roots. Do not rely on two packages sharing one dependency instance or one package resolving another package's undeclared dependency.
-
-## Select package resources
-
-The object form in settings narrows which resources load from a package:
+The object form in settings narrows what loads from a package; it cannot expose what the package did not declare:
 
 ```json
 {
@@ -90,22 +73,15 @@ The object form in settings narrows which resources load from a package:
 }
 ```
 
-For each resource type:
+| Entry            | Effect                             |
+| ---------------- | ---------------------------------- |
+| property omitted | Load everything the package allows |
+| `[]`             | Load none of that type             |
+| `!pattern`       | Exclude glob matches               |
+| `+path`, `-path` | Include or exclude one exact path  |
 
-- Omit the property to load everything allowed by the package.
-- Use `[]` to load none of that type.
-- Use `!pattern` to exclude glob matches.
-- Use `+path` to include one exact allowed path.
-- Use `-path` to exclude one exact path.
+To switch discovered resources and built-in features, use `octocode configuration` or `/configuration` ([changing configuration](configuration.md#changing-configuration)).
 
-Filters narrow the package manifest. They do not expose resources that the package itself did not declare.
+## Scope and identity
 
-Run `octocode config` to enable or disable discovered resources and Octocode's built-in features. It starts with personal configuration; press Tab to switch scope, or run `octocode config --local` to start with project overrides.
-
-## Understand scope and identity
-
-The same package can appear in personal and project settings. A project entry normally replaces the personal entry. With `autoload: false`, the project entry instead acts as a filtering delta over the personal package.
-
-Octocode identifies npm packages by package name, git packages by repository URL without the ref, and local packages by resolved absolute path. This prevents the same package from loading twice through equivalent declarations.
-
-Use [Skills](skills.md), [Prompt Templates](prompt-templates.md), and [Themes](themes.md) to design each resource before packaging it.
+A project entry normally replaces the personal entry for the same package. With `autoload: false` it acts as a filter over the personal package. Identity: npm by package name, git by repository URL without the ref, local by resolved absolute path, so equivalent declarations never load twice.

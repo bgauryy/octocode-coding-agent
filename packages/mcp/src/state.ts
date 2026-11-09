@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import type { TSchema } from "typebox";
+import { mcpServerGroup } from "./group.ts";
 import { hostPaths } from "./host.ts";
 import type { McpExtensionApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
@@ -192,6 +193,7 @@ export class McpExtensionState {
 				toolCount: server.connection?.state === "connected" ? server.connection.tools.length : 0,
 				source: server.entry.source,
 				...(server.entry.scope ? { scope: server.entry.scope } : {}),
+				group: mcpServerGroup(server.entry),
 			})),
 		);
 		publishToolRoles(

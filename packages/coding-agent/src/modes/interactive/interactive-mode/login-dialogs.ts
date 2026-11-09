@@ -79,8 +79,10 @@ export async function showApiKeyLoginDialog(
 	providerId: string,
 	providerName: string,
 	onBack?: () => void,
+	secret?: string,
 ): Promise<void> {
 	const dialog = new LoginDialogComponent(host.ui, providerId, () => {}, providerName);
+	if (secret !== undefined) dialog.showInfo("Saving the token Claude Code printed.");
 	if (providerId === "amazon-bedrock") {
 		dialog.showDetails([
 			theme.fg("text", "You can also use an AWS profile, IAM keys, or role-based credentials."),
@@ -88,7 +90,7 @@ export async function showApiKeyLoginDialog(
 			theme.fg("accent", `  ${path.join(getDocsPath(), "providers.md")}`),
 		]);
 	}
-	await runLoginDialog(host, dialog, providerId, providerName, "api_key", onBack);
+	await runLoginDialog(host, dialog, providerId, providerName, "api_key", onBack, secret);
 }
 
 export async function showLoginDialog(
@@ -117,10 +119,11 @@ async function runLoginDialog(
 	providerName: string,
 	method: "api_key" | "oauth",
 	onBack: (() => void) | undefined,
+	secret?: string,
 ): Promise<void> {
 	showInEditorSlot(host, dialog);
 	try {
-		await loginProvider(host, dialog, providerId, providerName, method);
+		await loginProvider(host, dialog, providerId, providerName, method, secret);
 		showInEditorSlot(host, host.editor);
 		await host.completeProviderAuthentication(providerId, providerName, method);
 	} catch (error: unknown) {
@@ -211,11 +214,19 @@ async function loginProvider(
 	providerId: string,
 	providerName: string,
 	method: "api_key" | "oauth",
+	secret: string | undefined,
 ): Promise<void> {
 	host.programStatus.setBlocked("login", { kind: "auth", message: `Log in to ${providerName}` });
 	try {
 		const keychain = method === "api_key" ? detectKeychain(process.platform) : undefined;
-		const prompt = (request: AuthPrompt) => showAuthPrompt(host, dialog, request);
+		// A key already in hand answers the first secret prompt once; every other prompt still asks the user.
+		let given = secret;
+		const prompt = (request: AuthPrompt) => {
+			if (request.type !== "secret" || given === undefined) return showAuthPrompt(host, dialog, request);
+			const answer = given;
+			given = undefined;
+			return Promise.resolve(answer);
+		};
 		const storage = keychain
 			? new KeychainLoginSession(keychain, providerId, async () => {
 					const choice = await showAuthPrompt(host, dialog, {

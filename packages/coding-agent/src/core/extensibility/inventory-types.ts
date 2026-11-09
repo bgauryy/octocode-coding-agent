@@ -7,7 +7,7 @@ export type InventoryHost = "harness" | ToggleHost | "packages" | "mcp" | "skill
 /** One row of `/harness`: something the user can switch, with what decides it and why it is in its state. */
 export interface InventoryItem {
 	id: string;
-	/** A short name `/harness enable|disable` also accepts: plugin, skill or MCP server name. */
+	/** The plugin, skill or MCP server name the row stands for, beside its id. */
 	name?: string;
 	host: InventoryHost;
 	kind: "harness" | "plugin" | "extension" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";

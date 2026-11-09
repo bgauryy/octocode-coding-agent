@@ -106,11 +106,13 @@ for await (const event of s) {
 
 Every `AssistantMessage` includes a `stopReason` field that indicates how the generation ended:
 
-- `"pending"` - Only present in partial messages when we do not know what the stop reason will be
-- `"stop"` - This is the final message the model will produce this turn
-- `"length"` - Output hit the maximum token limit
-- `"toolUse"` - Model is calling tools and expects tool results
-- `"error"` - An error occurred during generation
-- `"aborted"` - Request was cancelled via abort signal
+| `stopReason` | Meaning                                      |
+| ------------ | -------------------------------------------- |
+| `pending`    | Partial messages only: outcome not known yet |
+| `stop`       | The model finished its turn                  |
+| `length`     | Output hit the token limit                   |
+| `toolUse`    | The model called tools and expects results   |
+| `error`      | Generation failed                            |
+| `aborted`    | Cancelled through the abort signal           |
 
 `AssistantMessage` may also include `responseId`, a provider-specific upstream response or message identifier when the underlying API exposes one. Do not assume it is always present across providers.

@@ -2,9 +2,18 @@
 
 Octocode uses environment variables in three ways:
 
-- Variables such as `OCTOCODE_OFFLINE` configure the Octocode process.
-- Octocode sets process markers so child processes can identify Octocode as the launching agent.
-- Commands run by the LLM-callable shell tools receive `OCTOCODE_*` variables describing the current session.
+| Role                                   | Section                                                                                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| You set them to configure the process  | [Process configuration](#octocode-process-configuration), [diagnostics](#diagnostics-and-opt-in-switches), [native features](#native-feature-configuration) |
+| Octocode sets them for child processes | [Process marker](#process-marker)                                                                                                                           |
+| Octocode sets them for shell commands  | [Shell tool session environment](#shell-tool-session-environment)                                                                                           |
+
+```mermaid
+flowchart LR
+    U[your shell] -- "OCTOCODE_*" --> O[octocode process]
+    O -- "AI_AGENT, OCTOCODE_CODING_AGENT" --> C[child processes]
+    O -- "OCTOCODE_SESSION_ID, MODEL, ..." --> B[bash tool commands]
+```
 
 Provider API-key variables are documented separately in [Providers](providers.md#use-an-api-key-from-the-environment).
 
@@ -47,30 +56,6 @@ fi
 ```
 
 These variables are injected into both shell modes of the LLM-callable `bash` tool. They are not injected into user-entered `!` or `!!` commands.
-
-### Custom Shell Tools
-
-Tools created with `createBashTool()` expose the session environment by default when registered with Octocode. Injection happens before `spawnHook`, so a hook receives the variables in `ctx.env`:
-
-```typescript
-const bashTool = createBashTool(cwd, {
-	spawnHook: (ctx) => ({
-		...ctx,
-		env: { ...ctx.env, CI: "1" },
-	}),
-});
-```
-
-Disable session metadata independently of the spawn hook:
-
-```typescript
-const quietBashTool = createBashTool(cwd, {
-	exposeSessionEnvironment: false,
-	spawnHook: (ctx) => ctx,
-});
-```
-
-When disabled, Octocode removes inherited values for these variables so nested Octocode processes do not expose stale parent-session metadata.
 
 Provider API keys are removed from a command's environment unless the global `bash.inheritProviderKeys` setting keeps them; see [Permissions](permissions.md#modes).
 
@@ -154,7 +139,7 @@ These controls belong to the integrated Octocode features. Child identity, grant
 | `OCTOCODE_NOTIFY`                         | Answer notifications: `off`, `unfocused` (default) or `always`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `OCTOCODE_NOTIFY_METHOD`                  | Notification protocol: `osc9`, `osc777`, `osc99` or `bel`; otherwise detected from the terminal (inside tmux, from the attached client; the OSC passes through only when the pane's `allow-passthrough` is `on` or `all`, and a bell is always sent with it)                                                                                                                                                                                                                                                                       |
 | `OCTOCODE_API_HTTP`                       | Also serve the [local session API](session-api.md) on loopback HTTP on this port (`0` chooses an available port); the owner-only socket needs no variable, and the `sessionApi` setting turns both off                                                                                                                                                                                                                                                                                                                             |
-| `OCTOCODE_WEB_DAEMON`                     | Set to `1` to start an owner-only attach endpoint in every session and make `/web` use the user-level [web daemon](../../../CONFIGURATIONS.md); unset or `0` keeps the per-session server                                                                                                                                                                                                                                                                                                                                          |
+| `OCTOCODE_WEB_DAEMON`                     | Set to `1` to start an owner-only attach endpoint in every session and make `/web` use the user-level [web daemon](web-workspace.md); unset or `0` keeps the per-session server                                                                                                                                                                                                                                                                                                                                                    |
 | `OCTOCODE_WEB_DAEMON_IDLE_MINUTES`        | Minutes with no open tab and no attached session after which the daemon exits (default `10`; decimals allowed)                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Settings that have environment overrides are listed in the [settings reference](settings.md). See [native features](native-features.md) for runtime ownership and [configuration](configuration.md) for storage paths and compatibility.

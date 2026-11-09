@@ -91,6 +91,7 @@ export function registerTurnSetup(
 			canSave: selected.includes(FILE_TOOL),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
+			canBacklog: selected.includes("backlog"),
 			// What the selection allows, never what has connected: a server coming up must not change these bytes.
 			canReadLocal:
 				research !== undefined && (typeof api.selectsTools !== "function" || api.selectsTools(research.reader, true)),
@@ -103,7 +104,12 @@ export function registerTurnSetup(
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
 			prompt = lean
-				? leanPromptSections({ canShell: inputs.canShell, canSave: inputs.canSave, readOnly })
+				? leanPromptSections({
+						canShell: inputs.canShell,
+						canSave: inputs.canSave,
+						readOnly,
+						agentTool: inputs.canUseAgent,
+					})
 				: octocodePromptSections(inputs);
 		}
 		// A named section (not a whole-prompt override) lets Octocode record a small transcript delta. The policy and the

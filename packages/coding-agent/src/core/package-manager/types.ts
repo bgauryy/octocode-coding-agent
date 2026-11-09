@@ -78,6 +78,8 @@ export interface PackageManagerOptions {
 	settingsManager: SettingsManager;
 	/** Names of built-in extensions, resolved as `builtin:<name>` extension resources. */
 	builtinExtensions?: string[];
+	/** The Octocode skill collection (`getOctocodeSkillsDir`), resolved as skills with source `builtin`. */
+	builtinSkillsDir?: string;
 }
 
 export type SourceScope = "user" | "project" | "temporary";
@@ -153,6 +155,7 @@ export interface PackageManagerHost {
 	readonly agentDir: string;
 	readonly settingsManager: SettingsManager;
 	readonly builtinExtensions: string[];
+	readonly builtinSkillsDir: string | undefined;
 	withProgress(
 		action: ProgressEvent["action"],
 		source: string,

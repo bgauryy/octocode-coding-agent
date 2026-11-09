@@ -2,6 +2,7 @@ import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import {
 	CONFIG_PROTOCOL_VERSION,
+	ConfigProviderCommandSchema,
 	ConfigSettingCommandSchema,
 	ConfigSnapshotSchema,
 	CREDENTIAL_SOURCES,
@@ -92,5 +93,48 @@ describe("config schemas", () => {
 			{ ...command, extra: 1 },
 		])
 			expect(Value.Check(ConfigSettingCommandSchema, bad), JSON.stringify(bad)).toBe(false);
+	});
+});
+
+describe("provider origins, sources and commands", () => {
+	it("accepts origins, a disabled flag and sources, and rejects extra fields", () => {
+		const row = {
+			provider: "openai",
+			configured: true,
+			sources: [],
+			origins: [{ product: "pi", file: "models-json", hasKey: true }],
+			disabled: true,
+		};
+		expect(Value.Check(ProviderCredentialStatusSchema, row)).toBe(true);
+		expect(
+			Value.Check(ProviderCredentialStatusSchema, { ...row, origins: [{ product: "claude", file: "auth-json" }] }),
+		).toBe(false);
+		expect(
+			Value.Check(ProviderCredentialStatusSchema, {
+				...row,
+				origins: [{ product: "pi", file: "auth-json", key: "x" }],
+			}),
+		).toBe(false);
+		const withSources = {
+			...snapshot,
+			sources: [{ id: "pi", label: "Pi", enabled: true, toggleable: true, present: false }],
+		};
+		expect(Value.Check(ConfigSnapshotSchema, withSources)).toBe(true);
+	});
+
+	it("accepts only a provider or the Pi source as a provider command", () => {
+		const ok = [
+			{ action: "set-provider", provider: "openai", enabled: false },
+			{ action: "set-source", source: "pi", enabled: true },
+		];
+		for (const command of ok) expect(Value.Check(ConfigProviderCommandSchema, command)).toBe(true);
+		for (const bad of [
+			{ action: "set-source", source: "octocode", enabled: false },
+			{ action: "set-source", source: "copilot-env", enabled: true },
+			{ action: "set-provider", provider: "Bad Id", enabled: true },
+			{ action: "set-provider", provider: "openai" },
+			{ action: "set-provider", provider: "openai", enabled: true, extra: 1 },
+		])
+			expect(Value.Check(ConfigProviderCommandSchema, bad)).toBe(false);
 	});
 });

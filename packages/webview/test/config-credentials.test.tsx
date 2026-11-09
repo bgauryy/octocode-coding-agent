@@ -3,8 +3,10 @@ import {
 	CONFIG_PROTOCOL_VERSION,
 	type ConfigCredentialCommand,
 	type ConfigSnapshot,
+	type SignInCommand,
+	type SignInState,
 } from "@octocodeai/octocode-contracts/config";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConfigView } from "../src/app/config/ConfigView.tsx";
@@ -111,5 +113,165 @@ describe("ConfigView credential editing", () => {
 		await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
 		expect(container.textContent).not.toContain(SECRET);
 		expect(screen.getByLabelText<HTMLInputElement>("API key for OpenAI").type).toBe("password");
+	});
+});
+
+describe("ConfigView sign-in", () => {
+	const withAuth: ConfigSnapshot = {
+		...base,
+		providers: [
+			{
+				provider: "openai",
+				name: "OpenAI",
+				configured: false,
+				sources: [],
+				auth: {
+					oauth: { name: "ChatGPT", isSubscription: true },
+					keyAuth: { name: "OpenAI API key", keyPage: "https://platform.openai.com/api-keys" },
+				},
+			},
+			{ provider: "anthropic", name: "Anthropic", configured: false, sources: [] },
+		],
+	};
+	const state = (extra: Partial<SignInState>): SignInState => ({
+		provider: "openai",
+		status: "running",
+		events: [],
+		...extra,
+	});
+
+	it("names the sign-ins, links the key page and offers the Claude token", async () => {
+		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={vi.fn()} />);
+		expect(await screen.findByText(/Subscription sign-in · API key/)).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Get key for OpenAI" })).toHaveAttribute(
+			"href",
+			"https://platform.openai.com/api-keys",
+		);
+		await openEditor("Use Claude subscription token");
+		expect(screen.getByText(/claude setup-token/)).toBeInTheDocument();
+		expect(screen.getByText(/sk-ant-oat/)).toBeInTheDocument();
+	});
+
+	it("saves a Claude subscription token through the key write for anthropic", async () => {
+		const save = vi.fn(async (_command: ConfigCredentialCommand) => base);
+		render(<ConfigView load={async () => withAuth} saveCredential={save} signIn={vi.fn()} />);
+		await openEditor("Use Claude subscription token");
+		await userEvent.type(screen.getByLabelText("Claude subscription token"), "sk-ant-oat01-abc");
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() =>
+			expect(save).toHaveBeenCalledWith({ action: "set", provider: "anthropic", key: "sk-ant-oat01-abc" }, undefined),
+		);
+	});
+
+	it("shows the link, answers a question, then reloads the snapshot on success", async () => {
+		const open = vi.fn();
+		vi.stubGlobal("open", open);
+		const load = vi.fn(async () => withAuth);
+		const commands: SignInCommand[] = [];
+		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> => {
+			commands.push(command);
+			if (command.action === "start")
+				return state({
+					events: [{ type: "auth_url", url: "https://auth.example.com/go", instructions: "Open to sign in" }],
+					prompt: { id: "p1", type: "manual_code", message: "Paste the code" },
+				});
+			if (command.action === "answer") return state({});
+			return state({ status: "succeeded" });
+		});
+		render(<ConfigView load={load} saveCredential={vi.fn()} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		expect(await screen.findByRole("link", { name: "https://auth.example.com/go" })).toBeInTheDocument();
+		expect(open).toHaveBeenCalledWith("https://auth.example.com/go", "_blank", "noopener,noreferrer");
+		await userEvent.type(screen.getByLabelText("Paste the code"), "the-code");
+		await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+		expect(commands).toContainEqual({ action: "answer", provider: "openai", promptId: "p1", value: "the-code" });
+		await waitFor(() => expect(load.mock.calls.length).toBeGreaterThan(1), { timeout: 4000 });
+		vi.unstubAllGlobals();
+	});
+
+	it("cancels a running sign-in and shows a failure", async () => {
+		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> => {
+			if (command.action === "start") return state({});
+			if (command.action === "cancel") return state({ status: "cancelled" });
+			return state({ status: "failed", error: "Provider refused the code" });
+		});
+		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		await userEvent.click(await screen.findByRole("button", { name: "Cancel sign-in for OpenAI" }));
+		expect(await screen.findByText("Sign-in cancelled.")).toBeInTheDocument();
+		signIn.mockImplementation(async (command) =>
+			command.action === "start" ? state({ status: "failed", error: "Provider refused the code" }) : state({}),
+		);
+		await userEvent.click(screen.getByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent("Provider refused the code");
+	});
+
+	it("offers no sign-in on a read-only connection and does not render an unsafe link", async () => {
+		const view = render(<ConfigView load={async () => ({ ...withAuth, writable: false })} signIn={vi.fn()} />);
+		await screen.findByRole("heading", { name: "Provider credentials" });
+		expect(screen.queryByRole("button", { name: /Sign in with/ })).toBeNull();
+		view.unmount();
+		const signIn = vi.fn(async () => state({ events: [{ type: "auth_url", url: "javascript:alert(1)" } as never] }));
+		render(<ConfigView load={async () => withAuth} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		await screen.findByText(/Signing in to OpenAI/);
+		expect(document.querySelector('a[href^="javascript"]')).toBeNull();
+	});
+
+	it("sends a blank answer to a text question but keeps a secret answer required", async () => {
+		const commands: SignInCommand[] = [];
+		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> => {
+			commands.push(command);
+			return state({
+				prompt: { id: "p1", type: "text", message: "GitHub Enterprise URL/domain (blank for github.com)" },
+			});
+		});
+		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		await userEvent.click(await screen.findByRole("button", { name: "Continue" }));
+		expect(commands).toContainEqual({ action: "answer", provider: "openai", promptId: "p1", value: "" });
+
+		signIn.mockImplementation(async () => state({ prompt: { id: "p2", type: "secret", message: "Paste the secret" } }));
+		cleanup();
+		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={signIn} />);
+		expect(await screen.findByRole("button", { name: "Continue" })).toBeDisabled();
+	});
+
+	it("finds a sign-in the host still runs after the page was reopened, and can cancel it", async () => {
+		const commands: SignInCommand[] = [];
+		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> => {
+			commands.push(command);
+			return command.action === "cancel" ? state({ status: "cancelled" }) : state({});
+		});
+		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Cancel sign-in for OpenAI" }));
+		expect(commands[0]).toEqual({ action: "status", provider: "openai" });
+		expect(commands).toContainEqual({ action: "cancel", provider: "openai" });
+	});
+
+	it("keeps polling after one failed poll", async () => {
+		let polls = 0;
+		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> => {
+			if (command.action === "start") return state({});
+			polls += 1;
+			if (polls === 1) return state({});
+			if (polls === 2) throw new Error("network down");
+			return state({ status: "cancelled" });
+		});
+		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		expect(await screen.findByText("Sign-in cancelled.", undefined, { timeout: 6000 })).toBeInTheDocument();
+	}, 10000);
+
+	it("reloads the snapshot when the credential was saved but a later step failed", async () => {
+		const load = vi.fn(async () => withAuth);
+		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> =>
+			command.action === "start"
+				? state({ status: "failed", credentialSaved: true, error: "The credential was saved, but sync failed." })
+				: state({ status: "idle" }),
+		);
+		render(<ConfigView load={load} saveCredential={vi.fn()} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		await waitFor(() => expect(load.mock.calls.length).toBeGreaterThan(1));
 	});
 });

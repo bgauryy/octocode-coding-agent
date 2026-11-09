@@ -68,13 +68,13 @@ export function hookFieldsList(): string {
 			({ protocol, label }) =>
 				`- **${label}** (default timeout ${PROFILE_TIMEOUT_S[protocol]} s): ${code(PROFILE_COMMAND_FIELDS[protocol])}.`,
 		).join("\n"),
-		"Other fields reject the handler with a diagnostic in `/hooks`. No timeout can exceed 600 seconds.",
+		"Other fields reject the handler with a diagnostic in `/harness hooks`. No timeout can exceed 600 seconds.",
 	].join("\n\n");
 }
 
 export function hookUpstreamOnlyList(): string {
 	return [
-		"These events are documented by the upstream host but not implemented in Octocode yet. A hook file that declares one is loaded without it, and `/hooks` reports it as not implemented.",
+		"These events are documented by the upstream host but not implemented in Octocode yet. A hook file that declares one is loaded without it, and `/harness hooks` reports it as not implemented.",
 		`- **Claude Code**: ${code(UPSTREAM_ONLY_EVENTS.claude)}.`,
 		`- **Codex**: ${code(UPSTREAM_ONLY_EVENTS.codex)} (in Codex source, not yet in its documentation).`,
 	].join("\n\n");

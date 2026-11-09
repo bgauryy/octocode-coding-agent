@@ -18,13 +18,13 @@ export function agentToolSpec() {
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"Skills the child needs (one named only in the task text is rarely loaded). Omit: the profile's or the loaded catalog; []: none.",
+						"Skills the child needs (a skill named only in the task text is rarely loaded). Omit: the profile's or the loaded catalog; []: none.",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"MCP servers the child gets, plus its profile's; others stay out. Omit: the profile's and the session's; []: the profile's only. An unknown or disabled name refuses the task.",
+						"MCP servers the child gets, plus its profile's. Omit: the profile's and the session's; []: the profile's only. An unknown or disabled name refuses the task.",
 				}),
 			),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
@@ -35,13 +35,13 @@ export function agentToolSpec() {
 			item: Type.Optional(
 				Type.String({
 					description:
-						"Backlog item you hold (ongoing), or an unheld todo/backlog one with goal and why, which the call claims for you: the child may update only it; its report is noted there.",
+						"Backlog item you hold (ongoing), or an unheld todo/backlog one with goal and why, which the call claims: the child may update only it; its report is noted there.",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Id of a finished or stopped child of this session: continues its conversation on this task (with model, on that route). An isolated child cannot resume: start a new one with recovery context.",
+						"Id of a finished or stopped child of this session: continues its conversation (with model, on that route). An isolated child cannot resume.",
 				}),
 			),
 			profile: Type.Optional(
@@ -57,7 +57,7 @@ export function agentToolSpec() {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model and thinking for this task: provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max. Default: the profile's (see models); no profile: medium; thinking medium.",
+						"provider/id, bare id, small or medium, optional :off|minimal|low|medium|high|xhigh|max thinking. Default: the profile's (see models); no profile: medium, thinking medium.",
 				}),
 			),
 			resultSchema: Type.Optional(
@@ -65,7 +65,7 @@ export function agentToolSpec() {
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
 					description:
-						"JSON Schema for the child's final JSON result (verdict in details). Keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
+						"JSON Schema for the child's final JSON result (verdict in details). Supported: type, properties, required, additionalProperties, items, enum, const, description, numeric/length bounds.",
 				}),
 			),
 			background: Type.Optional(
@@ -76,7 +76,7 @@ export function agentToolSpec() {
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:
-						"Private worktree; changes export to refs/octocode/<id>, linked on `item`. Land them with coordinate `merge`, not git merge.",
+						"Private worktree; changes export to refs/octocode/<id>, linked on `item`; land with coordinate `merge`.",
 				}),
 			),
 			workingCopy: Type.Optional(
@@ -88,7 +88,7 @@ export function agentToolSpec() {
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						'Files or "dir/" the child will edit, reserved for it until it reports (no lock needed). A path held by a sibling child queues the start; any other holder refuses it. No effect with isolate or a read-only profile.',
+						'Files or "dir/" the child will edit, reserved until it reports (no lock needed). A sibling child\'s path queues the start; any other holder refuses it. No effect with isolate or a read-only profile.',
 				}),
 			),
 			// The `agent` call's own reason (`octocode/agent-tool.ts` passes it to a type that declares one): the child's why.

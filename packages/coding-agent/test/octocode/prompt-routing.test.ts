@@ -36,7 +36,7 @@ describe("research routing in the policy", () => {
 	it("routes research to the research server by its roles and leaves out the bash search fallback", () => {
 		for (const canDelegate of [true, false]) {
 			const prompt = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate });
-			expect(prompt).toContain("Use the research tools (`mcp__research__*`) to check code before you rely on it");
+			expect(prompt).toContain("use the research tools (`mcp__research__*`): search with");
 			expect(prompt).toContain("search with `search_code` and read source");
 			expect(prompt).not.toMatch(/mcp__browser/);
 			expect(prompt).not.toContain("Search with bash");
@@ -53,7 +53,7 @@ describe("research routing in the policy", () => {
 
 	it("names the native research fallbacks only without the research server", () => {
 		const fallback = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
-		expect(fallback).toContain("Search with bash (`rg`, `fd`)");
+		expect(fallback).toContain("Search with bash when the location is unknown");
 		expect(fallback).not.toMatch(/mcp__research|mcp__browser|research tools/);
 	});
 
@@ -97,12 +97,12 @@ describe("research routing in the policy", () => {
 		const connecting = await build(["bash", "file", "mcp"]);
 		expect(connecting).not.toContain("Search and read files with bash");
 		expect(connecting).not.toContain("Search with bash");
-		expect(connecting).toContain("Use the research tools (`mcp__research__*`)");
+		expect(connecting).toContain("use the research tools (`mcp__research__*`)");
 		// Declared: the same routing, still no bash search rule.
 		const declared = await build(["bash", "file", "mcp", RESEARCH.search]);
 		expect(declared).not.toContain("Search and read files with bash");
 		expect(declared).not.toContain("Search with bash");
-		expect(declared).toContain("Use the research tools (`mcp__research__*`)");
+		expect(declared).toContain("use the research tools (`mcp__research__*`)");
 		// A server that failed later keeps the same bytes (its state is in the `mcp_status` section); only a server that is not
 		// enabled gets the native research fallback.
 		setMcpSessionStatus(fake.api.events, [
@@ -121,7 +121,7 @@ describe("research routing in the policy", () => {
 			},
 		]);
 		const disabled = await build(["bash", "file", "mcp"]);
-		expect(disabled).toContain("Search with bash (`rg`, `fd`)");
+		expect(disabled).toContain("Search with bash when the location is unknown");
 		expect(disabled).toContain("Search and read files with bash (rg, fd, ls, sed -n)");
 	});
 });
@@ -160,7 +160,7 @@ describe("registerTurnSetup routing and child trim", () => {
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", RESEARCH.other] });
 		expect(sections.octocode).not.toContain("Search with bash");
-		expect(sections.research).toContain("Use the research tools (`mcp__research__*`)");
+		expect(sections.research).toContain("use the research tools (`mcp__research__*`)");
 		expect(sections.research).not.toMatch(/mcp__browser/);
 		expect(sections.octocode).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
 		expect(sections.octocode).not.toContain("Search first, then fetch.");
@@ -314,7 +314,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			setMcpSessionStatus(fake.api.events, status("connected", 4));
 			const after = await run(fake, { selectedTools: [...natives, ...octocodeTools, ...browserTools] });
 			// Every named section the prompt carries keeps its exact bytes, so the cached prefix survives the connection.
-			expect(before.research).toContain("Use the research tools (`mcp__research__*`)");
+			expect(before.research).toContain("use the research tools (`mcp__research__*`)");
 			expect(before.research).not.toMatch(/mcp__browser|Search with bash/);
 			expect(after.research).toBe(before.research);
 			expect(after.delegation).toBe(before.delegation);

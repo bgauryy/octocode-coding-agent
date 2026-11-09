@@ -1,66 +1,58 @@
-# Choose a Model
+# Models
 
-Use [`octocode models discover`](model-discovery.md) to compare documented vendor model lists with the configured catalog, including IDs that need metadata before use.
+Connect a provider, pick a model, and describe custom endpoints. Sign-in and keys: [providers](providers.md). Every `models.json` field: [models configuration](models-configuration.md).
 
-For a built-in provider, start with `/providers`, then choose a model with `/model`. Use custom model configuration only when Octocode does not already include the provider or endpoint you need.
+```mermaid
+flowchart TD
+    A[What do you have?] --> B{Subscription or API key for a supported provider?}
+    B -- yes --> C["/providers: sign in or Add API key"]
+    B -- no --> D{Local GGUF files?}
+    D -- yes --> E["/llama (llama.cpp router)"]
+    D -- no --> F{Endpoint speaks OpenAI, Anthropic or Google API?}
+    F -- yes --> G["add it to models.json"]
+    F -- no --> H[not supported]
+    C --> M["/model: pick a model"]
+    E --> M
+    G --> M
+```
 
-## Choose a connection
+| What you have                                       | Setup                                                |
+| --------------------------------------------------- | ---------------------------------------------------- |
+| A supported subscription                            | Sign in through `/providers`                         |
+| A provider API key                                  | `/providers`, or the provider's environment variable |
+| A local GGUF model                                  | `/llama`                                             |
+| Ollama, LM Studio, vLLM, SGLang, a proxy or gateway | [`models.json`](#configure-a-compatible-endpoint)    |
 
-| What you have                                            | Recommended setup                                             |
-| -------------------------------------------------------- | ------------------------------------------------------------- |
-| A supported subscription                                 | Sign in through `/providers`                                  |
-| A provider API key                                       | Store it through `/providers` or set its environment variable |
-| A local GGUF model                                       | Connect Octocode to the llama.cpp router                      |
-| An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                       |
-| A provider with a custom protocol or authentication flow | Build or install a provider extension                         |
-
-Use `/model` to inspect the models available to this installation. Octocode starts with its bundled catalog. Set `OCTOCODE_MODEL_CATALOG_URL` to a compatible catalog service to enable remote catalog overlays; the fork does not default to Pi's service. Cached catalog data remains available offline. `octocode update --models` refreshes from the configured service. A catalog entry whose ID holds a control character (an escape sequence, a C0 or C1 control, a bidi override or a zero-width character) is dropped, including from data cached by an older version; control sequences are removed from names, and a missing or blank name shows the ID. A catalog response that is not valid JSON is reported without quoting its body.
-
-## Authenticate
-
-Run `/providers` and select a provider, then choose account sign-in or API-key setup. The same provider page offers key replacement and removal. See [providers](providers.md) for keychain storage and Pi configuration support.
-
-You can instead provide an API key through the provider's environment variable. This is useful in CI and other environments where Octocode should not write credentials. [Providers](providers.md) lists the variables and provider-specific setup.
-
-When several credential sources are configured, Octocode uses a runtime `--api-key` first, then a stored `auth.json` credential, an `apiKey` from `models.json`, and finally the provider's environment variables or ambient cloud credentials. Provider extensions can define their own authentication behavior.
-
-With the default home, Pi's providers load beside Octocode's. Octocode reads `~/.pi/agent/models.json` and `~/.pi/models.json` after its own `models.json`: a provider Octocode defines wins whole, and a provider only Pi defines is added. A provider with no Octocode `auth.json` credential uses its entry in Pi's `auth.json`, read only; a Pi key held in a secret command (`!cmd`) is skipped. Login, logout and token refresh write Octocode's `auth.json` only, so a refreshed Pi sign-in is saved there and Pi's files never change; logout removes only Octocode's copy, so a Pi credential stays in use until it is removed from Pi. `models-store.json` stays beside Octocode's `models.json`. An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` turns Pi's files off. `/providers pi` still copies a Pi credential into Octocode's storage, which is needed only to keep it after Pi changes or to move it into a keychain.
-
-Keep `auth.json` and any credential commands private. Project settings and extensions can execute inside the Octocode process after you trust a project. Review [Security](../../../SECURITY.md) before loading configuration from an untrusted directory.
+Octocode starts with a bundled catalog; cached catalog data works offline. `OCTOCODE_MODEL_CATALOG_URL` points at a compatible catalog service for remote overlays (there is no default service) and `octocode update --models` refreshes from it. Catalog entries whose id holds a control character are dropped; control sequences are removed from names; a bad catalog response is reported without quoting its body.
 
 ## Select a model
 
-Run `/model` to search models grouped by provider. The picker shows models from configured providers; catalog presence does not verify account access. Choose a provider in `/providers` first to filter to only its models. Press `Ctrl+S` on a model to save it as the default for new sessions.
+| Action           | How                                                                                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pick a model     | `/model` (grouped by provider; `/model openai/` limits it to one provider; `Ctrl+S` saves the default for new sessions). Catalog presence does not prove account access |
+| Cycle models     | `Ctrl+P`; `/modelsettings` → **Model shortcuts** controls the cycle, or set model patterns in `settings.json`                                                           |
+| Start on a model | `octocode --model <provider>/<id>`                                                                                                                                      |
+| Thinking level   | `/effort` (`Ctrl+S` saves the startup level); only levels the model supports are offered                                                                                |
+| Context budget   | `/context` shows usage; `/context size` or `/context 32k` sets a budget; `/context reset` restores catalog capacity                                                     |
 
-Run `/effort` to select the thinking level for the current model. Press `Ctrl+S` there to save the startup level. Octocode limits the choices to levels supported by the selected model.
-
-Switching models (`/model`, `Ctrl+P`) keeps the level you last chose in this session (with `/effort` or `--thinking`), lowered to what the new model supports: a model without reasoning runs with thinking off, and switching back restores your level. A level set for the target model in `modelThinkingLevels`, or in its `--models` pattern, wins over it; before you choose a level, a switch uses `defaultThinkingLevel`.
-
-`Ctrl+P` cycles through available models. Open `/modelsettings` and choose **Model shortcuts** to control that cycle and save the selection, or configure model patterns in `settings.json`.
-
-Use `/context` to inspect usage, `/context size` to choose a context budget, `/context 32k` to set one directly, or `/context reset` to restore the catalog capacity. Budgets apply to the selected physical model in this session, affect request limits and automatic compaction, and cannot exceed its catalog capacity. The minimum is 8,192 tokens (or the full capacity for smaller models). Changes require an idle session. Select a physical model before setting a budget for a virtual route. Budgets are not saved as defaults.
-
-The selected-model details show catalog context, maximum output, thinking support, base input/output/cache prices and known cache lifetimes. A time-limited catalog price (`cost.until` with `cost.after`) shows the rates in effect today, so an expired introductory price is no longer listed. Rates are provider-specific estimates: reasoning output, cache-write retention, long-context tiers and the served service tier can change totals. Subscription billing, account credits, regional premiums and time-based cache-storage fees are not fully represented by token estimates.
-
-A session records model and thinking-level changes. Resuming the session restores them without changing defaults for new sessions.
+- A model switch keeps your last chosen level (from `/effort` or `--thinking`), lowered to what the new model supports; switching back restores it. A level in `modelThinkingLevels` or the `--models` pattern wins; before you choose one, `defaultThinkingLevel` applies.
+- Context budgets apply to the selected physical model in this session, cannot exceed its catalog capacity, have a minimum of 8,192 tokens (or the full capacity of smaller models), need an idle session and are not saved.
+- Model details show catalog context, maximum output, thinking support, input/output/cache prices and known cache lifetimes. A time-limited price (`cost.until` with `cost.after`) shows today's rates. Prices are provider-specific estimates; reasoning output, cache-write retention, long-context tiers, service tiers, subscription billing, credits and regional premiums can change totals.
+- A session records model and thinking changes; resuming restores them without changing defaults.
 
 ## Connect local models
 
-Octocode integrates directly with the llama.cpp router. The router discovers GGUF files and loads models on demand. Octocode's `/llama` command manages the router, while `/model` selects one of its loaded models.
+Octocode integrates with the llama.cpp router, which discovers GGUF files and loads models on demand. `/llama` manages the router (loaded models, downloads, connection); `/model` selects a loaded model.
 
-Open `/llama` to inspect loaded models, download models and manage the connection. See the [command reference](commands.md#bundled-extension-commands) for availability.
-
-Loading a model in place of the loaded ones unloads them first, with a status line for each unload; an unload that has not finished after 60 seconds is reported with the model's state. When that load fails or is stopped, `/llama` restores the previously loaded models in a progress view that Esc can stop (`Stop restoring?`). Live updates from the router stop when it sends more than 1 MiB without ending an event; `/llama` then keeps polling the model catalog, which stays authoritative.
-
-Thinking support comes from each loaded model's chat template. When the router cannot return one model's template (it unloaded the model between listing it and the request), the other models are still listed, that model is listed without thinking support until a later refresh reads it, and `/llama` names it in a warning.
-
-When a dialog, selector or session reset takes the place of `/llama`, the view closes; a load, download or restore already running continues and finishes without it.
-
-For Ollama, LM Studio, vLLM, SGLang, and other compatible servers, [configure a compatible endpoint](#configure-a-compatible-endpoint) in `models.json`.
+- Loading a model in place of loaded ones unloads them first, with a status line each; an unload unfinished after 60 seconds is reported with the model's state.
+- When a load fails or is stopped, `/llama` restores the previous models in a progress view (Esc asks `Stop restoring?`).
+- Live router updates stop if it sends more than 1 MiB without ending an event; `/llama` then keeps polling the catalog.
+- Thinking support comes from each model's chat template. A model whose template cannot be read is listed without thinking support until the next refresh, with a warning.
+- A dialog, selector or session reset closes the view; a running load, download or restore finishes anyway.
 
 ## Configure a compatible endpoint
 
-Use `models.json` when an endpoint speaks an API Octocode already supports. This includes most Ollama, LM Studio, vLLM, SGLang, and proxy deployments.
+Use the global `models.json` when an endpoint speaks an API Octocode supports.
 
 ```json
 {
@@ -75,31 +67,31 @@ Use `models.json` when an endpoint speaks an API Octocode already supports. This
 }
 ```
 
-The dummy key makes the model available to Octocode; Ollama ignores it. For an authenticated endpoint, `apiKey` and header values can use `$NAME` or `${NAME}` environment interpolation, a literal value, or a leading `!command`. `$$` and `$!` produce a literal `$` and `!`. Commands in `models.json` run at request time and are not cached by Octocode.
+The dummy key makes the model available; Ollama ignores it. `apiKey` and header values accept `$NAME` or `${NAME}` (environment), a literal, or a leading `!command` (run at request time, not cached); `$$` and `$!` give a literal `$` and `!`. Opening `/model` reloads the file.
 
-Opening `/model` reloads the file. A `models` entry adds or replaces a model with the same ID on that provider. Use `modelOverrides` to change metadata for an existing built-in or extension-provided model without replacing the provider's model list. Unknown override IDs are ignored.
+| Goal                                      | Use                                                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add or replace a model                    | A `models` entry (same id on that provider replaces it)                                                                                     |
+| Change metadata of an existing model      | `modelOverrides` (unknown ids are ignored)                                                                                                  |
+| Route a built-in provider through a proxy | Only `baseUrl`; models and authentication stay unchanged: `{ "providers": { "anthropic": { "baseUrl": "https://proxy.example.com/v1" } } }` |
+| Describe verified request differences     | `compat` (never enable it just because an endpoint claims OpenAI or Anthropic compatibility)                                                |
 
-To route a built-in provider through a proxy, set only its `baseUrl`. Its models and authentication stay unchanged:
-
-```json
-{
-	"providers": {
-		"anthropic": { "baseUrl": "https://proxy.example.com/v1" }
-	}
-}
-```
-
-[Models Configuration](models-configuration.md) lists every field.
+For editor validation, point `$schema` at `schemas/models.schema.json` in the installed package. User code extensions cannot register providers; use `models.json`.
 
 ### Attach images by path
 
-In the terminal and in /web, a message that names an existing PNG, JPEG, GIF, WebP or BMP file (recognized by its contents, not its extension) sends that file as an image with the text, which stays as you typed it. A path can be absolute, start with `~/`, `./` or `../` (relative to the session folder), be a `file://` URL, sit in single or double quotes when it contains spaces (as macOS pastes screenshot paths), have backslash-escaped spaces (as drag and drop inserts them), or fill a line on its own. Each file is attached once, up to 8 images per message or the model's lower `images.maxPerMessage`. A file over 20 MB or one that cannot be read is not attached, and a short note follows the message; a path that names no image file stays plain text. Attached images are resized like `@file` images, show with the message in the transcript, and work for queued steering and follow-up messages. A text-only model receives the message as text. Command lines (skill commands, prompt templates) and messages that Octocode's own features send are not scanned.
+In the terminal and `/web`, a message that names an existing PNG, JPEG, GIF, WebP or BMP file (recognized by content, not extension) sends it as an image; the text stays as typed.
+
+| Accepted path form                                                      | Notes                                                |
+| ----------------------------------------------------------------------- | ---------------------------------------------------- |
+| Absolute, `~/`, `./`, `../` (relative to the session folder), `file://` | Quoted when it contains spaces, or backslash-escaped |
+| Alone on a line                                                         | Also accepted                                        |
+
+Each file is attached once, up to 8 images per message or the model's lower `images.maxPerMessage`. A file over 20 MB or unreadable is skipped with a short note; a path that is no image stays text. Images are resized like `@file` images and work in queued steering and follow-up messages. A text-only model receives the text. Skill commands, prompt templates and Octocode's own messages are not scanned.
 
 ### Describe model input and caching
 
-Image support belongs to the exact model and endpoint. `yarn start --list-models` shows an `images` column, and `/model` shows image support in the selected model's details. The web composer displays the selected model's input support and keeps attachments when you switch to a text-only model. Select a model that accepts images or remove the attachments before sending.
-
-For a verified image-capable custom endpoint, set `"input": ["text", "image"]` in its model definition. Omitted `input` defaults to `["text"]`. The same fields work in Pi-compatible `models.json` provider definitions and `modelOverrides`; [configuration fallback](configuration.md#pi-configuration-fallback) controls which file supplies a provider. For example:
+Image support belongs to the exact model and endpoint. `octocode --list-models` shows an `images` column and `/model` shows it in the details. Mark a verified image-capable custom model with `"input": ["text", "image"]` (default `["text"]`); it works in `models.json` and `modelOverrides`.
 
 ```json
 {
@@ -110,116 +102,84 @@ For a verified image-capable custom endpoint, set `"input": ["text", "image"]` i
 			"apiKey": "ollama",
 			"models": [{ "id": "your-installed-vision-model", "input": ["text", "image"] }]
 		},
-		"openai": {
-			"modelOverrides": {
-				"gpt-4o": { "input": ["text", "image"] }
-			}
-		}
+		"openai": { "modelOverrides": { "gpt-4o": { "input": ["text", "image"] } } }
 	}
 }
 ```
 
-Replace the custom model ID with the image-capable model served by your endpoint. Declaring image input does not add vision to a text-only server. Native provider entries take precedence over Pi fallback entries; neither reading nor sending images rewrites Pi files. Newly submitted images are rejected for text-only models, including queued input or a virtual route that resolves to a text-only model. Previously answered image turns can still be replayed on a text-only model using omission notices; the original images remain in session history.
+Declaring image input adds no vision to a text-only server. New images are rejected for text-only models, including queued input; earlier image turns replay with omission notices and stay in history. The web composer shows the model's input support and keeps attachments when you switch to a text-only model: pick an image-capable model or remove them.
 
-Use `instructionCacheRetention` and `cacheRetention` to select instruction and history preferences in settings or provider/model configuration. See [Prompt caching](prompt-caching.md) for supported durations, recommended configurations, precedence and diagnostics. `promptCache` below describes warming lifetimes; it does not select retention or enable unsupported API fields.
+| Field                                                                         | Effect                                                                                                                                           |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cacheRetention`, `instructionCacheRetention`                                 | Cache preferences for history and instructions, in settings or provider/model entries: [prompt caching](prompt-caching.md)                       |
+| `promptCache: { "short": 300, "long": 3600 }`                                 | Best-effort cache lifetime in seconds per retention tier; choose the conservative end of a published range                                       |
+| `inputLimits.images.resize`                                                   | How new image attachments and tool-result images are encoded before storing: `maxWidth`, `maxHeight`, `maxBytes` (base64 payload), `jpegQuality` |
+| `inputLimits.maxRequestBytes`, `images.maxPerMessage`, `images.maxPerRequest` | Reject requests over the limit; image counts include history and tool results                                                                    |
 
-Use `inputLimits.images.resize` to control how Octocode encodes new image attachments and tool-result images before storing them in conversation history:
+Resize defaults: 2000 by 2000 pixels, 4.5 MiB encoded, JPEG quality 80. Images are encoded once; changing models rewrites nothing. Limits are checked on the final provider payload (JSON size, images counted as base64); provider SDK overhead and server limits can still reject a request: reduce attachments or start a new session.
 
-```json
-{
-	"id": "vision-model",
-	"input": ["text", "image"],
-	"inputLimits": {
-		"images": {
-			"resize": {
-				"maxWidth": 1568,
-				"maxHeight": 1568,
-				"maxBytes": 524288,
-				"jpegQuality": 75
-			}
-		}
-	}
-}
-```
+Without a declared `promptCache`, warming uses the lifetime the adapter sends for the tier: 5m and 1h for Anthropic-style markers, 30m and 12h for OpenAI explicit caching, 24h for long history on OpenAI and listed Azure models. A model with neither is not eligible for [cache warming](configuration.md#prompt-cache-warming). A `modelOverrides` entry may set `inputLimits` or `promptCache` for a built-in model, also behind a validated proxy.
 
-`maxBytes` limits the base64-encoded payload. Omitted resize fields use conservative defaults of 2000 by 2000 pixels, 4.5 MiB encoded, and JPEG quality 80. Images are encoded once; changing models does not rewrite historical images. `inputLimits.maxRequestBytes`, `images.maxPerMessage`, and `images.maxPerRequest` reject requests that exceed the configured limits. Image counts include history and tool results. Built-in chat adapters check the final provider payload after `onPayload`, including merged tool-result messages; the byte check measures its JSON encoding, with binary image sources counted as base64. Provider SDK transport overhead and server limits can still cause a request to be rejected. Reduce attachments or start a new session when a request exceeds a limit.
-
-<a id="prompt-cache-lifetimes"></a>
-
-Use `promptCache` to declare the provider's best-effort cache lifetime in seconds for the `short` or `long` retention tier:
-
-```json
-{ "id": "claude-sonnet-5", "promptCache": { "short": 300, "long": 3600 } }
-```
-
-Choose the conservative end of any published range. Without a declared lifetime, warming plans with the lifetime the adapter sends for the tier: 5m and 1h for Anthropic-style markers, 30m and 12h for OpenAI explicit caching, and 24h for long history on OpenAI and listed Azure models with extended retention. A model with neither is not eligible for cache warming. A `modelOverrides` entry can set `inputLimits` or `promptCache` for a built-in or extension model, including a model accessed through a validated proxy. See `cacheWarming`.
+**Azure OpenAI Responses.** 24h retention applies only to models Microsoft lists, matched by `id`. A deployment-named model opts in with `"compat": { "supportsLongCacheRetention": true }` (set it only when the deployment runs a listed model; `false` turns it off). Standard (pay-as-you-go) GPT-5.6 or later deployments may add `"supportsExplicitPromptCacheMode": true`: requests then carry `prompt_cache_options` (12h TTL when history or instruction retention is long, since breakpoints inherit it; `supportsLongCacheRetention: false` keeps 30m) and breakpoints on the leading instructions. Leave it unset on provisioned deployments, which reject breakpoints.
 
 ### Configure sampling by thinking level
 
-OpenAI-compatible APIs support free-form `samplingParams` model defaults and `samplingParamsByThinkingLevel` overrides. The latter uses Octocode thinking-level keys (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`), not provider values from `thinkingLevelMap`:
+`samplingParams` sets model defaults and `samplingParamsByThinkingLevel` overrides per Octocode level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; not provider values from `thinkingLevelMap`). Octocode clamps unsupported levels, then merges model `samplingParams`, the level's override and request-level `samplingParams`; later wins per key, missing levels inherit defaults, and `modelOverrides` merges per level per key. Applies to `openai-completions`, `openai-responses` and `azure-openai-responses` only.
 
 ```json
 {
 	"id": "qwen-thinking-model",
 	"reasoning": true,
-	"samplingParams": {
-		"temperature": 1.0,
-		"top_p": 0.95
-	},
+	"samplingParams": { "temperature": 1.0, "top_p": 0.95 },
 	"samplingParamsByThinkingLevel": {
-		"off": {
-			"temperature": 0.7,
-			"top_p": 0.8
-		},
-		"high": {
-			"top_k": 20
-		}
+		"off": { "temperature": 0.7, "top_p": 0.8 },
+		"high": { "top_k": 20 }
 	}
 }
 ```
 
-Octocode first clamps unsupported thinking levels, then merges model `samplingParams`, the effective level's override, and request-level `samplingParams` in that order. Later values win per key. Missing levels inherit the model defaults. `modelOverrides` merges per-level entries per key with the base model. These fields apply only to `openai-completions`, `openai-responses`, and `azure-openai-responses`; other APIs ignore them.
+## Classifier and image models
 
-Compatibility settings should describe verified differences in the endpoint's request or response behavior. Do not enable them based only on an endpoint advertising OpenAI or Anthropic compatibility.
+Both are listed under their provider but never appear in `/model`, because they do not chat.
 
-## Use classifier models
+| Kind       | What it does                                                                                | Comes from                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Classifier | Answers typed questions about JSON state (a choice, yes/no, or a score, with probabilities) | TypeSafe Jev, Cloudflare Clef and Clef Flash (Workers AI), OpenAI GPT-6 Luna (Decisions API); OpenRouter via `/providers`; chat models on a llama.cpp router |
+| Image      | Generates images from a prompt and optional images                                          | OpenRouter image models such as `google/gemini-2.5-flash-image` and `black-forest-labs/flux.2-pro`, with the same key as its chat models                     |
 
-Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Octocode includes TypeSafe's Jev model from these providers, Cloudflare's Clef and Clef Flash models from Workers AI, and OpenAI's GPT-6 Luna through the [Decisions API](https://developers.openai.com/api/docs/guides/decisions).
+OpenAI's Decisions API needs an API key: `gpt-6-luna` is not listed while `openai` is signed in with ChatGPT, even with `OPENAI_API_KEY` set; log out of `openai` to use the key. GPT-6 Luna also judges images; other classifiers error on them. Inputs above 922K tokens are rejected, and requests running past about five seconds (roughly 600K input tokens) time out. TypeSafe keys serve classifier models.
 
-The [provider library's classifier table](../../ai/docs/classification.md) lists each provider's model IDs and the credential it reads. In Octocode, OpenRouter can also be connected with `/providers`.
+## Discover vendor models
 
-Chat models on a llama.cpp router are also listed as classifier models.
+`octocode models discover [--provider <id>] [--json] [--offline]` compares documented vendor model lists with the configured catalog. It makes listing requests only, never inference; normal credential resolution may refresh and save an expired OAuth token.
 
-OpenAI's Decisions API needs an API key. ChatGPT sign-in credentials do not work with it, so `gpt-6-luna` is not listed as available while `openai` is logged in through `/providers`, even when `OPENAI_API_KEY` is set; log out of `openai` to use the key. GPT-6 Luna also judges images passed in `images`; other classifier models return an error for them. The API rejects inputs above 922K tokens, but requests that run longer than about five seconds, currently above roughly 600K input tokens, fail with a gateway timeout.
+```bash
+octocode models discover --provider openai
+octocode models discover --provider google --json
+octocode models discover --offline --json
+```
 
-Classifier models do not appear in `/model`. Extensions call `ctx.modelRegistry.classify()` and can inspect `result.usage` when the provider reports it. [Virtual models](virtual-models.md#route-requests) can use classifiers to route requests; see the `jev-router.ts` example. There is no built-in script executor exposing classifier calls to the conversational model.
+Without `--provider` it checks every registered provider (four at a time, 60-second command deadline, 15 seconds per vendor list). `--offline` or `OCTOCODE_OFFLINE=1` reads only local definitions and resolves no credentials. An `error` or `unconfigured` provider gives a nonzero exit status; unavailable discovery contracts are reported separately.
 
-## Use image models
+| Status         | Meaning                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| `verified`     | The model-list request succeeded; this does not prove inference access or feature compatibility |
+| `catalog`      | Offline result from configured definitions                                                      |
+| `unsupported`  | No verified list contract for this provider; the result links its documentation                 |
+| `unconfigured` | The list needs authentication and none resolved                                                 |
+| `error`        | Authentication or the request failed; local definitions stay in the result                      |
 
-Image models generate images from a prompt and optional input images. Octocode lists OpenRouter's image models, such as `google/gemini-2.5-flash-image` and `black-forest-labs/flux.2-pro`, under the `openrouter` provider; they use the same `OPENROUTER_API_KEY` or `/providers` credential as its chat models.
-
-Image models do not appear in `/model`. Extensions call `ctx.modelRegistry.generateImages()`. Its `input` accepts text and image blocks; the result contains output image blocks and usage when supplied by the provider. Extensions decide how to expose these results through a native tool.
-
-## Add a custom provider
-
-Use an extension when the provider needs custom streaming, model discovery, or authentication behavior. See [Custom Providers](custom-provider.md) for the extension workflow.
+- `known` means the id already has a definition. Unknown ids are marked **metadata required**: vendor lists omit verified context limits, prices, modalities, reasoning and tool support, and discovery never guesses them or adds runnable models. Check the vendor's documentation, add a definition to `models.json`, then test with a real call. `missingFromVendor` lists configured ids absent from the response (absence alone does not prove retirement).
+- Public Hugging Face, OpenCode Console and Vercel catalogs need no credentials and do not show subscription entitlement; subscription plans use their own lists.
+- Azure deployments, Bedrock regional availability, Vertex publisher models, Fireworks deployments and Cloudflare account models have separate control-plane contracts: the command gives guidance instead of guessing a route or sending inference credentials elsewhere.
+- OpenAI API keys use the standard `data[].id` list. Sign in with ChatGPT uses the account's `models[].slug` list in the vendor's order and names, only `visibility: "list"` entries that also have trusted runtime metadata; login saves the list and refresh updates it without mixing accounts.
+- A vendor id with a control character (escape sequence, C0/C1 control, line break, bidi override, zero-width character) fails with `Vendor model list contains an invalid model ID` rather than being rewritten; slashes, colons, dots, `@`, underscores and spaces are kept. Control sequences are removed from display names.
 
 ## Troubleshooting
 
-### A model does not appear
-
-Confirm that its provider has usable authentication. Custom models can load from `models.json` but remain unavailable in `/model` until Octocode can resolve credentials. For llama.cpp, only models currently loaded by the router appear.
-
-### Authentication works in one shell only
-
-Check whether the key came from an environment variable rather than `auth.json`. Environment variables must be present in the process that starts Octocode.
-
-### Sign-in opens a browser on a remote machine
-
-Complete the provider's headless authentication flow when available. Some providers let you paste the final redirect URL or authorization code back into Octocode. See [Authenticate interactively](providers.md#authenticate-interactively).
-
-### A compatible endpoint rejects requests
-
-Check its API type and compatibility settings in `models.json`. The upstream server must support the corresponding request fields and behavior.
-
-For editor validation, point `$schema` at the absolute path of the [packaged models schema](../schemas/models.schema.json) in your installation.
+| Symptom                                     | Check                                                                                                                                                                            |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A model does not appear                     | The provider needs usable credentials; custom models load from `models.json` but stay unavailable in `/model` until credentials resolve. For llama.cpp only loaded models appear |
+| Authentication works in one shell only      | The key came from an environment variable; it must be set in the process that starts Octocode                                                                                    |
+| Sign-in opens a browser on a remote machine | Paste the final redirect URL or code back into Octocode: [providers](providers.md#how-sign-in-works)                                                                             |
+| A compatible endpoint rejects requests      | Check the `api` type and `compat` in `models.json`; the server must support the request fields                                                                                   |

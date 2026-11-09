@@ -45,7 +45,9 @@ describe("mcp tool", () => {
 
 	it("does not expose stale catalogs or reconnect disconnected servers during inspection", async () => {
 		const { run, text, operations } = setup([{ name: "docs", state: "stopped", connected: false }]);
-		expect(await text({ intent: "tools", server: "docs" })).toBe("No tools available in the current connection.");
+		expect(await text({ intent: "tools", server: "docs" })).toBe(
+			'MCP server "docs" is not connected (stopped); restart it with intent restart and server "docs", then list its tools again.',
+		);
 		await expect(run({ intent: "tools", server: "docs", tool: "read" })).rejects.toThrow("No available tool");
 		expect(operations.tools).not.toHaveBeenCalled();
 		expect(operations.restart).not.toHaveBeenCalled();
@@ -72,6 +74,33 @@ describe("mcp tool", () => {
 		expect(await text({ intent: "list", server: "broken" })).toBe("broken: failed — spawn ENOENT");
 		await expect(run({ intent: "list", server: "nope" })).rejects.toThrow(
 			'No MCP server "nope" in this session. Servers: docs, octocode, broken.',
+		);
+	});
+
+	it("lists each server like a skill entry: group and purpose, and where one server is defined", async () => {
+		const { text } = setup([
+			{
+				name: "octocode",
+				state: "connected · 14 tools",
+				connected: true,
+				group: "core",
+				description: "Code search\n and read.",
+				source: "built in",
+			},
+			{
+				name: "docs",
+				state: "failed",
+				connected: false,
+				error: "spawn ENOENT",
+				group: "workspace",
+				source: "/repo/.mcp.json",
+			},
+		]);
+		expect(await text({ intent: "list" })).toBe(
+			"octocode: connected · 14 tools · Core. Code search and read.\ndocs: failed · Workspace — spawn ENOENT",
+		);
+		expect(await text({ intent: "list", server: "docs" })).toBe(
+			"docs: failed · Workspace — spawn ENOENT\nDefined in: /repo/.mcp.json",
 		);
 	});
 

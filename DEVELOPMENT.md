@@ -1,97 +1,133 @@
 # Developing octocode-code
 
-This page is for working on Octocode itself. To use it, read the [README](README.md).
+For contributors. To use Octocode, read the [README](README.md). Rules for changing code, owners and generated files: [AGENTS.md](AGENTS.md).
 
-octocode-code is a coding agent forked from [Pi](https://github.com/earendil-works/pi). It combines Pi's agent loop, provider integrations and terminal UI with native Octocode features for code research, guarded file changes, subagents, collaboration, browser work, memory and session recovery.
-
-These features originated in `packages/octocode-pi-extension` in the sibling `octocode` repository. Their implementation now lives in [packages/coding-agent/src/octocode](packages/coding-agent/src/octocode/); this fork loads it automatically. Installing the original extension is unnecessary.
+Octocode is a fork of [Pi](https://github.com/earendil-works/pi): Pi's agent loop, providers and terminal UI plus native Octocode features (code research, guarded edits, subagents, collaboration, browser work, memory, recovery). The native features live in `packages/coding-agent/src/octocode/` and load automatically.
 
 ## Run from source
 
-Use Node.js 24.15 or newer **within Node 24**: the sibling Octocode dependencies currently require `^24.15.0`. `.node-version` pins that line. This checkout depends on built packages at `../octocode/packages/octocode`, `../octocode/packages/octocode-mcp` and `../octocode/packages/octocode-native`, including their CLI artifacts and native platform binaries. Check out the sibling repository at the ref in [`.github/octocode-ref`](.github/octocode-ref), currently the `octocode-20.0.0` branch: its default branch does not have these packages. CI reads the same file.
-
-From this repository's root:
+Needs Node.js 24.15 or newer within Node 24 (`.node-version` pins the line) and the sibling `octocode` repository checked out at `../octocode` on the `octocode-20.0.0` branch (its default branch lacks the needed packages). `packages/coding-agent/package.json` links the sibling packages `octocode`, `octocode-mcp`, `octocode-native` and `octocode-chrome-devtools` with `link:`; build them first, native binaries included.
 
 ```sh
 yarn install --immutable
-yarn run hydrate:model-data
-yarn start
+yarn run hydrate:model-data   # downloads the provider model catalog
+yarn start                    # run from source; `yarn start --help` lists options
 ```
 
-Hydration downloads the provider model catalog. Use `/login` to connect an AI account or API key, then `/model` to choose a model and enter a task. `yarn start --help` lists CLI options; `/help` lists the native feature commands. For compiled artifacts, run `yarn run build:offline` after hydration.
+Inside the app: `/login` connects an account, `/model` picks a model, `/help` lists commands.
 
-The package name is `@octocodeai/octocodecode`, and its agent executable is `octocode`. The research and native executables are available without name collisions through:
+| Command                      | Does                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `yarn start research --help` | The `octocode` research CLI                                                                 |
+| `yarn start native --help`   | The native helper CLI                                                                       |
+| `yarn run build:offline`     | Builds every workspace after hydration; run `node packages/coding-agent/dist/bundle/cli.js` |
+| `yarn run build`             | Refreshes model data, then builds                                                           |
+
+## Verify
+
+```mermaid
+flowchart LR
+  edit[Edit] --> fmt["yarn oxfmt files"] --> focus["Focused vitest"] --> check["yarn run check"] --> e2e["test:e2e after a wave of changes"]
+```
+
+| Command                                                                                 | Does                                                                                                                                                 |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn run check`                                                                        | Typecheck, Oxlint, format check, browser-smoke, workspace bundle and favicon freshness, package and database boundaries, Knip; rewrites nothing      |
+| `yarn oxfmt <files>`                                                                    | Formats those files (`yarn run format` formats everything)                                                                                           |
+| `yarn vitest run --config vitest.octocode.config.ts [paths]` in `packages/coding-agent` | Native suite (`test/octocode/`); `yarn run test:changed` runs only tests for changed files                                                           |
+| `yarn vitest run [paths]` in `packages/coding-agent`                                    | Core suite                                                                                                                                           |
+| `yarn workspace @octocodeai/octocodecode run test:e2e`                                  | Real sessions on a scripted model, no network; holds the prompt-size ceilings                                                                        |
+| `yarn workspace @octocodeai/octocodecode run test:architecture`                         | Layering rules in the coding-agent                                                                                                                   |
+| `yarn run test:scripts`                                                                 | Node tests for `scripts/`                                                                                                                            |
+| `./test.sh`                                                                             | Every test with isolated home, config, credentials and temp dir (needs `fd`, `rg`); `yarn run test` is its workspace runner                          |
+| `yarn run test:tmux`, `yarn run test:mcp-conformance`                                   | tmux and MCP conformance suites                                                                                                                      |
+| `yarn run check:unused`                                                                 | Knip: unused files, exports and dependencies. `knip.jsonc` lists public APIs and dynamic entry points; verify a finding against them before deleting |
+
+- Run builds and full suites in the background; write long output to `.octocode/tmp/`. Never run two builds or generators at once.
+- After browser source changes run `yarn run generate:workspace`. After prompt, tool description or MCP preset changes run `yarn workspace @octocodeai/octocodecode run generate:prompts` and read `.octocode/tmp/agent-prompts/`.
+- Harness-based session tests: [suite rules](packages/coding-agent/test/suite/README.md).
+- Known flakes: `team-interpreter-parsed` "gates a 2000-stage pipeline quickly" (400 ms limit) under heavy load; the real-browser e2e can leave a Chrome process behind.
+- `octocode-test.sh` runs the agent from source; it is a launcher, not a suite.
+
+## Release
+
+Only `@octocodeai/octocodecode` is published; every other workspace compiles into its one bundle.
+
+```mermaid
+flowchart LR
+  A["yarn run publish:dry or publish"] --> B["Write manifest into the tarball\nwith exact octocodeRelease versions"]
+  B --> C["Add docs/ as docs/project/\nminus internal reviews and audits"]
+  C --> D["Install the tarball from npm,\nrun a real session on a scripted model"]
+  D -->|all pass| E[Publish]
+  D -->|any failure| F[Refuse]
+```
+
+`publish:dry` rehearses; `publish` also requires a clean tree and dependency versions on npm. Local packaging (`pack:packages`, `release:local`) turns `link:` and `file:` dependencies into absolute `file:` references in disposable artifacts: they depend on the sibling checkout and are not portable. What each script does: [scripts/README.md](scripts/README.md).
+
+### Validate a registry release candidate
+
+Staging runs after `yarn run build:offline`, rewrites no development manifest and publishes nothing. Supply a reviewed JSON map: `schemaVersion: 1` and a `packages` object keyed by dependency name, each with an exact `version`, its `sourceRevision` and the registry's `sha512-…` `integrity` (include reviewed native platform packages and other sibling transitive packages). Seed a disposable registry with the candidate and the reviewed sibling tarballs, then:
 
 ```sh
-yarn start research --help
-yarn start native --help
+node scripts/stage-registry-release.mjs --prepare --map /path/to/map.json \
+  --registry http://127.0.0.1:4873/ --out /tmp/octocode-registry-candidate
+
+# once the registry serves the exact tarballs:
+node scripts/stage-registry-release.mjs --verify --map /path/to/map.json \
+  --registry http://127.0.0.1:4873/ --out /tmp/octocode-registry-candidate
 ```
 
-Local dependencies make this a development checkout. `@octocodeai/octocodecode` is the only package published to npm; everything else compiles into its one bundle file. `yarn run publish:dry` rehearses a release and `yarn run publish` runs it: both write the published manifest into the tarball with the exact npm versions in `octocodeRelease`, add this repository's `docs/` as `docs/project/` without internal reviews and audits, install that tarball from npm and run a real session against a scripted model, and refuse to publish if anything fails. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
+| Phase       | Does                                                                                                                                                                                                                                                                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--prepare` | Saves tarballs, checksums and the map digest in `candidate.json`                                                                                                                                                                                                                                                                                    |
+| `--verify`  | Checks registry metadata and integrities, creates an installer lock under the output directory, installs the single staged tarball in a clean consumer, and checks both CLI entries, public imports, roles, research skills, model data and `--help` paths with isolated configuration. Keeps its bytes on failure; discards any prior fixture lock |
 
-## Validate a registry release candidate
-
-Development keeps the three sibling `link:` dependencies. A registry candidate uses a separate staging command after `yarn run build:offline`; it does not rewrite development manifests or publish packages. Supply a reviewed JSON mapping with `schemaVersion: 1` and a `packages` object keyed by dependency name. Each mapped sibling package must have an exact `version`, its `sourceRevision`, and the registry's `sha512-…` `integrity`. Include reviewed native platform packages and other sibling transitive candidates in the mapping as applicable. Prepare candidate tarballs first, then seed a disposable registry with those exact tarballs and the reviewed sibling/platform tarballs; the verification phase will check the complete registry graph.
-
-```sh
-node scripts/stage-registry-release.mjs \
-  --prepare \
-  --map /path/to/reviewed-release-map.json \
-  --registry http://127.0.0.1:4873/ \
-  --out /tmp/octocode-registry-candidate
-
-# After the registry serves the exact candidate and reviewed dependency tarballs:
-node scripts/stage-registry-release.mjs \
-  --verify \
-  --map /path/to/reviewed-release-map.json \
-  --registry http://127.0.0.1:4873/ \
-  --out /tmp/octocode-registry-candidate
-```
-
-Preparation saves tarballs, their checksums and the mapping digest in `candidate.json`. Verification preserves these bytes on failure, checks registry metadata and resolved integrities, creates a dedicated npm installer lock under the output directory, then installs the **single** staged coding-agent tarball in a clean consumer without workspace overrides. It checks both CLI entries, every public entry's imports, roles, research skills, hydrated model data and native/research `--help` paths with isolated configuration. A candidate validated against a disposable registry is not a production installer lock; rerun `--verify` with `--registry https://registry.npmjs.org/` on the **same prepared tarballs** after the identical dependency tarballs are published. Verification discards any prior fixture lock and resolves afresh. Before promoting the coding-agent package, the verified production installer lock must be reviewed and copied through the release process; this command does not publish or alter the development install-lock directory. The generator refuses to write a fixture lock to the production installer-lock directory. Validate supported OS/CPU/libc variants separately so their optional native binaries are actually loaded. The existing `yarn run check:package-install` exercises the local multi-tarball development graph instead.
-
-## Documentation
-
-- [Every feature, with its owner and documentation](docs/FEATURES.md)
-- [User documentation index](packages/coding-agent/docs/index.md)
-- [Agent guide and runtime references](packages/coding-agent/README.md)
-- [How to: short recipes for common tasks](packages/coding-agent/docs/how-to.md)
-- [Native features and extension migration](packages/coding-agent/docs/native-features.md)
-- [Configuration locations and controls](CONFIGURATIONS.md)
-- [Running Octocode inside tmux](packages/coding-agent/docs/tmux.md)
-- [Add hooks and plugins](PLUGINS.md)
-- [Configuration and Pi compatibility](packages/coding-agent/docs/configuration.md)
-- [Agent instructions](packages/coding-agent/docs/instructions.md)
-- [Development guidance](AGENTS.md)
-- [Security boundaries](SECURITY.md)
+A disposable-registry result is not a production lock: after the dependency tarballs are published, rerun `--verify --registry https://registry.npmjs.org/` on the same tarballs, then review and copy the verified lock through the release process. The command never publishes and refuses to write a fixture lock into the production installer-lock directory. Check supported OS/CPU/libc variants separately so native binaries load. `yarn run check:package-install` covers the local multi-tarball graph instead.
 
 ## Packages
 
-| Directory                                       | Responsibility                                                       |
-| ----------------------------------------------- | -------------------------------------------------------------------- |
-| [coding-agent](packages/coding-agent/README.md) | CLI, sessions and native Octocode features; RPC                      |
-| [acp](packages/acp/README.md)                   | Private inbound/outbound ACP integration, compiled into coding-agent |
-| [mcp](packages/mcp/README.md)                   | Private MCP client and host integration, compiled into coding-agent  |
-| [agent](packages/agent/README.md)               | Agent loop and tool execution                                        |
-| [ai](packages/ai/README.md)                     | Provider APIs and model catalog                                      |
-| [tui](packages/tui/README.md)                   | Terminal UI                                                          |
-| [webview](packages/webview/README.md)           | Browser workspace, board, Markdown/code rendering and UI state       |
-| [contracts](packages/contracts/README.md)       | Shared entity contracts, schemas and workspace protocols             |
-| [telemetry](packages/telemetry/README.md)       | Telemetry contracts and adapters                                     |
-| [db](packages/db/README.md)                     | Private agent database: schema, connections, queries and retention   |
-| [common](packages/common/README.md)             | Private host-free utilities, compiled into coding-agent              |
+| Package                                         | Responsibility                                              |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| [coding-agent](packages/coding-agent/README.md) | CLI, sessions, native features, RPC (the published package) |
+| [acp](packages/acp/README.md)                   | Inbound and outbound ACP (private)                          |
+| [mcp](packages/mcp/README.md)                   | MCP client and host integration (private)                   |
+| [agent](packages/agent/README.md)               | Agent loop, tool execution                                  |
+| [ai](packages/ai/README.md)                     | Providers, model catalog                                    |
+| [tui](packages/tui/README.md)                   | Terminal UI                                                 |
+| [webview](packages/webview/README.md)           | Browser workspace, rendering, UI state                      |
+| [contracts](packages/contracts/README.md)       | Shared schemas and protocols                                |
+| [telemetry](packages/telemetry/README.md)       | Telemetry contracts and adapters                            |
+| [db](packages/db/README.md)                     | Agent database (private)                                    |
+| [common](packages/common/README.md)             | Host-free utilities (private)                               |
 
-## Development
+## Interface checks
 
-```sh
-yarn run check
-./test.sh
-```
+| Interface   | Run (from `packages/coding-agent` unless noted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ACP         | `yarn workspace @octocodeai/octocode-acp test` (broker, history, input, permissions, startup, redaction); `yarn vitest run --config vitest.e2e.config.ts test/octocode/e2e-acp.test.ts test/octocode/e2e-acp-conformance.test.ts test/octocode/e2e-reach-process.test.ts`; `yarn vitest run --config vitest.config.ts test/acp-api.test.ts test/acp-command-lifecycle.test.ts`; `yarn node test/octocode/scripts/live-acp-reliability.mjs --fixture` (no provider calls). In disposable environments: `test/octocode/scripts/check-acp-compatibility.mjs` (official ACP TCK checkout, `uv`, Python 3.14+; experimental, not certification) and `check-acp-python.mjs` (Python SDK `agent-client-protocol==0.12.1`, both directions) |
+| Session API | With an isolated `HOME`, exercise `list` → `status` → guarded `send --wait` → same-key retry → `watch`: a retry starts no second `agent.start`, cancellation shows as a settlement event. Tests: `yarn vitest run --config vitest.octocode.config.ts test/octocode/api-cli-subprocess.test.ts test/octocode/api-socket.test.ts test/octocode/api-events.test.ts`, `test/acp-api.test.ts`, `test/acp-command-lifecycle.test.ts` (`vitest.config.ts`), `test/octocode/e2e-reach-process.test.ts`, `test/octocode/e2e-api-events.test.ts` (`vitest.e2e.config.ts`)                                                                                                                                                                     |
+| tmux        | `yarn run test:tmux` (repository root); real-tmux tests use a private server and skip without `tmux` 3.3 or `python3`. `scripts/tmux-cli-check.sh` runs the real CLI in a private server (startup, paste; with `--model` a prompt, `/fork` and image rows; `--cli=<command>` checks another launcher). Image rendering needs a real Kitty or Ghostty window                                                                                                                                                                                                                                                                                                                                                                         |
 
-`check` runs TypeScript, Oxlint, the format check, browser imports, workspace bundle and favicon freshness, the package and database boundary checks and Knip, without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files, [scripts/README.md](scripts/README.md) for what each repository script does, and the [coding-agent suite rules](packages/coding-agent/test/suite/README.md) for harness-based session tests. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
+## Plugin and hook compatibility checks
 
-Run `yarn run check:unused` (Knip) from the root to inspect unused files, exports and dependencies across all workspaces. [knip.jsonc](knip.jsonc) identifies public APIs, dynamically loaded entrypoints, copied vendor assets and external system commands. Verify findings against those consumers before removing code; the package root exports only the CLI and RPC surface.
+Normal tests read saved fixtures and need neither Rust nor a vendor binary. Each fixture proves its own narrow contract against source revisions and executables pinned in its manifest, not host equivalence.
+
+| Contract                                                          | Evidence (under `packages/coding-agent/test/`)                                                                                                                                                                                                                                                                                                                                             | Reproduce                                                                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex hook output decisions                                       | `fixtures/hooks/codex-output-contract.json`, read by `hooks-codex-conformance.test.ts`; not exit semantics, timing, permissions or patch rewriting                                                                                                                                                                                                                                         | `node packages/coding-agent/scripts/generate-codex-hook-output-fixtures.mjs [--check]` (Cargo and network)                                                 |
+| Codex patch parsing and bytes                                     | [Patch oracle](packages/coding-agent/test/octocode/fixtures/codex-patch/ADAPTATIONS.md)                                                                                                                                                                                                                                                                                                    | Its page                                                                                                                                                   |
+| Codex skill metadata                                              | [Metadata oracle](packages/coding-agent/test/fixtures/codex-skill-metadata/ADAPTATIONS.md)                                                                                                                                                                                                                                                                                                 | Its page                                                                                                                                                   |
+| Codex skill mentions                                              | [Corpus](packages/coding-agent/test/fixtures/codex-skill-mentions/corpus.json), [manifest](packages/coding-agent/test/fixtures/codex-skill-mentions/manifest.json)                                                                                                                                                                                                                         | `python3 packages/coding-agent/test/fixtures/codex-skill-mentions/replay.py`                                                                               |
+| Claude permission decisions, rewrites, file rewrites, replace-all | [replay.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/replay.py), [rewrites.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/rewrites.py), [file-rewrites.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/file-rewrites.py), [replace-all.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/replace-all.py) | Each with `--claude /absolute/path/to/claude --node /absolute/path/to/node`; the recorded version and hash must match, or pass `--allow-identity-mismatch` |
+| Claude permission updates                                         | [permission-updates.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/permission-updates.py)                                                                                                                                                                                                                                                                             | The same arguments                                                                                                                                         |
+| Claude Bash grammar and wrappers                                  | [grammar.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/grammar.py), [wrappers.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/wrappers.py); narrower than the Bash language, no PowerShell                                                                                                                                                       | The same arguments                                                                                                                                         |
+
+The Claude replays use a local mock provider, temporary settings and a dummy credential, never a live account, and end their process group on a timeout. They use POSIX process handling; Windows is unverified.
+
+## More
+
+[Features and owners](docs/FEATURES.md) · [User docs index](packages/coding-agent/docs/index.md) · [How-to recipes](packages/coding-agent/docs/how-to.md) · [Native features](packages/coding-agent/docs/native-features.md) · [Configuration](packages/coding-agent/docs/configuration.md) · [Instructions](packages/coding-agent/docs/instructions.md) · [Security](SECURITY.md)
 
 ## License
 
-[MIT](LICENSE). This is an independent fork; original Pi copyright notices are retained.
+[MIT](LICENSE). Independent fork; original Pi copyright notices are retained.

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ApiClient } from "../../src/octocode/api/client.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { apiDir, type InstanceRecord, listInstances } from "../../src/octocode/api/registry.ts";
 import {
 	type Endpoint,
@@ -56,12 +57,15 @@ export async function session(box: Sandbox, cwd?: string) {
 }
 export type Session = Awaited<ReturnType<typeof session>>;
 
-export const records = (run: Pick<Run, "stdout">) =>
-	run
-		.stdout()
+/** The complete JSON lines the session wrote: the last line may still be in flight, and is read once it ends. */
+export const records = (run: Pick<Run, "stdout">) => {
+	const written = run.stdout();
+	return written
+		.slice(0, written.lastIndexOf("\n") + 1)
 		.split("\n")
 		.filter(Boolean)
 		.map((line) => JSON.parse(line) as Record<string, any>);
+};
 
 export const prompt = (run: Run, id: string, message: string) =>
 	run.process.stdin?.write(`${JSON.stringify({ id, type: "prompt", message })}\n`);
@@ -110,6 +114,53 @@ export const merge = (branch: string): Step => ({
 	tool: "agent",
 	args: { type: "coordinate", action: "merge", branch },
 });
+
+/** Makes the sandbox's sessions share a team database the test can open; call it before they start. */
+export function shareTeam(box: Sandbox): () => TeamStore {
+	const file = path.join(box.root, "team.sqlite");
+	box.env.OCTOCODE_AGENT_DB = file;
+	return () => TeamStore.open(box.project, file, {});
+}
+
+/** A script step that holds a session until `flag` exists (see `releaseWhenIdle`). */
+export const holdUntil = (flag: string): Step => ({
+	tool: "bash",
+	args: { command: `until [ -e '${flag}' ]; do sleep 0.1; done` },
+});
+
+/**
+ * Creates `flag` once `worktree`, which already sent its request, has ended its turn and the team shows every session in
+ * `folder` idle. A merge refuses while a session still works in the worktree, and the session that asked is still
+ * finishing its turn when the request arrives: a coordinator held on `flag` merges only after that, so the outcome does
+ * not depend on how fast each process runs. The session's own state comes first: its team row may still be the idle one
+ * from before the turn, or the working one until the next heartbeat.
+ */
+export async function releaseWhenIdle(
+	open: () => TeamStore,
+	worktree: Session,
+	folder: string,
+	flag: string,
+): Promise<void> {
+	const api = new ApiClient(worktree.instance);
+	const deadline = Date.now() + 120_000;
+	for (;;) {
+		const { state, pending } = await api.call<{ state?: string; pending?: boolean }>("status");
+		if (state === "idle" && !pending) break;
+		if (Date.now() > deadline) throw new Error("Timed out waiting for the worktree session to end its turn");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	const idle = () => {
+		const store = open();
+		try {
+			const there = store.list().filter((member) => member.checkout === folder);
+			return there.length > 0 && there.every((member) => member.status === "idle");
+		} finally {
+			store.close();
+		}
+	};
+	await until(idle, `the sessions in ${folder} to be idle`);
+	fs.writeFileSync(flag, "");
+}
 
 /** A real linked worktree of the sandbox's repository, on its own branch, with one commit its main checkout lacks. */
 export function linkedWorktree(box: Sandbox, branch: string, file = "feature.txt", content = "from the worktree\n") {

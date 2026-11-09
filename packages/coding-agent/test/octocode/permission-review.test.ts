@@ -293,4 +293,25 @@ describe("shared memory moves", () => {
 		await expect(run({ op: "set", id: "M2", scope: "project" })).resolves.toMatch(/Updated M2/);
 		expect(ctx.ui.selects).toEqual([]);
 	});
+
+	it("set and delete imply source memories and name the fix for another source", async () => {
+		const fake = fakeHost();
+		registerArchiveTool(
+			fake.api,
+			registerMemory(fake.api, {
+				commands: new Subcommands(),
+				isSubagent: false,
+				permission: fakePermission("manual"),
+			}),
+		);
+		const tool = fake.tools.get("archive");
+		const ctx = fakeCtx({ cwd: root, ui: { selects: ["Allow once"] } });
+		const run = (params: Record<string, unknown>) =>
+			tool.execute("c", { reason: "user requested", ...params }, undefined, undefined, ctx);
+		const added = await run({ op: "set", title: "No source given" });
+		expect(added.content[0].text).toMatch(/Saved M1/);
+		await expect(run({ op: "delete", id: "M1", source: "sessions" })).rejects.toThrow(
+			/delete works on source memories only; drop source or set source "memories"/,
+		);
+	});
 });

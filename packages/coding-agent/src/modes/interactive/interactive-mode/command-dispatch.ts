@@ -6,6 +6,7 @@ import { handleWorkflowCommand } from "./workflow-commands.ts";
 
 import { getBuiltinCommand, parseSlashCommand } from "../../../core/slash-commands.ts";
 import { CommandSelectorComponent } from "../components/command-selector.ts";
+import { type ConfigurationHost, handleConfigurationCommand } from "./configuration-command.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -13,60 +14,60 @@ import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { unknownCommandWarning } from "./command-suggestion.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
-type CommandDispatchHost = Pick<
-	InteractiveModeHost,
-	| "chatContainer"
-	| "defaultEditor"
-	| "editor"
-	| "flushPendingBashComponents"
-	| "getMarkdownThemeWithSettings"
-	| "getSlashCommands"
-	| "handleBashCommand"
-	| "handleBugCommand"
-	| "handleChangelogCommand"
-	| "handleClearCommand"
-	| "handleCloneCommand"
-	| "handleCompactCommand"
-	| "handleCopyCommand"
-	| "handleDebugCommand"
-	| "handleExportCommand"
-	| "handleHotkeysCommand"
-	| "handleImportCommand"
-	| "handleProvidersCommand"
-	| "handleModelCommand"
-	| "handleNameCommand"
-	| "handleReloadCommand"
-	| "handleSessionCommand"
-	| "handleShareCommand"
-	| "handleThinkingCommand"
-	| "isExtensionCommand"
-	| "onInputCallback"
-	| "pendingUserInputs"
-	| "queueCompactionMessage"
-	| "queueInteractiveMessage"
-	| "runtimeHost"
-	| "sessionManager"
-	| "sendCarriedMessages"
-	| "session"
-	| "showExtensionConfirm"
-	| "showError"
-	| "showExtensionSelector"
-	| "showExtensionCustom"
-	| "showModelsSelector"
-	| "showOAuthSelector"
-	| "showQueueManager"
-	| "showSelector"
-	| "showSessionSelector"
-	| "showSettingsSelector"
-	| "showStatus"
-	| "showTreeSelector"
-	| "showUserMessageSelector"
-	| "showWarning"
-	| "shutdown"
-	| "skillCommands"
-	| "ui"
-	| "uiStore"
->;
+type CommandDispatchHost = ConfigurationHost &
+	Pick<
+		InteractiveModeHost,
+		| "chatContainer"
+		| "defaultEditor"
+		| "editor"
+		| "flushPendingBashComponents"
+		| "getMarkdownThemeWithSettings"
+		| "getSlashCommands"
+		| "handleBashCommand"
+		| "handleBugCommand"
+		| "handleChangelogCommand"
+		| "handleClearCommand"
+		| "handleCloneCommand"
+		| "handleCompactCommand"
+		| "handleCopyCommand"
+		| "handleDebugCommand"
+		| "handleExportCommand"
+		| "handleHotkeysCommand"
+		| "handleImportCommand"
+		| "handleProvidersCommand"
+		| "handleModelCommand"
+		| "handleNameCommand"
+		| "handleReloadCommand"
+		| "handleSessionCommand"
+		| "handleShareCommand"
+		| "handleThinkingCommand"
+		| "isExtensionCommand"
+		| "onInputCallback"
+		| "pendingUserInputs"
+		| "queueCompactionMessage"
+		| "queueInteractiveMessage"
+		| "runtimeHost"
+		| "sessionManager"
+		| "sendCarriedMessages"
+		| "session"
+		| "showExtensionConfirm"
+		| "showError"
+		| "showExtensionSelector"
+		| "showExtensionCustom"
+		| "showModelsSelector"
+		| "showOAuthSelector"
+		| "showQueueManager"
+		| "showSelector"
+		| "showSessionSelector"
+		| "showStatus"
+		| "showTreeSelector"
+		| "showUserMessageSelector"
+		| "showWarning"
+		| "shutdown"
+		| "skillCommands"
+		| "ui"
+		| "uiStore"
+	>;
 
 export function handleStartupSubmit(host: CommandDispatchHost, text: string): void {
 	host.editor.setText(text);
@@ -138,8 +139,8 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 		case "help":
 			showCommandPicker(host, args);
 			return;
-		case "settings":
-			host.showSettingsSelector();
+		case "configuration":
+			await handleConfigurationCommand(host, args);
 			return;
 		case "modelsettings":
 			if (args.trim() === "check" && (await runNativeCommand(host, "modelsettings", "check"))) return;
@@ -197,7 +198,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			await host.handleProvidersCommand(args || undefined);
 			return;
 		case "logout":
-			await host.showOAuthSelector("logout");
+			await host.showOAuthSelector("logout", args.trim() || undefined);
 			return;
 		case "permissions":
 		case "agents":

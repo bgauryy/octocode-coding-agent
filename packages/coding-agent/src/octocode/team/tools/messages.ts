@@ -151,7 +151,7 @@ export function registerSendMessageTool(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent" (coordinator); use an exact id across trees. "all" reaches only your tree. Omit with replyTo to answer its sender. Also another Octocode process by name, or "coordinator" from a linked worktree (the main checkout\'s session; none or several: nothing is sent).'
+							? 'Agent id, role or "parent"; an exact id across trees. "all": your tree only. Omit with replyTo to answer its sender. Also another Octocode process by name, or "coordinator" from a linked worktree (the main checkout\'s session; none or several: nothing sent).'
 							: 'Agent id, role or "parent" (coordinator) in your tree; it relays beyond it. "all": the whole tree. Omit with replyTo to answer its sender.',
 					}),
 				),
@@ -180,7 +180,7 @@ export function registerSendMessageTool(
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop the recipient's current step for this message; only its starter may. Teammates only. Default: delivered at its next step.",
+							"true: stop the recipient's current step; only its starter may. Teammates only. Default: delivered at its next step.",
 					}),
 				),
 			}),

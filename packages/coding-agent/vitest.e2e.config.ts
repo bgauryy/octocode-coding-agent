@@ -1,3 +1,4 @@
+import os from "node:os";
 import { defineConfig, mergeConfig } from "vitest/config";
 import baseConfig from "../../vitest.base.ts";
 
@@ -17,7 +18,8 @@ export default mergeConfig(
 			globalSetup: ["test/home-guard.global.ts", "test/octocode/mcp-preflight.global.ts"],
 			testTimeout: 60000,
 			hookTimeout: 60000,
-			maxWorkers: 2,
+			// Each test boots real processes from source, so the suite is bound by CPU: a third of the cores, 2 to 4 workers.
+			maxWorkers: Math.max(2, Math.min(4, Math.floor(os.availableParallelism() / 3))),
 		},
 	}),
 );

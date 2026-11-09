@@ -12,6 +12,7 @@ import { SettingsManager } from "../core/settings-manager.ts";
 import { isLocalPath } from "../../../common/src/paths.ts";
 import { setPlanStartup } from "../octocode/plan/startup.ts";
 import { recordOperatorLimits } from "../octocode/subagents/process/operator-limits.ts";
+import { applyRunConfiguration } from "./run-configuration.ts";
 import { missingCliPathWarnings } from "./cli-path-warnings.ts";
 import { buildSessionOptions, resolveCliPaths } from "./session-options.ts";
 import type { AppMode } from "./startup.ts";
@@ -52,6 +53,8 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 				`${cwd} is not trusted, so Octocode did not open it. Run octocode in that folder to decide, or: octocode trust add ${cwd}`,
 			);
 		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
+		// The run's own configuration goes onto this manager before tools and resources load from it.
+		await applyRunConfiguration(parsed, { cwd, agentDir, settings: runtimeSettingsManager, projectTrusted });
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,

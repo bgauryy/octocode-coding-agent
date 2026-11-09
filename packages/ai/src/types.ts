@@ -216,6 +216,11 @@ export interface StreamOptions extends ProviderRequestOptions {
 	/** Separate retention for leading instructions and tools on APIs supporting explicit cache boundaries. */
 	instructionCacheRetention?: CacheRetention;
 	/**
+	 * With `cacheRetention: "none"`, still mark the leading instructions and tools with `instructionCacheRetention`
+	 * (adapters with explicit breakpoints only). Without it, history `none` turns off every marker.
+	 */
+	keepInstructionCache?: boolean;
+	/**
 	 * Name of the first section of the leading system message that belongs to a second instruction cache block.
 	 * Adapters with a free breakpoint split the leading system prompt before this section and mark both blocks with the
 	 * instruction retention. Absent, unknown section, forced (opaque) prompt, or no free slot: one block, as before.

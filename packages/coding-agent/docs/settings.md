@@ -2,7 +2,7 @@
 
 <!-- This file is generated from TypeScript source. Do not edit it manually; run yarn run generate:references. -->
 
-`settings.json` holds global defaults in the agent directory (see [Configuration](configuration.md#agent-directory)) and project overrides in `.octocode/settings.json`. A trusted project's values override global ones: objects merge recursively and arrays replace. Edit the file directly and run `/reload`, or use `/settings`. See [CONFIGURATIONS.md](../../../CONFIGURATIONS.md) for every configuration location.
+`settings.json` holds global defaults in the agent directory (see [Configuration](configuration.md#agent-directory)) and project overrides in `.octocode/settings.json`. A trusted project's values override global ones: objects merge recursively and arrays replace. Edit the file and run `/reload`, or use `/configuration set <key> <value>` and `unset <key>` (`--local` for the project file); `octocode --set <key>=<value>` sets one for a single run. All locations and precedence: [Configuration](configuration.md).
 
 For editor validation and completion, point `$schema` at `schemas/settings.schema.json` in the installed Octocode package.
 
@@ -94,7 +94,7 @@ Folder trust is not a setting: it lives in the agent database (see `octocode tru
 
 ## Resources
 
-See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hooks and extensions](../../../PLUGINS.md).
+See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hooks](hooks.md).
 
 | Field | Type | Default | Description |
 |---|---|---|---|

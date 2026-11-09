@@ -53,7 +53,8 @@ async function getLogoutProviderOptions(host: ProviderManagerHost): Promise<Auth
 				id: providerId,
 				name: provider?.name ?? providerId,
 				authType: type,
-				status: { type, source: "stored credential" },
+				// Saved, not necessarily usable: a credential whose provider is no longer defined still appears here.
+				detail: `saved ${type === "oauth" ? "sign-in" : "API key"}${provider ? "" : " · provider not defined"}`,
 				subscription: provider?.auth.oauth?.isSubscription === true,
 			};
 		})
@@ -64,8 +65,8 @@ export async function handleProvidersCommand(host: ProviderManagerHost, provider
 	await showProviderManager(host, providerRef);
 }
 
-/** `/logout`: the sign-out picker. Sign-in lives on the `/providers` page. */
-export async function showOAuthSelector(host: ProviderManagerHost, mode: "logout"): Promise<void> {
+/** `/logout [provider]`: the sign-out picker, its search prefilled with `query`. Sign-in lives on the `/providers` page. */
+export async function showOAuthSelector(host: ProviderManagerHost, mode: "logout", query?: string): Promise<void> {
 	let providerOptions: AuthSelectorProvider[];
 	try {
 		providerOptions = await getLogoutProviderOptions(host);
@@ -99,6 +100,7 @@ export async function showOAuthSelector(host: ProviderManagerHost, mode: "logout
 				done();
 				host.ui.requestRender();
 			},
+			query,
 		);
 		return { component: selector, focus: selector };
 	});

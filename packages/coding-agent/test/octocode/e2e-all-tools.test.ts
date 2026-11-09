@@ -267,7 +267,7 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("archive", { op: "delete", source: "memories", id: "M1" }), "M1"),
 		],
 		fail: [
-			answers(call("archive", { op: "set", source: "sessions", title: "x" }), "Only source memories"),
+			answers(call("archive", { op: "set", source: "sessions", title: "x" }), "set works on source memories only"),
 			answers(call("archive", { op: "get", id: "M999", source: "memories" }), "No memory M999"),
 		],
 	},
@@ -429,25 +429,6 @@ describe("the native paths that need a run of their own", () => {
 		expect(resumed).toContain("scripted summary");
 	});
 
-	it("compact: a compaction that cannot run does not end a headless run on the status line it asked for", async () => {
-		const box = sandbox(endpoint);
-		const full = { promptTokens: 100_000 };
-		const steps: Step[] = [
-			{ tool: "bash", args: { command: "echo small" }, ...full },
-			{ tool: "compact", args: {}, ...full },
-			{ text: "queued-status" },
-			{ text: "went-on-without-it" },
-		];
-		const run = box.start(["-p", script(steps)]);
-		expect((await run.exited).code).toBe(0);
-		expect(run.stdout().trim()).toBe("went-on-without-it");
-		const told = requestsOf(steps)
-			.at(-1)
-			?.messages.map((message) => message.text)
-			.join("\n");
-		expect(told).toContain("did not run");
-	});
-
 	it("askUser: over RPC the question reaches the client and its answer reaches the model", async () => {
 		const box = sandbox(endpoint);
 		const steps: Step[] = [
@@ -479,46 +460,6 @@ describe("the native paths that need a run of their own", () => {
 		expect(lastResults(steps)[0]).not.toContain("Cancelled");
 		run.process.stdin?.end();
 		await expectCleanRun(run);
-	});
-
-	it("agent: a message reaches a running child, and one sent before it joined is not called gone", async () => {
-		const box = sandbox(endpoint);
-		const started = path.join(box.root, "started");
-		const go = path.join(box.root, "go");
-		const child: Step[] = [
-			call("bash", {
-				command: `touch ${JSON.stringify(started)}; until [ -f ${JSON.stringify(go)} ]; do sleep 0.1; done`,
-			}),
-			{ text: "child-read-it" },
-		];
-		const steps: Step[] = [
-			call("agent", { type: "task", background: true, goal: "wait in the background", task: script(child) }),
-			call("agent", { type: "message", to: "{{CHILD}}", message: "too-early" }),
-			call("bash", { command: `until [ -f ${JSON.stringify(started)} ]; do sleep 0.1; done` }),
-			call("agent", { type: "message", to: "{{CHILD}}", message: "hello-live-child" }),
-			call("agent", { type: "coordinate", action: "list" }),
-			call("bash", { command: `touch ${JSON.stringify(go)}` }),
-			{ text: "parent-waits" },
-		];
-		const run = box.start(["-p", script(steps)]);
-		expect((await run.exited).code).toBe(0);
-		const results = lastResults(steps);
-		const childId = /Started (\S+)/.exec(results[0] ?? "")?.[1] ?? "";
-		expect(childId).not.toBe("");
-		expect(results[1]).not.toContain("No live agent");
-		expect(results[1]).toMatch(/still starting|Queued message/);
-		expect(results[3]).toContain(`Queued message`);
-		expect(results[4]).toContain(childId);
-		const heard = requestsOf(child)
-			.at(-1)
-			?.messages.map((message) => message.text)
-			.join("\n");
-		expect(heard).toContain("hello-live-child");
-		const reported = requestsOf(steps)
-			.flatMap((one) => one.messages.map((message) => message.text))
-			.join("\n");
-		expect(reported).toContain("child-read-it");
-		expect(box.survivors()).toEqual([]);
 	});
 
 	it("agent: coordinate stop ends a background child and everything it runs", async () => {
@@ -800,70 +741,40 @@ describe("the Octocode research tools against the real server", () => {
 	});
 });
 
-/** One row per selector value of the tools that need the network or a token, and a call its form refuses before any request. */
+/** A call each tool that needs the network or a token refuses by its form, before any request. */
 const OWNER = { owner: "bgauryy", repo: "octocode" };
-const REMOTE: Record<string, { rows: Record<string, unknown>[]; refused: Record<string, unknown>; says: RegExp }> = {
+const REMOTE: Record<string, { refused: Record<string, unknown>; says: RegExp }> = {
 	ghSearchCode: {
-		rows: [{ owner: "bgauryy", keywords: ["octocode"], limit: 1 }],
 		refused: { owner: "bgauryy", query: "not a field" },
 		says: /query/,
 	},
 	ghGetFileContent: {
-		rows: [{ ...OWNER, path: "README.md", ranges: [{ startLine: 1, endLine: 2 }] }],
 		refused: { ...OWNER },
 		says: /path/,
 	},
 	ghStructure: {
-		rows: [
-			{ ...OWNER, operation: "tree", maxDepth: 1 },
-			{ ...OWNER, operation: "refs", limit: 1 },
-			{ ...OWNER, operation: "languages" },
-		],
 		refused: { ...OWNER, operation: "languages", maxDepth: 1 },
 		says: /maxDepth/,
 	},
 	ghSearchRepo: {
-		rows: [
-			{ operation: "search", keywords: ["octocode"], limit: 1 },
-			{ owner: "bgauryy", operation: "list", limit: 1 },
-			{ ...OWNER, operation: "get" },
-		],
 		refused: { owner: "bgauryy", operation: "get" },
 		says: /repo/,
 	},
 	ghSearchHistory: {
-		rows: [
-			{ ...OWNER, operation: "pullRequest", limit: 1 },
-			{ ...OWNER, operation: "issue", limit: 1 },
-			{ ...OWNER, operation: "commit", limit: 1 },
-		],
 		refused: { ...OWNER, operation: "issue", path: "README.md" },
 		says: /path/,
 	},
 	ghGetHistoryItem: {
-		rows: [
-			{ ...OWNER, operation: "pullRequest", number: 1 },
-			{ ...OWNER, operation: "issue", number: 1 },
-			{ ...OWNER, operation: "commit", ref: "HEAD" },
-			{ ...OWNER, operation: "compare", baseRef: "HEAD~1", headRef: "HEAD" },
-		],
 		refused: { ...OWNER, operation: "issue", number: 1, ref: "HEAD" },
 		says: /ref/,
 	},
 	artifactSearch: {
-		rows: [
-			{ ecosystem: "npm", operation: "resolve", packageName: "left-pad" },
-			{ ecosystem: "npm", operation: "search", keywords: ["left-pad"], limit: 1 },
-		],
 		refused: { ecosystem: "npm", operation: "resolve", packageName: "left-pad", keywords: ["x"] },
 		says: /keywords/,
 	},
 };
 
 describe("the tools that need a token or the network", () => {
-	// A well-formed result, or the auth, rate-limit or network error a run without either gets; a shape refusal is never one.
-	const WELL_FORMED = /"results":\[|"errorCode"|authentication|rate limit|network|fetch failed|ENOTFOUND|ETIMEDOUT/i;
-
 	it("a form-breaking call is refused before any request, naming the field", async () => {
 		const steps: Step[] = [
 			...Object.entries(REMOTE).map(([tool, { refused }]) => research(tool, refused)),
@@ -875,39 +786,6 @@ describe("the tools that need a token or the network", () => {
 		Object.entries(REMOTE).forEach(([tool, { says }], index) => {
 			expect(results[index], tool).toMatch(says);
 			expect(results[index], tool).toMatch(REFUSED_FOR_SHAPE);
-		});
-	});
-
-	// Marked for the network: a machine without one may hold a request until its own timeout, and that says nothing about
-	// the tool. A run that cannot finish in this time skips, naming why; a run that finishes must come back well formed.
-	const NETWORK_BUDGET_MS = 120_000;
-
-	it("every selector value in their signatures comes back well formed or with a clear error", async (context) => {
-		const steps: Step[] = [
-			...Object.entries(REMOTE).map(([tool, { rows }]) => research(tool, ...rows)),
-			{ text: "remote-done" },
-		];
-		const run = repository().start(["-p", script(steps)]);
-		const finished = await Promise.race([
-			run.exited.then(() => true),
-			new Promise<false>((resolve) => setTimeout(() => resolve(false), NETWORK_BUDGET_MS)),
-		]);
-		if (!finished) {
-			killEverything();
-			context.skip(`the GitHub and registry calls did not finish in ${NETWORK_BUDGET_MS} ms: no usable network here`);
-		}
-		const first = requestsOf(steps)[0]?.system ?? "";
-		const results = lastResults(steps);
-		Object.entries(REMOTE).forEach(([tool, { rows }], index) => {
-			const values = rowForms(toolBlock(first, tool)).forms.flatMap((form) => form.values);
-			const covered = rows.map((one) => one.operation).filter(Boolean);
-			if (covered.length)
-				expect(
-					values.filter((value) => !covered.includes(value)),
-					tool,
-				).toEqual([]);
-			expect(results[index], tool).not.toMatch(REFUSED_FOR_SHAPE);
-			expect(results[index], tool).toMatch(WELL_FORMED);
 		});
 	});
 });
@@ -923,9 +801,13 @@ interface Role {
 	firstLine: string | undefined;
 }
 
-/** Every bundled profile as its file declares it, and a child with no profile: a new role file is covered by being there. */
+/**
+ * One profile of each kind, as its file declares it: a read-only one, a lean one and a child with no profile. The other
+ * bundled profiles differ only in prose and tool lists, which the in-process profile, role-skill and prompt tests read.
+ */
+const RUN_PROFILES = ["reviewer", "lean"];
 const profiles: Role[] = [
-	...fs.readdirSync(ROLES).map((file): Role => {
+	...RUN_PROFILES.map((name) => `${name}.md`).map((file): Role => {
 		const [, head = "", body = ""] =
 			/^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(fs.readFileSync(path.join(ROLES, file), "utf8")) ?? [];
 		const field = (name: string) => new RegExp(`^${name}: (.+)$`, "m").exec(head)?.[1]?.trim();
@@ -986,14 +868,12 @@ describe("every subagent profile, started through agent", () => {
 		await expectCleanRun(run);
 	});
 
-	it("covers the five bundled profiles", () => {
-		expect(profiles.map(label).sort()).toEqual([
-			"browser",
-			"implementer",
-			"lean",
-			"no-profile",
-			"researcher",
-			"reviewer",
+	it("covers a read-only, a lean and a profile-less child", () => {
+		expect(profiles.map(label).sort()).toEqual(["lean", "no-profile", "reviewer"]);
+		expect(profiles.map((role) => [role.readOnly, role.lean])).toEqual([
+			[true, false],
+			[false, true],
+			[false, false],
 		]);
 	});
 

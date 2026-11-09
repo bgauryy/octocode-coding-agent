@@ -66,7 +66,7 @@ describe("MCP instructions after the first request (declared presentation)", () 
 	});
 
 	it("a server that is disabled leaves a patch without its block; the leading prompt stays identical", async () => {
-		const { harness, callable, turn } = await setup(fresh(), { late: late(), presentation: "declared" });
+		const { harness, callable, turn, switchMcp } = await setup(fresh(), { late: late(), presentation: "declared" });
 		await turn("start");
 		await vi.waitFor(() => expect(callable()).toContain("mcp__late__search"));
 		await turn("after connect");
@@ -74,7 +74,7 @@ describe("MCP instructions after the first request (declared presentation)", () 
 		const head = leading(harness);
 		const from = harness.session.messages.length;
 
-		await harness.session.prompt("/mcp disable late");
+		await switchMcp("late", false);
 		await turn("after disable");
 		const patches = mcpsPatches(systemMessages(harness, from));
 		expect(patches).toHaveLength(1);

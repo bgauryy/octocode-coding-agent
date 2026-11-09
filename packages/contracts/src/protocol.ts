@@ -33,6 +33,10 @@ export const DAEMON_ROUTES = {
 	configSettings: "/api/admin/config/settings",
 	/** Launch capability only: POST one `ConfigCredentialCommand` (the one request that carries a key); the reply is the fresh `ConfigSnapshot`. */
 	configCredentials: "/api/admin/config/credentials",
+	/** Launch capability only: POST one `ConfigProviderCommand` (provider or Pi source on/off); the reply is the fresh `ConfigSnapshot`. */
+	configProviders: "/api/admin/config/providers",
+	/** Launch capability only: POST one `SignInCommand` (start, status, answer, cancel of a host-run OAuth sign-in); the reply is a `SignInState`. */
+	configSignin: "/api/admin/config/signin",
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",

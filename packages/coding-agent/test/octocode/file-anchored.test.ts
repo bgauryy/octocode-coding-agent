@@ -149,4 +149,37 @@ describe("optional anchored edit adapter", () => {
 		expect(result.content[0].text).toContain("OK edit");
 		expect(readFileSync(f.file, "utf8")).toBe("\ufeffα\r\nβ\r\nΩ\r\n");
 	});
+
+	it("names the malformed field of a mis-shaped anchored edit instead of asking for a re-read", async () => {
+		const f = fixture("one\ntwo\n");
+		const api = fakeHost();
+		registerFileTool(api.api, f.guard, fakePermission());
+		const tool = api.tools.get("file")!;
+		const good = { line: 2, sourceSha256: sha256(f.bytes), oldText: "two", newText: "TWO" };
+		const cases: [Record<string, unknown>, RegExp][] = [
+			[{ replaceAll: true }, /replaceAll cannot be combined with line/],
+			[{ oldText: "one\ntwo" }, /oldText must be the single complete line/],
+			[{ newText: "T\rWO" }, /newText must not contain a carriage return/],
+			[{ sourceSha256: undefined }, /line needs sourceSha256/],
+			[{ line: undefined }, /sourceSha256 needs line/],
+			[{ sourceSha256: "abc" }, /sourceSha256 must be 64 lowercase hex/],
+			[{ line: 0 }, /line must be an integer of at least 1/],
+		];
+		for (const [patch, expected] of cases) {
+			const run = tool.execute(
+				"anchored-shape",
+				{ queries: [{ type: "edit", path: f.file, reason: "fixture", edits: [{ ...good, ...patch }] }] },
+				undefined,
+				undefined,
+				fakeCtx({ cwd: join(f.file, "..") }),
+			);
+			const error = await run.then(
+				() => undefined,
+				(e: Error) => e,
+			);
+			expect(error?.message).toMatch(expected);
+			expect(error?.message).not.toMatch(/Read the complete file again/);
+		}
+		expect(readFileSync(f.file, "utf8")).toBe("one\ntwo\n");
+	});
 });

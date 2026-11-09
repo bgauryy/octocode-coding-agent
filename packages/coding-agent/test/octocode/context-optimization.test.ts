@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generatedDir, serverGeneratedDir } from "../../../mcp/src/compact/store.ts";
+import { generatedDir, serverGeneratedDir, writeGenerated } from "../../../mcp/src/compact/store.ts";
 import { getNativeSkillsDir } from "../../src/config.ts";
 import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import type { Skill } from "../../src/core/skills.ts";
@@ -254,6 +254,60 @@ describe("context optimization", () => {
 			expect(listed.out).toContain("skill a  optimized  13 → 1");
 			const json = JSON.parse((await run("list", "--json")).out) as { scopes: Array<{ scope: string }> };
 			expect(json.scopes.map((scope) => scope.scope)).toEqual(["project", "user"]);
+		});
+
+		it("marks records whose skill file no longer exists as stale, and keeps the store", async () => {
+			const live = path.join(root, "live", "SKILL.md");
+			fs.mkdirSync(path.dirname(live), { recursive: true });
+			fs.writeFileSync(live, "x");
+			writeSkillsStore(
+				userDir,
+				syncSkills(readSkillsStore(userDir), [
+					{ name: "live", description: "Live source", file: live },
+					{ name: "gone", description: "Gone source", file: path.join(root, "gone", "SKILL.md") },
+				]).store,
+			);
+			const listed = await run("list");
+			expect(listed.out).toMatch(/skill gone .*stale/);
+			expect(listed.out).not.toMatch(/skill live .*stale/);
+			const json = JSON.parse((await run("list", "--json")).out) as {
+				scopes: Array<{ skills: Array<{ name: string; stale: boolean }> }>;
+			};
+			expect(json.scopes.flatMap((scope) => scope.skills.map((row) => [row.name, row.stale]))).toEqual([
+				["gone", true],
+				["live", false],
+			]);
+			expect(Object.keys(readSkillsStore(userDir).skills).sort()).toEqual(["gone", "live"]);
+		});
+
+		it("marks MCP records stale when no configured server has the name, and keeps the files", async () => {
+			const dir = generatedDir(agentDir);
+			for (const server of ["live", "gone"])
+				writeGenerated(dir, server, "text", {
+					hash: "h",
+					generatorVersion: 1,
+					generatedAt: "2026-01-01T00:00:00.000Z",
+				});
+			fs.writeFileSync(
+				path.join(agentDir, "mcp.json"),
+				JSON.stringify({ mcpServers: { live: { command: "live-server" } } }),
+			);
+			expect((await run("list")).out).toMatch(/mcp gone .*stale/);
+			expect((await run("list")).out).not.toMatch(/mcp live .*stale/);
+			const json = JSON.parse((await run("list", "--json")).out) as {
+				scopes: Array<{ scope: string; mcp: Array<{ server: string; stale: boolean }> }>;
+			};
+			const user = json.scopes.find((scope) => scope.scope === "user");
+			expect(user?.mcp.map((row) => [row.server, row.stale])).toEqual([
+				["gone", true],
+				["live", false],
+			]);
+			expect(
+				fs
+					.readdirSync(dir)
+					.filter((file) => file.endsWith(".json"))
+					.sort(),
+			).toEqual(["gone.json", "live.json"]);
 		});
 
 		it("explains an empty store and an unknown command", async () => {

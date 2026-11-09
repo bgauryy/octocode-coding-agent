@@ -44,6 +44,8 @@ interface PromptInputs {
 	canAsk?: boolean;
 	/** Whether the current request exposes the web lookup tool. */
 	canWeb?: boolean;
+	/** Whether the `backlog` tool is declared (default true): delegation plans and waits on items only then. */
+	canBacklog?: boolean;
 	/** Whether MCP tools are available; their tools can write too. */
 	canMcp?: boolean;
 	/** Whether this agent drives its own isolated browser: its profile declares `browser.control` and it holds the browser server. */
@@ -79,6 +81,7 @@ function policyFlags(input: PromptInputs) {
 		mcp: input.canMcp !== false,
 		localReader: input.canReadLocal !== false,
 		askUser: input.canAsk !== false,
+		backlog: input.canBacklog !== false,
 		browserControl: input.browserControl === true,
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,

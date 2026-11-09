@@ -155,9 +155,11 @@ test("names each reason a package must not reach npm", (t) => {
 		"dist/bundle/octocode.js.map": "{}",
 		"src/index.ts": "",
 		".npmrc": "token",
+		"docs/guide.md": "[ok](../README.md#x) [web](https://x.dev) [gone](missing.md#y)",
 	});
 	rmSync(join(root, "LICENSE"));
 	const problems = findPackageProblems(root).join("\n");
+	assert.doesNotMatch(problems, /README\.md#x|x\.dev/, "links that resolve or leave the package are not problems");
 	for (const expected of [
 		"local dependency a",
 		"local dependency b",
@@ -168,6 +170,7 @@ test("names each reason a package must not reach npm", (t) => {
 		"stray file: dist/bundle/octocode.js.map",
 		"stray file: .npmrc",
 		"source file: src/index.ts",
+		"broken documentation link: docs/guide.md -> missing.md#y",
 	])
 		assert.ok(problems.includes(expected), `expected "${expected}" in:\n${problems}`);
 });

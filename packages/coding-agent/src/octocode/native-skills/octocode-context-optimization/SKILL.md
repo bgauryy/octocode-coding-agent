@@ -1,6 +1,6 @@
 ---
 name: octocode-context-optimization
-description: "Load this skill first whenever skills or MCP servers are added, changed or assigned to agents, or a skill listing or MCP generated file is too large; good for fidelity-checked rewrites of skill and tool descriptions."
+description: "Rewrite what agents read about skills and MCP tools without losing meaning: skill listing descriptions through `octocode context`, an MCP server's generated tool file through checked overrides, and which agents get each server. Use when that listing or a tool file is too large, stale or unoptimized, or after adding a skill or MCP server."
 ---
 
 # Octocode Context Optimization

@@ -55,7 +55,9 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
  * returns its directory; `indirect` names none, for a reader that is reachable only through another tool. Every entry
  * carries its SKILL.md `<location>`, whatever the reader, so the agent knows where each skill's folder is.
  *
- * Entries are grouped by {@link skillCategory} in `<core_skills>` and `<external_skills>`, in that order. Every visible skill is listed with its full description.
+ * Entries are grouped by {@link skillCategory} in `<core_skills>`, `<octocode_skills>`, `<workspace_skills>` and
+ * `<global_skills>`, in that order; an empty group is left out. Every visible skill is listed with its name, its full
+ * description and its SKILL.md path.
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],

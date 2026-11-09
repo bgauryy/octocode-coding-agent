@@ -69,6 +69,23 @@ describe("backlog schema", () => {
 		);
 	});
 
+	it("adds finished work in one batch: an entry added as done carries its completion", async () => {
+		const { text } = await setup();
+		const out = await text({
+			op: "add",
+			why: "record finished work",
+			state: "done",
+			items: [
+				{ title: "Finished", goal: "finished done", completion: done() },
+				{ title: "Missing result", goal: "missing done" },
+			],
+		});
+		expect(out).toMatch(/^Added 1 of 2; 1 refused\./);
+		expect(out).not.toMatch(/Unknown items fields/);
+		expect(out).toMatch(/Missing result.*Done needs completion/);
+		expect(await text({ op: "get", id: "B4" })).toMatch(/done/);
+	});
+
 	it("says add needs why, and refuses an add without it", async () => {
 		const { text, tool } = await setup();
 		const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;

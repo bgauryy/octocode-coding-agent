@@ -172,7 +172,7 @@ describe("the archive tool", () => {
 		expect(listed.text).toContain("## me (this session)");
 		expect(listed.text).toContain("## sib (same repository)");
 		const found = await call({ ...why, query: "LOGIN" });
-		expect(found.text).toMatch(/^2 matching lines in 2 of 4 files \(2 sessions\)/m);
+		expect(found.text).toMatch(/^2 matching lines in 2 files, this session first/m);
 		expect(found.details).toMatchObject({ mode: "search", hits: 2, files: 2, page: 1, pages: 1 });
 		const line = Number(/^>\s*(\d+)│ the login fix/m.exec(found.text)![1]);
 		// A bare file name is a file of this session's archive, as the pointer names them.
@@ -185,13 +185,19 @@ describe("the archive tool", () => {
 
 	it("pages a long search and says how to continue", async () => {
 		const cwd = repo();
-		fileFor("me", Array.from({ length: 3_000 }, (_, index) => `match ${index} ${"z".repeat(30)}`).join("\n"), cwd);
+		fileFor("me", Array.from({ length: 3_000 }, (_, index) => `match ${index} ${"z".repeat(300)}`).join("\n"), cwd);
 		const call = tool(cwd);
 		const first = await call({ ...why, query: "match" });
-		expect(first.text).toMatch(/Page 1 of \d+; next: page 2 with the same query and file\.$/);
-		expect(first.text).toMatch(/^3000 matching lines in 1 of 2 files \(1 session\)/m);
+		expect(first.text).toMatch(/Page 1 of \d+; next: page 2 with the same query, cursor and file\.$/);
+		// One search stops at its match budget and offers a cursor for the rest.
+		expect(first.text).toMatch(/^200 matching lines in 1 file, this session first/m);
+		expect(first.text).toMatch(
+			/Read 1 of 2 files \(1 session\)\. The search stopped at its match or time budget: for more, repeat it with cursor h1\./,
+		);
 		expect((await call(why)).text).toMatch(/^1 session with history/m);
-		expect((await call({ ...why, query: "nothing-like-this" })).text).toContain("in 2 files of 1 session.");
+		expect((await call({ ...why, query: "nothing-like-this" })).text).toContain(
+			"Read 2 of 2 files (1 session). Every file was read.",
+		);
 		const last = await call({ ...why, query: "match", page: first.details.pages });
 		expect(last.text).toMatch(/Page \d+ of \d+, the last\.$/);
 	});

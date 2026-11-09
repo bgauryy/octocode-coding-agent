@@ -3,6 +3,7 @@ import { getToolListError, type TuiMode } from "../../core/settings-manager.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";
+import { CONFIGURATION_FLAGS } from "./configuration-flags.ts";
 import { RESUME_FLAG } from "./resume-flag.ts";
 import { WORKTREE_FLAG } from "./worktree-flag.ts";
 
@@ -208,6 +209,7 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		],
 		apply: (a, v) => void (a.excludeTools = csv(v!)),
 	},
+	...CONFIGURATION_FLAGS,
 	{
 		name: "--thinking",
 		kind: "value",

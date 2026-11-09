@@ -210,7 +210,8 @@ export class ModelConfig {
 		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined);
 	}
 
-	private static async loadFile(modelsJsonPath: string): Promise<ModelConfig> {
+	/** One file alone: unlike `load`, Octocode's own file is not merged with Pi's, so its providers are its own. */
+	static async loadFile(modelsJsonPath: string): Promise<ModelConfig> {
 		const path = normalizePath(modelsJsonPath);
 		let content: string;
 		try {

@@ -40,21 +40,27 @@ export interface Subcommand {
 	complete?(prefix: string): AutocompleteItem[] | null;
 }
 
-/** Commands folded into `/harness`, with the subcommand that replaced each; their arguments carry over. */
-const FOLDED_INTO_HARNESS: Record<string, string> = {
+/**
+ * Retired command names, with the command line that replaced each; their arguments carry over. `/plugins` and `/hooks`
+ * folded into `/harness`; `/login` became `/providers` (sign-in is its "+ Add a provider" row); `/config` and `/settings`
+ * became `/configuration`, the one place to enable, disable, set and add configuration.
+ */
+const RETIRED_COMMANDS: Record<string, string> = {
 	plugins: "harness",
 	hooks: "harness hooks",
-	config: "harness config",
+	config: "configuration",
+	settings: "configuration",
+	login: "providers",
 };
 
 /**
- * For `/plugins`, `/hooks` or `/config` input, the `/harness` line that replaced it, while `/harness` is registered
- * and nothing else (a prompt or skill) took the old name; undefined otherwise.
+ * For input under a retired name, the line that replaced it, while the replacing command is registered and nothing
+ * else (a prompt or skill) took the old name; undefined otherwise.
  */
 function foldedReplacement(text: string, commands: readonly string[]): string | undefined {
 	const match = /^\/([a-z]+)(?:\s+(.*))?$/s.exec(text.trim());
-	const to = match && Object.hasOwn(FOLDED_INTO_HARNESS, match[1]) ? FOLDED_INTO_HARNESS[match[1]] : undefined;
-	if (!to || !commands.includes("harness") || commands.includes(match![1])) return undefined;
+	const to = match && Object.hasOwn(RETIRED_COMMANDS, match[1]) ? RETIRED_COMMANDS[match[1]] : undefined;
+	if (!to || !commands.includes(to.split(" ")[0]) || commands.includes(match![1])) return undefined;
 	const rest = match![2]?.trim();
 	return rest ? `${to} ${rest}` : to;
 }
@@ -113,14 +119,14 @@ export class Subcommands {
 		}
 		// No command has a retired name, so SDK and RPC input reaches this hook; the terminal reports it as unknown first.
 		api.on("input", async (event, ctx) => {
-			if (this.has("harness") && /^\/(?:plugins|hooks|config)(?:\s|$)/.test(event.text.trim())) {
+			if (this.has("harness") && /^\/(?:plugins|hooks)(?:\s|$)/.test(event.text.trim())) {
 				const to = foldedReplacement(
 					event.text,
 					api.getCommands().map((command) => command.name),
 				);
 				if (!to) return { action: "continue" };
 				const from = event.text.trim().split(/\s+/, 1)[0].slice(1);
-				say(ctx, `/${from} moved to /${FOLDED_INTO_HARNESS[from]}. Run /${to} to continue.`, "warning");
+				say(ctx, `/${from} moved to /${RETIRED_COMMANDS[from]}. Run /${to} to continue.`, "warning");
 				return { action: "handled" };
 			}
 			return { action: "continue" };

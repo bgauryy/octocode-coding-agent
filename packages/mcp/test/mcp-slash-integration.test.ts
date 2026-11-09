@@ -1,3 +1,4 @@
+import { getMcpSwitch } from "../src/switch.ts";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RegisteredCommand } from "../../coding-agent/src/core/features/types.ts";
@@ -74,8 +75,6 @@ describe("unified MCP slash management", () => {
 			"list",
 			"tools",
 			"config",
-			"enable",
-			"disable",
 			"exposure",
 			"assign",
 			"login",
@@ -182,16 +181,21 @@ describe("unified MCP slash management", () => {
 		"withdraws and restores tools when changing %s enablement, saving only controls",
 		async (scope) => {
 			const updateConfig = vi.fn();
-			const { harness, notifications } = await setup(
+			const { harness, notifications, state } = await setup(
 				[{ ...entry("fixture", scope), source: scope === "global" ? "/inherited/mcp.json" : "built-in fixture" }],
 				false,
 				{ updateConfig },
 			);
 			expect(harness.session.getCallableToolNames()).toContain("mcp__fixture__echo");
+			// `/mcp enable|disable` moved to /configuration, which switches through this same MCP switch.
 			await harness.session.prompt("/mcp disable fixture --local");
-			expect(notifications.at(-1)).toContain("requires a trusted project");
+			expect(notifications.at(-1)).toContain("/configuration disable mcp:fixture --local");
+			const mcpSwitch = getMcpSwitch(state.api.events)!;
+			expect((await mcpSwitch({ name: "fixture", enabled: false, inProject: true })).message).toContain(
+				"requires a trusted project",
+			);
 			expect(updateConfig).not.toHaveBeenCalled();
-			await harness.session.prompt("/mcp disable fixture");
+			await mcpSwitch({ name: "fixture", enabled: false, inProject: false });
 			expect(harness.session.getCallableToolNames()).not.toContain("mcp__fixture__echo");
 			expect(updateConfig).toHaveBeenLastCalledWith(
 				expect.objectContaining({ override: join(harness.tempDir, "agent", "mcp.json"), overrideScope: "global" }),
@@ -199,7 +203,7 @@ describe("unified MCP slash management", () => {
 			);
 			await harness.session.prompt("/mcp tools fixture");
 			expect(notifications.at(-1)).toContain("fixture: disabled");
-			await harness.session.prompt("/mcp enable fixture");
+			await mcpSwitch({ name: "fixture", enabled: true, inProject: false });
 			expect(harness.session.getCallableToolNames()).toContain("mcp__fixture__echo");
 		},
 	);
@@ -218,7 +222,10 @@ describe("unified MCP slash management", () => {
 			return (result.content[0] as { text: string }).text;
 		};
 		for (const server of ["fixture", "octocode"]) {
-			expect(await run({ intent: "stop", server })).toBe(`Stopped for this session. ${server}: stopped`);
+			// The line names the server's group, as `list` does.
+			expect(await run({ intent: "stop", server })).toMatch(
+				new RegExp(`^Stopped for this session\\. ${server}: stopped · (Core|Workspace|Global)$`),
+			);
 			expect(harness.session.getCallableToolNames()).not.toContain(`mcp__${server}__echo`);
 			expect(await run({ intent: "restart", server })).toMatch(/^Restarted\./);
 			expect(harness.session.getCallableToolNames()).toContain(`mcp__${server}__echo`);

@@ -64,11 +64,11 @@ Native input carries no host metadata. Source profiles add these fields when the
 - **Claude** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `args`, `shell`, `onFailure`, `async`, `asyncRewake`.
 - **Codex** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `commandWindows`, `async`, `additionalContextLimit`.
 
-Other fields reject the handler with a diagnostic in `/hooks`. No timeout can exceed 600 seconds.
+Other fields reject the handler with a diagnostic in `/harness hooks`. No timeout can exceed 600 seconds.
 
 ## Upstream events not implemented yet
 
-These events are documented by the upstream host but not implemented in Octocode yet. A hook file that declares one is loaded without it, and `/hooks` reports it as not implemented.
+These events are documented by the upstream host but not implemented in Octocode yet. A hook file that declares one is loaded without it, and `/harness hooks` reports it as not implemented.
 
 - **Claude Code**: `Setup`, `UserPromptExpansion`, `PermissionDenied`, `MessageDisplay`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `DirectoryAdded`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreModelSwitch`, `PostModelSwitch`, `Elicitation`, `ElicitationResult`.
 

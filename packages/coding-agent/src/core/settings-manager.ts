@@ -19,6 +19,7 @@ export { CACHE_WARMING_MODES } from "./settings-manager/constants.ts";
 import { DisplaySettingsAccessors } from "./settings-manager/accessors/display.ts";
 import type { SettingsManagerApi } from "./settings-manager/api.ts";
 import { migrateSettings, tryLoadSettingsFromStorage } from "./settings-manager/load.ts";
+import { watchProviderToggles } from "./settings-manager/provider-watch.ts";
 import { deepMergeSettings, effectiveSettings, mergeAllSettings } from "./settings-manager/merge.ts";
 import { SettingsPersistence } from "./settings-manager/persistence.ts";
 import type { SettingsState } from "./settings-manager/state.ts";
@@ -237,6 +238,11 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		}
 
 		this.refreshInherited();
+	}
+
+	/** Calls `onChange` when another process changes the global `disabledProviders` or `providerSources`, after adopting them. Returns the stop function. */
+	watchProviderToggles(onChange: () => void, intervalMs?: number): () => void {
+		return watchProviderToggles(this.state, onChange, intervalMs);
 	}
 
 	applyOverrides(overrides: Partial<Settings>, options?: { durable?: boolean }): void {

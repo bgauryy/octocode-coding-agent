@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -14,9 +13,10 @@ import {
 } from "./e2e-real-process-harness.ts";
 
 /**
- * The request budget as a conversation, through real processes on the scripted model: a child near its limit asks, its
- * parent grants while it runs, silence changes nothing, and a resume gives a real allowance. The limit comes from the
- * environment, as a user sets it; the parent counts the replies, so nothing here reaches into a child.
+ * The request budget as a conversation, through real processes on the scripted model: a child near its limit asks and its
+ * parent, woken in an idle RPC session, grants while it runs. The limit comes from the environment, as a user sets it; the
+ * parent counts the replies, so nothing here reaches into a child. The hard stop, the steer wording, resume allowances and
+ * an off budget are asserted in subagent-budget, subagent-budget-rpc and subagent-budget-continuation.
  */
 let endpoint: Endpoint;
 
@@ -123,119 +123,5 @@ describe("a child that asks its parent for more requests", () => {
 		// The child has finished: a grant has nothing to raise.
 		expect(results.at(-1)).toContain("is not running");
 		expect(says(parentRequests.at(-1), "reported done")).toBe(true);
-	});
-
-	it("keeps working unanswered and stops at the hard limit with its work and a way to continue", async () => {
-		const box = limited(2);
-		const child: Step[] = [
-			{ tool: "file", args: { queries: [{ type: "write", path: "kept.txt", content: "work\n" }] } },
-			...ticks(2, 40),
-		];
-		const parent: Step[] = [
-			{ tool: "agent", args: { type: "task", background: true, goal: "long work", task: script(child) } },
-			{ text: "started it" },
-			{ text: "read its report" },
-		];
-		const { code } = await box.start(["-p", script(parent)]).exited;
-		expect(code).toBe(0);
-		expect(requestsOf(child)).toHaveLength(3);
-		expect(fs.readFileSync(path.join(box.project, "kept.txt"), "utf8")).toBe("work\n");
-		// The parent was not called for it, and nothing waited on the parent.
-		const parentRequests = requestsOf(parent);
-		expect(parentRequests).toHaveLength(3);
-		const report = parentRequests
-			.at(-1)!
-			.messages.findLast((message) => message.text.includes("model request budget"))!;
-		expect(report.text).toContain("reported partial");
-		expect(report.text).toContain("stopped at the model request budget (3 requests; limit 2, hard limit 3)");
-		expect(report.text).toContain("Changed files (1): kept.txt");
-		const id = /subagent (\S+) \(/.exec(report.text)?.[1];
-		expect(id).toBeDefined();
-		expect(report.text).toContain(`\`resume: ${id}\``);
-	});
-
-	it("tells a foreground child to say what is left in its report, since its parent reads messages only with it", async () => {
-		const box = limited(2);
-		const child: Step[] = [...ticks(1, 2), { text: "partial: half done; 10 more requests would finish the rest" }];
-		const parent: Step[] = [
-			{ tool: "agent", args: { type: "task", goal: "long work", task: script(child) } },
-			{ text: "read its report" },
-		];
-		const { code } = await box.start(["-p", script(parent)]).exited;
-		expect(code).toBe(0);
-		const childRequests = requestsOf(child);
-		expect(childRequests).toHaveLength(3);
-		const steer = childRequests[2].messages.findLast((message) => nextSteer.test(message.text))!.text;
-		expect(steer).toContain("You have used 2 of 2 model requests; the run stops at 3");
-		expect(steer).toContain("Your coordinator waits for your report and reads messages only with it");
-		expect(steer).toContain("how many");
-		expect(steer).not.toContain("`parent`");
-		expect(requestsOf(parent)).toHaveLength(2);
-	});
-
-	it("gives a resumed child at the hard limit a real allowance instead of a stop", async () => {
-		const box = limited(2);
-		const first: Step[] = ticks(1, 40);
-		const second: Step[] = [...ticks(50, 51), { text: "done: continued" }];
-		const parent: Step[] = [
-			{ tool: "agent", args: { type: "task", goal: "long work", task: script(first) } },
-			{ tool: "agent", args: { type: "task", goal: "the rest", resume: "{{CHILD}}", task: script(second) } },
-			{ text: "read its report" },
-		];
-		const { code } = await box.start(["-p", script(parent)]).exited;
-		expect(code).toBe(0);
-		expect(requestsOf(first)).toHaveLength(3);
-		const secondRequests = requestsOf(second);
-		// Three requests of its own: the two tool calls and the answer, where the old limit had none left.
-		expect(secondRequests).toHaveLength(3);
-		// The stop may save an aborted reply too, and saved replies are what count: the allowance starts from that count.
-		const told = /Your coordinator continued you after (\d+) model requests; the run is stopped at (\d+)/.exec(
-			secondRequests[0].lastUserText,
-		);
-		expect(Number(told?.[1])).toBeGreaterThanOrEqual(3);
-		expect(Number(told?.[2])).toBe(Number(told?.[1]) + 3);
-		expect(says(requestsOf(parent).at(-1), "reported done")).toBe(true);
-	});
-
-	it("gives a child resumed past its soft limit the same allowance, not just what was left of the hard limit", async () => {
-		const box = limited(2);
-		const first: Step[] = [tick(1), { text: "partial: stopped early" }];
-		const second: Step[] = [...ticks(50, 51), { text: "done: continued" }];
-		const parent: Step[] = [
-			{ tool: "agent", args: { type: "task", goal: "long work", task: script(first) } },
-			{ tool: "agent", args: { type: "task", goal: "the rest", resume: "{{CHILD}}", task: script(second) } },
-			{ text: "read its report" },
-		];
-		const { code } = await box.start(["-p", script(parent)]).exited;
-		expect(code).toBe(0);
-		const secondRequests = requestsOf(second);
-		expect(secondRequests).toHaveLength(3);
-		// Reply 4 of the child reaches the limit its resume set, so it can ask again.
-		expect(says(secondRequests[2], "You have used 4 of 4 model requests; the run stops at 5")).toBe(true);
-		expect(says(requestsOf(parent).at(-1), "reported done")).toBe(true);
-	});
-
-	it("leaves the budget off when it is 0: no steer, no limit in the list, and a grant is refused", async () => {
-		const box = limited(0);
-		const marker = path.join(box.root, "answered");
-		const child: Step[] = [...ticks(1, 8), ask("go on"), waitFor(marker), { text: "done: no limits" }];
-		const parent: Step[] = [
-			{ tool: "agent", args: { type: "task", background: true, goal: "long work", task: script(child) } },
-			{ text: "started it" },
-			grant(5),
-			{ tool: "agent", args: { type: "coordinate", action: "list" } },
-			{ tool: "bash", args: { command: `touch ${JSON.stringify(marker)}` } },
-			{ text: "answered" },
-			{ text: "read its report" },
-		];
-		await runToEnd(box, parent);
-		const childRequests = requestsOf(child);
-		expect(childRequests).toHaveLength(11);
-		expect(childRequests.some((request) => request.messages.some((message) => nextSteer.test(message.text)))).toBe(
-			false,
-		);
-		const results = requestsOf(parent).at(-1)!.toolResults;
-		expect(results.find((result) => result.includes("no request limit"))).toBeDefined();
-		expect(results.find((result) => result.includes("· parent "))).not.toMatch(/requests, stops at/);
 	});
 });

@@ -28,6 +28,11 @@ export class PiFallbackCredentialStore implements CredentialStore {
 		this.piAuthPaths = piDirs.map((dir) => join(dir, "auth.json"));
 	}
 
+	/** Octocode's file only; Pi's files are read fresh on every read. */
+	watch(onChange: () => void): () => void {
+		return this.primary.watch(onChange);
+	}
+
 	/** The first Pi entry for the provider, unresolved; read fresh so edits to Pi's file apply. */
 	private async readPi(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		if (!this.isEnabled()) return undefined;

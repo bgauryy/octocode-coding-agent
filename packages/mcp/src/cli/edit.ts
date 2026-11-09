@@ -2,7 +2,7 @@
 
 import { hostIdentity, hostTrust } from "../host.ts";
 import { globalMcpConfigPath } from "../paths.ts";
-import { validateMcpServerConfig } from "../servers.ts";
+import { type McpServerConfig, validateMcpServerConfig } from "../servers.ts";
 import { addMcpServerConfig, loadMcpConfig, removeMcpServerConfig } from "../config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { helpHint, type McpCommandOptions, parseOptions } from "./shared.ts";
@@ -22,14 +22,21 @@ function parsePairs(option: string, pairs: string[] | undefined, error: (line: s
 	return record;
 }
 
-export function add(
+/** A server definition read from `add` arguments: what `octocode mcp add` and `/configuration add mcp` both write. */
+export interface ParsedMcpAdd {
+	name: string;
+	/** Validated definition: `{ url, headers?, oauth? }` or `{ command, args?, env?, cwd? }`, with `exposure` and `description`. */
+	config: McpServerConfig;
+	/** `--local` was given: write the project file. */
+	project: boolean;
+}
+
+/** Parse `<server> [options] (--url <url> | -- <command> [args...])`; reports why and returns undefined when it is wrong. */
+export function parseMcpAddArgs(
 	args: string[],
-	projectConfig: string,
-	options: McpCommandOptions,
-	log: (line: string) => void,
 	error: (line: string) => void,
-): number {
-	const usage = `Usage: ${hostIdentity().appName} mcp add <server> [options] (--url <url> | -- <command> [args...])\n${helpHint()}`;
+	usage = `Usage: ${hostIdentity().appName} mcp add <server> [options] (--url <url> | -- <command> [args...])\n${helpHint()}`,
+): ParsedMcpAdd | undefined {
 	const parsed = parseOptions(
 		args,
 		{
@@ -49,13 +56,13 @@ export function add(
 		error,
 		2,
 	);
-	if (!parsed) return 1;
+	if (!parsed) return undefined;
 	const { positional, values, lists } = parsed;
 	const [name, ...command] = positional;
 	const url = values.get("url");
 	if (!name || (url === undefined) === (command.length === 0)) {
 		error(usage);
-		return 1;
+		return undefined;
 	}
 	const value = (option: string) => {
 		const found = values.get(option);
@@ -76,13 +83,13 @@ export function add(
 	);
 	if (misplaced) {
 		error(`--${misplaced} only applies to ${url === undefined ? "HTTP servers (--url)" : "stdio servers"}.`);
-		return 1;
+		return undefined;
 	}
 
 	let config: Record<string, unknown>;
 	if (typeof url === "string") {
 		const headers = parsePairs("header", lists.get("header"), error);
-		if (!headers) return 1;
+		if (!headers) return undefined;
 		const bearer = value("bearer-token-env-var");
 		if (bearer !== undefined) headers.Authorization = `Bearer \${${bearer}}`;
 		const port = value("oauth-callback-port");
@@ -99,7 +106,7 @@ export function add(
 		};
 	} else {
 		const env = parsePairs("env", lists.get("env"), error);
-		if (!env) return 1;
+		if (!env) return undefined;
 		const [executable, ...commandArgs] = command;
 		config = {
 			command: executable,
@@ -114,10 +121,23 @@ export function add(
 	const validated = validateMcpServerConfig(name, config);
 	if (typeof validated === "string") {
 		error(validated);
-		return 1;
+		return undefined;
 	}
+	return { name, config: validated, project: values.has("local") };
+}
 
-	const project = values.has("local");
+export function add(
+	args: string[],
+	projectConfig: string,
+	options: McpCommandOptions,
+	log: (line: string) => void,
+	error: (line: string) => void,
+): number {
+	const parsed = parseMcpAddArgs(args, error);
+	if (!parsed) return 1;
+	const { name, project } = parsed;
+	const validated = parsed.config;
+
 	const path = project ? projectConfig : globalMcpConfigPath(options.agentDir);
 	const scope = project ? "project" : "global";
 	let replaced: boolean;

@@ -1,248 +1,153 @@
 # Context management
 
-What a native Octocode session sends the model on each request, which parts the provider caches, and how the session keeps the history inside the context window. Details stay with their owners: [prompt caching](../packages/coding-agent/docs/prompt-caching.md), [agent instructions](../packages/coding-agent/docs/instructions.md), [MCP](../packages/coding-agent/docs/mcp.md), [`core/compaction/`](../packages/coding-agent/src/core/compaction/) and [`octocode/compaction/`](../packages/coding-agent/src/octocode/compaction/).
-
-Diagram colors: green is cached content shared across projects, blue is cached project and session content, amber is history, purple is a mid-conversation update, red is compaction, and black is a cache breakpoint.
+What a native Octocode session sends the model on each request, how updates reach it, and how the history stays inside the context window. Owners of the rest: [prompt caching](../packages/coding-agent/docs/prompt-caching.md) (providers, retention, warming, miss diagnostics), [agent context](../packages/coding-agent/docs/agent-context.md) (where each source comes from and its switch), [agent instructions](../packages/coding-agent/docs/instructions.md) (prose), [MCP](../packages/coding-agent/docs/mcp.md).
 
 ## What the model sees
 
-Each request has two instruction blocks followed by the history. By default both the instruction blocks and the history are cached for one hour (`cacheRetention` and `instructionCacheRetention` in settings), so a new message never invalidates the instructions and a pause shorter than an hour keeps the history.
-
-```mermaid
-flowchart TB
-    subgraph L1["Instruction block 1: same for every session with the same tools and MCP servers"]
-        T["tool declarations"] --> P["preamble · tools · rules · docs"] --> M["mcps"]
-    end
-    subgraph L2["Instruction block 2: project, session and role"]
-        A["addendum · cwd"] --> POL["octocode_* policy · project_context · skills · role"] --> EV["environment · planning"]
-    end
-    subgraph L3["History"]
-        CS["compaction summary"] --> H["messages, tool calls and results"] --> U["section updates · memory · restored files"]
-    end
-    M --> BP1{{"breakpoint"}} --> A
-    EV --> BP2{{"breakpoint"}} --> CS
-    U --> BP3{{"breakpoints: previous tail, last block"}}
-
-    classDef b1 fill:#d1fae5,stroke:#059669,color:#064e3b
-    classDef b2 fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
-    classDef hist fill:#fef3c7,stroke:#d97706,color:#78350f
-    classDef upd fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
-    classDef cut fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
-    classDef bp fill:#111827,stroke:#111827,color:#ffffff
-    class T,P,M b1
-    class A,CW,POL b2
-    class H hist
-    class U upd
-    class CS cut
-    class BP1,BP2,BP3 bp
-```
-
-| Content                                                     | Source                                                                                                                                                                                         | Changes when                                                            |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Tool declarations                                           | Built-in and extension tools in their given order, then MCP tools sorted by server and name                                                                                                    | A tool or MCP server is added or removed                                |
-| `preamble`                                                  | Built-in text, or `SYSTEM.md` / a custom prompt                                                                                                                                                | The custom prompt changes                                               |
-| `tools`, `rules`                                            | `tools`: one `- name: trigger` line (the tool's `promptSnippet`) per declared tool that is not an MCP tool; `rules`: their guidelines                                                          | The tool selection changes                                              |
-| `docs`                                                      | The root of Octocode's own documentation; empty for subagents                                                                                                                                  | Rarely                                                                  |
-| `mcps`                                                      | One block per enabled MCP server: name, purpose, `mcp__<server>__*` prefix and, when its tools are declared, its optimized TypeScript file (instructions and typed tools); no connection state | A server first connects, is added or removed, or the loadout is rebuilt |
-| `addendum`                                                  | `APPEND_SYSTEM.md`                                                                                                                                                                             | The file changes, then `/reload`                                        |
-| `project_context`                                           | One `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` per directory from the root to `cwd`                                                                                                      | A file changes, then `/reload`                                          |
-| `skills`                                                    | Names, optimized descriptions and paths; bodies load on demand                                                                                                                                 | A skill is added or removed                                             |
-| `hooks`                                                     | One line per hook event and tool matcher that may act on a call, never a command, URL or prompt; absent without a hook                                                                         | Hooks configuration changes                                             |
-| `cwd`, `environment`                                        | Working directory; platform, shell and local date                                                                                                                                              | A new day                                                               |
-| `work`, `research`, `delegation`, `safety`, `communication` | `octocode/instructions/sections/`, rendered by `policy.ts`, adapted to the tools and to main or child agent                                                                                    | The tool set or profile list changes                                    |
-| `role`, `planning`                                          | The subagent's profile; the plan-mode constraint (after `environment`)                                                                                                                         | `/plan` enters or leaves                                                |
-| `mcp_status`                                                | Last section: one line per MCP server that is not ready, or whose tools are partly undeclared                                                                                                  | A server connects, fails, drops, stops or reconnects                    |
-| Memory                                                      | Pinned and query-matched notes, at most 2,400 characters, hidden from the transcript view                                                                                                      | Each prompt; already injected notes are skipped                         |
-| Child task                                                  | Identity, goal, scratch folder and teammates of a subagent                                                                                                                                     | Once, as the child's first message                                      |
-
-Every section's order, cache tier and `SYSTEM.md` behavior is declared once in `packages/coding-agent/src/core/system-prompt-spec.ts`: the policy, `project_context`, `skills` and `role` sections precede `environment`, and `planning` and `mcp_status` follow it. Block 2 starts at the first section outside the base tier present (`addendum`, `project_context`, `skills`, `cwd`, policy, `role`, `environment`, `planning` or `mcp_status`); `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block. An isolated subagent names the main checkout in its prompt, so sibling children share both blocks. The breakpoints shown are Anthropic's; [adapter behavior](../packages/coding-agent/docs/prompt-caching.md#behavior-and-accounting) covers other providers and [retention per layer](../packages/coding-agent/docs/prompt-caching.md#retention-per-layer) the settings. Raw `mcp.json`, commands, environment values and tokens never reach the model; server instructions and tool descriptions do.
-
-## How a change reaches the model
-
-Before each prompt, `before_agent_start` handlers (MCP, Octocode policy, planning, memory) fill the section inputs, and `buildSystemPromptSections` renders them. The session compares the result with the sections the transcript already holds and sends only what differs.
+Each request is the tool declarations, two instruction blocks, then the history.
 
 ```mermaid
 flowchart LR
-    Q{"What changed?"}
-    Q -->|"section text: date, plan, role"| SU["Section patch in the history"]
-    Q -->|"tool added or removed"| TA{"Provider loads tools<br/>mid-conversation?"}
-    Q -->|"model switched"| MS["Full cache miss"]
-    Q -->|"idle longer than the history TTL"| IG["History rewritten"]
-    TA -->|"yes"| TAM["Tool change in the history"]
-    TA -->|"no"| TR["Tool list and instruction blocks rewritten"]
-    SU --> OK["Instruction blocks read from cache"]
-    TAM --> OK
-
-    classDef upd fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
-    classDef ok fill:#d1fae5,stroke:#059669,color:#064e3b
-    classDef bad fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
-    classDef hist fill:#fef3c7,stroke:#d97706,color:#78350f
-    class SU,TAM upd
-    class OK ok
-    class TR,MS bad
-    class IG hist
+    T["Tool declarations"] --> B1["Block 1: base tier<br/>(shared across projects)"] --> B2["Block 2: session and volatile tiers<br/>(project, session, role)"] --> H["History<br/>(summary, messages, updates, memory)"]
+    B1 -. "cache breakpoint" .-> B2
+    B2 -. "cache breakpoint" .-> H
 ```
 
-Providers without mid-conversation system messages receive a section patch as a marked user message, so their leading prompt stays byte-identical. To find the cause of a miss, set `OCTOCODE_CACHE_DIAGNOSTICS=on` (Anthropic reports the first divergence) or enable `showCacheMissNotices`.
+| Part                | Holds                                                                                                                              | Shared by                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Tool declarations   | Role-invariant tools in a fixed order, other built-in and extension tools, MCP tools sorted by server and name, role-variant tools | sessions with the same tools and MCP servers |
+| Instruction block 1 | Sections of the base tier (below)                                                                                                  | sessions with the same tools and MCP servers |
+| Instruction block 2 | Sections of the session and volatile tiers (below)                                                                                 | one project, session and role                |
+| History             | Compaction summary, messages, tool calls and results, section updates, memory, restored files                                      | one session                                  |
 
-## Keeping the history small between compactions
+Sections in prompt order. `SYSTEM.md` replaces `preamble` and drops `docs`; every other section stays ([instructions](../packages/coding-agent/docs/instructions.md)). A section with nothing to say is left out.
 
-Tool results are bounded when they are written, and old results are cleared only when the next request rewrites the history's cache entry anyway: the cache has expired, or the request carries a system update or a model switch and the context is past half its working window (`CLEAR_ABOVE_CONTEXT_SHARE`). Clearing a warm entry on its own would make the next request rewrite it. Clearing a result changes the prefix every later thinking block was bound to, so for a model that binds thinking to its prefix the request also drops the thinking of turns that follow a cleared result and were produced before it was cleared (`octocode/compaction/thinking.ts`); the provider would drop those blocks anyway, and the request no longer carries them.
+| Tier     | Section                                                     | Content                                                                                                                                                                                                                                             |
+| -------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| base     | `preamble`                                                  | Built-in text, or `SYSTEM.md` / a custom prompt                                                                                                                                                                                                     |
+| base     | `tools`, `rules`                                            | One `- name: trigger` line (`promptSnippet`) and the guidelines of each declared non-MCP tool                                                                                                                                                       |
+| base     | `docs`                                                      | The root of Octocode's own documentation; dropped under a custom prompt and for subagents                                                                                                                                                           |
+| base     | `mcps`                                                      | One block per enabled MCP server: name, purpose, `mcp__<server>__*` prefix, instructions; under `mcpPresentation: "compact"` or `json` also its tool contracts (default `declared` keeps each tool's own description and schema in its declaration) |
+| session  | `addendum`                                                  | `APPEND_SYSTEM.md`                                                                                                                                                                                                                                  |
+| session  | `cwd`                                                       | Working directory                                                                                                                                                                                                                                   |
+| session  | `work`, `research`, `delegation`, `safety`, `communication` | Policy prose, adapted to the tools and to main or child agent; `lean` replaces it for lean profiles                                                                                                                                                 |
+| session  | `project_context`                                           | See [Project context](#project-context)                                                                                                                                                                                                             |
+| session  | `skills`                                                    | Name, optimized description and path of each skill; a body loads when the agent calls `skill`                                                                                                                                                       |
+| session  | `hooks`                                                     | One line per event and tool matcher that may act on a call, never a command, URL or prompt                                                                                                                                                          |
+| session  | `role`                                                      | The subagent's profile                                                                                                                                                                                                                              |
+| session  | `harnesses`                                                 | Which other agent products Octocode reads, on or off; main session only                                                                                                                                                                             |
+| volatile | `environment`                                               | Platform, shell, local date                                                                                                                                                                                                                         |
+| volatile | `planning`                                                  | The plan-mode constraint                                                                                                                                                                                                                            |
+| volatile | `mcp_status`                                                | One line per MCP server that is not ready or whose tools are partly undeclared                                                                                                                                                                      |
 
-```mermaid
-flowchart TB
-    R["Tool result"] --> B{"Over the turn's shared<br/>text budget?"}
-    B -->|"yes"| SP["Saved to a file; the context keeps<br/>a bounded part and the path"]
-    B -->|"no"| D{"Repeated read of an<br/>unchanged file?"}
-    SP --> H["History"]
-    D -->|"yes"| N["Short note pointing at the earlier result"] --> H
-    D -->|"no"| H
-    H --> CC{"Before a request: cache idle<br/>longer than its TTL?"}
-    CC -->|"no"| SEND["Request"]
-    CC -->|"yes, ≥ 20k tokens to free"| CL["Clear old results of re-fetchable tools;<br/>keep the newest 5; placeholders name saved files"] --> SEND
-    SEND -->|"413 too large"| IMG["Strip images and retry"]
+Not sections: memory (pinned and query-matched notes, at most 2,400 characters, hidden from the transcript view) and a child's task (identity, goal, scratch folder, teammates) arrive in the history.
 
-    classDef hist fill:#fef3c7,stroke:#d97706,color:#78350f
-    classDef cut fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
-    class R,H,N hist
-    class SP,CL,IMG cut
-```
+Block 2 starts at the first non-base section present; `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block. An isolated subagent names the main checkout in its prompt, so sibling children share both blocks. Breakpoints per adapter: [prompt caching](../packages/coding-agent/docs/prompt-caching.md#second-instruction-block). Raw `mcp.json`, commands, environment values and tokens never reach the model; server instructions and tool descriptions do.
 
-Clearing is recorded as a session entry, so every later request applies the same placeholders and survives resume and fork. Owners: `octocode/shared/turn-budget.ts`, `octocode/files/dedupe.ts`, `octocode/compaction/clearing.ts`.
+### Project context
+
+`project_context` holds, in order:
+
+1. The global context file (agent directory).
+2. In each directory from the repository root to `cwd`, the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`.
+3. Claude's `MEMORY.md` for the project, only when the `claude:memory` `/harness` switch is on: the first 200 lines or 25 KB, labeled as Claude's read-only notes, below `AGENTS.md` and Octocode memories.
+
+Directories run outermost first, stopping at the folder a trust grant is on and at the working directory's repository root when a parent repository lies above. In a linked worktree nested inside its main checkout, the worktree's own file replaces the main checkout's. These files load without project trust: they are text the model reads, and the permission gate still decides each action. A file over 64 KiB is cut and the rest is named by path. `--no-context-files` skips all of it.
+
+## How a change reaches the model
+
+Before each prompt, `before_agent_start` handlers (MCP, Octocode policy, planning, memory) fill the section inputs and `buildSystemPromptSections` renders them. The session compares the result with the sections the transcript already holds and sends only the difference.
+
+| Change                             | Result                                                                                                                |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Section text (date, plan, role)    | A section patch in the history; the instruction blocks stay cached                                                    |
+| Tool added or removed              | Provider loads tools mid-conversation: a tool change in the history. Otherwise the tool list and blocks are rewritten |
+| Model switched                     | Full cache miss                                                                                                       |
+| Idle longer than the history's TTL | History rewritten                                                                                                     |
+
+Providers without mid-conversation system messages receive a patch as a marked user message, so their leading prompt stays byte-identical. To find a miss's cause, set `OCTOCODE_CACHE_DIAGNOSTICS=on` or enable `showCacheMissNotices` ([prompt caching](../packages/coding-agent/docs/prompt-caching.md#provider-reported-miss-reasons)).
+
+## Keeping the history small
+
+1. A tool result over the turn's shared text budget is saved to a file; the context keeps a bounded part and the path.
+2. A repeated read of an unchanged file becomes a short note pointing at the earlier result.
+3. Old results of re-fetchable tools are cleared (the newest 5 stay; placeholders name saved files) only when the next request rewrites the history's cache entry anyway (the cache has expired, or the request folds a system update into the leading prompt or switches model) and the context is past half its working window, with at least 20k tokens to free. Clearing a warm entry alone would only force a rewrite.
+4. Clearing changes the prefix every later thinking block was bound to, so for a model that binds thinking to its prefix the request also drops the thinking of later turns produced before the clear; the provider would drop them anyway.
+5. A 413 "too large" strips images and retries.
+
+Clearing is a session entry: every later request applies the same placeholders, across resume and fork.
 
 ## When compaction runs
 
-The session checks after each run and before sending a prompt; the pre-prompt check also counts the incoming prompt. `/compact [focus]` runs a manual compaction directly.
+The session checks after each run and before sending a prompt (the pre-prompt check counts the incoming prompt). `/compact [focus]` runs one directly. The agent's `compact` tool queues one for the end of its reply; it is refused when the context is under half the room before automatic compaction, within two turns of the previous compaction, or when recent compactions kept refilling.
 
-```mermaid
-flowchart TB
-    START(["After a run, or before a prompt"]) --> AB{"Disabled, or the response predates<br/>the latest compaction?<br/>(after a run: also aborted)"}
-    AB -->|"yes"| STOP(["No compaction"])
-    AB -->|"no"| OV{"Context overflow, or<br/>a recoverable length stop?"}
-    OV -->|"response failed, first time this run"| RETRY["Drop the failed attempt,<br/>compact, retry the turn"]
-    OV -->|"response failed again"| FAIL["Report recovery failed"]
-    OV -->|"response completed"| OVK["Compact, keep the response"]
-    OV -->|"no"| TH{"tokens > window − reserve?"}
-    TH -->|"yes"| THR["Compact"]
-    TH -->|"no"| STOP
-    SW(["Switch to a model whose<br/>window is too small"]) --> DS["Compact on the previous model"]
+| Situation                                                                                     | Action                                           |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Compaction disabled, or the response predates the latest compaction (after a run: or aborted) | None                                             |
+| Overflow or recoverable length stop, response failed, first time this run                     | Drop the failed attempt, compact, retry the turn |
+| Same, failed again                                                                            | Report recovery failed                           |
+| Same, response completed                                                                      | Compact, keep the response                       |
+| Context tokens > window − reserve                                                             | Compact                                          |
+| Switch to a model whose window is too small                                                   | Compact on the previous model                    |
 
-    classDef cut fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
-    classDef neutral fill:#f3f4f6,stroke:#6b7280,color:#111827
-    class RETRY,OVK,THR,DS,FAIL cut
-    class STOP neutral
-```
+The window is the working window: `contextBudget` (default 300,000 tokens) capped at 90% of the model's capacity, or the whole capacity for `"full"`.
 
-| Value       | Rule (`core/compaction/settings.ts`)                                                       | 200k window, thinking off |
+| Value       | Rule                                                                                       | 200k window, thinking off |
 | ----------- | ------------------------------------------------------------------------------------------ | ------------------------- |
 | Reserve     | `min(16,384, window/8)`, raised for the thinking budget plus answer room, at most window/6 | 16,384                    |
 | Trigger     | context tokens > window − reserve                                                          | > 183,616                 |
 | Kept recent | `min(20,000, window/4)` tokens of the newest history, verbatim                             | 20,000                    |
 
-Automatic compaction stops after three consecutive failures for the same session and model, or when the context refilled within 3 turns of the previous compaction 3 times in a row (`octocode/compaction/pacing.ts`); a successful `/compact` resets both, and an hour after the last failure one more attempt is let through.
+Automatic compaction stops after three consecutive failures for the same session and model, or when the context refilled within 3 turns of the previous compaction 3 times in a row. A successful `/compact` resets both; an hour after the last failure one more attempt is let through.
 
 ## The compaction pipeline
 
 ```mermaid
 sequenceDiagram
-    autonumber
     participant S as Session
     participant X as Octocode compaction
     participant P as Provider
     participant D as Disk
-
-    S->>S: stop cache warming; choose the cut point
-    S->>X: session_before_compact
-    X->>X: capture messages for the archive; pick files to restore
+    S->>S: stop cache warming, choose cut point
+    S->>X: before compaction
+    X->>X: capture messages for the archive, pick files to restore
     alt same model, not an overflow
-        X->>P: the session's own request + "write a checkpoint"
-    else a downshift, an overflow, or the shared request failed
-        X->>P: standalone summary request, history none: no cache markers, no cache routing id
+        X->>P: shared request (cached prefix) + "write a checkpoint"
+    else downshift, overflow, or shared request failed
+        X->>P: standalone summary request, no cache markers
     end
     P-->>X: checkpoint text
-    X-->>S: summary + read and modified file lists
-    alt summary fits 80% of the reserve
-        S->>S: keep it inline
+    alt fits 80% of the reserve
+        S->>S: keep inline
     else session has a file
-        S->>D: save it whole; keep a reference
-    else in-memory session
-        S->>S: keep head and tail with an omission marker
+        S->>D: save whole, keep a reference
     end
-    S->>S: save the compaction entry; rebuild the context
-    S->>X: session_compact
-    X->>D: archive the summarized messages as searchable Markdown
+    S->>S: save compaction entry, rebuild context
+    X->>D: archive summarized messages as Markdown
     X->>S: re-read up to 5 recent files
 ```
 
-The cache-shared request keeps the session's system prompt, tools and thinking settings and sends the messages as every live request does (Octocode's `context` transform, and in a child only the latest identity reminder), so the provider reads the cached prefix instead of billing the whole history as new input; a cold cache does not change the choice, but past the history entry's lifetime, or after a switch of a physical session model since the last reply or an instruction or tool update folded into the leading prompt, the request is sent with `cacheRetention: "none"`, because the summary replaces those messages and nothing would read what it wrote (octocode-ai applies `none` to the whole prompt today, so the session's next request writes the system prefix). A warm request is unchanged. The reply is accepted when the provider's reported output tokens are within the cap (`maxTokens`); the character estimate decides only when no count was reported. The standalone request (a downshift, an overflow, a failed shared request) serializes the conversation under its own system prompt (custom and external messages labeled with their type, never as the user's) and passes the session's preferences with `cacheRetention: "none"`, so octocode-ai sends no cache markers and the provider adapters drop their cache routing id (OpenCode keeps the `x-opencode-session` header, which [OpenCode Go requires](https://opencode.ai/v2/docs/console/harnesses/) on every request), because nothing sends that prompt again; only that request saves long tool results whole and shows them as references. Both requests carry one statement of the checkpoint format (`core/compaction/summary-format.ts`: goal, constraints, progress, decisions, errors and fixes, where we stopped, critical context, TL;DR), composed into the standalone, update and branch prompts, and one focus text; a split turn sends the focus with the history request, or with the turn-prefix request when there is no history to summarize. The summary is asked only for judgment: code appends the user's messages word for word, the file lists (files Octocode's local tools read, from their recorded reads, and files `file` changed), the saved results and the recovery pointers, which include the skills loaded so far by name and path (never their bodies, carried in `details.loadedSkills`). On the shared request the summary is asked what each image shows that the work depends on; only the standalone request, which serializes text, says images do not arrive. A restored file within 8k characters comes back whole; a larger one comes back as an outline of its declaration lines (at most 4k characters), or a window of whole lines when it has none. Restored files total at most 20k characters, capped at 10% of the window left after the reserve. Without Octocode's handler, the core's default (`core/compaction/compaction.ts`) sends a standalone request. A cut never lands on a tool result; a cut inside a turn adds a second summary of that turn's start.
+1. The session stops cache warming, chooses the cut point (never on a tool result; a cut inside a turn adds a second summary of that turn's start) and emits `session_before_compact`.
+2. Octocode's handler captures the messages for the archive and picks files to restore.
+3. It asks the model for a checkpoint:
+   - **Shared request** (same model, not an overflow): the session's own system prompt, tools, thinking settings and messages plus "write a checkpoint", so the provider reads the cached prefix instead of billing the history as new input. When the history entry has expired, the model was switched since the last reply, or an instruction or tool update was folded into the leading prompt, it goes with `cacheRetention: "none"`, since nothing would read what it wrote; if the long instruction entry is still live, `keepInstructionCache` keeps its markers. A warm request is unchanged.
+   - **Standalone request** (downshift, overflow, or the shared request failed): serializes the conversation under its own system prompt (custom and external messages labeled by type, never as the user's) with `cacheRetention: "none"`, so no cache markers or routing id are sent (OpenCode keeps `x-opencode-session`, which [OpenCode Go requires](https://opencode.ai/v2/docs/console/harnesses/)). Only this request saves long tool results whole and shows them as references.
+   - Without Octocode's handler, the core default sends a standalone request.
+4. The reply is accepted when the provider's reported output tokens are within `maxTokens` (a character estimate decides only without a count).
+5. The checkpoint format is one statement (goal, constraints, progress, decisions, errors and fixes, where we stopped, critical context, TL;DR) plus one focus text. A split turn sends the focus with the history request, or with the turn-prefix request when there is no history. The summary is asked only for judgment; code appends the user's messages word for word, the file lists (files Octocode's local tools read, files `file` changed), saved results and recovery pointers, including skills loaded so far by name and path (`details.loadedSkills`, never bodies). The shared request also asks what each image shows that the work depends on; the standalone one serializes text and says images do not arrive.
+6. A summary within 80% of the reserve stays inline; otherwise a session with a file saves it whole and keeps a reference; an in-memory session keeps head and tail with an omission marker.
+7. The compaction entry is saved (with the system message in force, so the instruction blocks stay cached) and the context is rebuilt: instructions, updated summary and file lists, newest messages, restored files.
+8. On `session_compact` the summarized messages are archived as searchable Markdown (`archive` tool; they also remain in the session file) and up to 5 recent files are re-read. A file within 8k characters returns whole; a larger one as an outline of its declaration lines (at most 4k characters) or a window of whole lines. Restored files total at most 20k characters, capped at 10% of the window left after the reserve. Memories injected before the kept range may be injected again.
 
-```mermaid
-flowchart LR
-    subgraph BEFORE["Before"]
-        B0["instructions"] --> B1["earlier summary"] --> B2["older messages"] --> B3["newest messages"]
-    end
-    subgraph AFTER["After"]
-        A0["instructions"] --> A1["updated summary + file lists"] --> A3["newest messages"] --> A4["restored files"]
-    end
-    B0 -. "unchanged" .-> A0
-    B1 -. "folded in" .-> A1
-    B2 -. "summarized, archived" .-> A1
-    B3 -. "kept verbatim" .-> A3
+`/tree` to another point summarizes the branch being left as a `branchSummary` message with the same summarizer, using as much of the branch as fits the window less `branchSummary.reserveTokens`.
 
-    classDef b1 fill:#d1fae5,stroke:#059669,color:#064e3b
-    classDef hist fill:#fef3c7,stroke:#d97706,color:#78350f
-    classDef cut fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
-    classDef upd fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
-    class B0,A0 b1
-    class B2,B3,A3 hist
-    class B1,A1 cut
-    class A4 upd
-```
+## Skills and MCP tools in the context
 
-The compaction entry stores the system message in force, so the instruction blocks stay cached; only the history after them is written again. Summarized messages remain in the session file and in the compaction archive (`archive` tool), and memories injected before the kept range may be injected again.
+The skills listing, and MCP tools under `mcpPresentation: "compact"` or `json`, pass through one optimization stage stored in the agent directory under `context-optimization/`. Under the default `declared`, each MCP tool's own description and schema reach the model.
 
-Moving to another point in the session tree (`/tree`) summarizes the branch being left as a `branchSummary` message, using the same summarizer and as much of that branch as fits the window less `branchSummary.reserveTokens`.
+- **Scope.** User-level skills and servers share one folder; a repository's own skills and workspace servers go to `projects/<repo>-<hash>/`, keyed by repository so worktrees share it.
+- **Recorded automatically.** A root session records the skills it discovers, and the MCP host renders each server's file, whenever they change. Each entry keeps a hash of its source; a rewrite applies only to the source it was written for, so an edited skill or changed tool falls back to its own wording.
+- **Rewritten by the internal skill.** `octocode context list` shows which entries are still `source`. The bundled `octocode-context-optimization` skill rewrites them with fidelity checks: `octocode context` for skills ([optimized descriptions](../packages/coding-agent/docs/skills.md#optimized-descriptions)), `octocode mcp compact` for servers ([compact presentation](../packages/coding-agent/docs/mcp-reference.md#compact-presentation)).
+- **Stable within a session.** Text is read at start and `/reload`; a rewrite never changes a cached prompt mid-run. Subagents read the same store.
 
-## How skills and tools reach the context
-
-Agents never read a skill's or MCP tool's own description directly. Every configuration change passes through one optimization stage, saved in the agent directory under `context-optimization/`, before it reaches an agent.
-
-```mermaid
-flowchart LR
-    subgraph CFG["User configuration"]
-        SK["Skill folders · skills setting"]
-        MC["mcp.json · presets"]
-    end
-    subgraph OPT["context-optimization/ (saved files)"]
-        SJ["skills.json · mcp/#lt;server#gt;.json<br/>user-level: shared by every project"]
-        MJ["projects/#lt;repo#gt;-#lt;hash#gt;/<br/>skills.json · mcp/#lt;server#gt;.json<br/>project skills and workspace servers"]
-    end
-    subgraph CTX["Agent context"]
-        SL["skills listing<br/>block 2"]
-        CT["mcps + thin declarations<br/>block 1"]
-    end
-    SK -->|"startup, /reload, skill change"| SJ
-    SK --> MJ
-    MC -->|"connect, catalog change"| SJ
-    MC --> MJ
-    MJ -->|"read first"| SL
-    MJ -->|"read first"| CT
-    SJ --> SL
-    SJ --> CT
-    SKILL["octocode-context-optimization skill<br/>rewrite · check · apply"] -.-> SJ
-    SKILL -.-> MJ
-
-    classDef b1 fill:#d1fae5,stroke:#059669,color:#064e3b
-    classDef b2 fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
-    classDef upd fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
-    class CT b1
-    class SL b2
-    class SKILL upd
-```
-
-- **Stored by scope, outside the repository.** User-level skills and servers share one folder across projects; a repository's own skills and workspace-defined servers get `projects/<repo>-<hash>/`, keyed by the repository so worktrees share it and two projects never overwrite each other's same-named entries.
-- **Recorded automatically.** A root session records the skills it discovers, and the MCP host renders each server's file, whenever they change. Each entry keeps a hash of its source, and a rewrite applies only to the source it was written for, so an edited skill or a changed tool falls back to its own wording.
-- **Rewritten by the internal skill.** New or changed entries without a rewrite are reported to the user once. The bundled `octocode-context-optimization` skill rewrites them with fidelity checks: `octocode context` for skills ([optimized descriptions](../packages/coding-agent/docs/skills.md#optimized-descriptions)) and `octocode mcp compact` for servers ([compact presentation](../packages/coding-agent/docs/mcp-reference.md#compact-presentation)).
-- **Stable within a session.** Sessions read the stored text at start and `/reload`, so a rewrite never changes a cached prompt mid-run. Subagents read the same store.
-
-An MCP server reaches an agent only when the agent's tool selection names it. A server with `defaultActive: false`, such as the built-in `browser`, starts only for agents whose selection names `mcp__<server>__*`; a selected server that has not connected yet appears in `mcps` as one line with its state. File locations and precedence are in the [MCP reference](../packages/coding-agent/docs/mcp-reference.md#configuration-and-precedence); `/mcp config` shows what the current session resolved.
+A server reaches an agent only when the agent's tool selection names it. A server with `defaultActive: false` (the built-in `browser`) starts only for agents whose selection names `mcp__<server>__*`; a selected server that has not connected appears in `mcps` as one line with its state. Locations and precedence: [MCP reference](../packages/coding-agent/docs/mcp-reference.md#configuration-and-precedence); `/mcp config` shows what the session resolved.

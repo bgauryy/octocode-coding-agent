@@ -89,7 +89,11 @@ export function buildParams(
 	});
 	// Instructions and tools keep their own retention; a longer-lived breakpoint cannot follow a shorter one.
 	const instructionRetention =
-		cacheRetention === "none" ? "none" : (resolveInstructionCacheRetention(options) ?? cacheRetention);
+		cacheRetention === "none"
+			? options?.keepInstructionCache
+				? (options.instructionCacheRetention ?? "none")
+				: "none"
+			: (resolveInstructionCacheRetention(options) ?? cacheRetention);
 	const historyRetention = instructionRetention === "short" && cacheRetention === "long" ? "short" : cacheRetention;
 	const cacheControl = getCompatCacheControl(compat, historyRetention);
 	const instructionCacheControl = getCompatCacheControl(compat, instructionRetention);

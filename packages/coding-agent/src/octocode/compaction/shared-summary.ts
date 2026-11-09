@@ -125,7 +125,10 @@ function overCap(response: AssistantMessage, text: string, cap: number): boolean
  * for every failure, so the caller can say why it falls back to a request that bills the whole input; `userChoice` marks
  * blocked images, the user's own setting, which needs no warning. A cancel (abort) reports nothing. `cacheCold`: the
  * history's cache entry has expired, so this request has nothing to read there, and what it would write is never read,
- * because the summary replaces those messages in the next request. A request that rewrites the prefix anyway
+ * because the summary replaces those messages in the next request. `instructionsCold` (default: `cacheCold`): the
+ * instruction entry (system prompt and tools) has expired too. Instructions outlive history when their retention is
+ * `long` over shorter history; then a cold request still marks them, reading the live entry and keeping it for the
+ * next request, and only history goes unmarked. A request that rewrites the prefix anyway
  * (`prefixRewritten`: a switch of a physical session model since the last reply, or a trailing update the transcript folds into the leading
  * prompt) is cold the same way.
  */
@@ -138,6 +141,7 @@ export async function sharedSummary(
 	unusable: (reason: string, userChoice?: boolean) => void = () => undefined,
 	recordUsage?: (message: AssistantMessage) => void,
 	cacheCold = false,
+	instructionsCold = cacheCold,
 ): Promise<CompactionResult | undefined> {
 	const fail = (reason: string, userChoice?: boolean): undefined => {
 		unusable(reason, userChoice);
@@ -156,7 +160,8 @@ export async function sharedSummary(
 			ctx.sessionManager,
 			model,
 		);
-		const cold = cacheCold || prefixRewritten(messages, model);
+		const rewritten = prefixRewritten(messages, model);
+		const cold = cacheCold || rewritten;
 		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
 		const prompt = [
 			SHARED_SUMMARY_PROMPT,
@@ -170,12 +175,20 @@ export async function sharedSummary(
 			.filter(Boolean)
 			.join("\n\n");
 		const level = api.getThinkingLevel();
+		const preferences = sessionCachePreferences(ctx, model, settings);
+		// Only `long` instructions over shorter history can outlive the history entry; a rewritten prefix loses both.
+		const instructionsLive =
+			preferences.instructionCacheRetention === "long" &&
+			preferences.cacheRetention !== "long" &&
+			!rewritten &&
+			!instructionsCold;
 		const options: SimpleStreamOptions = {
-			...sessionCachePreferences(ctx, model, settings),
-			// The instruction preference stays as asked. octocode-ai treats history `none` as none for the whole prompt today
-			// (`resolveInstructionCacheRetention`), and the adapters drop the session's cache routing id with it (OpenCode keeps
-			// its required `x-opencode-session` header): nothing cached is lost.
-			...(cold ? { cacheRetention: "none" as const } : {}),
+			...preferences,
+			// A cold history is not marked (nothing reads what it writes). History `none` makes octocode-ai send no markers
+			// and drop the cache routing id (OpenCode keeps its required `x-opencode-session` header), unless
+			// `keepInstructionCache` keeps the instruction markers: that entry is live, this request reads it and the next
+			// request reads what it keeps. Both cold: no markers at all.
+			...(cold ? { cacheRetention: "none" as const, ...(instructionsLive ? { keepInstructionCache: true } : {}) } : {}),
 			// The session's own thinking level, budgets, transport and routing id: each one changes what the provider caches.
 			...(level === "off" ? {} : { reasoning: level }),
 			...(settings.thinkingBudgets ? { thinkingBudgets: settings.thinkingBudgets } : {}),

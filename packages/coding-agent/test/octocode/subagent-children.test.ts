@@ -181,6 +181,104 @@ describe("a finished child's report", () => {
 	});
 });
 
+describe("children started by one `tasks` batch call", () => {
+	/** The `agent` call and result a session records for `tasks`: the details are one run per entry under `batch`. */
+	function batchCall(callId: string, args: Record<string, unknown>, batch: Record<string, unknown>[]): unknown[] {
+		return [
+			{
+				type: "message",
+				timestamp: at,
+				message: { role: "assistant", content: [{ type: "toolCall", id: callId, name: "agent", arguments: args }] },
+			},
+			{
+				type: "message",
+				timestamp: at,
+				message: {
+					role: "toolResult",
+					toolCallId: callId,
+					toolName: "agent",
+					isError: false,
+					content: [{ type: "text", text: "#1 ok: first\n…\n\n#2 ok: second\n…" }],
+					details: { agentType: "task", batch },
+				},
+			},
+		];
+	}
+
+	it("are listed and resumable like children started one by one, each with its own task arguments", () => {
+		const first = scratch("general-b1");
+		const second = scratch("general-b2");
+		const entries = batchCall(
+			"call-batch",
+			{
+				type: "task",
+				profile: "general",
+				headless: false,
+				tasks: [
+					{ goal: "first", task: "do a" },
+					{ goal: "second", task: "do b", isolate: true },
+				],
+			},
+			[
+				{
+					goal: "first",
+					ok: true,
+					details: {
+						id: "general-b1",
+						profile: "general",
+						goal: "first",
+						status: "done",
+						outcome: "done",
+						session: { id: "general-b1", file: first.file },
+					},
+				},
+				{
+					goal: "second",
+					ok: true,
+					details: {
+						id: "general-b2",
+						profile: "general",
+						goal: "second",
+						status: "done",
+						outcome: "done",
+						session: { id: "general-b2", file: second.file },
+					},
+				},
+				{ goal: "third", ok: false, error: "does not take foo." },
+			],
+		);
+		const children = sessionChildren(entries);
+		expect(children.map((child) => [child.id, child.goal, child.status, child.isolated, child.headless])).toEqual([
+			["general-b1", "first", "done", undefined, false],
+			["general-b2", "second", "done", true, false],
+		]);
+		expect(resumableChild(entries, "general-b1", new Set()).session).toEqual({ dir: first.session, id: "general-b1" });
+		expect(() => resumableChild(entries, "general-b2", new Set())).toThrow(/ran in an isolated worktree/);
+	});
+
+	it("take the background report that arrives later as their latest record", () => {
+		const child = scratch("general-b3");
+		const entries = [
+			...batchCall("call-bg", { type: "task", background: true, tasks: [{ goal: "later", task: "do c" }] }, [
+				{
+					goal: "later",
+					ok: true,
+					details: {
+						id: "general-b3",
+						profile: "general",
+						goal: "later",
+						status: "background",
+						session: { id: "general-b3", dir: child.session },
+					},
+				},
+			]),
+			report({ id: "general-b3", status: "done", outcome: "done", session: { id: "general-b3", file: child.file } }),
+		];
+		expect(sessionChildren(entries)).toMatchObject([{ id: "general-b3", status: "done", transcript: child.file }]);
+		expect(resumableChild(entries, "general-b3", new Set()).session.id).toBe("general-b3");
+	});
+});
+
 describe("the subagents a session started", () => {
 	const foregroundId = "709e2c37-ae38-40e3-9061-683eb0d5dd4f";
 	const foreground = scratch(foregroundId);

@@ -1,102 +1,79 @@
 # Adapters
 
-Part of the [`@octocodeai/octocode-telemetry` guide](../README.md). An adapter bridges the [core context API](../README.md#core-context-api) to a backend.
+Part of the [`@octocodeai/octocode-telemetry` guide](../README.md). An adapter bridges the [core context API](../README.md#core-api) to a backend.
 
-## Adapter Contract
+## Adapter contract
 
-An adapter implements `TelemetryContext` and bridges the generic API to its backend. Typed inputs are trusted; malformed inputs have unspecified behavior. Adapters are not required to validate inputs or suppress adapter/backend failures.
+An adapter implements `TelemetryContext`. Typed inputs are trusted; malformed input is unspecified, and adapters need not validate it or suppress backend failures.
 
-The callback and recording contract is:
-
-- create a child span and invoke the callback synchronously, exactly once;
-- expose optional metric and propagation capabilities on its contexts, child spans, and extracted parents, including inert fallback spans;
-- preserve the callback's returned value and rejection value, returning a promise rejected with the same value after a synchronous throw;
-- keep the native span open until a returned promise settles;
-- treat normal completion as `ok` and throws/rejections as errors unless an explicit status was set;
-- make repeated `setStatus()` calls last-write-wins;
-- merge `setAttributes()` calls, with later defined values replacing earlier values and `undefined` ignored;
-- make recording methods synchronous;
-- ignore calls made after settlement.
-
-Adapters may activate backend-native ambient context internally for automatic instrumentation, but Octocode code always propagates the parent through `TelemetryContext` arguments. Exporter buffering, flushing, sampling, backend IDs, and backend-specific context objects belong to the adapter. Use the [adapter conformance suite](#adapter-conformance) to check these observable semantics.
-
-## No-op Context
-
-Use `NOOP_TELEMETRY_CONTEXT` when telemetry is optional:
-
-```typescript
-import { NOOP_TELEMETRY_CONTEXT } from "@octocodeai/octocode-telemetry";
-
-const result = await NOOP_TELEMETRY_CONTEXT.startSpan({ name: "example.operation" }, () => runOperation());
+```mermaid
+flowchart TD
+  A[startSpan options, callback] --> B[Create child span, call callback synchronously once]
+  B --> C{Callback result}
+  C -- value --> D[Keep span open until promise settles]
+  C -- sync throw --> E[Return promise rejected with same value]
+  D --> F{Explicit status set?}
+  F -- no --> G[ok on resolve, error on reject]
+  F -- yes --> H[Keep it]
+  G --> I[Settled: later calls are inert]
+  H --> I
 ```
 
-The no-op context:
+- Expose optional `metrics` and `propagation` on contexts, child spans, extracted parents and inert fallback spans.
+- Preserve the callback's return value and rejection value.
+- `setStatus()` is last-write-wins; `setAttributes()` merges (later defined values win, `undefined` ignored).
+- Recording methods are synchronous.
+- Adapters may activate backend-native ambient context internally, but Octocode code always passes the parent explicitly. Buffering, flushing, sampling and backend ids belong to the adapter.
 
-- invokes callbacks synchronously;
-- preserves returned values and asynchronous rejections, and converts a synchronous throw to a promise rejected with the same value;
-- uses one shared frozen inert span, including for nested spans;
-- exposes `NOOP_TELEMETRY_METRICS` and `NOOP_TELEMETRY_PROPAGATION` on its root and spans;
-- does not inspect or retain names, attributes, events, or statuses.
+Check these semantics with the [conformance suite](#conformance-suite).
 
-## In-Memory Reference Adapter
+## No-op context
 
-`InMemoryTelemetryContext` is the backend-neutral reference implementation. It is useful for tests, local diagnostics, and applications that intentionally want process-local capture without an exporter:
+`NOOP_TELEMETRY_CONTEXT` is for optional telemetry: it calls callbacks synchronously, preserves values and rejections (a sync throw becomes a rejected promise), uses one shared frozen inert span even for nested spans, exposes `NOOP_TELEMETRY_METRICS` and `NOOP_TELEMETRY_PROPAGATION`, and retains nothing.
+
+## In-memory reference adapter
+
+`InMemoryTelemetryContext` records process-locally, for tests, local diagnostics or capture without an exporter. Storage is unbounded; make a fresh instance per test or scope, and do not record sensitive attributes unless the data policy allows it.
 
 ```typescript
-import { InMemoryTelemetryContext } from "@octocodeai/octocode-telemetry";
-
 const telemetry = new InMemoryTelemetryContext();
-
-await telemetry.startSpan({ name: "example.operation", attributes: { input: "demo" } }, async (span) => {
-	span.addEvent("example.started");
-	span.setAttributes({ output_count: 3 });
-});
-
-console.log(telemetry.getSpans());
+await telemetry.startSpan({ name: "example.operation" }, async (span) => span.addEvent("example.started"));
+console.log(telemetry.getSpans(), telemetry.getMetrics());
 ```
 
-`getSpans()` returns detached snapshots in span-start order. Each `RecordedTelemetrySpan` contains a deterministic numeric ID, local parent ID, carrier-shaped `context` and `parentContext` snapshots, ordered `links`, merged attributes, ordered events, final status, settlement state, and deterministic end sequence. These normalized snapshots expose no timestamps. A remote parent has `parentId: null` but a non-null `parentContext`; a root has both null. A `RecordedTelemetryLink` contains a target carrier and copied attributes.
+| Read           | Returns                                                                                                                                                                                                                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getSpans()`   | Detached `RecordedTelemetrySpan` snapshots in start order: numeric id, `parentId`, carrier-shaped `context` and `parentContext`, `links`, attributes, events, status, settled state, end sequence. No timestamps. A remote parent has `parentId: null` but a `parentContext`; a root has both `null` |
+| `getMetrics()` | Ordered `RecordedTelemetryMeasurement`: `kind`, `name`, optional `description`/`unit`/`boundaries`, `value`, `attributes`, exemplar `context` or `null`. A log, not aggregates                                                                                                                       |
 
-The adapter implements `TelemetryPropagation` with its own small carrier codec: a unique recorder scope, a deterministic numeric span ID, and an inherited trace ID. The carrier survives JSON round trips and works across independent processes without a shared registry. Its keys are an implementation detail, not a public wire format for other adapters.
+It implements propagation with its own carrier: a recorder scope, a numeric span id and an inherited trace id. It survives JSON round trips across processes; its keys are not a public wire format.
 
-The adapter is safe to use as an ordinary `TelemetryContext`, but storage is unbounded and process-local. Create a fresh instance to isolate tests or recording scopes, and do not capture sensitive attributes unless the caller's data policy allows them.
+## Stored telemetry
 
-## Stored Telemetry
+`TelemetryStore` (implemented by `InMemoryTelemetryContext`) separates querying from recording.
 
-`TelemetryStore` separates querying from recording. `InMemoryTelemetryContext` implements it:
+| Method                                                     | Behavior                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `findTraces(query?)`                                       | Complete stored traces, newest start first (ties by trace id). Filters: earliest span `name`, inclusive `startMin`/`startMax`, `errors: true`, scalar `attributes` (all must match one span). 20 per page; pass the opaque `cursor` with the same filters to continue |
+| `getTrace(traceId)`                                        | A trace or `undefined`                                                                                                                                                                                                                                                |
+| `findMetrics({ name, startMin?, startMax?, attributes? })` | Rows with count, sum, min, max over inclusive interval starts. The in-memory adapter maps each measurement to a count-one row in its ten-second interval                                                                                                              |
 
-- `findTraces(query?)` returns complete locally stored traces, newest trace start first. Filters include the earliest stored span's `name`, inclusive `startMin`/`startMax`, `errors: true`, and scalar `attributes`. All requested attributes must match one span, anywhere in the trace. Pages default to 20 traces; pass the returned opaque `cursor` with the same filters to continue. Equal start times are ordered by trace ID.
-- `getTrace(traceId)` returns a trace or `undefined`.
-- `findMetrics({ name, startMin?, startMax?, attributes? })` returns metric rows with count, sum, minimum, and maximum. Time bounds are inclusive interval-start times. The in-memory adapter maps each raw measurement to a count-one row in its ten-second interval; SQLite aggregates measurements per series and interval.
+Only settled spans are returned. A trace id is the root's span id (`<recorder UUID>:<counter>`) and propagates with the parent. Stores return what exists locally: remote or expired parents may be missing and a child can appear before its parent settles. Pages are not snapshots. `StoredSpan` has epoch-ms `startedMs`/`endedMs`, event `timeMs` offsets and links with target `traceId` and `spanId`. Durations use a monotonic clock, so wall clocks across processes can disagree: merge stores by trace id and build the tree from parent links, not timestamps.
 
-Only settled spans are returned. A trace ID is the root's globally unique span ID (`<recorder UUID>:<counter>`) and propagates with the parent identity. Stores return the spans available locally: remote or expired parents can be absent, and a child can appear before its parent settles. Pagination is not a snapshot across requests; late settlements and retention can change a trace's earliest stored span. SQLite reads committed rows without implicitly flushing.
-
-`StoredSpan` includes epoch-millisecond `startedMs`/`endedMs`, event offsets in `timeMs`, and links carrying both target `traceId` and `spanId`. Duration uses a monotonic clock; wall clocks across processes may disagree. Merge spans from several stores by trace ID; parent relationships, not timestamp containment, define the tree.
-
-Rendering is a separate subpath, kept out of the root entry graph:
+`renderTrace(spans)` from `@octocodeai/octocode-telemetry/render` (kept out of the root entry) prints attributes, durations, statuses, event offsets and cross-trace links; it dedupes ids, treats absent parents as roots and never follows links.
 
 ```typescript
-import { renderTrace } from "@octocodeai/octocode-telemetry/render";
-
 const page = await telemetry.findTraces({ errors: true, limit: 10 });
 for (const trace of page.traces) console.log(renderTrace(trace.spans));
 ```
 
-`renderTrace()` accepts stored spans, deduplicates IDs, treats absent parents as roots, and prints attributes, durations, statuses, event offsets, and cross-trace links. It never follows links or queries a store.
+## Conformance suite
 
-## Adapter Conformance
-
-`@octocodeai/octocode-telemetry/testing` exports a runner-independent conformance suite modeled as grouped cases. A fixture supplies a fresh context and converts its backend's finished spans into normalized `RecordedTelemetrySpan` snapshots:
+`@octocodeai/octocode-telemetry/testing` returns runner-independent cases. A fixture supplies a fresh `context` and `getSpans()` that normalizes the backend's finished spans (it may flush an async exporter first); optional `propagation` adds JSON round-trip, multi-hop and root-fallback checks, optional `metrics` with `getMetrics()` adds ordered-measurement, exemplar and input-copy checks.
 
 ```typescript
-import {
-	createTelemetryAdapterConformance,
-	type TelemetryAdapterFixture,
-} from "@octocodeai/octocode-telemetry/testing";
-import { describe, it } from "vitest";
-
-const conformance = createTelemetryAdapterConformance(async () => {
-	const adapter = createMyTelemetryAdapter();
+const cases = createTelemetryAdapterConformance(async () => {
+	const adapter = createMyAdapter();
 	return {
 		context: adapter.context,
 		getSpans: async () => adapter.normalizedSpans(),
@@ -105,14 +82,7 @@ const conformance = createTelemetryAdapterConformance(async () => {
 		},
 	} satisfies TelemetryAdapterFixture;
 });
-
-for (const group of new Set(conformance.map((testCase) => testCase.group))) {
-	describe(group, () => {
-		for (const testCase of conformance.filter((candidate) => candidate.group === group)) {
-			it(testCase.name, () => testCase.run());
-		}
-	});
-}
+for (const testCase of cases) it(`${testCase.group}: ${testCase.name}`, () => testCase.run());
 ```
 
-The suite checks capability identity on roots, child spans, extracted parents and inert spans, synchronous single admission, result and rejection identity, automatic and explicit status, attribute merging, event ordering, inert post-settlement calls, nested and concurrent parentage, and links. Fixtures may supply `propagation` to additionally check JSON round trips, multiple adapter hops, and root fallback for absent or unknown carriers. Fixtures may also supply `metrics` and `getMetrics()` to check ordered measurements, histogram exemplars, and input copying. It does not test malformed inputs or require suppression of adapter/backend failures. `getSpans()` may flush an asynchronous exporter before returning. The testing subpath uses Node's assertion APIs; the root telemetry package remains runtime-neutral.
+Cases cover capability identity (roots, children, extracted parents, inert spans), synchronous single admission, result and rejection identity, automatic and explicit status, attribute merging, event order, inert post-settlement calls, nested and concurrent parentage, and links. They do not test malformed input. The subpath uses Node's assertion APIs; the root package stays runtime-neutral.

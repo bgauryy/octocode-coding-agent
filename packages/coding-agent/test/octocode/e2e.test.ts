@@ -293,7 +293,7 @@ describe("with Octocode MCP (default)", () => {
 		// The extension's client connects before the first request is built, so the guidance and the server's contract
 		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
 		// The research section routes code search to the server, and the bash search rule is left out.
-		expect(turn.systemPrompt).toContain("Use the research tools (`mcp__octocode__*`)");
+		expect(turn.systemPrompt).toContain("use the research tools (`mcp__octocode__*`)");
 		expect(turn.systemPrompt).toContain("descriptions route each question");
 		expect(turn.systemPrompt).not.toContain("Search with bash");
 		expect(turn.systemPrompt).toMatch(/<mcps>\n[^\n]*\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
@@ -513,7 +513,7 @@ describe("with the user's own octocode server in mcp.json", () => {
 		// counts as the research server: it gets the routing line and no native fallback. The same-named entry inherits the
 		// default entry's roles (`packages/mcp/src/config.ts`), so that line names the default server's search tools even
 		// though this server does not offer them.
-		expect(first.systemPrompt).toContain("Use the research tools (`mcp__octocode__*`)");
+		expect(first.systemPrompt).toContain("use the research tools (`mcp__octocode__*`)");
 		expect(first.systemPrompt).toContain("search with `localSearch`, `structureSearch`, `astSearch` or `lspSearch`");
 		expect(first.systemPrompt).not.toContain("Search with bash");
 		expect(first.systemPrompt).not.toContain("# Octocode MCP server instructions");
@@ -549,10 +549,10 @@ describe("with another MCP server and Octocode disabled", () => {
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
 		// The mcp.json entry replaces the registration, so there is no research server: the bash search fallback shows.
 		const fallback = "Search with bash";
-		expect(turn.systemPrompt).not.toContain("Use the research tools");
+		expect(turn.systemPrompt).not.toContain("use the research tools");
 		expect(turn.systemPrompt).toContain(fallback);
 		const next = (await s.run("again", [say("ok")])).at(-1)!;
-		expect(next.systemPrompt).not.toContain("Use the research tools");
+		expect(next.systemPrompt).not.toContain("use the research tools");
 		expect(next.systemPrompt).toContain(fallback);
 	});
 

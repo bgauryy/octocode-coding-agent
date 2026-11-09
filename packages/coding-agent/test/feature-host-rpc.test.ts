@@ -75,7 +75,7 @@ describe("native features over RPC", () => {
 		expect(await rpc.getState()).toHaveProperty("sessionId");
 		expect(await commandNames(rpc)).toContain("permissions");
 		expect(rpc.getStderr()).toMatch(
-			/Ignored extension\. User code extensions are not supported; use plugins and hooks \(see PLUGINS\.md\)/,
+			/Ignored extension\. User code extensions are not supported; use plugins and hooks \(see docs\/plugins\.md\)/,
 		);
 		expect(rpc.getStderr()).toContain(code);
 		expect(existsSync(ran), "the module was never imported").toBe(false);

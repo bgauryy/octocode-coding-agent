@@ -25,6 +25,13 @@ interface GuardedCredentialStore extends CredentialStore {
 	): Promise<Credential | undefined>;
 }
 
+/** A store that reports changes made to its file by another process (`AuthStorage`). */
+interface WatchableCredentialStore extends CredentialStore {
+	watch(onChange: () => void): () => void;
+}
+
+const isWatchable = (store: CredentialStore): store is WatchableCredentialStore => "watch" in store;
+
 const isGuarded = (store: CredentialStore): store is GuardedCredentialStore => "modifyGuarded" in store;
 
 /**
@@ -54,6 +61,11 @@ export class RuntimeCredentials implements CredentialStore {
 
 	constructor(store: CredentialStore) {
 		this.store = store;
+	}
+
+	/** Calls `onChange` when another process changes the stored credentials; a store that cannot tell never calls it. */
+	watch(onChange: () => void): () => void {
+		return isWatchable(this.store) ? this.store.watch(onChange) : () => {};
 	}
 
 	setRuntimeApiKey(providerId: string, apiKey: string): void {

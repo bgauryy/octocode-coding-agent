@@ -43,6 +43,7 @@ import {
 	mcpConfigFiles,
 	projectMcpConfigPath,
 } from "./paths.ts";
+import { mcpLaunchIdentity } from "./launch-identity.ts";
 import { DEFAULT_MCP_EXPOSURE, type McpExposure, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
@@ -120,20 +121,28 @@ function inheritFromReplaced(
 	};
 }
 
-/** What one config file holds, for listing: each server name and whether the entry only overrides another server. */
+/**
+ * What one config file holds, for listing: each server name, whether the entry only overrides another server, and the
+ * launch identity of a valid definition (what `dropSameLaunchForeign` compares).
+ */
 export function listMcpFileEntries(
 	file: McpConfigFile,
 	cwd: string,
-): { entries: { name: string; override: boolean }[]; error?: string } {
+): { entries: { name: string; override: boolean; launch?: string }[]; error?: string } {
 	const read = readMcpConfigFile(file, cwd);
 	if (!read) return { entries: [] };
 	if ("error" in read) return { entries: [], error: read.error };
 	const foreign = FOREIGN_MCP_VENDORS.has(file.vendor);
 	return {
-		entries: Object.entries(read.servers).map(([name, value]) => ({
-			name,
-			override: !foreign && isRecord(value) && isMcpOverride(value),
-		})),
+		entries: Object.entries(read.servers).map(([name, value]) => {
+			const override = !foreign && isRecord(value) && isMcpOverride(value);
+			const config = override ? undefined : validateMcpServerConfig(name, value);
+			return {
+				name,
+				override,
+				...(config && typeof config !== "string" ? { launch: mcpLaunchIdentity(config, cwd) } : {}),
+			};
+		}),
 		...(read.errors.length ? { error: read.errors.join("; ") } : {}),
 	};
 }
@@ -208,6 +217,24 @@ function readConfigFile(file: McpConfigFile, cwd: string, state: McpConfigState)
 	}
 }
 
+/**
+ * A foreign file's server that launches what another loaded server already launches (under another name) is shadowed
+ * like a same-name one: an Octocode-format or default server always wins, and of identical foreign servers the first stays.
+ */
+function dropSameLaunchForeign(servers: McpServerEntry[], cwd: string): McpServerEntry[] {
+	const isForeign = (entry: McpServerEntry) => Boolean(entry.vendor && FOREIGN_MCP_VENDORS.has(entry.vendor));
+	const taken = new Set(
+		servers.filter((entry) => !isForeign(entry)).map((entry) => mcpLaunchIdentity(entry.config, cwd)),
+	);
+	return servers.filter((entry) => {
+		if (!isForeign(entry)) return true;
+		const identity = mcpLaunchIdentity(entry.config, cwd);
+		if (taken.has(identity)) return false;
+		taken.add(identity);
+		return true;
+	});
+}
+
 /** The names a file of a vendor that is off defines, so an override of one stays quiet. */
 function noteSwitchedOff(file: McpConfigFile, cwd: string, state: McpConfigState): void {
 	const read = readMcpConfigFile(file, cwd);
@@ -245,7 +272,7 @@ export function loadMcpConfig(options: {
 		else noteSwitchedOff(file, cwd, state);
 	}
 	return {
-		servers: [...state.servers.values()],
+		servers: dropSameLaunchForeign([...state.servers.values()], cwd),
 		errors: state.errors,
 		globalConfig,
 		...(projectConfig ? { projectConfig } : {}),

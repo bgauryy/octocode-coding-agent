@@ -34,10 +34,14 @@ describe("routing and provider health (B347 P2-5)", () => {
 		});
 		// Every other provider refused: the parent's own provider still serves (its session proves the credential).
 		const own = [...available, { provider: "home", id: "mini", cost: { input: 1, output: 4 } }];
-		expect(routeModel({ explicit: "small", available: own, parent, refused: () => true })).toEqual({
+		// `proven` marks the parent's provider: only a model-level refusal counts there.
+		const everyCredential = (_provider: string, _id?: string, proven?: boolean) => !proven;
+		expect(routeModel({ explicit: "small", available: own, parent, refused: everyCredential })).toEqual({
 			model: "home/mini",
 		});
-		expect(routeModel({ explicit: "small", available, parent, refused: () => true })).toEqual({ model: "home/big" });
+		expect(routeModel({ explicit: "small", available, parent, refused: everyCredential })).toEqual({
+			model: "home/big",
+		});
 	});
 
 	it("counts only a recent credential refusal, not a timeout or an old refusal", () => {
@@ -52,6 +56,62 @@ describe("routing and provider health (B347 P2-5)", () => {
 		health.noteRun("cheap/tiny", "403 forbidden");
 		health.noteRun("cheap/tiny");
 		expect(health.refused("cheap")).toBe(false);
+	});
+
+	it("a model that refused a run before any token is skipped, even on the parent's provider; the parent's model never", () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const health = new ProviderHealth();
+		const refusal = 'opencode-go API error (400): {"error":{"type":"invalid_request_error"}}';
+		// After work, or a timeout or rate limit: the task or the moment failed, not the route.
+		health.noteRun("cheap/tiny:low", refusal, false);
+		health.noteRun("cheap/tiny:low", "429 Too Many Requests", true);
+		expect(health.refused("cheap", "tiny")).toBe(false);
+		health.noteRun("cheap/tiny:low", refusal, true);
+		expect(health.refused("cheap", "tiny")).toBe(true);
+		expect(health.refused("cheap")).toBe(false);
+		expect(health.refused("cheap", "other")).toBe(false);
+		const refused = (provider: string, id?: string, proven?: boolean) => health.refused(provider, id, proven);
+		expect(routeModel({ explicit: "small", available, parent, refused })).toEqual({ model: "other/mid" });
+		const own = [...available, { provider: "home", id: "mini", cost: { input: 1, output: 4 } } as ModelRef];
+		health.noteRun("home/mini", refusal, true);
+		expect(routeModel({ explicit: "small", available: own, parent, refused })).toEqual({ model: "other/mid" });
+		health.noteRun("home/big", refusal, true);
+		expect(routeModel({ preferred: "home/big", available: own, parent, refused })).toEqual({ model: "home/big" });
+		vi.setSystemTime(1_000_000 + 16 * 60_000);
+		expect(health.refused("cheap", "tiny")).toBe(false);
+	});
+
+	it("advises the session's model after a client error before any token, not a narrower task", () => {
+		const route = { model: "cheap/tiny:low", parent: "home/big" } as never;
+		const refusal = "opencode-go API error (400): invalid_request_error";
+		expect(failedNext(route, refusal, false, true)).toMatch(/Retry with model: "home\/big"/);
+		expect(failedNext(route, refusal, false, false)).not.toMatch(/Retry with model/);
+	});
+
+	it("tells billing, request rejection and credential refusal apart", () => {
+		const route = { model: "opencode-go/glm:low", parent: "home/big" } as never;
+		const funds = failedNext(
+			route,
+			'402 {"error":{"type":"invalid_request_error","message":"Insufficient account funds"}}',
+			false,
+			true,
+		);
+		expect(funds).toMatch(/lack of funds.*key itself is fine.*add funds or a plan with opencode-go/);
+		expect(funds).not.toMatch(/\/providers/);
+		const shape = failedNext(
+			route,
+			"400 Upstream request failed: [invalid_request_error] Invalid request",
+			false,
+			true,
+		);
+		expect(shape).toMatch(/rejected the request.*credential is not the cause.*Retry with model: "home\/big"/);
+		expect(shape).not.toMatch(/\/providers|funds/);
+		const key = failedNext(route, "401 Unauthorized: invalid api key", false, true);
+		expect(key).toMatch(/refused the credential.*\/providers/);
+		// A rate limit and a partial answer keep their own advice.
+		expect(failedNext(route, "429 Too Many Requests", true)).toMatch(/rate-limited.*partial answer is unverified/);
+		// A client error after tokens were spent is about the task, not the route.
+		expect(failedNext(route, "400 Invalid request", false, false)).not.toMatch(/rejected the request/);
 	});
 
 	it("planRun routes a purpose past a provider whose subagent run was refused", () => {

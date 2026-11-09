@@ -195,8 +195,8 @@ export function registerTaskTool(
 				label: "Steps",
 				...taskPrompt(subagent),
 				// Registered either way, so the store rules and RPC callers are unchanged, but declared (with its snippet and
-				// guidelines) only when named in `/tools`, `--tools`, `defaultTools` or a profile: every child's tool list names it
-				// (`CORE_TOOLS`), the main session starts without it.
+				// guidelines) only when named in `--tools`, `defaultTools` (`/configuration enable tool:<name>`, `octocode --enable tool:<name>`) or a profile's `tools:`; neither the main
+				// session nor a child (`CORE_TOOLS` leaves it out) starts with it.
 				defaultActive: false,
 				parameters,
 				// A removed op fails the schema's enum with a bare list; this says it is gone.

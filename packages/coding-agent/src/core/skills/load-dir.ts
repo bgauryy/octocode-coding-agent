@@ -125,7 +125,10 @@ export function loadSkillsFromDirInternal(
 		}
 		// Track this branch, not every discovered directory: independent aliases still retain their source precedence.
 		const parents = new Set(ancestors).add(canonicalDir);
-		const entries = readdirSync(dir, { withFileTypes: true });
+		// The directory's own order depends on the file system; skills are listed in the system prompt, so a stable order keeps the cached prefix the same across machines and runs.
+		const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+			a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+		);
 
 		for (const entry of entries) {
 			if (entry.name !== "SKILL.md") {

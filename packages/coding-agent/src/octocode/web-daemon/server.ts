@@ -47,6 +47,10 @@ export interface DaemonServerOptions {
 	writeSetting?: ConfigRoutes["writeSetting"];
 	/** Applies a validated `POST /api/admin/config/credentials` change; the command carries a key, so it is never logged. */
 	writeCredential?: ConfigRoutes["writeCredential"];
+	/** Applies a validated `POST /api/admin/config/providers` switch (a provider or the Pi source on or off). */
+	writeProvider?: ConfigRoutes["writeProvider"];
+	/** Runs a validated `POST /api/admin/config/signin` command; the reply is a `SignInState`. */
+	signIn?: ConfigRoutes["signIn"];
 	/** Records a credential request refused before it reached `writeCredential`; see `ConfigRoutes.auditRefused`. */
 	auditRefused?: ConfigRoutes["auditRefused"];
 	/** Asked by `POST /api/admin/drain`. */

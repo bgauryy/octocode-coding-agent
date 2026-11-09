@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { getOctocodeHome } from "../../src/config.ts";
+import { getNativeSkillsDir, getOctocodeHome, getOctocodeSkillsDir } from "../../src/config.ts";
 import { buildInventory } from "../../src/core/extensibility/inventory.ts";
 import { switchItem } from "../../src/core/extensibility/switch.ts";
 import { DefaultPackageManager } from "../../src/core/package-manager.ts";
+import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { getBuiltinCommand } from "../../src/core/slash-commands.ts";
 import { installOctocodeDiscovery } from "../../src/octocode/discovery/index.ts";
@@ -60,7 +61,7 @@ describe("skills in /harness", () => {
 		const f = fixture();
 		const file = writeSkill(path.join(f.cwd, ".agents", "skills"), "review");
 		const first = await skillRows(f);
-		const row = first.rows.find((item) => item.id.endsWith(path.join("review", "SKILL.md")));
+		const row = first.rows.find((item) => item.id.endsWith(`${path.sep}${path.join("review", "SKILL.md")}`));
 		expect(row).toMatchObject({ on: true, project: true });
 		switchItem(row!, false, "project", first.manager, f);
 		await first.manager.flush();
@@ -76,6 +77,78 @@ describe("skills in /harness", () => {
 		await off.manager.flush();
 		expect((await skillRows(f)).rows.find((item) => item.id === row!.id)?.on).toBe(true);
 		expect(fs.existsSync(file)).toBe(true);
+	});
+
+	it("list each core skill by name, and switching one off globally drops it from the session", async () => {
+		const f = fixture();
+		const { manager, rows } = await skillRows(f);
+		const core = rows.filter((item) => item.detail.startsWith("Octocode (core)"));
+		expect(core.map((item) => item.id)).toEqual(
+			expect.arrayContaining(["skill:octocode-debugging", "skill:resume-external-harness"]),
+		);
+		const row = core.find((item) => item.name === "resume-external-harness")!;
+		expect(row.on).toBe(true);
+		expect(() => switchItem(row, false, "project", manager, f)).toThrow(/switch it globally/);
+		switchItem(row, false, "global", manager, f);
+		await manager.flush();
+		// The pattern is relative to the core skills folder, so it survives a reinstall elsewhere.
+		expect(manager.getGlobalSettings().skills).toEqual(["-resume-external-harness/SKILL.md"]);
+		expect((await skillRows(f)).rows.find((item) => item.id === row.id)?.on).toBe(false);
+		// The session reads the core folder through `resources_discover`; the same pattern drops the skill there.
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			nativeFeatures: false,
+			cwd: f.cwd,
+			agentDir: f.agentDir,
+		});
+		await loader.reload();
+		loader.extendResources({
+			skillPaths: [
+				{
+					path: getNativeSkillsDir(),
+					metadata: { source: "extension:octocode", scope: "temporary", origin: "top-level" },
+				},
+			],
+		});
+		const names = loader.getSkills().skills.map((skill) => skill.name);
+		expect(names).toContain("octocode-debugging");
+		expect(names).not.toContain("resume-external-harness");
+	});
+
+	it.skipIf(!getOctocodeSkillsDir())(
+		"list each Octocode collection skill, and switching one off globally drops it from the resolved skills",
+		async () => {
+			const f = fixture();
+			const { manager, rows } = await skillRows(f);
+			const row = rows.find((item) => item.name === "octocode-roast");
+			expect(row).toMatchObject({ on: true, detail: "Octocode (collection) · skills/octocode-roast/SKILL.md" });
+			switchItem(row!, false, "global", manager, f);
+			await manager.flush();
+			// Relative to the collection folder, like a core skill's switch: a reinstall elsewhere keeps it.
+			expect(manager.getGlobalSettings().skills).toEqual(["-octocode-roast/SKILL.md"]);
+			const after = await skillRows(f);
+			expect(after.rows.find((item) => item.id === row!.id)?.on).toBe(false);
+			const resolved = await new DefaultPackageManager({
+				cwd: f.cwd,
+				agentDir: f.agentDir,
+				settingsManager: after.manager,
+				builtinSkillsDir: getOctocodeSkillsDir(),
+			}).resolve(async () => "skip");
+			const state = (name: string) =>
+				resolved.skills.find((skill) => skill.path.endsWith(`${path.sep}${name}${path.sep}SKILL.md`))?.enabled;
+			expect(state("octocode-roast")).toBe(false);
+			expect(state("octocode-research")).toBe(true);
+		},
+	);
+
+	it.skipIf(!getOctocodeSkillsDir())("switch an Octocode collection skill off in a trusted project only", async () => {
+		const f = fixture();
+		const { manager, rows } = await skillRows(f);
+		const row = rows.find((item) => item.name === "octocode-roast")!;
+		switchItem(row, false, "project", manager, f);
+		await manager.flush();
+		expect(manager.getGlobalSettings().skills ?? []).toEqual([]);
+		expect((await skillRows(f)).rows.find((item) => item.id === row.id)?.on).toBe(false);
 	});
 
 	it("add no skill from Claude Code, Codex or Cursor until their harness is switched on", async () => {
@@ -114,7 +187,7 @@ describe("skills in /harness", () => {
 		const { manager, rows } = await skillRows(f);
 		const pi = rows.find((item) => item.label === "run-test");
 		expect(pi).toMatchObject({ on: true, detail: expect.stringContaining("Pi (global)") });
-		expect(pi?.locked).toContain("/harness disable pi");
+		expect(pi?.locked).toContain("harness:pi");
 		expect(() => switchItem(pi!, false, "global", manager, f)).toThrow(/Pi's own settings/);
 		manager.setToggle("global", "harness:pi", false);
 		await manager.flush();

@@ -6,6 +6,7 @@ import {
 	describeProviderSources,
 	detectLocalTools,
 } from "../../../core/provider-sources/index.ts";
+import { type CustomModelsFile, customModelsFiles } from "../../../core/provider-sources/models-files.ts";
 import type {
 	DetectedTool,
 	ProviderSource,
@@ -15,8 +16,8 @@ import type {
 import type { PageRow } from "../components/manage-page.ts";
 import { keyText } from "../components/keybinding-hints.ts";
 import type { PageResult } from "./provider-detail.ts";
-import { type CustomModelsFile, customModelsFiles } from "./provider-custom.ts";
 import { piConfigDirs, showPiProviders } from "./provider-pi.ts";
+import { CLAUDE_SUBSCRIPTION_PROVIDER, findClaudeCli } from "./claude-subscription.ts";
 import { type PageContext, signInToProvider } from "./provider-signin.ts";
 import { showPage, successNotice } from "./provider-ui.ts";
 
@@ -34,7 +35,13 @@ export async function loadSourcesView(ctx: PageContext, environment?: ProviderSo
 	return {
 		sources,
 		tools: detectLocalTools(environment),
-		files: await customModelsFiles(ctx.host, piOn),
+		files: await customModelsFiles(
+			{
+				ownDir: ctx.host.session.modelRuntime.getConfigurationDirectory(),
+				piDirs: piConfigDirs(ctx.host),
+			},
+			piOn,
+		),
 	};
 }
 
@@ -53,10 +60,16 @@ export function sourceRow(source: ProviderSource): PageRow {
 	};
 }
 
+/** An installed Claude Code also signs its account in to Anthropic: `claude setup-token` beside the API key. */
+function offersClaudeSubscription(tool: DetectedTool): boolean {
+	return tool.action.providerId === CLAUDE_SUBSCRIPTION_PROVIDER && findClaudeCli() !== undefined;
+}
+
 /** What a detected tool's row offers, in words: Octocode's own sign-in or an API key. */
 function toolActionText(ctx: PageContext, tool: DetectedTool): string {
+	if (offersClaudeSubscription(tool)) return "sign in with your Claude subscription or an API key";
 	const name = ctx.host.session.modelRuntime.getProvider(tool.action.providerId)?.name ?? tool.action.providerId;
-	return tool.action.kind === "sign-in" ? `sign in with ${name}` : `add a ${name} API key`;
+	return tool.action.kind === "sign-in" ? `sign in with ${name}` : `add an API key for ${name}`;
 }
 
 export function toolRow(ctx: PageContext, tool: DetectedTool): PageRow {
@@ -102,12 +115,9 @@ export async function runToolAction(
 	saved: readonly CredentialInfo[],
 ): Promise<PageResult> {
 	try {
-		const opened = await signInToProvider(
-			ctx,
-			tool.action.providerId,
-			saved,
-			tool.action.kind === "sign-in" ? "oauth" : "api_key",
-		);
+		// With both Anthropic sign-ins on offer the user picks one; otherwise the row's own method opens directly.
+		const prefer = offersClaudeSubscription(tool) ? undefined : tool.action.kind === "sign-in" ? "oauth" : "api_key";
+		const opened = await signInToProvider(ctx, tool.action.providerId, saved, prefer);
 		return opened ? "stop" : "again";
 	} catch (error) {
 		ctx.host.showError(errorMessage(error));

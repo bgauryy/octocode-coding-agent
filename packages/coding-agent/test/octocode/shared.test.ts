@@ -456,11 +456,18 @@ describe("native commands", () => {
 		expect(retiredCommandReplacement("/plugins", commands)).toBe("harness");
 		expect(retiredCommandReplacement("/plugins disable hooks:claude", commands)).toBe("harness disable hooks:claude");
 		expect(retiredCommandReplacement("/hooks events", commands)).toBe("harness hooks events");
-		expect(retiredCommandReplacement(" /config ", commands)).toBe("harness config");
+		expect(retiredCommandReplacement(" /config ", [...commands, "configuration"])).toBe("configuration");
+		expect(retiredCommandReplacement("/settings theme", ["configuration"])).toBe("configuration theme");
 		// Without /harness, or when a prompt or skill took the old name, the ordinary suggestion applies.
 		expect(retiredCommandReplacement("/config", ["reload"])).toBeUndefined();
 		expect(retiredCommandReplacement("/hooks", ["harness", "hooks"])).toBeUndefined();
 		expect(retiredCommandReplacement("/configure", commands)).toBeUndefined();
+	});
+	it("points the retired /login at /providers, with its argument, only while /providers is registered", () => {
+		expect(retiredCommandReplacement("/login", ["providers"])).toBe("providers");
+		expect(retiredCommandReplacement("/login openai", ["providers", "logout"])).toBe("providers openai");
+		expect(retiredCommandReplacement("/login", ["logout"])).toBeUndefined();
+		expect(retiredCommandReplacement("/login", ["providers", "login"])).toBeUndefined();
 	});
 });
 

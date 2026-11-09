@@ -228,7 +228,10 @@ describe("MCP files of other agents", () => {
 		expect(loaded.servers.find((entry) => entry.name === "shared")?.config).toMatchObject({ command: "own" });
 		// Listing still names the shadowed entry in its own file.
 		const cursor = mcpConfigFiles(agentDir, cwd).find((file) => file.vendor === "cursor" && file.scope === "project")!;
-		expect(listMcpFileEntries(cursor, cwd).entries).toEqual([{ name: "shared", override: false }]);
+		// A valid definition also carries its launch identity, which `dropSameLaunchForeign` compares.
+		expect(listMcpFileEntries(cursor, cwd).entries).toEqual([
+			{ name: "shared", override: false, launch: expect.stringContaining('"cursor"') },
+		]);
 	});
 
 	it("keeps an Octocode override of a switched-off vendor's server quiet, and applies it once the vendor is on", () => {
@@ -279,5 +282,41 @@ describe("requestMcpReload", () => {
 		expect(await requestMcpReload(host.api.events)).toEqual({ added: [], removed: [] });
 		await host.close();
 		expect(await requestMcpReload(host.api.events)).toBeUndefined();
+	});
+});
+
+describe("foreign servers that launch an already loaded program", () => {
+	const launch = 'command = "node"\nargs = ["/srv/octocode/index.js"]\n';
+	function codexFiles(home: string, cwd: string, extra = "") {
+		write(join(home, ".codex", "config.toml"), `[mcp_servers.octocode-2]\n${launch}${extra}`);
+		write(join(cwd, ".codex", "config.toml"), `[mcp_servers.octocode-local]\n${launch}`);
+	}
+
+	it("shadows a foreign server with the same command and args under another name", () => {
+		const { home, cwd, agentDir, options, toggles, names } = setup();
+		toggles({ "harness:codex": true });
+		write(join(agentDir, "mcp.json"), {
+			mcpServers: { octocode: { command: "node", args: ["/srv/octocode/index.js"] } },
+		});
+		codexFiles(home, cwd);
+		expect(names(loadMcpConfig(options))).toEqual(["octocode"]);
+	});
+
+	it("keeps only the first of identical foreign servers, and one with other args", () => {
+		const { home, cwd, options, toggles, names } = setup();
+		toggles({ "harness:codex": true });
+		codexFiles(home, cwd, 'args = ["/srv/octocode/index.js", "--other"]\n');
+		write(
+			join(home, ".codex", "config.toml"),
+			`[mcp_servers.octocode-2]\n${launch}\n[mcp_servers.distinct]\ncommand = "node"\nargs = ["/srv/octocode/index.js", "--other"]\n`,
+		);
+		expect(names(loadMcpConfig(options))).toEqual(["distinct", "octocode-2"]);
+	});
+
+	it("does not dedupe Octocode-format files", () => {
+		const { agentDir, cwd, options, names } = setup();
+		write(join(agentDir, "mcp.json"), { mcpServers: { a: { command: "node", args: ["x.js"] } } });
+		write(join(cwd, ".mcp.json"), { mcpServers: { b: { command: "node", args: ["x.js"] } } });
+		expect(names(loadMcpConfig(options))).toEqual(["a", "b"]);
 	});
 });

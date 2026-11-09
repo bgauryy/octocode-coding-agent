@@ -1,205 +1,65 @@
 # Terminal UI
 
-> **Removed API.** Octocode no longer supports user code extensions, and the package root exports no extension API. This page describes the extension loader's last behavior and is removed with it.
+`octocode` opens the terminal UI. Keys: [keybindings](keybindings.md). Commands: [commands](commands.md). Colours: [themes](themes.md). Inside tmux also read [tmux](tmux.md).
 
-For user-facing command navigation, `/help` opens a searchable command picker, skills included. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for command names and the combined status, models, and trust menus.
-
-The built-in footer reserves its own line for the coordinator's provider/model and thinking level. On narrower terminals it separates model identity from thinking so usage totals cannot hide either. Models without reasoning support show `thinking unavailable`; virtual selections additionally show the latest physical route. `/effort` changes reasoning effort, and `/context size` chooses a session context budget. Extension-provided replacement footers control their own layout.
-
-`@octocodeai/octocode-tui` provides the terminal component system used by Octocode. Extensions use it when built-in dialogs, notifications, status text, and widgets are not enough for the interaction they need.
-
-Start with `ctx.ui` methods. Build a custom component only when the UI needs its own rendering, keyboard or mouse input, focus, layout, or lifecycle.
-
-## Choose an integration point
-
-| Need                                         | Use                                                      |
-| -------------------------------------------- | -------------------------------------------------------- |
-| Select, confirm, input, or multi-line editor | `ctx.ui.select()`, `confirm()`, `input()`, or `editor()` |
-| Non-blocking feedback                        | `ctx.ui.notify()` or `setStatus()`                       |
-| Persistent content near the editor           | `ctx.ui.setWidget()`                                     |
-| Replace the header, footer, or editor        | The corresponding `ctx.ui` component factory             |
-| Temporary interactive screen or overlay      | `ctx.ui.custom()`                                        |
-| Custom rendering for a tool or session entry | An extension renderer                                    |
-
-These APIs receive Octocode’s active theme and keybindings where needed. Do not create a second terminal renderer inside an extension.
-
-Pass a footer status as plain text with an optional tone instead of colouring it: `ctx.ui.setStatus("jobs", "2 jobs", "accent")`. The tone is one of `accent`, `muted`, `dim`, `success`, `warning` or `error`. The terminal footer paints it with the live theme, so a theme switch recolours it, and RPC clients receive the text without escape codes. Text coloured beforehand with `ctx.ui.theme.fg()` still shows in the terminal footer (its colour codes are kept, other controls are removed), but it keeps the theme it was painted with and reaches RPC clients with its escape codes. A custom footer reads the same data from `footerData.getState().statuses` (`{ text, tone }` per key) and can `subscribe()` to changes.
-
-The footer holds state that lasts (model, permission mode, context, running agents and jobs, queued messages, cost). Something that happened goes to the messages list instead: `ctx.ui.notify(text, level)` adds a line there that is neither saved in the session nor sent to the model, and the toggle acknowledgements (`Tool output: expanded` for Ctrl+O, `Thinking blocks: hidden` for Ctrl+T) are such lines. Back-to-back info lines share one line, the latest replacing the earlier, so a burst of toggles adds one row.
-
-## Understand the component model
-
-A component renders an array of terminal lines for an available width. It can optionally handle keyboard and mouse input, and it must invalidate cached output when its state or theme-dependent content changes.
-
-Every rendered line must fit within the supplied width. Measure visible terminal columns rather than string length because ANSI escapes, wide characters, emoji, and combining characters change display width.
-
-Use `visibleWidth()`, `truncateToWidth()`, `sliceByColumn()`, and `wrapTextWithAnsi()` instead of implementing terminal-width handling yourself. Octocode resets styling and hyperlinks after every line, so reapply styles on each rendered line.
-
-After changing component state, invalidate the affected component and call the injected `tui.requestRender()`. The TUI coalesces render requests and updates the terminal.
-
-## Compose built-in components
-
-The package includes components for common layouts and controls:
-
-- `Text`, `Markdown`, `Image`, and `TruncatedText` render content.
-- `Container`, `VStack`, `HStack`, `Box`, and `Spacer` compose layouts.
-- `Input` and `Editor` accept text.
-- `SelectList` and `SettingsList` implement searchable selection and settings flows.
-- `ScrollView` provides a bounded scrollable viewport.
-- `Loader` and `CancellableLoader` report ongoing work.
-- `MouseRegion` adds pointer behavior around another component.
-
-Prefer these components over rebuilding selection, scrolling, text editing, or width handling. The extension examples show how to combine them with Octocode’s borders and themes.
-
-## Handle keyboard input and focus
-
-Use `matchesKey()` and `Key` for terminal keyboard input. The parser accounts for supported terminal protocols and key modifiers. Extension components should use the injected `KeybindingsManager` for configurable application actions.
-
-A component that displays a text cursor should implement `Focusable` and place `CURSOR_MARKER` immediately before its visual cursor. Wrap the cursor cell in `renderFakeCursor()` so the TUI draws it in reverse video, or hides it after `CURSOR_MARKER` when the hardware cursor is shown. The TUI uses the marker to position the hardware cursor for input method editors.
-
-Containers that wrap an `Input` or `Editor` must propagate their `focused` state to that child. Without propagation, Chinese, Japanese, Korean, and other IME candidate windows can appear at the wrong screen position.
-
-Extend Octocode’s `CustomEditor` when replacing the main editor. It preserves application shortcuts and agent controls.
-
-Forward keys your editor does not own to the base implementation, and restore the default by clearing the custom editor factory.
-
-## Handle mouse input
-
-Fullscreen mode routes normalized mouse events to components. A handler can mark an event handled, capture a drag sequence, request focus, or request a render.
-
-Unhandled wheel events scroll the nearest `ScrollView`. Unhandled primary-button drags remain available for transcript selection. OSC 8 links take precedence over enclosing click regions.
-
-Regular mode leaves mouse input to the terminal because the terminal owns scrollback. Design every interaction with a keyboard path even when fullscreen mouse input is available.
-
-## Use custom screens and overlays
-
-`ctx.ui.custom()` temporarily gives one component control of the interactive area and resolves when that component calls the supplied completion callback. Its promise is `Promise<T | undefined>`: it resolves `undefined` when another dialog or view takes the component's place, or when `/reload` or a session replacement resets the extension UI (overlays included). The component is disposed exactly once either way, also when the factory calls the completion callback before it returns.
-
-### Build a minimal custom screen
-
-This complete extension shows the custom-component lifecycle: render within the supplied width, use injected keybindings, invalidate cached output after state changes, request a render, and finish through `done()`.
-
-```typescript
-import type { ExtensionAPI } from "@octocodeai/octocodecode";
-import { truncateToWidth } from "@octocodeai/octocode-tui";
-
-export default function (octocode: ExtensionAPI) {
-	octocode.registerCommand("pick-target", {
-		description: "Pick a deployment target",
-		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("pick-target requires interactive mode", "error");
-				return;
-			}
-
-			const choices = ["development", "staging", "production"];
-			const selected = await ctx.ui.custom<string | undefined>((tui, theme, keybindings, done) => {
-				let selectedIndex = 0;
-				let cachedWidth: number | undefined;
-				let cachedLines: string[] | undefined;
-
-				const invalidate = () => {
-					cachedWidth = undefined;
-					cachedLines = undefined;
-				};
-
-				return {
-					render(width: number): string[] {
-						if (cachedLines && cachedWidth === width) return cachedLines;
-
-						cachedWidth = width;
-						cachedLines = [
-							theme.fg("accent", "Choose a deployment target"),
-							...choices.map((choice, index) => `${index === selectedIndex ? "> " : "  "}${choice}`),
-							theme.fg("dim", "up/down move, enter selects, escape cancels"),
-						].map((line) => truncateToWidth(line, width));
-						return cachedLines;
-					},
-					handleInput(data: string): void {
-						if (keybindings.matches(data, "tui.select.up")) {
-							selectedIndex = (selectedIndex - 1 + choices.length) % choices.length;
-						} else if (keybindings.matches(data, "tui.select.down")) {
-							selectedIndex = (selectedIndex + 1) % choices.length;
-						} else if (keybindings.matches(data, "tui.select.confirm")) {
-							done(choices[selectedIndex]);
-							return;
-						} else if (keybindings.matches(data, "tui.select.cancel")) {
-							done(undefined);
-							return;
-						} else {
-							return;
-						}
-
-						invalidate();
-						tui.requestRender();
-					},
-					invalidate,
-				};
-			});
-
-			if (selected) ctx.ui.notify(`Selected ${selected}`, "info");
-		},
-	});
-}
+```mermaid
+flowchart TB
+  T[Transcript: messages, tool rows, diffs]
+  W[Working line: action, elapsed time, esc to interrupt]
+  E[Editor: prompt, /commands, @files]
+  F[Footer: model, permission mode, context, agents, queue, cost]
+  T --> W --> E --> F
 ```
 
-This component does not display a text cursor, so it does not need `Focusable`. A component containing `Input` or `Editor` must implement `Focusable` and propagate its `focused` value to that child.
+## Layout modes
 
-Pass `overlay: true` to draw above existing content. Overlay options control size, anchors, offsets, margins, and responsive visibility. An overlay handle can change focus or temporarily hide and show the overlay with `setHidden()` while the interaction remains active.
+| Mode                   | What it does                                                                | Choose it                                            |
+| ---------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `fullscreen` (default) | Own screen. The transcript scrolls inside Octocode and the mouse works.     | `--tui-mode fullscreen` or `"tuiMode": "fullscreen"` |
+| `regular`              | Writes into your terminal's normal scrollback; the terminal owns the mouse. | `--tui-mode regular` or `"tuiMode": "regular"`       |
 
-Focused overlays retain input ownership across ordinary renders. If another component should receive input while an overlay remains visible, explicitly release or redirect focus through the handle.
+Fullscreen-only settings (see [settings](settings.md)):
 
-Treat each custom component instance as belonging to one interaction. Create a new instance when starting that interaction again.
+| Setting                      | Values                      | Default      | Effect                                    |
+| ---------------------------- | --------------------------- | ------------ | ----------------------------------------- |
+| `fullscreenExitOutput`       | `transcript`, `resume-hint` | `transcript` | What stays in the terminal after you exit |
+| `fullscreenScrollbar`        | `auto`, `always`, `hidden`  | `auto`       | Scrollbar visibility                      |
+| `fullscreenCopyOnSelect`     | boolean                     | `true`       | Selecting text copies it                  |
+| `fullscreenWheelScrollLines` | `auto`, or 1 to 100         | `auto`       | Lines per wheel event                     |
 
-Finish the interaction with the completion callback supplied to the component factory. It resolves the `ctx.ui.custom()` promise and disposes the component; handle the `undefined` result of a component that was replaced before it finished. Do not call `OverlayHandle.hide()` on an overlay created by `ctx.ui.custom()`.
+Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen).
 
-See `overlay-qa-tests.ts` for positioning, stacking, focus, responsive visibility, and animation behavior.
+## Screen parts
 
-## Apply themes correctly
+| Part         | Shows                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Working line | `⠙ Running Bash (12s · esc to interrupt)`: the action and the run's elapsed time. On a narrow terminal the interrupt hint goes first, then the action.       |
+| Tool row     | The tool title, a `↳` line saying why the call was made, and the result. `Ctrl+O` expands or collapses tool output; `Ctrl+T` hides or shows thinking blocks. |
+| Run summary  | One dim line after a run, such as `✻ Worked 52s · 7 tools · 3 agents · ≈$4.12 · cache 61%`.                                                                  |
+| Footer       | State that lasts: model and thinking level, permission mode, context use, running agents and jobs, queued messages, cost, and `/web · backlogs & activity`.  |
+| Messages     | One-off lines such as `Tool output: expanded`. Not saved in the session, not sent to the model; back-to-back info lines share one row.                       |
 
-Use the theme passed to the extension or component callback. Theme helpers produce ANSI-styled strings for semantic colors such as accent, muted text, success, warnings, errors, tool output, and Markdown.
+`/help` opens a searchable command picker (it inserts the command; it does not run it). `/effort` sets reasoning effort; `/context size` sets the session context budget. More on status lines: [native features](native-features.md#live-status).
 
-Use `theme.style()` to combine foreground and background colors with text attributes:
+## Links, images, notifications
 
-```typescript
-return new Text(
-	theme.style("Done!", {
-		fg: "success",
-		bg: "toolSuccessBg",
-		bold: true,
-	}),
-	0,
-	0,
-);
-```
+| Feature       | Behaviour                                                                                                                      | Control                                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Hyperlinks    | Links are clickable in terminals with OSC 8. In fullscreen a backlog id such as `B90` is a link; a click runs `/web item B90`. | `terminal.hyperlinks` (`true`, `false`, `auto`), `OCTOCODE_HYPERLINKS=1\|0\|auto`                                            |
+| Images        | Inline when the terminal supports them.                                                                                        | `terminal.showImages`, `terminal.images`, `OCTOCODE_IMAGE_PROTOCOL`; see [terminal images](configuration.md#terminal-images) |
+| Notifications | Desktop notice when an answer is ready, a run fails or Octocode asks you something.                                            | `OCTOCODE_NOTIFY=off\|unfocused\|always`, `OCTOCODE_NOTIFY_METHOD`; see [tmux](tmux.md#notifications)                        |
+| Motion        | Spinners and shimmer freeze; elapsed times keep ticking.                                                                       | `terminal.reduceMotion`, `OCTOCODE_REDUCE_MOTION=1`                                                                          |
+| Mermaid       | Mermaid blocks in replies draw as Unicode diagrams.                                                                            | `markdown.mermaid` (`off`, `final`, `streaming`)                                                                             |
 
-A style color can be a semantic theme token or a concrete `Color`. Foreground tokens are accepted as `fg` and background tokens as `bg`; to use a token's color in the other position, pass its concrete color, for example `{ fg: theme.colors.userMessageBg }`. Access concrete colors through `theme.colors` and use utilities such as `mixColors()` from `@octocodeai/octocode-tui` when color math is needed. Tokens that a theme sets to the terminal default render with the terminal's own color; `theme.colors` reports the color the terminal announced for them, or a guess when it did not. Use `theme.appearance` (`"dark"` or `"light"`) to decide, for example, whether to lighten or darken a color. Octocode converts the result to truecolor or 256-color output based on terminal capabilities. Theme tokens are converted once per theme; compute concrete colors outside the render path when possible.
+All variables: [environment variables](environment-variables.md).
 
-The existing `theme.fg()` and `theme.bg()` helpers remain available for applying one semantic color.
+## When the screen misbehaves
 
-Do not permanently store strings with theme colors unless `invalidate()` rebuilds them. A theme change clears render caches, but it cannot remove old ANSI colors embedded in application state.
+| Symptom                                                         | Try                                                                                                                   |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Alt keys read as Escape, or long pastes arrive split (slow SSH) | Raise `OCTOCODE_TUI_ESC_TIMEOUT` or `OCTOCODE_TUI_PASTE_TIMEOUT` (milliseconds)                                       |
+| Leftover rows after content shrinks                             | `terminal.clearOnShrink: true`                                                                                        |
+| A component fails to draw                                       | The chat shows `Display failed: <Component> could not render: <error>` once per failure; the rest keeps working       |
+| You need the raw terminal output                                | `OCTOCODE_TUI_WRITE_LOG` copies everything written; `OCTOCODE_TUI_DEBUG=1`, `OCTOCODE_TUI_DEBUG_REDRAW=1` log renders |
 
-Theme callbacks evaluated during rendering do not need special rebuilding. Stateless components can also calculate themed output on every render.
-
-Use [Themes](themes.md) to create terminal palettes. Use Octocode’s `getMarkdownTheme()` when rendering Markdown that should match the active application theme.
-
-## Keep rendering responsive
-
-Rendering runs on the interactive path. A component that throws from `render()` no longer stops the screen: it is drawn as a one-line fallback, and the chat shows `Display failed: <Component> could not render: <first line of the error>` once per distinct failure. Fix the error rather than relying on that fallback. Cache expensive layout and highlighting work by width and content, then clear that cache from `invalidate()`.
-
-Keep the default view compact and reveal detail through expansion or a dedicated screen. For custom tool rendering, handle partial results and reuse the previous component when it can be updated safely.
-
-Use `OCTOCODE_TUI_WRITE_LOG` to capture the raw ANSI stream when diagnosing rendering problems. Test narrow widths, wide characters, resize events, theme changes, focus transitions, and both regular and fullscreen modes.
-
-## Examples and source
-
-The checked extension examples cover the main patterns:
-
-- `preset.ts` and `tools.ts` use selection and settings lists.
-- `qna.ts` uses cancellable asynchronous UI.
-- `modal-editor.ts` replaces the editor.
-- `custom-footer.ts` replaces the footer.
-- `widget-placement.ts` places persistent content around the editor.
-- `doom-overlay/` demonstrates a continuously rendered overlay.
-
-The public exports are defined in [`packages/tui/src/index.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/tui/src/index.ts).
+Other front ends: [web workspace](web-workspace.md), [remote](remote.md), [RPC](rpc.md), [ACP](acp.md), [local session API](session-api.md).

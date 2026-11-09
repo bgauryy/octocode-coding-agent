@@ -1,12 +1,17 @@
-# Prompt Templates
+# Prompt templates
 
-Prompt templates turn Markdown files into reusable `/` commands. Use one when you want to reuse the same prompt without adding executable behavior or a larger set of supporting instructions.
+A prompt template is a Markdown file that becomes a reusable `/` command. Use one to repeat the same prompt, with arguments, without adding executable behavior (for that, see [skills](skills.md) and [plugins](plugins.md)).
 
-A template can accept arguments and appear in command completion. Octocode can load templates from personal configuration, project configuration, an explicit path, or a Octocode package. Project configuration loads only after project trust is granted.
+```mermaid
+flowchart LR
+    A["prompts/review.md"] --> B["/review concurrency"]
+    B --> C["arguments substituted"]
+    C --> D["expanded text goes to the agent"]
+```
 
 ## Create a template
 
-Create `~/.octocode/octocodecode/prompts/review.md`:
+Save `~/.octocode/octocodecode/prompts/review.md`:
 
 ```markdown
 ---
@@ -17,26 +22,24 @@ argument-hint: "[focus]"
 Review the staged changes. Focus on ${1:-correctness, security, and error handling}.
 ```
 
-The filename becomes the command name, so this template is available as `/review` when that name is unambiguous. If a core or extension command reserves the name, discovery offers `/prompt:review` instead. Additional collisions receive numeric suffixes; use the name shown by `/help`, SDK `getCommands()`, or RPC `get_commands`. The `description` appears in command completion. If it is omitted, Octocode uses the first non-empty line.
+| Part                       | Effect                                                                                                                            |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| File name                  | The command name: `review.md` is `/review`                                                                                        |
+| `description`              | Shown in command completion; without it the first non-empty line is used                                                          |
+| `argument-hint` (optional) | `<angle brackets>` for required and `[square brackets]` for optional arguments                                                    |
+| Name collision             | If a built-in command owns the name, use `/prompt:review`; further collisions get numeric suffixes. `/help` shows the name to use |
 
-`argument-hint` is optional. Use `<angle brackets>` for required arguments and `[square brackets]` for optional arguments.
-
-Run `/reload` after adding or changing a template in an active session.
-
-<a id="invoke-a-template"></a>
+Run `/reload` after adding or changing a template in an open session.
 
 ## Use a template
-
-Type the template command in the editor:
 
 ```text
 /review
 /review concurrency
+/review "API compatibility"
 ```
 
-Octocode expands the template before the resulting text enters the agent. Extensions receive the raw input first through the `input` event unless an extension command with the same name handles it.
-
-Templates support these substitutions:
+Octocode expands the template before the text reaches the agent. Arguments follow shell-like quoting, so the last line passes one argument containing a space.
 
 | Syntax               | Result                                 |
 | -------------------- | -------------------------------------- |
@@ -47,14 +50,12 @@ Templates support these substitutions:
 | `${@:N}`             | Arguments starting at position `N`     |
 | `${@:N:L}`           | `L` arguments starting at position `N` |
 
-Arguments follow shell-like quoting, so `/review "API compatibility"` supplies one argument containing a space.
+## Where templates load from
 
-<a id="choose-where-it-loads"></a>
+| Location                                                              | Scope         | Notes                                                                           |
+| --------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------- |
+| `~/.octocode/octocodecode/prompts/`                                   | Every project | Direct `.md` children only                                                      |
+| `.octocode/prompts/`                                                  | This project  | Loads only in a trusted folder; review a project's templates before trusting it |
+| `prompts` setting, `--prompt-template` paths, [packages](packages.md) | As configured | Can select nested Markdown files and globs                                      |
 
-## Add it to Octocode
-
-Place the template in your user or project prompt directory. Conventional prompt directories load direct `.md` children only.
-
-Settings and packages can select nested Markdown files; a package manifest can narrow discovery with explicit paths and globs. See Settings and [Octocode Packages](packages.md) for these options.
-
-Project templates become commands in the editor after trust is granted. Review their content before trusting an unfamiliar project. See Security.
+`/configuration enable|disable prompt:<name>` switches one template; `--no-prompt-templates` disables discovery for a run. Locations and precedence: [configuration](configuration.md#where-each-configuration-belongs).

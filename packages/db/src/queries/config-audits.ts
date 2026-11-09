@@ -10,7 +10,10 @@ export interface ConfigAuditEntry {
 	at: number;
 	/** Who acted, such as `web:<daemon instance>`. */
 	actor: string;
-	/** `credential.set` or `credential.clear`. */
+	/**
+	 * `credential.set`, `credential.clear`, `credential.signin` (an OAuth sign-in that ended or a request refused),
+	 * `credential.refused`, `provider.toggle` (a provider enabled or disabled) or `source.toggle` (the Pi source on or off).
+	 */
 	action: string;
 	target: string;
 	scope?: string;

@@ -61,7 +61,11 @@ describe("skills the application ships", () => {
 			includeDefaults: false,
 		});
 		expect(diagnostics).toEqual([]);
-		expect(skills.map((skill) => skill.name).sort()).toEqual(["octocode-context-optimization", "octocode-debugging"]);
+		expect(skills.map((skill) => skill.name).sort()).toEqual([
+			"octocode-context-optimization",
+			"octocode-debugging",
+			"resume-external-harness",
+		]);
 		const dir = path.join(getNativeSkillsDir(), "octocode-context-optimization");
 		expect(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8")).toContain("octocode-agentic-prompts");
 		for (const script of fs.readdirSync(path.join(dir, "scripts"))) {

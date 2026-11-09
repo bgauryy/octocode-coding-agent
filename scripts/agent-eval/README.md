@@ -2,9 +2,23 @@
 
 Decides whether an agent change ships. Both builds answer the same tasks over the same pinned tree, and the gate is **correctness no worse AND cost per task lower**. Octocode share is reported and decides nothing.
 
-Two live runs have happened (2026-11-04, on Opus 5.5: 4 development tasks, then all 12, one run per arm). Every task passed on both builds, so the graders have not yet been seen to fail a real answer, and repeatability is still open (see [What only a live run can prove](#what-only-a-live-run-can-prove)).
+Graders have passed every task on both builds so far, so they have not yet been seen to fail a real answer, and repeatability is open (see [What only a live run can prove](#what-only-a-live-run-can-prove)).
+
+```mermaid
+flowchart LR
+  T[tasks.json\npinned tree] --> B[Baseline build]
+  T --> C[Candidate build]
+  B --> R1[results]
+  C --> R2[results]
+  R1 --> G{compare.mjs}
+  R2 --> G
+  G -->|"correct and cheaper"| A[Accept]
+  G -->|"worse or not cheaper"| V[Revert]
+```
 
 ## Run it
+
+In the commands below, `REPO` is this checkout's root (`REPO=$(git rev-parse --show-toplevel)`).
 
 A live run spends real money and the runner refuses without `--live --max-usd <n>`. Agree the limit with the user first.
 
@@ -17,11 +31,11 @@ node scripts/agent-eval/run.mjs --dry-run --model anthropic/claude-opus-5-5 --sp
 **2. Build the baseline.** The worktree must sit next to this repository, because the `link:` dependencies resolve to `../octocode`. Copy the hydrated catalog so both builds price requests alike.
 
 ```sh
-git -C /Users/bgaryy/code/octocodecode worktree add --detach \
-  /Users/bgaryy/code/octocodecode-eval-baseline refs/octocode/eval-baseline-2026-11-04
-cd /Users/bgaryy/code/octocodecode-eval-baseline
+git -C "$REPO" worktree add --detach \
+  $REPO-eval-baseline refs/octocode/eval-baseline-2026-11-04
+cd "$REPO-eval-baseline"
 yarn install --immutable
-cp -R /Users/bgaryy/code/octocodecode/packages/ai/src/providers/data packages/ai/src/providers/data
+cp -R $REPO/packages/ai/src/providers/data packages/ai/src/providers/data
 yarn run build:offline
 ```
 
@@ -30,17 +44,17 @@ Build the candidate in this repository with `yarn run build:offline`. Run one bu
 **3. Run both arms, one after the other, from this repository.** Use the same kit, flags and credentials for both. `--model` takes `provider/id`, because a bare id is ambiguous when several providers list it.
 
 ```sh
-KIT=/Users/bgaryy/code/octocodecode/scripts/agent-eval
-OUT=/Users/bgaryy/code/octocodecode/.octocode/efficiency/eval-$(date -u +%Y%m%dT%H%M%S)
+KIT=$REPO/scripts/agent-eval
+OUT=$REPO/.octocode/efficiency/eval-$(date -u +%Y%m%dT%H%M%S)
 
 node $KIT/run.mjs --live --max-usd <n> --split all --runs 1 --model <provider/id> \
   --copy-config $HOME/.octocode/octocodecode/auth.json --copy-config $HOME/.pi/agent/models.json \
-  --cli /Users/bgaryy/code/octocodecode-eval-baseline/packages/coding-agent/dist/bundle/cli.js \
+  --cli $REPO-eval-baseline/packages/coding-agent/dist/bundle/cli.js \
   --out $OUT/baseline
 
 node $KIT/run.mjs --live --max-usd <n> --split all --runs 1 --model <provider/id> \
   --copy-config $HOME/.octocode/octocodecode/auth.json --copy-config $HOME/.pi/agent/models.json \
-  --cli /Users/bgaryy/code/octocodecode/packages/coding-agent/dist/bundle/cli.js \
+  --cli $REPO/packages/coding-agent/dist/bundle/cli.js \
   --out $OUT/candidate
 
 node $KIT/compare.mjs $OUT/baseline $OUT/candidate

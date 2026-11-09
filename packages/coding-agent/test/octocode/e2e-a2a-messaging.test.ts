@@ -1,7 +1,16 @@
-import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { TeamStore } from "../../src/octocode/team/store.ts";
-import { close, message, prompt, reachedStep, requestsOf, resultsOf, script, session } from "./e2e-a2a-helpers.ts";
+import type { TeamStore } from "../../src/octocode/team/store.ts";
+import {
+	close,
+	message,
+	prompt,
+	reachedStep,
+	requestsOf,
+	resultsOf,
+	script,
+	session,
+	shareTeam,
+} from "./e2e-a2a-helpers.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -42,9 +51,7 @@ const background = (goal: string, task: string): Step => ({
 /** A sandbox whose sessions share a team database the test can read. */
 function teamBox(): { box: Sandbox; store: () => TeamStore } {
 	const box = sandbox(endpoint);
-	const file = path.join(box.root, "team.sqlite");
-	box.env.OCTOCODE_AGENT_DB = file;
-	return { box, store: () => TeamStore.open(box.project, file, {}) };
+	return { box, store: shareTeam(box) };
 }
 
 const read = <T>(open: () => TeamStore, work: (store: TeamStore) => T): T => {

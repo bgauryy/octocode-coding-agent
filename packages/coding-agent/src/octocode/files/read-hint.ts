@@ -39,8 +39,23 @@ const QUIET_REDIRECT = /^(?:2>\/dev\/null|>\/dev\/null|2>&1)(?=$|[\s;|&])/u;
 /** Directories git usually ignores: what a read finds there is output or dependencies, not source to research. */
 const GENERATED_DIRECTORIES = new Set([OCTOCODE_DIR, ".git", "node_modules", "dist", "build", "coverage", "tmp"]);
 
-/** Extensions of logs and captured output: a quick look at them may stay in bash. */
-const OUTPUT_EXTENSIONS = new Set([".log", ".txt", ".out"]);
+/** Extensions of logs, captured output, docs and config: no code to research, so a quick look at them may stay in bash. */
+const NON_CODE_EXTENSIONS = new Set([
+	".log",
+	".txt",
+	".out",
+	".md",
+	".mdx",
+	".json",
+	".jsonl",
+	".yaml",
+	".yml",
+	".toml",
+	".ini",
+	".env",
+	".csv",
+	".lock",
+]);
 
 const inside = (root: string, target: string): boolean => {
 	const relative = path.relative(root, target);
@@ -54,14 +69,14 @@ const generated = (target: string, root: string): boolean =>
 		.some((part) => GENERATED_DIRECTORIES.has(part));
 
 /**
- * Whether a word of a read names a log, captured output or a path in a generated directory (a pattern or flag never does).
+ * Whether a word of a read names a log, captured output, doc or config file, or a path in a generated directory (a pattern or flag never does).
  * A read with no such word (`ls`, `ls -la`) reads the directory it runs in, so that directory decides.
  */
 function namesOutput(args: readonly string[], directory: string, root: string): boolean {
 	const operands = args.filter((arg) => !arg.startsWith("-"));
 	if (operands.length === 0) return generated(directory, root);
 	return operands.some(
-		(arg) => OUTPUT_EXTENSIONS.has(path.extname(arg).toLowerCase()) || generated(path.resolve(directory, arg), root),
+		(arg) => NON_CODE_EXTENSIONS.has(path.extname(arg).toLowerCase()) || generated(path.resolve(directory, arg), root),
 	);
 }
 
@@ -159,8 +174,8 @@ const isNeutral = ([name, subcommand]: readonly string[]): boolean =>
  * `find`, `ls`, `cat`, `head`, `tail`, `nl` or `sed -n`, whose output may be piped through filters that narrow it, joined
  * with `cd` steps that stay inside and commands that change nothing (`echo`, `wc`, `git diff` and the like). Any other
  * command, such as a build, a script or `sed -i`, means the shell is doing work those tools can't: no reader. A read that
- * names a `.log`, `.txt` or `.out` file, or a path under a generated directory (the workspace's Octocode folder,
- * `node_modules`, `dist` and the like), is a look at output, which the research policy leaves to bash: no reader.
+ * names a log, text, Markdown, JSON, YAML, TOML or other config or data file, or a path under a generated directory (the workspace's Octocode folder,
+ * `node_modules`, `dist` and the like), is a look at output or a document, which the research policy leaves to bash: no reader.
  */
 export function codeReadTool(command: string, cwd: string): ReadRole | undefined {
 	const steps = stepsOf(command);
@@ -179,7 +194,7 @@ export function codeReadTool(command: string, cwd: string): ReadRole | undefined
 		} else if (!isNeutral(words)) {
 			const found = readerFor(words, directory, cwd);
 			if (!found) return undefined;
-			// A read of a log or generated output is no source read: it neither earns a hint nor spoils a list that has one.
+			// A read of a log, doc, config or generated output is no source read: it neither earns a hint nor spoils a list that has one.
 			if (namesOutput(words.slice(1), directory, cwd)) continue;
 			reader ??= found;
 		}
@@ -195,7 +210,7 @@ function researchTools(role: ReadRole, active: readonly string[]): string[] {
 }
 
 const hintText = (tools: readonly string[]): string =>
-	`Hint: for code reads like this, use ${tools.map((tool) => `\`${tool}\``).join(" or ")}. Keep bash for builds, tests, scripts and git.`;
+	`Hint: for code research and checks, use ${tools.map((tool) => `\`${tool}\``).join(" or ")}. Bash suits builds, tests, scripts, git and command output.`;
 
 /**
  * One line for a tool result after a successful read, at most `limit` times per session and only while the research

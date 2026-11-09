@@ -119,6 +119,19 @@ describe("provider health", () => {
 		}
 	});
 
+	it("marks insufficient funds as a billing refusal, not a credential one", () => {
+		const health = new ProviderHealth();
+		health.noteRun("opencode-go/glm", '402 {"error":{"message":"Insufficient account funds"}}');
+		expect(health.refused("opencode-go")).toBe(true);
+		const text = describeHealth(health.get("opencode-go"));
+		expect(text).toMatch(/✗ out of funds .*add funds or a plan/);
+		expect(text).not.toContain("/providers");
+		// A request-shape rejection marks neither the provider nor its credential.
+		const other = new ProviderHealth();
+		other.noteRun("opencode-go/glm", "400 Upstream request failed: [invalid_request_error] Invalid request");
+		expect(other.get("opencode-go")).toBeUndefined();
+	});
+
 	it("keeps a run's billing refusal when the model list accepts the key", async () => {
 		const health = new ProviderHealth();
 		health.noteRun("deepseek/a", "429 insufficient_quota: add credit");

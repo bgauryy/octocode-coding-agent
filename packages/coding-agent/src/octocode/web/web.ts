@@ -145,7 +145,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 			label: "Web",
 			promptSnippet: renderInstruction("tools/web/snippet.md"),
 			description:
-				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches extract static page text and metadata or format JSON; they do not run JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as its XML source. Cross-host redirects name the next URL instead of following it.",
+				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches return static page text and metadata or formatted JSON, without running JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as XML. A cross-host redirect names the next URL instead of following it.",
 			// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
 			// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
 			// on the selected tools).
@@ -156,7 +156,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 				maxResults: Type.Optional(Type.Integer({ description: "Search result limit (default 8, up to 20)" })),
 				maxChars: Type.Optional(
 					Type.Integer({
-						description: `Fetch preview size (default ${DEFAULT_FETCH_CHARS}, between 1,000 and ${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer fetched text is saved to a file: read it by line range instead of fetching again`,
+						description: `Fetch preview size (default ${DEFAULT_FETCH_CHARS}, between 1,000 and ${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer text is saved to a file: read it by line range`,
 					}),
 				),
 			}),

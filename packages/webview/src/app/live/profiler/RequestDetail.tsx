@@ -139,6 +139,11 @@ export function RequestDetail({ request, window }: { request: ProfileRequest | u
 				<Fact name="Hit rate" value={formatPercent(hitRatio(request))} />
 				<Fact name="Cost" value={formatCost(usage.cost)} />
 				{request.idleMs !== undefined && <Fact name="Idle before" value={span(request.idleMs)} />}
+				{request.cacheGroup && <Fact name="Prefix hash" value={request.cacheGroup.prefix} />}
+				{request.cacheGroup && <Fact name="Cache key" value={request.cacheGroup.key ?? "none"} />}
+				{request.providerMissReason && (
+					<Fact name="Provider miss" value={request.providerMissReason.replaceAll("_", " ")} />
+				)}
 			</dl>
 			{broken && (
 				<p className="pf-callout" role="note">

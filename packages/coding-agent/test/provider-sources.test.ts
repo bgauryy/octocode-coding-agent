@@ -158,7 +158,7 @@ describe("detected tools", () => {
 		const tools = detectLocalTools({ home, env: {} });
 		expect(Object.fromEntries(tools.map((tool) => [tool.id, tool.action]))).toEqual({
 			"claude-code": { kind: "api-key", providerId: "anthropic" },
-			"codex-cli": { kind: "sign-in", providerId: "openai-codex", alternativeProviderIds: ["openai-chatgpt"] },
+			"codex-cli": { kind: "sign-in", providerId: "openai", alternativeProviderIds: ["openai-codex"] },
 			"grok-cli": { kind: "sign-in", providerId: "xai" },
 			"gemini-cli": { kind: "api-key", providerId: "google" },
 			"copilot-cli": { kind: "sign-in", providerId: "github-copilot" },

@@ -12,8 +12,10 @@ import type { DaemonPage } from "./build.ts";
 import { configAudits } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../config/database.ts";
 import { buildConfigSnapshot } from "./config-status.ts";
+import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
 import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
 import { writeConfigSetting } from "./config-write.ts";
+import { writeConfigProvider } from "./provider-write.ts";
 import { WEB_DAEMON_IDLE_ENV, webDaemonPaths } from "./paths.ts";
 import { removeRecord, writeDaemonRecord } from "./records.ts";
 import { startDaemonServer, type DaemonServer } from "./server.ts";
@@ -64,6 +66,11 @@ export async function startWebDaemon(
 	const stopped = new Promise<void>((resolve) => (onStopped = resolve));
 	let server: DaemonServer | undefined;
 	let nonce = "";
+	const signIns = new SignInManager({
+		...runtimeSignIn(getAgentDir()),
+		actor: () => `web:${nonce.slice(0, 8)}`,
+		audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
+	});
 	const idleTimer = setInterval(
 		() => {
 			if (!server || server.draining) return;
@@ -78,6 +85,7 @@ export async function startWebDaemon(
 		(stopping ??= (async () => {
 			clearInterval(idleTimer);
 			clearInterval(drainTimer);
+			signIns.closeAll();
 			dropRecord();
 			await server?.close().catch(() => undefined);
 			await release?.().catch(() => undefined);
@@ -103,6 +111,14 @@ export async function startWebDaemon(
 					actor: `web:${nonce.slice(0, 8)}`,
 					audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
 				}),
+			writeProvider: (command) =>
+				writeConfigProvider(command, {
+					agentDir: getAgentDir(),
+					env,
+					actor: `web:${nonce.slice(0, 8)}`,
+					audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
+				}),
+			signIn: (command) => signIns.handle(command),
 			auditRefused: refusalAuditor(`web:${nonce.slice(0, 8)}`, (entry) =>
 				configAudits.record(sharedAgentDb(env).db, entry),
 			),

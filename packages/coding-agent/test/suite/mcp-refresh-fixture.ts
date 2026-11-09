@@ -1,3 +1,4 @@
+import { getMcpSwitch } from "../../../mcp/src/switch.ts";
 import { fauxAssistantMessage, getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import type { FauxModelDefinition, SystemMessage } from "@octocodeai/octocode-ai/compat";
 import { expect, vi } from "vitest";
@@ -106,6 +107,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 			config: { url: "http://unused.invalid", exposure: "direct" },
 			source: "test",
 		});
+		let events: ExtensionAPI["events"] | undefined;
 		const servers = [entry("docs"), ...(options.late ? [entry("late")] : [])];
 		const harness = await createHarness({
 			initialActiveToolNames: options.sessionManager ? undefined : [],
@@ -114,6 +116,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 			...(options.models ? { models: options.models } : {}),
 			builtinCompactionFactories: [
 				(api: ExtensionAPI) => {
+					events = api.events;
 					api.on("session_before_compact", async ({ preparation }) => ({
 						compaction: {
 							summary: options.compactionSummary ?? "Looked up the docs.",
@@ -125,7 +128,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 				createMcpExtension({
 					loadConfig: () => ({ servers, errors: [] }),
 					startupWaitMs: 10,
-					// `/mcp enable|disable` change the session's servers; nothing is written to a real mcp.json.
+					// `/configuration enable|disable mcp:<name>` change the session's servers; nothing is written to a real mcp.json.
 					updateConfig: () => {},
 					// These cases pin the thin-declaration presentations; `declared`, the setting's default, has its own tests.
 					presentation: options.presentation ?? "compact",
@@ -144,6 +147,8 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 		if (options.sessionManager)
 			harness.session.agent.state.messages = options.sessionManager.buildSessionContext().messages;
 		await harness.session.bindExtensions({ uiContext: createTestUiContext() });
+		/** What `/configuration enable|disable mcp:<name>` calls: the MCP owner's live switch of this session. */
+		const switchMcp = (name: string, enabled: boolean) => getMcpSwitch(events!)!({ name, enabled, inProject: false });
 		const callable = () => harness.session.getCallableToolNames();
 		await vi.waitFor(() => expect(callable()).toContain("mcp__docs__search"));
 		const listChanged = async () => {
@@ -168,6 +173,6 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 					additionalProperties?: unknown;
 				}
 			)?.additionalProperties === true;
-		return { harness, calls, callable, listChanged, reconnect, turn, thin };
+		return { harness, calls, callable, listChanged, reconnect, turn, thin, switchMcp };
 	};
 }

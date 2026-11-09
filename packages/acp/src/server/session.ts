@@ -8,12 +8,12 @@ import {
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
-import { withAbort } from "./abort.ts";
 import { askClient } from "./ask.ts";
 import { advertiseCommands } from "./commands.ts";
 import { AcpEventProjector, type CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
 import { closeInBackground, reportFailure } from "./failure.ts";
+import { askPermission } from "./permission.ts";
 import { AcpStartup } from "./startup.ts";
 
 export type AcpWorker = AcpWorkerClient & { onSessionIdentity: (listener: (id: string) => void) => () => void };
@@ -316,54 +316,21 @@ export class AcpSession {
 				await this.worker.respondToExtensionUIRequest({ type: "extension_ui_response", id: request.id, replies });
 			return;
 		}
-		const permission = request.method === "select" ? request.permission : undefined;
-		let value: string | undefined;
-		if (
-			turn &&
-			!turn.controller.signal.aborted &&
-			permission &&
-			request.method === "select" &&
-			permission.allowOnce !== permission.rejectOnce &&
-			request.options.includes(permission.allowOnce) &&
-			request.options.includes(permission.rejectOnce)
-		) {
-			try {
-				await this.output;
-				turn.controller.signal.throwIfAborted();
-				const response = await withAbort(
-					turn.controller.signal,
-					this.client.request(
-						methods.client.session.requestPermission,
+		const value =
+			request.method === "select"
+				? await askPermission(
 						{
+							client: this.client,
 							sessionId: this.id,
-							toolCall: {
-								toolCallId: permission.toolCallId ?? randomUUID(),
-								title: request.title,
-								status: "pending",
-								kind: "other",
-								name: permission.toolName,
-								content: [{ type: "content", content: { type: "text", text: permission.targets.join("\n") } }],
-							},
-							options: [
-								{ optionId: "allow-once", name: permission.allowOnce, kind: "allow_once" },
-								{ optionId: "reject-once", name: permission.rejectOnce, kind: "reject_once" },
-							],
+							signal: turn?.controller.signal,
+							output: this.output,
+							current: () => turn !== undefined && this.hasTurn(turn),
+							// Send abort before releasing the worker's dialog; awaiting completion here would deadlock it.
+							onCancelled: () => void this.cancel().catch(reportFailure("ACP permission cancellation failed")),
 						},
-						{ cancellationSignal: turn.controller.signal },
-					),
-				);
-				if (this.hasTurn(turn) && !turn.controller.signal.aborted) {
-					if (response.outcome.outcome === "cancelled") {
-						// Send abort before releasing the worker's dialog; awaiting completion here would deadlock it.
-						void this.cancel().catch(reportFailure("ACP permission cancellation failed"));
-					} else if (response.outcome.optionId === "allow-once") value = permission.allowOnce;
-					else if (response.outcome.optionId === "reject-once") value = permission.rejectOnce;
-				}
-			} catch (error) {
-				// Cancellation, invalid options and client failures never grant permission. An abort is expected; log the rest.
-				if (!turn.controller.signal.aborted) reportFailure("ACP permission request failed; permission denied")(error);
-			}
-		}
+						request,
+					)
+				: undefined;
 		if (!this.dead)
 			await this.worker.respondToExtensionUIRequest({
 				type: "extension_ui_response",

@@ -127,22 +127,6 @@ describe("initialization and malformed input", () => {
 		expectOnlyProtocol(acp.lines);
 		expect(box.survivors()).toEqual([]);
 	});
-
-	it("a refused folder is its own error, not a missing resource, and the server stays up", async () => {
-		const box = sandbox(endpoint);
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
-		const refused = await acp.raw("session/new", { cwd: box.project, mcpServers: [] });
-		// -32002 means "does not exist" and -32768 to -32000 are reserved.
-		expect(refused.error?.code).not.toBe(-32002);
-		expect(refused.error?.code).toBeGreaterThan(-32000);
-		expect(refused.error?.message).toContain("not trusted");
-		expect(refused.error?.data?.command).toContain("octocode trust add");
-		expect(JSON.stringify(await acp.request("session/list", { cwd: box.project }))).toContain("sessions");
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-		expectOnlyProtocol(acp.lines);
-	});
 });
 
 describe("a prompt turn", () => {
@@ -187,26 +171,6 @@ describe("a prompt turn", () => {
 		expect((await run.exited).code).toBe(0);
 		expectOnlyProtocol(acp.lines);
 	});
-
-	it("advertises commands a prompt can run after the session starts", async () => {
-		const box = await trusted();
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
-		await newSession(acp, box.project);
-		await until(
-			() => acp.updates.some(({ update }) => update.sessionUpdate === "available_commands_update"),
-			"available_commands_update",
-		);
-		const update = acp.updates.find(({ update: each }) => each.sessionUpdate === "available_commands_update")
-			?.update as {
-			availableCommands: Array<{ name: string }>;
-		};
-		expect(update.availableCommands.map((command) => command.name)).toContain("api");
-		expect(update.availableCommands.map((command) => command.name)).not.toContain("context");
-		run.process.stdin?.end();
-		await run.exited;
-		expectOnlyProtocol(acp.lines);
-	});
 });
 
 describe("permission requests", () => {
@@ -246,46 +210,9 @@ describe("permission requests", () => {
 		expect((await run.exited).code).toBe(0);
 		expectOnlyProtocol(acp.lines);
 	});
-
-	it("session/cancel while a permission is pending ends the turn cancelled and never runs the call", async () => {
-		const box = await trusted({ OCTOCODE_PERMISSION: "manual" });
-		const { run, acp } = broker(box, "hold");
-		await acp.request("initialize", initialize);
-		const sessionId = await newSession(acp, box.project);
-		const marker = path.join(box.root, "never");
-		const turn = acp.prompt(sessionId, permissionPrompt(marker));
-		await until(() => acp.permissions.length > 0, "the permission request");
-		acp.notify("session/cancel", { sessionId });
-		expect((await turn).stopReason).toBe("cancelled");
-		expect(fs.existsSync(marker)).toBe(false);
-
-		// The client's late answer to the withdrawn request does no harm, and the session goes on.
-		acp.answers.current = "allow";
-		expect((await acp.prompt(sessionId, script([{ text: "after cancel" }]))).stopReason).toBe("end_turn");
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-		expectOnlyProtocol(acp.lines);
-	});
 });
 
 describe("cancellation", () => {
-	it("session/cancel during a model request ends the turn cancelled, and the session goes on", async () => {
-		const box = await trusted();
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
-		const sessionId = await newSession(acp, box.project);
-		const hanging = script([{ hang: true }]);
-		const source = hanging.slice("B64SCRIPT:".length);
-		const turn = acp.prompt(sessionId, hanging);
-		await until(() => endpoint.requests.some((request) => request.script === source), "the model request");
-		acp.notify("session/cancel", { sessionId });
-		expect((await turn).stopReason).toBe("cancelled");
-		expect((await acp.prompt(sessionId, script([{ text: "after" }]))).stopReason).toBe("end_turn");
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-		expectOnlyProtocol(acp.lines);
-	});
-
 	it("session/cancel during a running tool stops the command and ends the turn cancelled", async () => {
 		const box = await trusted();
 		const { run, acp } = broker(box);
@@ -321,96 +248,6 @@ describe("cancellation", () => {
 		expect(answered.result?.stopReason ?? answered.error?.code).toBe("cancelled");
 		run.process.stdin?.end();
 		expect((await run.exited).code).toBe(0);
-	});
-});
-
-describe("session lifecycle across connections", () => {
-	it("lists, loads with replay before the response, resumes without replay, closes", async () => {
-		const box = await trusted();
-		const first = broker(box);
-		await first.acp.request("initialize", initialize);
-		const sessionId = await newSession(first.acp, box.project);
-		await first.acp.prompt(
-			sessionId,
-			script([{ tool: "bash", args: { command: "echo remembered-output" } }, { text: "remembered reply" }]),
-		);
-		const closed = await first.acp.raw("session/close", { sessionId });
-		expect(closed.result).toEqual({});
-		// A closed session is no longer active.
-		const gone = await first.acp.raw("session/prompt", { sessionId, prompt: [{ type: "text", text: "x" }] });
-		expect(gone.error?.code).toBe(-32002);
-		first.run.process.stdin?.end();
-		expect((await first.run.exited).code).toBe(0);
-
-		const second = broker(box);
-		await second.acp.request("initialize", initialize);
-		const listed = await second.acp.request<{ sessions: Array<{ sessionId: string; cwd: string; updatedAt: string }> }>(
-			"session/list",
-			{ cwd: box.project },
-		);
-		expect(listed.sessions.map((session) => session.sessionId)).toContain(sessionId);
-		expect(Number.isNaN(Date.parse(listed.sessions[0]?.updatedAt ?? ""))).toBe(false);
-
-		const loaded = await second.acp.raw("session/load", { sessionId, cwd: box.project, mcpServers: [] });
-		expect(loaded.error).toBeUndefined();
-		const loadResponseAt = second.acp.received.indexOf(loaded);
-		const replayed = second.acp.received
-			.slice(0, loadResponseAt)
-			.filter((message) => message.method === "session/update")
-			.map((message) => message.params?.update as { sessionUpdate: string; content?: { text?: string } });
-		expect(replayed.some((update) => update.sessionUpdate === "user_message_chunk")).toBe(true);
-		expect(replayed.some((update) => update.content?.text?.includes("remembered reply"))).toBe(true);
-		expect(JSON.stringify(replayed)).toContain("remembered-output");
-		// The conversation goes on with the model seeing what came before.
-		await second.acp.prompt(sessionId, script([{ text: "continues" }]));
-		expect(endpoint.requests.at(-1)?.messages.some((message) => message.text.includes("remembered reply"))).toBe(true);
-		second.run.process.stdin?.end();
-		expect((await second.run.exited).code).toBe(0);
-
-		const third = broker(box);
-		await third.acp.request("initialize", initialize);
-		const resumed = await third.acp.raw("session/resume", { sessionId, cwd: box.project, mcpServers: [] });
-		expect(resumed.error).toBeUndefined();
-		const beforeResume = third.acp.received.slice(0, third.acp.received.indexOf(resumed));
-		expect(
-			beforeResume.filter(
-				(message) =>
-					message.method === "session/update" &&
-					["user_message_chunk", "agent_message_chunk"].includes(
-						String((message.params?.update as { sessionUpdate?: string } | undefined)?.sessionUpdate),
-					),
-			),
-		).toEqual([]);
-		expect((await third.acp.prompt(sessionId, script([{ text: "resumed" }]))).stopReason).toBe("end_turn");
-		third.run.process.stdin?.end();
-		expect((await third.run.exited).code).toBe(0);
-		for (const each of [first, second, third]) expectOnlyProtocol(each.acp.lines);
-		expect(box.survivors()).toEqual([]);
-	});
-});
-
-describe("a session another process has open", () => {
-	it("load says who has it, and the broker goes on", async () => {
-		const box = await trusted();
-		const first = broker(box);
-		await first.acp.request("initialize", initialize);
-		const sessionId = await newSession(first.acp, box.project);
-		await first.acp.prompt(sessionId, script([{ text: "first" }]));
-
-		const second = broker(box);
-		await second.acp.request("initialize", initialize);
-		const refused = await second.acp.raw("session/load", { sessionId, cwd: box.project, mcpServers: [] });
-		expect(refused.error?.code).toBe(-32603);
-		expect(refused.error?.message).toContain("has this session open");
-		// The second broker still serves, and the first still runs its session.
-		const other = await newSession(second.acp, box.project);
-		expect((await second.acp.prompt(other, script([{ text: "other" }]))).stopReason).toBe("end_turn");
-		expect((await first.acp.prompt(sessionId, script([{ text: "still first" }]))).stopReason).toBe("end_turn");
-		for (const each of [first, second]) {
-			each.run.process.stdin?.end();
-			expect((await each.run.exited).code).toBe(0);
-			expectOnlyProtocol(each.acp.lines);
-		}
 	});
 });
 

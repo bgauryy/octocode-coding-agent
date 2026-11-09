@@ -1,210 +1,102 @@
 # @octocodeai/octocode-ai
 
-Unified LLM API with provider collections, automatic auth resolution, token and cost tracking, and simple context persistence and hand-off to other models mid-session.
+Unified LLM API: provider collections, automatic auth resolution, streaming events, token and cost tracking, and context hand-off between models mid-session. The package is private and bundled into `@octocodeai/octocodecode`; contributors import it as a workspace. The coding agent owns `models.json`, stored credentials and model selection: see [CONFIGURATIONS.md](../coding-agent/docs/configuration.md) and the [models guide](../coding-agent/docs/models.md).
 
-This README covers the provider library API. The coding-agent application owns `models.json`, stored credentials and model selection; see [configuration locations](../../CONFIGURATIONS.md) and its [models guide](../coding-agent/docs/models.md).
+The chat catalog lists only models that support tool calling. Image and classifier catalogs use their own capabilities.
 
-**Note**: The chat catalog only includes models that support tool calling (function calling), as this is essential for agentic workflows. Image and classifier catalogs use their operation-specific capabilities.
-
-## Documentation
-
-This README covers installation, the provider list and a quick start. The rest of the library guide lives in `docs/`:
-
-| Page                                                           | Covers                                                                                                                            |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| [Providers and models](docs/providers-and-models.md)           | Provider factories, built-in providers, model queries, static catalog reads, dynamic providers, migrating from the old global API |
-| [Auth](docs/auth.md)                                           | How auth resolves, request header transforms, the credential store, provider environment variables                                |
-| [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, handling and streaming tool calls, argument validation, the event reference                 |
-| [Images](docs/images.md)                                       | Image input and image generation                                                                                                  |
-| [Classification](docs/classification.md)                       | Classifier models, OpenAI Decisions, chat models on llama.cpp                                                                     |
-| [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Unified and provider-specific reasoning options, streaming thinking, stop reasons                                                 |
-| [Errors and observability](docs/errors-and-observability.md)   | Telemetry, error handling, aborts, continuing after abort, payload and stream-event debugging                                     |
-| [Custom providers](docs/custom-providers.md)                   | `createProvider()`, calling API implementations directly, OpenAI compatibility settings                                           |
-| [Faux provider for tests](docs/faux-provider.md)               | Scripted responses for tests                                                                                                      |
-| [Conversations](docs/conversations.md)                         | Cross-provider handoffs, system messages, context serialization                                                                   |
-| [Browser usage and bundling](docs/browser-and-bundling.md)     | Browser use, tree shaking, provider-scoped environment overrides, vendor model discovery                                          |
-| [OAuth providers](docs/oauth.md)                               | Vertex AI, CLI login, programmatic OAuth, provider notes                                                                          |
-| [Development](docs/development.md)                             | Adding a new provider                                                                                                             |
-
-## Supported Providers
-
-- **OpenAI** (including the Decisions classifier API)
-- **Ant Ling**
-- **Azure OpenAI (Responses)**
-- **OpenAI Codex (legacy)** (ChatGPT Plus/Pro subscription, requires [OAuth](docs/oauth.md))
-- **TypeSafe** (System One classifier API)
-- **DeepSeek**
-- **NVIDIA NIM**
-- **Anthropic**
-- **Google**
-- **Vertex AI** (Gemini via Vertex AI)
-- **Mistral**
-- **Groq**
-- **Cerebras**
-- **Cloudflare AI Gateway**
-- **Cloudflare Workers AI**
-- **xAI**
-- **OpenRouter**
-- **Vercel AI Gateway**
-- **ZAI Coding Plan (Global)** (with separate China provider)
-- **MiniMax** (with separate China provider)
-- **Together AI**
-- **Baseten**
-- **Hugging Face**
-- **Moonshot AI** (with separate China provider)
-- **GitHub Copilot** (requires [OAuth](docs/oauth.md))
-- **Amazon Bedrock**
-- **OpenCode Zen**
-- **OpenCode Go**
-- **Fireworks** (uses OpenAI- and Anthropic-compatible APIs)
-- **Kimi For Coding** (Moonshot AI subscription endpoint, uses Anthropic-compatible API)
-- **Meta** (Model API, uses OpenAI Responses-compatible API)
-- **Qwen Token Plan** (separate Individual and existing catalogs, with a separate China provider)
-- **Xiaomi MiMo** (defaults to API billing endpoint, with separate Token Plan providers for `cn`/`ams`/`sgp` regions)
-- **Any OpenAI-compatible API**: Ollama, vLLM, LM Studio, etc.
-
-## Installation
-
-```bash
-npm install @octocodeai/octocode-ai
+```mermaid
+flowchart LR
+  App --> M["Models collection"]
+  M -->|routes by model| P["Provider: catalog + auth + stream"]
+  P --> A["API implementation: anthropic-messages, openai-responses, openai-completions, ..."]
+  A --> V[Vendor endpoint]
 ```
 
-TypeBox exports are re-exported from `@octocodeai/octocode-ai`: `Type`, `Static`, and `TSchema`.
+## Pages
 
-## Quick Start
+| Page                                                           | Covers                                                                                                   |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [Providers and models](docs/providers-and-models.md)           | Factories, model queries, static catalog, dynamic providers, migrating from the global API               |
+| [Auth](docs/auth.md)                                           | Auth resolution, header transforms, credential store, environment variables, OAuth, Vertex AI, CLI login |
+| [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, partial JSON, validation, event reference                          |
+| [Images](docs/images.md)                                       | Image input and generation                                                                               |
+| [Classification](docs/classification.md)                       | Classifier models, OpenAI Decisions, llama.cpp                                                           |
+| [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Reasoning options, thinking events, stop reasons                                                         |
+| [Errors and observability](docs/errors-and-observability.md)   | Telemetry, errors, aborts, payload and stream-event debugging                                            |
+| [Custom providers](docs/custom-providers.md)                   | `createProvider()`, direct API calls, OpenAI compatibility settings                                      |
+| [Conversations](docs/conversations.md)                         | Cross-provider handoff, system messages, serialization                                                   |
+| [Browser and bundling](docs/browser-and-bundling.md)           | Browser use, tree shaking, env overrides, model discovery                                                |
+| [Development](docs/development.md)                             | Adding a provider, faux provider for tests                                                               |
 
-You build a `Models` collection of providers and stream through it. The quickest start registers every built-in provider; apps that care about bundle size register individual providers instead (see [Provider Factories](docs/providers-and-models.md#provider-factories) and [Bundling and Tree Shaking](docs/browser-and-bundling.md#bundling-and-tree-shaking)).
+## Supported providers
+
+| Group                       | Providers                                                                                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontier                    | OpenAI (including Decisions), Anthropic, Google, Vertex AI, Azure OpenAI (Responses), Amazon Bedrock, Mistral, xAI, Meta (Responses-compatible), DeepSeek                                                              |
+| Subscriptions (OAuth)       | OpenAI Codex (legacy, ChatGPT Plus/Pro), GitHub Copilot: see [OAuth](docs/auth.md#oauth)                                                                                                                               |
+| Gateways and hosts          | OpenRouter, Vercel AI Gateway, Cloudflare AI Gateway and Workers AI, Groq, Cerebras, Together AI, Baseten, Hugging Face, NVIDIA NIM, Fireworks (OpenAI- and Anthropic-compatible), OpenCode Zen and Go                 |
+| Regional and plan providers | Ant Ling, ZAI Coding Plan, MiniMax, Moonshot AI and Kimi For Coding, Qwen Token Plan, Xiaomi MiMo (each with its China or region variants where listed in [environment variables](docs/auth.md#environment-variables)) |
+| Classifiers                 | TypeSafe (System One)                                                                                                                                                                                                  |
+| Anything else               | Any OpenAI-compatible API (Ollama, vLLM, LM Studio) via [custom providers](docs/custom-providers.md)                                                                                                                   |
+
+`Type`, `Static` and `TSchema` from TypeBox are re-exported from the root.
+
+## Quick start
+
+Build a `Models` collection and stream through it. `builtinModels()` registers every built-in provider; size-sensitive apps register single providers ([factories](docs/providers-and-models.md#provider-factories), [bundling](docs/browser-and-bundling.md#bundling-and-tree-shaking)).
 
 ```typescript
 import { Type, type Context, type Tool } from "@octocodeai/octocode-ai";
 import { builtinModels } from "@octocodeai/octocode-ai/providers/all";
 
-// A Models collection with every built-in provider registered
 const models = builtinModels();
-
-// Sync lookup against the collection
 const model = models.getModel("openai", "gpt-4o-mini")!;
 
-// Define tools with TypeBox schemas for type safety and validation
 const tools: Tool[] = [
 	{
 		name: "get_time",
 		description: "Get the current time",
-		parameters: Type.Object({
-			timezone: Type.Optional(Type.String({ description: "Optional timezone (e.g., America/New_York)" })),
-		}),
+		parameters: Type.Object({ timezone: Type.Optional(Type.String({ description: "e.g. America/New_York" })) }),
 	},
 ];
 
-// Build a conversation context (easily serializable and transferable between models)
+// A Context is plain JSON: serialize it and hand it to another model at any time
 const context: Context = {
 	systemPrompt: "You are a helpful assistant.",
 	messages: [{ role: "user", content: "What time is it?", timestamp: Date.now() }],
 	tools,
 };
 
-// Option 1: Streaming with all event types.
-// Auth resolves through the provider (OPENAI_API_KEY from the environment here).
+// Streaming; auth resolves through the provider (OPENAI_API_KEY here)
 const s = models.stream(model, context);
-
 for await (const event of s) {
-	switch (event.type) {
-		case "start":
-			console.log(`Starting with ${event.partial.model}`);
-			break;
-		case "text_start":
-			console.log("\n[Text started]");
-			break;
-		case "text_delta":
-			process.stdout.write(event.delta);
-			break;
-		case "text_end":
-			console.log("\n[Text ended]");
-			break;
-		case "thinking_start":
-			console.log("[Model is thinking...]");
-			break;
-		case "thinking_delta":
-			process.stdout.write(event.delta);
-			break;
-		case "thinking_end":
-			console.log("[Thinking complete]");
-			break;
-		case "toolcall_start":
-			console.log(`\n[Tool call started: index ${event.contentIndex}]`);
-			break;
-		case "toolcall_delta":
-			// Partial tool arguments are being streamed
-			const partialCall = event.partial.content[event.contentIndex];
-			if (partialCall.type === "toolCall") {
-				console.log(`[Streaming args for ${partialCall.name}]`);
-			}
-			break;
-		case "toolcall_end":
-			console.log(`\nTool called: ${event.toolCall.name}`);
-			console.log(`Arguments: ${JSON.stringify(event.toolCall.arguments)}`);
-			break;
-		case "done":
-			console.log(`\nFinished: ${event.reason}`);
-			break;
-		case "error":
-			console.error(`Error: ${event.error.errorMessage}`);
-			break;
-	}
+	if (event.type === "text_delta") process.stdout.write(event.delta);
+	if (event.type === "toolcall_end") console.log(event.toolCall.name, event.toolCall.arguments);
+	if (event.type === "error") console.error(event.error.errorMessage);
 }
+const message = await s.result();
+context.messages.push(message);
 
-// Get the final message after streaming, add it to the context
-const finalMessage = await s.result();
-context.messages.push(finalMessage);
-
-// Handle tool calls if any
-const toolCalls = finalMessage.content.filter((b) => b.type === "toolCall");
-for (const call of toolCalls) {
-	const result =
-		call.name === "get_time"
-			? new Date().toLocaleString("en-US", {
-					timeZone: call.arguments.timezone || "UTC",
-					dateStyle: "full",
-					timeStyle: "long",
-				})
-			: "Unknown tool";
-
-	// Add tool result to context (supports text and images)
+// Run each tool call, push a toolResult, then ask again
+for (const call of message.content.filter((b) => b.type === "toolCall")) {
 	context.messages.push({
 		role: "toolResult",
 		toolCallId: call.id,
 		toolName: call.name,
-		content: [{ type: "text", text: result }],
+		content: [{ type: "text", text: new Date().toISOString() }],
 		isError: false,
 		timestamp: Date.now(),
 	});
 }
-
-// Continue if there were tool calls
-if (toolCalls.length > 0) {
-	const continuation = await models.complete(model, context);
-	context.messages.push(continuation);
-	console.log("After tool execution:", continuation.content);
-}
-
-console.log(`Total tokens: ${finalMessage.usage.input} in, ${finalMessage.usage.output} out`);
-console.log(`Cost: $${finalMessage.usage.cost.total.toFixed(4)}`);
-
-// Option 2: Get complete response without streaming
-const response = await models.complete(model, context);
-
-for (const block of response.content) {
-	if (block.type === "text") {
-		console.log(block.text);
-	} else if (block.type === "toolCall") {
-		console.log(`Tool: ${block.name}(${JSON.stringify(block.arguments)})`);
-	}
-}
+const answer = await models.complete(model, context); // no streaming
+console.log(message.usage.cost.total); // estimated USD
 ```
 
-Snippets in this README and the pages under `docs/` assume a `models` collection set up like this (with the relevant providers registered).
+Events: [Tools](docs/tools.md#complete-event-reference). Failures arrive as an `error` event and a final message with `stopReason: "error"`: [Errors](docs/errors-and-observability.md).
 
-`usage.cost` estimates inference charges from the selected provider's catalog rates and reported tokens. Known long-context tiers, cache-write lifetimes and served OpenAI service tiers affect the estimate. A time-limited price carries `cost.until` (last UTC day, inclusive) and `cost.after` (the rates, and tiers, from the next day); `calculateCost(model, usage, now?)` picks the period by the clock, which tests can inject; output usage can include billable reasoning tokens. Subscription allowances, account credits, regional premiums and time-based cache-storage fees are not fully represented. Refresh catalog metadata as prices change.
+## Cost
+
+`usage.cost` estimates inference charges from the provider's catalog rates and reported tokens, including long-context tiers, cache-write lifetimes, served OpenAI service tiers and billable reasoning tokens. A time-limited price carries `cost.until` (last UTC day, inclusive) and `cost.after` (the rates from the next day); `calculateCost(model, usage, now?)` picks the period by the clock, which tests can inject. Subscription allowances, account credits, regional premiums and time-based cache-storage fees are not represented.
 
 ## License
 

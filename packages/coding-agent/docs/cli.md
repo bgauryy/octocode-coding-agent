@@ -1,18 +1,29 @@
-# CLI Modes
+# CLI modes and flags
 
-`octocode --help` lists every command and flag, and shell completion comes from `octocode completion <bash|zsh|fish>`. This page covers how Octocode picks an output mode and what each non-interactive mode writes.
+`octocode [options] [--] [@files...] [messages...]` starts Octocode. `octocode --help` lists every flag; `octocode completion bash|zsh|fish` prints shell completion. Subcommands (`install`, `configuration`, `mcp`, `trust`, ...) are in [commands](commands.md#shell-entry-points).
 
 ## Choose a mode
 
-| Invocation                                                   | Mode         | Output                                                                               |
-| ------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------ |
-| `octocode` in a terminal                                     | Interactive  | The terminal UI.                                                                     |
-| `octocode -p "prompt"`, or stdin or stdout is not a terminal | Text (print) | The final assistant text on stdout; errors on stderr.                                |
-| `octocode --mode json "prompt"`                              | JSON         | The session header, then one JSON event per line.                                    |
-| `octocode --mode rpc`                                        | RPC          | JSON commands on stdin, JSON responses and events on stdout. See [RPC mode](rpc.md). |
-| `octocode --mode acp`                                        | ACP          | Agent Client Protocol v1 for editors. See [ACP](acp.md).                             |
+```mermaid
+flowchart TD
+  S[octocode ...] --> M{--mode?}
+  M -- rpc --> RPC[RPC: JSON commands on stdin and events on stdout]
+  M -- acp --> ACP[ACP v1 for editors]
+  M -- json --> J[JSON Lines events]
+  M -- none --> P{--print, or stdin or stdout not a terminal?}
+  P -- yes --> T[Text: final answer on stdout]
+  P -- no --> I[Interactive terminal UI]
+```
 
-`--mode rpc` and `--mode json` win over `--print`. Content piped on stdin is added to the initial message and switches an interactive start to text mode. Octocode reads a stdin pipe to its end before starting, even with a prompt on the command line, so a parent that leaves the pipe open holds the run: after a few seconds one line on stderr says so, and the wait has no deadline. Pass `--no-stdin` to skip reading it. RPC mode reads stdin for commands, so it ignores piped content and refuses `@file` arguments.
+| Mode        | Start with                      | Output                                           | Page          |
+| ----------- | ------------------------------- | ------------------------------------------------ | ------------- |
+| Interactive | `octocode` in a terminal        | The terminal UI                                  | [TUI](tui.md) |
+| Text        | `octocode -p "prompt"`          | Final assistant text on stdout, errors on stderr | below         |
+| JSON        | `octocode --mode json "prompt"` | Session header, then one JSON event per line     | below         |
+| RPC         | `octocode --mode rpc`           | JSON commands in, responses and events out       | [RPC](rpc.md) |
+| ACP         | `octocode --mode acp`           | Agent Client Protocol v1                         | [ACP](acp.md) |
+
+`--mode rpc` and `--mode json` win over `--print`. Piped stdin is added to the first message and turns an interactive start into text mode. Octocode reads the pipe to its end before starting; a parent that leaves it open holds the run, and after a few seconds one stderr line says so. `--no-stdin` skips the read. RPC reads stdin for commands, so it ignores piped content and refuses `@file` arguments.
 
 ```bash
 octocode -p "List the TypeScript files in src/"
@@ -20,39 +31,103 @@ git diff | octocode -p "Review this diff"
 octocode --mode json --no-session "Summarize README.md" > events.jsonl
 ```
 
-## Text mode
+### Text mode
 
-Text mode sends the initial message and any further positional messages as separate prompts, then prints the text blocks of the last assistant message. Octocode exits with `1` when a prompt ends in an error or abort, or when the reply was cut at the model's output limit. A request failure is also reported on stderr. The verdict comes from the run's recorded outcome (`status`, `errorMessage`, `usage`), so a failure recovery could not repair, such as a context overflow with nothing left to summarize, still exits `1` with its reason. A provider retry writes one line on stderr saying how long it waits.
+Sends the first message and any further positional messages as separate prompts, then prints the text of the last assistant message. Exit code `1` when a prompt ends in an error or abort or the reply was cut at the model's output limit; the reason goes to stderr (including an unrecoverable context overflow). A provider retry writes one stderr line with the wait.
 
-## JSON mode
+### JSON mode
 
-JSON mode runs the same prompts and writes JSON Lines to stdout: first the session header, then each session event as it happens (`agent_start`, `message_update`, `tool_execution_end`, `agent_end`, `agent_settled` and so on). `agent_settled` carries the run's `outcome`. Streaming `message_update` events carry the delta and cumulative `usage`, not the whole message; `message_end` holds the finished message. The event types are `AgentSessionEvent` in [`src/core/agent-session/types.ts`](../src/core/agent-session/types.ts) and the wire shape is `toJsonEvent` in [`src/modes/json-event.ts`](../src/modes/json-event.ts). The exit code follows the same rule as text mode, and other stdout writes go to stderr so the stream stays parseable. The protocol records of RPC mode use the same event shape.
+Same prompts, JSON Lines on stdout: the session header, then each event as it happens (`agent_start`, `message_update`, `tool_execution_end`, `agent_end`, `agent_settled` with the run's `outcome`, ...). `message_update` carries the delta and cumulative `usage`; `message_end` holds the finished message. Exit codes follow text mode, and other stdout writes go to stderr so the stream stays parseable. RPC mode uses the same event shape ([RPC](rpc.md)).
 
-## Flags that shape a run
+If a write to stdout fails in text, JSON or RPC mode (`octocode --mode json "..." | head -1`), Octocode releases the session and exits `1` with one stderr line.
 
-The groups below name the flags; `octocode --help` has the exact syntax.
+## Flags
 
-- **Model**: `--model` (accepts `provider/id` and a `:thinking` suffix), `--provider` (for the auth commands, or a bare `--model` id), `--models` for the cycling list, `--thinking`, `--list-models`.
-- **Permissions**: `--permission-mode manual|workspace|full` picks the start mode; `--dangerously-skip-permissions` starts in `bypass`, where nothing asks and every call is still recorded. Subagents inherit either. See [permissions](permissions.md#modes).
-- **Sessions**: `--continue`, `--resume [id]`, `--session`, `--session-id`, `--fork`, `--session-dir`, `--no-session`, `--name`, `--export`, `--worktree <name>` (start in a git worktree of this repository; see [worktrees](native-features.md#worktrees)).
-- **Planning**: `--plan` starts with the planning constraint on (read-only until you approve a plan; see [native planning constraint](native-features.md#native-planning-constraint)).
-- **Tools**: `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools`, `--no-mcp`. See [native features](native-features.md#tool-selection-and-migration).
-- **Resources**: `--skill`, `--prompt-template`, `--theme` and their `--no-…` forms, `--no-context-files`. User code extensions are not supported, and their flags (`--extension`, `-e`, `--no-extensions`) are unknown options. Built-in features switch through the `extensions` setting (`-builtin:llama.cpp`); MCP is always on unless `--no-mcp` is passed.
+Every flag has one long name; the only short forms are `-p -c -r -n -t -h -v`. An unknown flag fails with `Unknown option: --flag`. `--` ends option parsing. Settings supply defaults for most of these ([settings](settings.md)); environment variables are in [environment variables](environment-variables.md).
 
-An unknown `--flag` fails at startup with `Unknown option: --flag` and a pointer to `octocode --help`; features cannot register flags of their own, so the table that `--help` and shell completion read lists every flag.
+### Model
 
-Every flag has one long name. The only short forms are single letters: `-p`, `-c`, `-r`, `-n`, `-t`, `-h` and `-v`.
+| Flag                            | Does                                                                                                                               |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `--model <pattern>`             | Model pattern or id: `provider/id`, optional `:<thinking>` suffix (`sonnet:high`)                                                  |
+| `--provider <name>`             | Provider for a bare `--model` id and the `auth` commands                                                                           |
+| `--models <patterns>`           | Comma-separated patterns for Ctrl+P cycling; globs (`anthropic/*`) and fuzzy match; `sonnet:high,haiku:low` fixes levels           |
+| `--thinking <level>`            | Thinking level (the accepted levels print in an error for a bad value)                                                             |
+| `--list-models [search]`        | List available models and exit                                                                                                     |
+| `--api-key <key>`               | API key for this run; prefer environment variables or `auth.json`, since a key on the command line shows in `ps` and shell history |
+| `--system-prompt <text>`        | Replace the system prompt                                                                                                          |
+| `--append-system-prompt <text>` | Append text or file contents to it (repeatable)                                                                                    |
 
-- **Trust and network**: `--trust` records your trust of the current folder and then runs; a print, JSON or RPC run in a folder you have not trusted exits with an error without it (it does not apply to `--mode acp`). `--offline`. See [permissions](permissions.md) and [environment variables](environment-variables.md).
-- **Headless**: `--no-stdin` (do not read piped stdin), `--no-dialogs` (RPC mode: no one answers dialogs, so asks are refused as in a print run; see [RPC mode](rpc.md#protocol)), `--rpc-ask` (RPC mode: the client answers `ask` requests, batches of typed questions, instead of `select`, `confirm` and `input` dialogs; a subagent always runs with it).
-- **Interface**: `--tui-mode`, `--use-theme`, `--verbose`.
+### Sessions
 
-When `--continue`, `--session` or `--session-id` opens a saved session that another running Octocode process has open, Octocode asks whether to resume it here as well, as `/resume` and `--resume` do; Cancel exits. Print, JSON and RPC modes cannot ask, so they exit with an error instead: two processes appending to one session overwrite each other's history. `--fork` copies the session and is never refused. `--session-id <id>` and `--fork --session-id <id>` refuse an id that belongs to a saved session in another folder and name its file; use `--session <id>` to open it.
+| Flag                       | Does                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `--continue`, `-c`         | Continue the previous session of this folder                                                 |
+| `--resume [id]`, `-r`      | With an id (id, unique prefix or file path) same as `--session <id>`; alone opens the picker |
+| `--session <path\|id>`     | Open a session file or id                                                                    |
+| `--session-id <id>`        | Use this exact project session id, creating it if missing                                    |
+| `--fork <path\|id>`        | Copy a session into a new one (also continues a cut-off file)                                |
+| `--session-dir <dir>`      | Directory for session storage and lookup                                                     |
+| `--no-session`             | Keep the conversation in memory only                                                         |
+| `--name <name>`, `-n`      | Session display name                                                                         |
+| `--export <file> [output]` | Export a session file to HTML and exit                                                       |
+| `--worktree <name>`        | Start in git worktree `<name>` ([worktrees](native-features.md#worktrees))                   |
 
-`--resume <id>` (or `-r <id>`) is `--session <id>`: it takes an id, a unique id prefix or a session file path, and Octocode prints `octocode --resume <id>` when a session ends. `--resume` alone opens the picker. After `--resume`, a bare word is taken as the id only when it looks like one (four or more hex digits and dashes, or a path); anything else stays the prompt, so `octocode -r "fix the build"` opens the picker with that prompt. Write `--resume=<id>` or use `--session <id>` for an id that does not look like that.
+```mermaid
+flowchart TD
+  A["--session / --continue / --session-id opens a saved session"] --> B{Another running Octocode has it open?}
+  B -- no --> C[Open]
+  B -- yes, terminal --> D[Ask to resume here as well]
+  B -- yes, headless --> E[Exit 1: two writers would overwrite each other]
+  F["--session id from another folder"] --> G{Terminal?}
+  G -- yes --> H[Offer to fork it here]
+  G -- no --> I["Exit 1, naming --fork id"]
+```
 
-`--session <id>` with an id saved in another project folder offers to fork it here. Print, JSON and RPC modes cannot ask, so they exit `1` and name `--fork <id>`, leaving stdin unread; bare `--resume` opens a picker and exits `1` the same way. A prefix of `--session` or `--fork` that matches several sessions exits `1` and lists them. A match in this project wins over matches elsewhere.
+`--fork` copies the session and is never refused. `--session-id <id>` and `--fork --session-id <id>` refuse an id saved in another folder and name its file. A prefix matching several sessions exits `1` and lists them; a match in this project wins over others. After `--resume`, a bare word is read as the id only when it looks like one (four or more hex digits and dashes, or a path); otherwise it is the prompt, so `octocode -r "fix the build"` opens the picker with that prompt. Use `--resume=<id>` or `--session <id>` for other ids. Octocode prints `octocode --resume <id>` when a session ends.
 
-If a write to stdout fails in print, JSON or RPC mode, for example `octocode --mode json "…" | head -1`, Octocode releases the session and exits `1` with one line on stderr.
+### Permissions, trust and planning
 
-Settings supply defaults for most of these; see [settings](settings.md). Environment variables that change behavior are listed in [environment variables](environment-variables.md).
+| Flag                                        | Does                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--permission-mode manual\|workspace\|full` | Start mode (default `full`); subagents inherit it ([permissions](permissions.md#modes))                                                                |
+| `--dangerously-skip-permissions`            | Start in `bypass`: nothing asks, every call is still recorded, hook denies and invariants still refuse. Conflicts with a different `--permission-mode` |
+| `--trust`                                   | Record your trust of this folder, then run. A text, JSON or RPC run in an untrusted folder exits with an error without it (not for `--mode acp`)       |
+| `--plan`                                    | Start with the planning constraint on ([planning](native-features.md#native-planning-constraint))                                                      |
+| `--offline`                                 | Skip startup network operations (same as `OCTOCODE_OFFLINE=1`)                                                                                         |
+
+### Tools and configuration
+
+| Flag                     | Does                                                                                                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--tools <list>`, `-t`   | Allowlist of tool names or patterns (`*`); keeps MCP tools unless an entry starts with `mcp__`; `+name`/`-name` entries adjust the defaults instead        |
+| `--exclude-tools <list>` | Denylist; applies to all tools, MCP included, and to subagents                                                                                             |
+| `--no-tools`             | No tools by default (native and MCP)                                                                                                                       |
+| `--no-builtin-tools`     | No native tools; MCP tools stay                                                                                                                            |
+| `--no-mcp`               | No MCP servers or tools; also binds subagents                                                                                                              |
+| `--enable <id>`          | Enable a tool, MCP server, skill, harness or boolean setting for this run (repeatable; ids as in [configuration](configuration.md#changing-configuration)) |
+| `--disable <id>`         | Disable one for this run (repeatable)                                                                                                                      |
+| `--set <key>=<value>`    | Set a settings key for this run (repeatable)                                                                                                               |
+
+`--tools` is this session's allowlist; a subagent keeps its profile's tools. Tool selection: [native features](native-features.md#tool-selection-and-migration). User code extensions are not supported: `--extension`, `-e` and `--no-extensions` are unknown. Built-in features switch with the `extensions` setting (`-builtin:llama.cpp`); MCP is always on unless `--no-mcp`.
+
+### Resources and interface
+
+| Flag                                                 | Does                                                         |
+| ---------------------------------------------------- | ------------------------------------------------------------ |
+| `--skill <path>` / `--no-skills`                     | Load a skill file or directory (repeatable) / disable skills |
+| `--prompt-template <path>` / `--no-prompt-templates` | Same for [prompt templates](prompt-templates.md)             |
+| `--theme <path>` / `--no-themes`                     | Same for [themes](themes.md)                                 |
+| `--use-theme <name[/name]>`                          | Initial theme for this run                                   |
+| `--no-context-files`                                 | Skip `AGENTS.md` discovery                                   |
+| `--tui-mode fullscreen\|regular`                     | Terminal UI mode (default `fullscreen`)                      |
+| `--verbose`                                          | Verbose startup, overriding `quietStartup`                   |
+| `--help`, `-h` / `--version`, `-v`                   | Help / version                                               |
+
+### Headless
+
+| Flag           | Does                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--no-stdin`   | Do not read piped stdin                                                                                                                            |
+| `--no-dialogs` | RPC: nobody answers dialogs; asks are refused as in a text run ([RPC](rpc.md#protocol))                                                            |
+| `--rpc-ask`    | RPC: the client answers `ask` requests (typed question batches) instead of `select`, `confirm` and `input` dialogs; a subagent always runs with it |

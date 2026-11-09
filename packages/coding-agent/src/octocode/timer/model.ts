@@ -34,9 +34,13 @@ export interface TimerSetInput {
 	deadline?: number;
 }
 
+/** The longest wait or interval one timer takes: a larger number is a typo, and past 2^53 ms it would not store as an integer. */
+const MAX_SECONDS = 30 * 24 * 3600;
+
 const seconds = (value: number | undefined, name: string): number | undefined => {
 	if (value === undefined) return undefined;
 	if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be a number of seconds, 0 or more.`);
+	if (value > MAX_SECONDS) throw new Error(`${name} is at most ${MAX_SECONDS} seconds (30 days).`);
 	return value;
 };
 

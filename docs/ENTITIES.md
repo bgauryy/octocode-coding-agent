@@ -1,262 +1,135 @@
-# Entities and composition
+# Entities: what Octocode stores and how the pieces relate
 
-## Summary
-
-The [database package](../packages/db/README.md) owns SQLite connections, schema, queries, and history retention. Backlogs, sessions, agents, team messages, and memories have distinct records and lifecycles. Their features validate domain operations before calling the database API.
-
-The model includes epic, task, bug and research types, parent hierarchy, dependency arrays, typed links, completion history, and a live local workspace with agent controls, comments, audit history and shared report presentation. Optional future capabilities below remain deferred. Sessions, messages, agents, and memories keep their existing domain contracts. See [interface architecture](INTERFACE_ARCHITECTURE.md) for the shared application port for domain rendering contracts.
-
-## Database relationships
-
-Schema version 3 (additive migrations: the nullable `agents.end_hint`, then `agents.cwd`, `branch` and `process_title` and the `agent_runs` table; an older Octocode still reads and writes the file) uses one database per configured user home. All checkout-local ownership ultimately resolves to `workspaces.id`. Multiple historical workspaces can have the same display name or last-known path. A file-serving route checks the current directory binding before reading anything at that path.
-
-| Tables                                                                      | Ownership and relationships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspaces`                                                                | Stable workspace UUID, display name, canonical root and filesystem identity. A name index returns all matches. Git checkouts also record the common Git directory and a linked-worktree flag. The repository index groups linked checkouts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `sessions`, `session_transcripts`, `session_entries`, `session_forks`       | A session can own one JSONL header and many ordered entries. Entries carry their tree parent and full payload. Host-created forks link the child and parent sessions. Imported sessions can remain unbound until their original workspace is identified.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `compaction_summaries`                                                      | Each summary belongs to a session in the same workspace and records the compacted entry ID. Detail copies on disk have a separate retention window.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `backlog`, `backlog_tasks`                                                  | Item and task numbers belong to a workspace. Composite foreign keys require parents, origins and task items to belong to the same workspace.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of a backlog item. A typed link can point to an external URL, file or session. A completion operation key is unique within its item.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `backlog_audits`, `workspace_commands`                                      | A workspace retains item history and command receipts. The receipt key includes workspace, session and client request ID. Audit references survive item removal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `agents`, `agent_events`, `messages`, `deliveries`                          | Presence, lifecycle events and sent messages record their origin workspace. An isolated child can reserve files in its parent's workspace through an optional `agents.lease_workspace_id`. The roster resolves `checkout` from that workspace or the origin. A team spans a repository. A message can reply to another message and have multiple recipient deliveries. Agent names in retained records can outlive presence. A `delete` event records why the row ended and its last numbers: `reason` (`completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed` or `left`; stored `reaped`, `removed` and `replaced dead registration` read as `crashed`), optional `detail`, `startedAt`, `joinedAt`, `seenAt`, `status`, `toolCalls`, `input`, `cacheRead`, `output`, `cost`, `unpriced` and `pid`, as additive keys of a version 1 event. `agents.end_hint` is the cause a parent leaves before it stops a child (`stopped-user`, `stopped-parent`, `failed`); whoever retires the row uses it unless the leaver names its own reason, and the first hint stays. A `stalled` `update` event notes a running agent silent for ten minutes, once per silence. |
-| `agent_runs`                                                                | One audit row per run of an agent (a subagent the parent started, or a main session): profile, model, one-line goal, where it worked (`cwd`, `branch`, `process_title`, `pid`), the backlog item it was started for (`backlog_workspace`, `backlog_seq`), start and end with the end reason, final numbers, the files it changed (count and first 50 paths), and the outcome the parent reported with its report path. `run_id` is the parent's id for the run and `registration_id` the agent's own join, linked when it registers (a main session's run id is its registration id). One run is open per agent name: a new run of the name closes an older open one as `crashed`. Whoever retires the `agents` row writes the end; the parent writes the outcome, and the end only when no row is left (a child that never joined). It outlives the row and is deleted with the other history after `retention.days` (never archived). `resolveAgent` (`packages/db/src/queries/agent-resolve.ts`) finds an agent from its name, session id, registration or run id, process title, pid or a backlog ref, live row first.                                                               |
-| `leases`, `edits`                                                           | Checkout-level reservations and edits carry a workspace FK. Lease checks resolve the current physical checkout root through the workspace catalog.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `memories`                                                                  | A scope constraint selects exactly one owner: a workspace UUID, a project key or the global collection. An FTS index provides search when SQLite supports it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `meta`, `config_audits`, `trusted_folders`                                  | Database housekeeping, configuration audit history and user trust grants. Trust follows its own folder identity and scope, independently of a workspace marker.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-
-Session entry IDs, external link targets and historical actor names include logical references enforced by their producers. Backlog hierarchy and transition rules are checked in domain transactions. Consult the [schema](../packages/db/src/schema-sql.ts), [transcript tables](../packages/db/src/queries/transcripts.ts) and [storage paths](../CONFIGURATIONS.md#workspace-storage).
-
-## Design
-
-### Naming and cardinality
-
-- Use plural collection names: `backlogs`, `sessions`, `agents`, `runs`, `messages`, `files`, `links`, `comments`, `audits`, `completions`, `memories`.
-- A collection holds individual records: `BacklogItem`, `Session`, `Run`, `FileRef`. Keep singular fields for one value: `parentId`, `goal`, `reason`, `state`.
-- `files` always accepts multiple files, including an empty list. A file reference has one `path`; do not rename that to `paths`.
-- Preserve existing public commands and storage names, including `/backlog`, the `backlog` table, and existing module paths. Apply plural naming to new collections without a disruptive rename campaign.
-- Do not unify transcript messages with team messages, backlog states with run states, or file references with artifacts. Similar presentation does not imply shared ownership.
-
-### Owners and records
-
-These are responsibilities inside the existing application, not a request for a new module or table per row. Paths below are relative to `packages/coding-agent/src/` unless stated otherwise.
-
-| Collections / concepts                          | Owner                                                          | What deserves identity or storage                                                                                                                                        |
-| ----------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `backlogs`                                      | `octocode/backlog/`                                            | Durable work items; child `comments`, `completions`, and `links`; append-only `audits`. Owns hierarchy, claims, state changes, and history.                              |
-| Application events and dispatch                 | `core/application/`                                            | Shared session projection and dispatch; local terminal capability and serializable browser capability.                                                                   |
-| `commands`, `receipts`, transport               | `octocode/workspace/`                                          | Authenticated host adapter and durable delivery; delegates execution to the application port and existing team/backlog owners.                                           |
-| Browser views and state                         | `packages/webview/`                                            | Rendering and interaction, with no database or agent execution imports.                                                                                                  |
-| Shared contracts                                | `packages/contracts/`                                          | Entity schemas, records, and workspace protocols shared by host and UI.                                                                                                  |
-| `sessions`, `entries`                           | `core/session-manager.ts`, `core/agent-session.ts`             | Durable conversation tree and session lifecycle. JSONL records the conversation tree. SQLite mirrors the header and ordered entries and indexes the session.             |
-| `agents`, `profiles`, `runs`, `reports`         | `octocode/subagents/`; presence in `octocode/team/`            | Profiles are definitions; agents are executors; runs are attempts; reports are results. Presence is a temporary view. Preserve each distinction without four new stores. |
-| `messages`, `deliveries`                        | `octocode/team/`                                               | One team message has many recipient deliveries. Delivered and answered are separate facts. Transcript messages remain session entries.                                   |
-| `memories`                                      | `octocode/memory/`                                             | Reusable knowledge with scope, provenance, and existing trust/deduplication rules.                                                                                       |
-| `files`, `artifacts`, `checkpoints`, `jobs`     | `octocode/files/` and producing modules                        | Files are references, artifacts are produced outputs, checkpoints support recovery, jobs track shell execution. No generic file catalog is needed.                       |
-| `repositories`, `workspaces`, `leases`, `edits` | `octocode/shared/home.ts`, `octocode/team/`, worktree owner    | Scope values, concrete checkouts, temporary reservations, and observed edits. A reservation is not task ownership.                                                       |
-| `questions`, `approvals`, `audits`, `hooks`     | `octocode/ask/`, `permission/`, `hooks/`                       | Preserve distinct interaction and authorization rules. A message or link never grants permission.                                                                        |
-| `tools`, `toolCalls`                            | Agent loop, core, native/MCP adapters                          | Capability definitions versus executions. Nested calls retain their parent call identity.                                                                                |
-| `connections`, `receipts`, `tabs`, `downloads`  | `octocode/api/`, `external/`, `browser/`, RPC and MCP adapters | Scoped execution resources; preserve their existing expiry and recovery behavior. Credentials are never reference metadata.                                              |
-| `models`, `providers`, `settings`, `skills`     | AI package and core resource/configuration owners              | Configuration and capability definitions; record resolved versions on executions when needed.                                                                            |
-| `traces`, `metrics`, boards, feeds, counters    | Telemetry and presentation owners                              | Diagnostics or computed projections. They do not become authoritative work records.                                                                                      |
-
-Keep shared code limited to reference values and genuinely reused utilities. The application composition root connects owners. UI adapters consume data and invoke owner operations; they do not update SQL themselves. Run/result data types live in `subagents/run-types.ts`, with compatibility exports from `subagents/render.ts`.
-
-### Backlogs: small at capture, useful at completion
-
-| Fields                                          | Requirement                                                                                                                                                                                                                   |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`                                         | Required to capture an item.                                                                                                                                                                                                  |
-| `type`                                          | `task` by default; `epic`, `bug`, or `research` when useful. An epic groups work toward a larger goal. Use `epic` instead of the previously proposed `plan` type; keep `plan` as optional approach text.                      |
-| `why`, `goal`                                   | Why this matters and what success looks like. Required before starting or completing new work; optional for human capture. Existing agent creation still requires a goal.                                                     |
-| `state`                                         | Existing `backlog`, `todo`, `ongoing`, `done`.                                                                                                                                                                                |
-| `parentId`                                      | Optional single parent in the same workspace. No cycles. Any item may contain smaller work; `epic` identifies a larger outcome, not a separate storage model.                                                                 |
-| `priority`, `tags`, `paths`, `evidence`, `plan` | Existing optional planning details. `paths` describes intended scope, including directories; completion `files` records actual related files. Evidence that is only a repository path or URL is stored as an `evidence` link. |
-| `dependsOn`                                     | Optional array of scoped backlog references; empty by default. Names prerequisites, not children.                                                                                                                             |
-| `links`                                         | Optional typed relationships. Existing `from` remains provenance, separate from hierarchy.                                                                                                                                    |
-| `comments`, `audits`, `completions`             | Child collections, loaded in detail/history views rather than embedded in every board card.                                                                                                                                   |
-| IDs, claim, authors, times, `version`           | Supplied or managed by the runtime. Do not ask users to fill these in.                                                                                                                                                        |
-
-`why` is the one name for the reason behind an item (B212). The entity contract has no `reason` alias: in the agent tool, `reason` is every call's purpose and is never stored. The board API (`BacklogMutationSchema`) still accepts `reason` from older clients; the host maps it to `why` and refuses a request whose `reason` and `why` differ. The `body` column stays for old rows and is shown when set, but no tool, command or API writes it. Evidence entries that are a nested repository path (`src/a.ts`, `docs/`, `.octocode/x/report.md`) or an http(s) URL become `evidence` links on write; rows stored before that read the same way, and their next update writes those links out.
-
-Optional later capabilities: blocked metadata with a reason; archive metadata for completed, cancelled, duplicate, or obsolete work. Keep these out of the initial required record and form. They need consistent support from all active writers before activation.
-
-### Composition rules
+One SQLite database per Octocode home keeps backlog items, sessions, agents, team messages, memories and more. Each kind has its own record and lifecycle; do not merge them (transcript messages are not team messages, backlog states are not run states, file references are not artifacts). Storage locations and retention: [configuration](../packages/coding-agent/docs/configuration.md#runtime-storage).
 
 ```mermaid
 flowchart LR
-    Parents[Parent backlog items] -->|contain| Children[Child backlog items]
-    Children -->|refer to attempts| Runs[Runs]
-    Runs -->|execute in| Sessions[Sessions]
-    Runs -->|executed by| Agents[Agents]
-    Runs -->|produce| Reports[Reports]
-    Children -->|retain| Completions[Completions]
-    Completions -->|reference| Outputs[Files and artifacts]
-    Completions -->|selected learning| Memories[Memories]
+  Parent[Parent item] -->|contains| Child[Child item]
+  Child -->|attempts| Run[Run]
+  Run -->|executes in| Session[Session]
+  Run -->|executed by| Agent[Agent]
+  Run -->|produces| Report[Report]
+  Child -->|keeps| Completion[Completion]
+  Completion -->|references| Out[Files and outputs]
+  Completion -->|selected lesson| Memory[Memory]
 ```
 
-An item can involve several sessions, agents, and attempts. A session can work on several items. Use links for this many-to-many context; `sourceSession` records origin, not exclusive ownership. Keep the current single active claim and parent/subagent authority rules.
+An item can involve several sessions, agents and attempts, and a session can work on several items: use links, not exclusive ownership.
 
-`parentId` answers **“part of what?”**; `dependsOn` answers **“waiting for what?”**; `derived_from` answers **“discovered from what?”**. Never infer one from another. Compute children and inverse links from stored relationships; do not maintain duplicate arrays on both ends.
+## Database
 
-Parents and dependencies need separate transactional cycle checks. No cross-repository parentage initially. Cross-repository reference resolution still checks access. Parent completion requires no open descendants and confirmation of its own goal; completed children do not automatically complete the parent. Reopening a child flags a completed ancestor for review without erasing its result. Refuse deletion of parents with children; require explicit reparenting or a separately designed archival operation.
+Schema version 8, migrated additively where possible so an older Octocode can usually still read the file; backlog writes by an older version are refused (see [guarantees](#guarantees)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
 
-### Epics and dependencies
+| Tables                                                                      | Holds                                                                                                                                              |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces`                                                                | Workspace UUID, display name, canonical root, filesystem identity, git common dir and linked-worktree flag; the repository index groups checkouts  |
+| `sessions`, `session_transcripts`, `session_entries`, `session_forks`       | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload) and host-created fork links; imports can stay unbound |
+| `compaction_summaries`                                                      | One summary per compacted entry of a session; detail copies on disk have their own retention                                                       |
+| `backlog`, `backlog_tasks`                                                  | Items and steps, numbered per workspace; parents, origins and steps must share the workspace                                                       |
+| `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of an item; a completion's operation key is unique within its item                                                                        |
+| `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                    |
+| `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                 |
+| `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                     |
+| `timers`                                                                    | The `timer` tool's wakes                                                                                                                           |
+| `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                            |
+| `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                    |
 
-Use `type: "epic"` for a larger outcome, with ordinary backlog items beneath it through `parentId`. Tasks, bugs, and research may be children. An epic is itself a backlog item with reason, goal, state, and completion history; no separate epics table or mandatory story layer. Standalone tasks remain valid. Child counts show progress, not a claim about percentage of effort completed.
+Migrations 2 to 8 added `agents.end_hint`, the `agent_runs` table with agent location columns, `timers` (and later more wait conditions), `backlog.closed`, `backlog.rank` (manual card order) and cache-write token counts.
 
-Expose `dependsOn` as a convenient array in commands and read models. Persist each dependency once as a `depends_on` relationship in `backlog_links`; derive `dependsOn` and the inverse `blocks` view from those rows. Do not also store a JSON dependency array. Keep generic link editing for other relations so callers cannot send conflicting dependency representations.
+## Agents, runs and mail
 
-```json
-{
-	"id": "B22",
-	"type": "task",
-	"title": "Build the Kanban view",
-	"parentId": "B20",
-	"dependsOn": [{ "resource": "backlogs", "repositoryKey": "repo-a", "id": "B21" }]
-}
-```
+| Record  | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Profile | A definition (role instructions, tools, model preference)                                                                                                                                                                                                                                                                                                                                                                |
+| Agent   | A live executor; presence is a temporary view. A team spans a repository. An isolated child can reserve files in its coordinator's workspace                                                                                                                                                                                                                                                                             |
+| Run     | One audit row per run of an agent: profile, model, goal, where it worked (folder, branch, process title, pid), the backlog item it was started for, start and end with reason, final numbers, changed files (count and first 50 paths) and the reported outcome with its report path. One run is open per agent name; a new one closes an older open one as `crashed`. Deleted with other history after `retention.days` |
+| Report  | The result a coordinator receives (`done`, `partial`, `blocked`, `failed`)                                                                                                                                                                                                                                                                                                                                               |
+| Message | One team message with many recipient deliveries and an optional reply link. Delivered and answered are separate facts                                                                                                                                                                                                                                                                                                    |
+| Event   | `agent_events` keeps lifecycle events. A `delete` event records why a row ended (`completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed`, `left`) and its last numbers (tool calls, input, cache read, output, cost, pid, times). A `stalled` update marks an agent silent for ten minutes, once per silence                                                                                   |
 
-Here B20 is the epic, and B21 is a prerequisite such as the backlog API. B22 belongs to B20 but waits for B21. Command shortcuts may accept `"B21"` within the current repository; read models retain qualified references.
+`agents.end_hint` is the cause a coordinator leaves before stopping a child; whoever retires the row uses it unless the leaver names its own reason, and the first hint stays. `/agents <ref>` shows one agent, `/agents` recent runs, and `backlog get` lists the runs of an item. Details: [agents](AGENT_COMMUNICATION.md#how-an-agents-end-is-recorded).
 
-- On update, omitted `dependsOn` leaves dependencies unchanged; `[]` clears them; a supplied array replaces them atomically with an expected version. Deduplicate targets and reject self-links or missing targets. Initially allow dependency mutations only within the repository; cross-repository links can remain informational until cross-store consistency is designed.
-- Dependencies are finish-to-start prerequisites: unresolved prerequisites prevent starting or completing the dependent item. They are satisfied by `done`, not merely by an ended run, missing target, or cancellation. Removing a dependency is an explicit audited edit.
-- Validate the combined waiting graph: prerequisite edges plus each parent's implicit wait for its children to finish. Separate hierarchy/dependency checks alone miss deadlocks, such as a child depending on its own epic, or two children depending on each other's epics. Reparenting and dependency edits must both preserve this invariant.
-- Adding an unresolved prerequisite to ongoing/done work requires first returning that work to todo. If a prerequisite is later reopened, retain downstream history and flag impacted work for review; do not cancel running work or silently reopen completed items. Completion still checks current prerequisites.
-- Show **Blocked by** and **Blocks** in details, a dependency count on cards, and a Ready filter. Derive dependency blocking; do not copy it into manually maintained blocked metadata. When a prerequisite completes, readiness updates without automatically launching work.
+A backlog item is written `B36` in its own workspace and `<workspace name>:B36` (the workspace id when the name is unknown) elsewhere; both forms parse.
 
-This is a design choice informed by [Linear's separate blocking/related relations](https://linear.app/docs/issue-relations) and [Atlassian's epic grouping of tasks and bugs](https://support.atlassian.com/jira-cloud-administration/docs/what-are-issue-types/). It adds a useful API convenience and a familiar work type without adding another system.
+## Backlog items
 
-### References, without a universal entity
+Small at capture, useful at completion: only a title is needed to create an item.
 
-Use a discriminated union of owner-specific references, with plural resource names. Examples:
+| Field                                           | Notes                                                                                                                                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`                                         | Required                                                                                                                                                                            |
+| `type`                                          | `feature` (default), `epic`, `bug`, `research`. An epic is an ordinary item that groups work; there is no epics table                                                               |
+| `why`, `goal`                                   | Why it matters and a checkable definition of done; required before an agent starts or completes new work, optional for human capture                                                |
+| `state`                                         | `backlog` (proposed), `todo` (accepted), `ongoing` (claimed), `done`. A closed item is `done` with a closure (`obsolete`, `duplicate` of another item, `wont_do`) and no completion |
+| `parentId`                                      | One optional parent in the same workspace; no cycles                                                                                                                                |
+| `dependsOn`                                     | Prerequisites (finish-to-start); stored once as `depends_on` links, and the inverse `blocks` is derived                                                                             |
+| `priority`, `tags`, `paths`, `evidence`, `plan` | Optional. `paths` is intended scope; completion `files` records what changed. Evidence that is a repository path or http(s) URL becomes an `evidence` link                          |
+| `links`                                         | Typed relations: `related`, `derived_from`, `evidence`, `output`; local backlog references resolve inside the repository and grant no access                                        |
+| `comments`, `audits`, `completions`             | Child collections shown in detail views, not on cards                                                                                                                               |
+| ids, claim, authors, times, `version`, `rank`   | Managed by the runtime                                                                                                                                                              |
 
-```json
-[
-	{ "relation": "depends_on", "target": { "resource": "backlogs", "repositoryKey": "repo-a", "id": "B12" } },
-	{ "relation": "related", "target": { "resource": "sessions", "namespace": "local", "id": "session-123" } },
-	{ "relation": "evidence", "target": { "resource": "files", "repositoryKey": "repo-a", "path": "src/router.ts" } }
-]
-```
-
-Each resource has its own required scope and identifier fields; do not use an unrestricted `{type, id, metadata}` bag. A bare `B12`, PID, tool-call ID, or recycled agent name is insufficient outside its scope. Add durable agent/run identity before supporting historical links to them; do not silently resolve an old name to a new executor.
-
-Start relations with `related`, `derived_from`, `depends_on`, `evidence`, and `output`. Add `duplicate_of` when duplicate handling ships. Dependency and duplicate targets must be backlog items. Add resolvers for other catalog entries as consumers need them, rather than building an unused resolver for every concept now. Preserve unsupported references visibly instead of inventing a target or discarding them.
-
-Local backlog references resolve within the current repository. Other typed links are retained and displayed as references; owner-specific resolution is deferred. Future resolvers must apply existing permissions and report unavailable, expired, or unsupported targets. References grant no access. Keep useful summaries after transient messages disappear. Reuse existing URLs for external sources, with safe protocols and no embedded credentials.
-
-### Completion and learning
-
-Finishing asks for **a quick summary and related files**. The runtime supplies identity, actor, time, item version, and the completed goal snapshot. Checks can be suggested from observed results; never inferred as passed from a confident summary.
-
-```json
-{
-	"operationKey": "board-completion-1",
-	"summary": "Added searchable backlog columns and task details.",
-	"files": [
-		{ "path": "src/board.ts", "role": "changed" },
-		{ "path": "test/board.test.ts", "role": "reviewed" }
-	],
-	"verification": { "status": "passed", "summary": "Board tests passed." }
-}
-```
-
-Completion inputs may carry `operationKey`, a retry key; the `backlog` tool derives one from the item id and the completion content when it is omitted, so resending the same completion is recognised and a different one is not (an explicit key wins); on a done item a new completion corrects the latest one: `replaces` defaults to its ID and may only name it. Files inherit the item's repository unless explicitly qualified. Roles are `changed`, `reviewed`, or `produced`; revision is optional; content hashes remain deferred. `files: []` is valid for work without files. Missing historical files means unknown. Never assign every dirty checkout file to the task.
-
-Verification statuses are `passed`, `failed`, `not_run`, and `not_applicable`. A person may explicitly finish unverified work, shown as unverified. Agents must not complete work whose required checks failed or were not performed. The authenticated caller context determines the policy; a caller-provided author string is not authority.
-
-An optional `lesson` captures one reusable observation. No mandatory retrospective, scores, or additional knowledge database. A user or agent can explicitly copy selected lessons through the existing memory tool with source references. Automatic promotion and a dedicated promotion operation remain deferred.
-
-Keep `completions` as immutable history. Reopen preserves earlier results; correction appends a replacement. Derive the current completion for display rather than storing another copy. Keep failed attempts in runs/reports/notes. Search summaries and files before considering embeddings.
-
-### States and management
-
-- **Backlog:** proposed. **Todo:** accepted. **Ongoing:** claimed and started. **Done:** goal closed with a recorded result.
-- Store lifecycle validation centrally so tool, terminal, and web writes agree. State, completion, history, and version changes commit together; completion retries use an operation key. A correction replaces the latest completion (`replaces` optional); reopening requires a note and retains prior results.
-- The web API requires expected versions for edits/deletion; tool and internal store callers support expected versions for compatibility with existing integrations. Return a conflict and current data when stale; do not silently overwrite another writer.
-- Keep work state, run lifecycle, report outcome, delivery state, and process liveness separate. Preserve existing report outcomes `done | partial | blocked | failed`. No global status enum or mass run-state migration is needed for this design.
-- Blocking, if enabled, is metadata on unfinished work. Dependencies are separate indicators. A stale process is not evidence that a goal failed or succeeded.
-- Archive, if enabled, hides work from the active board without representing cancellation as success. Restore must not revive a stale claim.
-
-### Board UX
-
-Keep the four Kanban columns. Cards show title, type, priority, assignee, and optional parent/child progress. Show reason, goal, files, links, notes, and completion history in details; avoid turning every card into a full report.
-
-Creation needs one title. Starting asks only for missing reason/goal. Finishing asks for the short result, offers related files, and exposes verification honestly. Search and filters work across states; collapsed or paginated results show their counts. Children remain discoverable both within a parent and across status columns.
-
-The default `/backlog` view is a live loopback web app with create/edit forms, explicit status selection, authenticated WebSocket updates, and conflict handling. State changes use accessible form controls; drag-and-drop is not implemented. `/backlog html` remains an offline snapshot with its generation time. Both use the same store-backed data model. Saves use the validated HTTP API; the WebSocket pushes snapshots and reconnects automatically without replacing open drafts. A server-side database revision check every 500 ms detects writes from other processes. Socket authentication uses the first message, never a query-string token, and requires the board’s exact origin.
-
-### Comments, audits and command receipts
-
-- `comments`: stable `id`, `backlogId`, `author`, `at`, `text`. Stored in `backlog_comments` with a foreign key to the item. Comments are append-only; add a correction instead of rewriting another person's words. The existing `note` input remains compatible: a database trigger creates its comment entity. Old notes are migrated once, preserving their author and time.
-- `audits`: stable `id`, repository scope, `backlogId`, `actor`, `at`, `entity`, `action`, `before`, `after`. SQL triggers capture item fields, links, completions, comments and linked command receipts in the same transaction. Rollback removes the attempted mutation and its audit together. Audit records cannot be updated/deleted through ordinary SQL, survive item deletion, and redact credential-looking values when read. This is history integrity, not protection against an administrator replacing the database. Field-level history begins at upgrade; earlier edits are not reconstructed.
-- Workspace `commands` / `receipts`: request `id`, repository, session, optional `backlogId`, action/input, time, status and message. States are `pending`, `accepted`, `failed`; acceptance is not execution success. Retries with the same ID and same input return the existing receipt; changing input under that ID is refused. A pending receipt after a crash is uncertain and is not automatically dispatched again. Receipt history does not replace runs or reports. Application-port receipts use `accepted`, `completed`, and `failed`; completion describes processing the request, not completion of queued follow-up work. They share durable storage but use a separate command family and are excluded from workspace receipt snapshots.
-
-Comments never contact agents automatically. **Add comment** submits only the comment and expected version, so another session's claim does not prevent discussion. **Send to agent** explicitly sends through the team's existing routing, hooks and delivery records. The browser cannot select its own author or force changes.
-
-### Workspace application and interface boundaries
-
-The browser application lives in `packages/webview`: page composition, board views, workspace views, styles, Markdown/code rendering, and Zustand state. `packages/contracts` is the shared contracts package: entity/reference/completion schemas, backlog snapshots, agent presence and message-delivery records, workspace commands/receipts/events, HTTP route constants, and request validation schemas. It depends only on TypeBox.
-
-The shared application port is defined in `contracts` and implemented in `coding-agent/src/core/application`. Terminal consumes its lossless native event capability; web consumes its versioned semantic stream. The interfaces share execution authority while keeping their rendering and local UI capabilities separate. See [interface architecture](INTERFACE_ARCHITECTURE.md) for supported operations, lifecycle rules, and verification.
-
-The host adapter stays in `packages/coding-agent/src/octocode/workspace`: `server.ts` enforces authenticated local HTTP/WebSocket access, `runtime.ts` adapts session/team operations, and `commands.ts` owns durable receipts. The application package depends on webview and contracts; webview depends on contracts; neither new package imports coding-agent. Existing backlog model/HTML entry points re-export their new owners for compatibility. Database rows, permissions, session lifecycle, and agent launching remain host responsibilities.
-
-Build contracts before webview, and both before coding-agent. Root build scripts follow this order. The source resolver, TypeScript paths, and test aliases resolve the packages to current source; packaged consumers resolve their built exports.
+`why` is the one name for the reason behind an item. In the agent tool `reason` is every call's purpose and is never stored; the board API still accepts `reason` from old clients and maps it to `why` (refusing a request whose two differ).
 
 ```mermaid
-flowchart LR
-  Web[Web views] --> Gateway[Authenticated workspace operations]
-  Terminal[Terminal commands] --> Work[Shared backlog dispatch]
-  Gateway --> Work
-  Gateway --> Team[Team messaging and delivery]
-  Gateway --> Store[Backlog store]
-  Store --> History[Comments and transactional audits]
-  Work --> Session[Current agent session]
-  Session --> Launch[Existing subagent launch and permissions]
-  Launch --> Results[Structured progress and reports]
-  Results --> Presentation[Shared report presentation]
-  Presentation --> Web
-  Presentation --> Terminal
+stateDiagram-v2
+  [*] --> backlog: proposed
+  [*] --> todo: accepted
+  backlog --> todo
+  todo --> ongoing: claimed (needs why and goal)
+  ongoing --> done: completion recorded
+  todo --> done: closed (obsolete, duplicate, wont_do)
+  done --> todo: reopened with a note
 ```
 
-**Work with current agent** claims the item and queues its saved context in the current session. **Request new agent** queues a delegation request for that agent; the existing agent tool still performs profile selection, slot handling, permission checks and launch. It does not report a child as started merely because delegation was accepted. Stop requests apply to background agents owned by the current session. Permission/question dialogs remain in the owning terminal session; the web cannot approve them.
+| Relation       | Answers               | Rule                                                                                                                                                                                                            |
+| -------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parentId`     | Part of what?         | A parent finishes only when no descendants are open and its own goal is confirmed; reopening a child flags a done ancestor for review; a parent with children cannot be deleted                                 |
+| `dependsOn`    | Waiting for what?     | Unresolved prerequisites block starting or completing; only `done` satisfies one. Omitted leaves dependencies unchanged, `[]` clears, an array replaces atomically; self-links and missing targets are rejected |
+| `derived_from` | Discovered from what? | Provenance only; never inferred from the other two                                                                                                                                                              |
 
-The **Agents** view shows live presence and delivery status. **Activity** shows session/tool events and structured results. The shared `subagents/presentation.ts` adapter supplies report summary, body and file references to both the terminal renderer and the web runtime. Browser prose uses sanitized Markdown and code highlighting; raw source remains available, and agent content cannot supply executable widgets. Transport and UI contain no second agent execution engine.
+Parent and dependency checks share one waiting graph (a child waiting on its own epic, or two children on each other's epics, is refused). Adding an unresolved prerequisite to ongoing or done work first returns it to `todo`. When a prerequisite reopens, downstream history stays and affected work is flagged. Dependencies are within one repository.
 
-The event feed is a bounded recent projection (up to 200 events and roughly 256 KiB), reset when the session changes. The session transcript remains authoritative. Long output is explicitly shortened in the feed. WebSockets deliver full current projections after reconnection; open drafts are preserved. Audit pages load older records by cursor; item detail includes its latest 50 audit events. Receipts are durable, while live presence and activity are transient. Switching or closing the session closes its web connection and cancels pending message operations.
+Example: B22 (a Kanban view) is a child of epic B20 and depends on B21 (the backlog API): it belongs to B20 but waits for B21. The board shows **Blocked by** and **Blocks**, a dependency count and a Ready filter.
 
-## Decisions
+### Completion
 
-| Decision                                                                                         | Reason                                                                                                                 |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Add type, parentage, completions, and scoped links                                               | Directly supports plans, traceable results, and the requested composition.                                             |
-| Reuse existing reason/goal, stages, stores, session history, claims, and memory                  | Avoids competing sources of truth and migration work without product value.                                            |
-| Keep rich planning, lessons, file revisions, and execution links optional                        | Useful when available; unnecessary friction for routine tasks.                                                         |
-| Defer archive/blocking, broad resolvers, and durable execution expansion                         | Each needs its own lifecycle and compatibility proof; none is a prerequisite for basic hierarchy and result recording. |
-| Reject a universal entity table, universal states, mandatory templates, and a new files database | These combine unlike responsibilities or duplicate existing data.                                                      |
+Finishing asks for a short summary and the related files; the runtime adds identity, time, item version and a snapshot of the goal.
 
-Contracts live in [contracts `backlogs.ts`](../packages/contracts/src/backlogs.ts); the existing store owns transactions and lifecycle checks. The [local server](../packages/coding-agent/src/octocode/workspace/server.ts), agent tool, and terminal commands call that store. Additive `backlog_completions` and `backlog_links` tables retain results and relationships. Do not convert `from` into parentage or fabricate completions for existing done items; label those results as unrecorded.
+| Part           | Values and rules                                                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `summary`      | What was done                                                                                                                                                                                                                              |
+| `files`        | Each with `role` `changed`, `reviewed` or `produced`; `[]` is valid; an unknown history means unknown, never every dirty file                                                                                                              |
+| `verification` | `passed`, `failed`, `not_run`, `not_applicable`; a person may finish unverified work (shown as unverified); agents must not complete work whose required checks failed or did not run                                                      |
+| `lesson`       | Optional single observation; copy it to memory explicitly                                                                                                                                                                                  |
+| `operationKey` | Retry key; the `backlog` tool derives one from the item and content when omitted, so resending the same completion is recognized. On a done item a new completion corrects the latest (`replaces` defaults to its id and may name only it) |
 
-Additive SQL is not enough for old-writer compatibility: old binaries can bypass new invariants. The implemented minimum-writer boundary uses connection-local capability checks in backlog insert/update/delete triggers, tested against an older-style connection. Do not activate features that older active writers can corrupt. Rollback must preserve new records and their protections.
+Example: `{ "summary": "Added searchable columns", "files": [{ "path": "src/board.ts", "role": "changed" }], "verification": { "status": "passed", "summary": "Board tests passed" } }`.
+
+Completions are immutable history: reopening keeps earlier results and a correction appends a replacement. Failed attempts live in runs, reports and notes.
+
+### Comments, audits and receipts
+
+| Record  | Behavior                                                                                                                                                                                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Comment | Append-only (id, author, time, text); the `note` input creates one. Comments never contact agents; **Send to agent** is a separate action through team routing                                                                                                                                                      |
+| Audit   | Written by SQL triggers in the same transaction as the change (item fields, links, completions, comments, receipts); a rollback removes both; cannot be updated or deleted through ordinary SQL, survives item deletion, redacts credential-looking values. History integrity, not protection from an administrator |
+| Receipt | `pending`, `accepted`, `failed` per request id; the same id with the same input returns the existing receipt, changed input is refused; a pending receipt after a crash is uncertain and not re-dispatched. Acceptance is not execution success                                                                     |
+
+### Board behavior
+
+Four columns; cards show title, type, priority, assignee and child progress, with details for why, goal, files, links, notes and completion history. `/backlog` opens a live loopback page (forms, explicit state selection, WebSocket updates that never replace open drafts, conflict handling; no drag and drop); `/backlog html` writes an offline snapshot. Edits and deletes need the expected version and return a conflict with current data when stale. The server checks the database revision every 500 ms to see other processes' writes. Web actions: **Work with current agent** claims the item and queues its context in the session; **Request new agent** queues a delegation request that the `agent` tool still validates, permits and launches; stop applies to the session's own background agents. Permission and question dialogs stay in the terminal. The feed shows up to 200 recent events (about 256 KiB); item details show the latest 50 audit events and older ones load by cursor. More: [web workspace](../packages/coding-agent/docs/web-workspace.md).
 
 ## Guarantees
 
-| Given / when                                                  | Observable result                                                                              |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Human captures a title                                        | Saved with defaults and no planning questionnaire.                                             |
-| Writers create/reparent children or dependencies concurrently | No hierarchy cycles, combined waiting deadlocks, cross-repository parents, or partial history. |
-| Dependencies are omitted, cleared, or replaced                | Existing edges stay unchanged, clear, or replace atomically; no duplicate source of truth.     |
-| A prerequisite finishes or reopens                            | Readiness updates; downstream history remains intact and affected work is flagged.             |
-| Item needs several agents, sessions, and files                | Multiple links/files work without duplicating the item or overwriting earlier context.         |
-| Completion retries or a write fails                           | One result, or no partial state transition.                                                    |
-| Work is reopened or corrected                                 | Prior goals/results remain readable; current state is clear.                                   |
-| Parent has unfinished descendants                             | Closing is refused with the outstanding work identified.                                       |
-| Target expires or an agent name is reused                     | No link resolves to an unrelated record.                                                       |
-| Older writer modifies upgraded data                           | Proven compatible behavior or explicit refusal, never silent loss of meaning.                  |
-| Tool, terminal, and web show an item                          | Same state, hierarchy, result, and permissions; safe rendering.                                |
+| When                                              | Then                                                                                         |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| A human captures a title                          | Saved with defaults; no questionnaire                                                        |
+| Writers reparent or add dependencies concurrently | No hierarchy cycles, combined waiting deadlocks, cross-repository parents or partial history |
+| A completion is retried or a write fails          | One result, or no partial transition                                                         |
+| Work is reopened or corrected                     | Earlier goals and results stay readable                                                      |
+| A parent has unfinished descendants               | Closing is refused and names the open work                                                   |
+| A target expires or an agent name is reused       | No link resolves to an unrelated record                                                      |
+| An older Octocode writes upgraded data            | Backlog writes are refused (reads keep working); never silent loss of meaning                |
+| Tool, terminal and web show an item               | Same state, hierarchy, result and permissions                                                |
 
-Writer compatibility: all backlog writers must upgrade. SQLite triggers require the connection-local `octocode_backlog_writer` and `octocode_audit_actor` capabilities that the current runtime registers. Older readers keep working and older backlog writes fail. This is a compatibility guard, not authorization.
-
-Still deferred: archive and blocking metadata, automatic memory promotion, cross-repository dependency writes, broad reference resolvers, repository portability and long-term execution retention. Keep references local and scoped until a workflow needs more.
-
-A backlog item is stored as `(workspace_id, seq)` in `agent_runs`. It is written `B36` in its own workspace and `<workspace name>:B36` (the workspace id when the name is unknown) in another, and both forms are parsed (`itemRef`, `parseItemRef`). `backlog get` lists the runs of its item; `/agents <ref>` shows one agent and `/agents` the recent runs.
+The writer guard uses connection-local capabilities that triggers check on backlog and audit writes. It is a compatibility guard, not authorization. Not implemented: archive or blocking metadata, automatic memory promotion, cross-repository dependency writes, broad reference resolvers.

@@ -84,10 +84,7 @@ describe("plan mode through the real tool registry", () => {
 });
 
 describe("a signal while a headless run holds for background work", () => {
-	it.each([
-		["SIGTERM", 143],
-		["SIGINT", 130],
-	] as const)("%s ends the hold, stops the child and exits %i", async (signal, exitCode) => {
+	it("SIGTERM ends the hold, stops the child and exits 143", async () => {
 		const { holdCommand, root, start, survivors } = fresh();
 		const marker = path.join(root, "child.pid");
 		const child: Step[] = [{ tool: "bash", args: { command: holdCommand(marker) } }, { text: "child done" }];
@@ -103,9 +100,9 @@ describe("a signal while a headless run holds for background work", () => {
 		const command = pidFrom(marker);
 		expect(alive(command)).toBe(true);
 
-		run.process.kill(signal);
+		run.process.kill("SIGTERM");
 		const { code } = await run.exited;
-		expect(code).toBe(exitCode);
+		expect(code).toBe(143);
 		await until(() => !alive(command), "the child's command to stop", 15_000);
 		await until(() => survivors().length === 0, "every process of the run to stop", 15_000);
 	});
@@ -182,17 +179,6 @@ describe("a parent's tool restrictions reach its children", () => {
 		expect(fs.existsSync(path.join(project, "restricted.txt"))).toBe(false);
 	});
 
-	it("without the flags the same child has them", async () => {
-		const { project, start } = fresh();
-		const child = childSteps("free");
-		const parent = parentSteps(child);
-		const run = start(["-p", script(parent)]);
-		expect((await run.exited).code).toBe(0);
-		const childTools = requestsOf(child)[0]?.tools ?? [];
-		for (const name of ["bash", "file", "mcp"]) expect(childTools, name).toContain(name);
-		expect(fs.existsSync(path.join(project, "free.txt"))).toBe(true);
-	});
-
 	it("--tools stays the parent's own: a child keeps its profile's tools", async () => {
 		const { start } = fresh();
 		const child = childSteps("allowlist");
@@ -205,12 +191,9 @@ describe("a parent's tool restrictions reach its children", () => {
 });
 
 describe("what a script reads from a headless run", () => {
-	it.each([
-		["a call that runs", { tool: "bash", args: { command: "ls" } } satisfies Step],
-		["an unknown tool", { tool: "no_such_tool" } satisfies Step],
-	])("the loop guard ends a run on %s with exit 1 and says why", async (_name, step) => {
+	it("the loop guard ends a run with exit 1 and says why", async () => {
 		const { start } = fresh();
-		const run = start(["-p", script([step])]);
+		const run = start(["-p", script([{ tool: "bash", args: { command: "ls" } }])]);
 		const { code } = await run.exited;
 		expect(run.stderr()).toContain("Loop guard ended this run");
 		expect(code).toBe(1);

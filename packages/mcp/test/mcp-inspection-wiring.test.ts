@@ -118,7 +118,9 @@ describe("registered MCP inspection wiring", () => {
 		for (const server of ["docs", "octocode"]) {
 			const result = await f.inspect(server);
 			expect(result.details.tools).toEqual([]);
-			expect(result.content[0].text).toBe("No tools available in the current connection.");
+			expect(result.content[0].text).toMatch(
+				new RegExp(`MCP server "${server}" is not connected .*restart it with intent restart`),
+			);
 		}
 		expect(transport.start).not.toHaveBeenCalled();
 		expect(transport.stop).not.toHaveBeenCalled();

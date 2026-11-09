@@ -79,6 +79,8 @@ export function main() {}
 				"---\nname: octocode-context-optimization\ndescription: Test\n---\n",
 			"dist/octocode/native-skills/octocode-debugging/SKILL.md":
 				"---\nname: octocode-debugging\ndescription: Test\n---\n",
+			"dist/octocode/native-skills/resume-external-harness/SKILL.md":
+				"---\nname: resume-external-harness\ndescription: Test\n---\n",
 			"dist/octocode/instructions/roles/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
 			"dist/octocode/instructions/policy/work.md": "# Work and verification\n",
 		},

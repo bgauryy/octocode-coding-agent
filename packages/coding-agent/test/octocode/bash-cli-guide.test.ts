@@ -70,15 +70,15 @@ describe("renderCliGuide", () => {
 
 	it("opens with the probed host and gives only that platform's notes", () => {
 		const mac = renderCliGuide(host("darwin", ["yq"]));
-		expect(mac.split("\n")[0]).toMatch(/^The commands below are for a quick look/);
-		expect(mac).not.toContain("Code research:");
-		expect(mac.split("\n")[1]).toBe(
+		// Read routing belongs to the research policy: the guide holds host facts only.
+		expect(mac).not.toMatch(/Code research:|The commands below are for|^Find:|^Read:/m);
+		expect(mac.split("\n")[0]).toBe(
 			"Host: macOS arm64. On PATH: git, rg; not found: yq. gh: logged in. Check any other tool with `command -v` before relying on it.",
 		);
 		expect(mac).toContain("BSD tools");
 		expect(mac).not.toContain("GNU tools");
 		const linux = renderCliGuide(host("linux"));
-		expect(linux.split("\n")[1]).toBe(
+		expect(linux.split("\n")[0]).toBe(
 			"Host: Linux arm64. On PATH: git, rg. gh: logged in. Check any other tool with `command -v` before relying on it.",
 		);
 		expect(linux).toContain("sha256sum");
@@ -89,10 +89,7 @@ describe("renderCliGuide", () => {
 
 	it("lists the octocode CLI on PATH like any other program, without usage text", () => {
 		const withCli = renderCliGuide({ ...host("linux"), present: ["git", "rg", "octocode"] });
-		expect(withCli.split("\n")[1]).toContain("On PATH: git, rg, octocode.");
-		expect(withCli).toContain(
-			"The commands below are for a quick look at one known file or log, a command's own output, binaries, processes, git and CI, and hosts without declared search and read tools.",
-		);
+		expect(withCli.split("\n")[0]).toContain("On PATH: git, rg, octocode.");
 		expect(withCli).not.toContain("`octocode");
 	});
 

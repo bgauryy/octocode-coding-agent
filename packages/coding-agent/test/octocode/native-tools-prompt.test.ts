@@ -79,7 +79,7 @@ describe("native tools and the system prompt", () => {
 			new URL("../../src/octocode/instructions/policy/research.md", import.meta.url),
 			"utf8",
 		);
-		expect(research).toContain("A quick look at one known file or a command's output can stay in bash");
+		expect(research).toContain("A quick fetch of one known file or a command's output may use bash");
 		const names = defaultToolNames([
 			{
 				owner: "native",

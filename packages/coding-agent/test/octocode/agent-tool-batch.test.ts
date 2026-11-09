@@ -27,7 +27,10 @@ function unified() {
 			entry.end = tick.now++;
 			return {
 				content: [{ type: "text" as const, text: input.background ? `Started kid-${id}` : `report for ${input.goal}` }],
-				details: { id },
+				details: {
+					id,
+					...(input.task === "fails" ? { outcome: "failed" } : input.task === "ends" ? { outcome: "done" } : {}),
+				},
 			};
 		},
 	};
@@ -77,6 +80,21 @@ describe("agent task batch", () => {
 		expect(out).toContain("#2 error: no brief");
 		expect(out).toContain("Invalid agent task call");
 		expect(result.details.batch.map((entry: { ok: boolean }) => entry.ok)).toEqual([true, false]);
+	});
+
+	it("labels a row by the child's outcome, so a child that ran and failed does not read ok", async () => {
+		const { run } = unified();
+		const result = await run({
+			type: "task",
+			tasks: [
+				{ goal: "broke", task: "fails" },
+				{ goal: "finished", task: "ends" },
+			],
+		});
+		const out = text(result);
+		expect(out).toContain("#1 failed: broke");
+		expect(out).toContain("#2 ok: finished");
+		expect(result.details.batch.map((entry: { ok: boolean }) => entry.ok)).toEqual([true, true]);
 	});
 
 	it("waits for every foreground entry", async () => {

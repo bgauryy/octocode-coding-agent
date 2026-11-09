@@ -135,3 +135,51 @@ subscriptions, while the existing provider retains its broader catalog for backw
 Stored credentials remain provider-scoped, so save the key under the provider ID you register.
 
 Amazon Bedrock resolves ambient AWS credentials (`AWS_PROFILE`, access key pairs, `AWS_BEARER_TOKEN_BEDROCK`, ECS task roles, web identity tokens, and shared configuration files); its provider-owned login flow supports bearer tokens, AWS profiles, and the existing credential chain. Explicit credential-chain login delegates to the AWS SDK, including instance roles and credential processes. Vertex AI resolves either an explicit key or gcloud Application Default Credentials plus project/location, with a provider-owned login flow for API keys, ADC, and service-account files. Explicit ADC login also permits attached service accounts without a local credential file; the Google SDK resolves the credentials at request time.
+
+## OAuth
+
+Providers with OAuth: OpenAI (Sign in with ChatGPT), OpenAI Codex (legacy, ChatGPT Plus/Pro), GitHub Copilot, OpenRouter (PKCE; mints a permanent API key, so refresh is a no-op). Anthropic subscription OAuth is not offered.
+
+Each carries `provider.auth.oauth` with `login(interaction)` (provider-neutral `prompt()`/`notify()` protocol, returns a credential), `refresh(credential, signal)` and `toAuth(credential)` (derives request auth; Copilot's per-account base URL comes from here). Both calls always receive a concrete abort signal. `models.getAuth()` and request paths refresh expired tokens under a credential-store lock, so concurrent requests and processes never double-refresh.
+
+```typescript
+const models = createModels({ credentials: myStore }); // persistent CredentialStore
+models.setProvider(openaiProvider());
+
+await models.login("openai", "oauth", {
+	prompt: async (p) => askUser(p.message), // p.type: text | secret | select | manual_code
+	notify: (event) => {
+		// event.type: info | auth_url | device_code | progress
+		if (event.type === "auth_url") console.log(`Open: ${event.url}`);
+		if (event.type === "device_code") console.log(`Code: ${event.userCode} at ${event.verificationUri}`);
+	},
+});
+await models.complete(models.getModels("openai")[0]!, context); // token resolves and refreshes automatically
+await models.logout("openai");
+```
+
+`manual_code` prompts race a local callback server; `p.signal` aborts them when the server wins. OpenAI login reuses saved registrations, validates the returned identity and accepts `LoginOptions.getDeviceId` (stable installation UUID) and `agentName`; `Models.login` passes the previous credential to the provider. The optional `OAuthAuth.logout` hook lets OpenAI revoke renewable sessions under the store lock; local tokens are cleared even when revocation is unconfirmed, and `signedOut` records never count as authentication. Failed device-flow or token validation errors list field names, never values.
+
+The built-in flows are private to the providers; `@octocodeai/octocode-ai/oauth` exports only the types the coding agent's extension OAuth needs.
+
+### CLI login
+
+This package's `dist/cli.js` logs in without an application: `login` (interactive), `login <provider>`, `list`. Credentials go to `auth.json` in the current directory (owner-only); the installation UUID stays in `auth.json.host-id`.
+
+### Vertex AI
+
+An API key or Application Default Credentials (ADC); the provider's login flow configures either.
+
+| Method     | Setup                                                                          |
+| ---------- | ------------------------------------------------------------------------------ |
+| API key    | `GOOGLE_CLOUD_API_KEY` or `apiKey` option; `project` and `location` not needed |
+| ADC, local | `gcloud auth application-default login`                                        |
+| ADC, CI    | `GOOGLE_APPLICATION_CREDENTIALS` pointing at a service-account JSON file       |
+
+ADC also needs `GOOGLE_CLOUD_PROJECT` (or `GCLOUD_PROJECT`) and `GOOGLE_CLOUD_LOCATION`, or `project`/`location` options. The location is a region id such as `us-central1`, or `global` (lowercase letters, digits, hyphens); anything else is refused before a request because the SDK builds the host from it.
+
+### Provider notes
+
+- **OpenAI Codex (legacy):** superseded by Sign in with ChatGPT. With `sessionId` it caches prompts unless `cacheRetention` is `"none"`. `transport` is `"sse"`, `"websocket"` or `"auto"`; WebSocket connections are reused per session (5 minutes idle). Call `cleanupSessionResources(sessionId)` when done so the pooled connection does not keep the process alive.
+- **Azure OpenAI:** `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_AD_TOKEN` (externally renewed Entra token); the Responses adapter also takes `azureADTokenProvider`. Set `AZURE_OPENAI_BASE_URL` (`*.openai.azure.com`, `*.cognitiveservices.azure.com`, `*.ai.azure.com`; roots normalize to `/openai/v1`) or `AZURE_OPENAI_RESOURCE_NAME`. `AZURE_OPENAI_API_VERSION` defaults to `v1`. Deployment names equal model ids unless `azureDeploymentName` or `AZURE_OPENAI_DEPLOYMENT_NAME_MAP` (`model-id=deployment,...`) overrides; legacy deployment URLs are unsupported.
+- **GitHub Copilot:** on "The requested model is not supported", enable the model in VS Code (Copilot Chat, model selector, Enable).

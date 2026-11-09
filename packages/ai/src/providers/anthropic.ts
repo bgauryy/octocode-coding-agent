@@ -17,9 +17,14 @@ import { ANTHROPIC_MODELS } from "./anthropic.models.ts";
 function anthropicApiKeyAuth(): ApiKeyAuth {
 	return {
 		name: "Anthropic API key",
+		// Linked, not opened: the same dialog also takes the subscription token `claude setup-token` prints.
+		keyPage: "https://platform.claude.com/settings/keys",
 		login: async (interaction) => {
 			interaction.signal.throwIfAborted();
-			const key = await interaction.prompt({ type: "secret", message: "Enter Anthropic API key" });
+			const key = await interaction.prompt({
+				type: "secret",
+				message: "Enter an Anthropic API key, or the Claude subscription token `claude setup-token` printed",
+			});
 			interaction.signal.throwIfAborted();
 			return { type: "api_key", key };
 		},

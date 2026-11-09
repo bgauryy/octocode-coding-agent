@@ -12,7 +12,7 @@ import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { hookToggleIds } from "../../src/octocode/hooks/config/toggles.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
-import { type McpSwitchRequest, registerMcpSwitch } from "../../../mcp/src/switch.ts";
+import { getMcpSwitch, type McpSwitchRequest, registerMcpSwitch } from "../../../mcp/src/switch.ts";
 import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import type { HooksView } from "../../src/octocode/hooks/register/types.ts";
@@ -21,6 +21,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { writeHookFiles } from "./fixtures/hook-formats.ts";
 import { tmp } from "./helpers.ts";
 import { installMcpCorePorts } from "../../src/octocode/mcp-host/core.ts";
+import { createConfiguration, type ConfigLiveHooks } from "../../src/configuration/index.ts";
 import { installOctocodeDiscovery } from "../../src/octocode/discovery/index.ts";
 
 beforeAll(() => {
@@ -192,6 +193,18 @@ describe("switchItem", () => {
 	});
 });
 
+/** The catalog `/configuration` runs on, over the fixture's own settings files. */
+function catalogFor(f: ReturnType<typeof fixture>, live?: ConfigLiveHooks) {
+	return createConfiguration({
+		cwd: f.cwd,
+		agentDir: f.agentDir,
+		home: f.home,
+		projectTrusted: true,
+		settings: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+		...(live ? { live } : {}),
+	});
+}
+
 /** `/harness` as the session registers it, with a hooks view that only reports. */
 function harness(api: ExtensionAPI) {
 	const commands = new Subcommands();
@@ -215,20 +228,28 @@ describe("/harness", () => {
 		Object.assign(api, { getSettings: () => on });
 		await command.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("[x] Hooks from Claude Code");
-		await command.handler("disable hooks:claude", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/switched off globally\.\nRun \/reload to apply\.$/);
+		const catalog = catalogFor(f);
+		const off = await catalog.apply({ verb: "disable", id: "hooks:claude" });
+		expect(off).toMatchObject({ status: "applied", appliesWhen: "reload" });
 		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles).toEqual({
 			"harness:claude": true,
 			"hooks:claude": false,
 		});
 		// Switched on again before a reload: the saved switch is reverted, not skipped because the session still has it on.
-		await command.handler("enable hooks:claude", ctx);
+		await catalog.apply({ verb: "enable", id: "hooks:claude" });
 		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles).toEqual({
 			"harness:claude": true,
 		});
-		await command.handler("disable nothing:here", ctx);
+		const unknown = await catalog.apply({ verb: "disable", id: "nothing:here" });
+		expect(unknown.status).toBe("refused");
+		// The retired verb names the line that replaces it; a bare name resolves through the catalog when it is unique.
+		await command.handler("disable hooks:claude", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
-		expect(ctx.ui.notes.at(-1)!.message).toContain("/harness list shows the IDs");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/configuration disable hooks:claude");
+		await command.handler("enable claude --local", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/configuration enable harness:claude --local");
+		await command.handler("disable no-such-name", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/"no-such-name" needs an id[\s\S]*\/configuration list <name>/);
 	});
 
 	it("lists one section, filters by text, and reports hooks and config through subcommands", async () => {
@@ -249,7 +270,7 @@ describe("/harness", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toContain("Hook events Octocode implements");
 		await command.handler("bogus", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
-		expect(ctx.ui.notes.at(-1)!.message).toContain("/harness enable|disable");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/harness list");
 	});
 
 	it("switches MCP servers by name through the MCP owner, live and without a reload", async () => {
@@ -265,40 +286,54 @@ describe("/harness", () => {
 			requests.push(request);
 			return { ok: true, message: `${request.name}: ${request.enabled ? "enabled" : "disabled"}` };
 		});
+		fs.writeFileSync(
+			path.join(f.agentDir, "mcp.json"),
+			JSON.stringify({ mcpServers: { docs: { command: "docs-server" } } }),
+		);
 		const reload = vi.fn(async () => {});
 		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "rpc" }), { reload });
 		const command = harness(api);
 		await command.handler("list mcp", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("docs");
-		await command.handler("disable docs --local", ctx);
-		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: true, saveOnly: false }]);
-		expect(ctx.ui.notes.at(-1)!.message).toBe("docs: disabled");
+		const catalog = catalogFor(f, { mcpSwitch: getMcpSwitch(events)! });
+		const result = await catalog.apply({ verb: "disable", id: "mcp:docs", scope: "project" });
+		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: true }]);
+		expect(result).toMatchObject({ status: "applied", appliesWhen: "now" });
 		expect(reload).not.toHaveBeenCalled();
 		expect(fs.existsSync(path.join(f.agentDir, "settings.json"))).toBe(false);
 	});
 
-	it("batches settings and MCP switches into one reload, saving MCP for it instead of connecting twice", async () => {
+	it("switches a hook group and an MCP server in one go: the server closes live once, the hook change waits for a reload, and a repeat changes no file", async () => {
 		const f = fixture();
-		const { api } = fakeHost();
 		const events = createEventBus();
-		Object.assign(api, { events });
 		const requests: McpSwitchRequest[] = [];
 		setMcpSessionStatus(events, [
 			{ name: "docs", enabled: true, state: "connected", source: path.join(f.agentDir, "mcp.json"), tools: [] },
 		] as never);
 		registerMcpSwitch(events, async (request) => {
 			requests.push(request);
-			return { ok: true, message: `${request.name}: saved` };
+			return { ok: true, message: `${request.name}: disabled` };
 		});
-		const reload = vi.fn(async () => {});
-		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { selects: ["Reload"] } }), { reload });
-		await harness(api).handler("disable hooks:claude docs", ctx);
-		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: false, saveOnly: true }]);
-		expect(reload).toHaveBeenCalledOnce();
-		// The same switch again leaves the files as they were: no reload is offered.
-		await harness(api).handler("disable hooks:claude", ctx);
-		expect(reload).toHaveBeenCalledOnce();
-		expect(ctx.ui.notes.at(-1)!.message).toContain("nothing to reload");
+		fs.writeFileSync(
+			path.join(f.agentDir, "mcp.json"),
+			JSON.stringify({ mcpServers: { docs: { command: "docs-server" } } }),
+		);
+		const catalog = catalogFor(f, { mcpSwitch: getMcpSwitch(events)! });
+		const results = await Promise.all([
+			catalog.apply({ verb: "disable", id: "hooks:claude" }),
+			catalog.apply({ verb: "disable", id: "mcp:docs" }),
+		]);
+		expect(requests).toEqual([{ name: "docs", enabled: false, inProject: false }]);
+		expect(
+			results
+				.map((result) => result.status === "applied" && result.appliesWhen)
+				.sort((a, b) => String(a).localeCompare(String(b))),
+		).toEqual(["now", "reload"]);
+		const settingsFile = path.join(f.agentDir, "settings.json");
+		const saved = fs.readFileSync(settingsFile, "utf8");
+		// The same switch again leaves the settings file as it was.
+		await catalog.apply({ verb: "disable", id: "hooks:claude" });
+		expect(fs.readFileSync(settingsFile, "utf8")).toBe(saved);
 	});
 
 	it("answers the retired /plugins, /hooks and /config over RPC with the /harness line to run", async () => {
@@ -432,8 +467,8 @@ describe("plugins installed by other hosts", () => {
 		expect(listing).toContain(`[ ] review-kit@mkt (installed in Claude Code) — enabled there`);
 		expect(listing).toContain(`installed:${claudeKit}`);
 		expect(listing).toContain("browser@openai (installed in Codex) — disabled there");
-		await command.handler(`enable installed:${codexKit}`, ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("added to Octocode globally");
+		const added = await catalogFor(f).apply({ verb: "enable", id: `installed:${codexKit}` });
+		expect(added).toMatchObject({ status: "applied" });
 		const settings = JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8"));
 		expect(settings.plugins).toEqual([{ path: codexKit, protocol: "claude" }]);
 	});
@@ -489,6 +524,40 @@ describe("plugin rows", () => {
 		// A switched-off plugin still shows what it would load.
 		expect(row("full-kit")).toContain("1 skill in 1 skill directory");
 		expect(row("full-kit")).not.toContain("no one provides");
+	});
+
+	it("leads each MCP row with its group, as skill rows name their folder", async () => {
+		const f = fixture();
+		const settings = {};
+		const server = (name: string, scope: string, group: string, source: string) => ({
+			name,
+			enabled: true,
+			state: "connected",
+			toolCount: 2,
+			exposure: "direct",
+			scope,
+			group,
+			source,
+		});
+		const inventory = await buildInventory({
+			cwd: f.cwd,
+			agentDir: f.agentDir,
+			settings,
+			manager: SettingsManager.inMemory(settings),
+			projectTrusted: true,
+			home: f.home,
+			mcp: [
+				server("browser", "default", "core", "built-in browser"),
+				server("tracker", "project", "workspace", path.join(f.cwd, ".mcp.json")),
+				server("search", "global", "global", path.join(f.home, ".octocode/mcp.json")),
+				server("kit", "extension", "global", path.join(f.home, "plugins/kit")),
+			],
+		});
+		const detail = (name: string) => inventory.items.find((item) => item.id === `mcp:${name}`)?.detail;
+		expect(detail("browser")).toBe("Core · connected · 2 tools · direct · built in");
+		expect(detail("tracker")).toMatch(/^Workspace · connected · 2 tools · direct · .*\.mcp\.json$/);
+		expect(detail("search")).toBe("Global · connected · 2 tools · direct · ~/.octocode/mcp.json");
+		expect(detail("kit")).toBe("Global · connected · 2 tools · direct · plugin ~/plugins/kit");
 	});
 
 	const writeJson = (file: string, value: unknown) => {

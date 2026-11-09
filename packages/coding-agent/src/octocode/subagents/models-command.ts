@@ -20,6 +20,7 @@ import {
 	isModelTier,
 	MODEL_TIERS,
 	type ModelRef,
+	type Refused,
 	resolveTier,
 	routeModel,
 	SUBAGENT_DEFAULT_THINKING,
@@ -78,7 +79,7 @@ export function describeModels(
 	catalog: Catalog | undefined,
 	health: (provider: string) => ProviderStatus | undefined = () => undefined,
 	shown: (model: ModelRef) => boolean = () => true,
-	refused: (provider: string) => boolean = (provider) => providerHealth.refused(provider),
+	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
 ): string {
 	if (available.length === 0) return "No models are configured.";
 	const rows = available.filter(shown).map((model) => {
@@ -150,7 +151,7 @@ const tierModel = (
 	available: readonly ModelRef[],
 	parent: ModelRef | undefined,
 	catalog: Catalog | undefined,
-	refused: (provider: string) => boolean,
+	refused: Refused,
 ) => resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
 
 /** What a profile's route runs on: `provider/id:level`, the routing error, or the parent's model. */
@@ -177,7 +178,7 @@ export function routingFacts(
 	parent: ModelRef | undefined,
 	profiles: Iterable<AgentProfile>,
 	catalog: Catalog | undefined,
-	refused: (provider: string) => boolean = (provider) => providerHealth.refused(provider),
+	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
 ): RoutingFacts | undefined {
 	if (!parent || available.length === 0) return undefined;
 	const thinking = subagentThinking();

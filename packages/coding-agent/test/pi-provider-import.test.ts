@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -9,6 +9,8 @@ import {
 	readPiProviderCredential,
 } from "../src/core/auth-storage/pi.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
+import { ModelConfig } from "../src/core/model-config.ts";
+import { getAgentDir, getModelsPath } from "../src/config.ts";
 
 const roots: string[] = [];
 function fixture() {
@@ -36,6 +38,22 @@ describe("explicit Pi provider import", () => {
 		writeFileSync(path, JSON.stringify({ providers: { openai: { apiKey: "OPENAI_API_KEY" } } }));
 		expect(await listPiProviderCredentials([root])).toEqual([]);
 		expect(await listPiModelProviders([root])).toEqual(new Map([["openai", path]]));
+	});
+	it("attributes each provider to the models.json that defines it, not Octocode's merged view of Pi's", async () => {
+		// The suite's empty HOME sets no override, so Pi discovery is on, as on a real machine.
+		const home = homedir();
+		const piDir = join(home, ".pi", "agent");
+		mkdirSync(piDir, { recursive: true });
+		mkdirSync(getAgentDir(), { recursive: true });
+		roots.push(join(home, ".pi"), getAgentDir());
+		writeFileSync(join(piDir, "models.json"), JSON.stringify({ providers: { "pi-only": { apiKey: "PI_KEY" } } }));
+		writeFileSync(getModelsPath(), JSON.stringify({ providers: { own: { apiKey: "OWN_KEY" } } }));
+		// Loading Octocode's file merges Pi's, which is what made /providers name the wrong file.
+		expect((await ModelConfig.load(getModelsPath())).getProviderIds()).toEqual(
+			expect.arrayContaining(["own", "pi-only"]),
+		);
+		expect(await listPiModelProviders([getAgentDir()])).toEqual(new Map([["own", getModelsPath()]]));
+		expect(await listPiModelProviders([piDir])).toEqual(new Map([["pi-only", join(piDir, "models.json")]]));
 	});
 	it("lists metadata with Pi agent directory precedence and never resolves commands", async () => {
 		const root = fixture();

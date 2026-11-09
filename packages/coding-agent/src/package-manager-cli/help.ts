@@ -18,19 +18,35 @@ export function getPackageCommandUsage(command: PackageCommand): string {
 	}
 }
 
-export const CONFIG_COMMAND_USAGE = `${APP_NAME} config [-l] [--trust]`;
+const CONFIG_COMMAND_USAGE = `${APP_NAME} configuration [verb] [args] [-l] [--trust] [--json]`;
 
 export function printConfigCommandHelp(): void {
 	console.log(`${chalk.bold("Usage:")}
   ${CONFIG_COMMAND_USAGE}
 
-Open the resource configuration TUI to enable or disable package resources.
-Without -l, starts in global settings (${tildePath(join(getAgentDir(), "settings.json"))}).
-Press Tab in the TUI to switch between global and project-local modes.
+Enable, disable, set and add configuration: tools, MCP servers, harnesses, skills, prompts, themes, providers,
+sources and settings keys. The same verbs run as /configuration in a session.
+
+Verbs:
+  list [kind|text]         Entries with their state, the scope that set them and when a change applies
+  get <id>                 One entry's value in each scope
+  enable <id>...           Turn on (tool:backlog, mcp:octocode, harness:claude, skill:name, provider:id, ...)
+  disable <id>...          Turn off
+  set <key> <value>        Set a settings key (bash.spillMaxBytes 65536)
+  unset <key>              Remove a settings key from the scope
+  add mcp <name> ...       Add an MCP server, with the arguments of "${APP_NAME} mcp add"
+  remove <id>              Remove an added entry (mcp:<name>)
+
+Without a verb, a terminal opens the selector (Space/Enter changes a value, Tab switches global and project,
+type to search); otherwise the list is printed. A refused change prints its reason and exits non-zero.
+Global changes are saved in ${tildePath(join(getAgentDir(), "settings.json"))} (MCP servers in mcp.json).
 
 Options:
-  -l, --local       Edit project overrides (${CONFIG_DIR_NAME}/settings.json)
+  -l, --local       Change this project (${CONFIG_DIR_NAME}/settings.json); needs a trusted folder
   --trust           Record your trust for this folder first, so -l can use project-local files
+  --json            Print entries or results as JSON
+
+For one run only, use --enable, --disable and --set on ${APP_NAME} itself.
 `);
 }
 

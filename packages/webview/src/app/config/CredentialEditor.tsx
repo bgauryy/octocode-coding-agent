@@ -12,6 +12,9 @@ interface CredentialEditorProps {
 	keychainAvailable: boolean;
 }
 
+/** The provider whose keys include a Claude subscription token (`claude setup-token`); it is saved as this provider's key. */
+export const CLAUDE_TOKEN_PROVIDER = "anthropic";
+
 /** A key the host stored can be replaced or cleared; a provider variable or custom command cannot be cleared here. */
 const STORED = new Set(["keychain", "auth-json", "oauth"]);
 
@@ -24,7 +27,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	const id = useId();
 	const title = row.name ?? row.provider;
 	const stored = row.sources.some((source) => STORED.has(source.kind));
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState<"key" | "token" | false>(false);
 	const [key, setKey] = useState("");
 	const [plaintext, setPlaintext] = useState(false);
 	const [busy, setBusy] = useState<"save" | "clear" | undefined>();
@@ -68,9 +71,14 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	if (!open) {
 		return (
 			<div className="config-edit">
-				<Button size="sm" aria-label={`${stored ? "Replace" : "Set"} key for ${title}`} onClick={() => setOpen(true)}>
+				<Button size="sm" aria-label={`${stored ? "Replace" : "Set"} key for ${title}`} onClick={() => setOpen("key")}>
 					{stored ? "Replace key" : "Set key"}
 				</Button>
+				{row.provider === CLAUDE_TOKEN_PROVIDER && (
+					<Button size="sm" aria-label="Use Claude subscription token" onClick={() => setOpen("token")}>
+						Claude subscription token
+					</Button>
+				)}
 				{stored && (
 					<Button
 						size="sm"
@@ -88,9 +96,15 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	}
 	return (
 		<form className="config-edit" onSubmit={submit} aria-label={`Edit key for ${title}`}>
+			{open === "token" && (
+				<p className="muted">
+					Run <code>claude setup-token</code> in a terminal; it opens Anthropic's sign-in in your browser and prints a
+					token starting with <code>sk-ant-oat</code>. Paste it here.
+				</p>
+			)}
 			<input
 				type="password"
-				aria-label={`API key for ${title}`}
+				aria-label={open === "token" ? "Claude subscription token" : `API key for ${title}`}
 				value={key}
 				maxLength={8192}
 				autoComplete="off"

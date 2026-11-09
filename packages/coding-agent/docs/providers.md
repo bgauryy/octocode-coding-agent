@@ -1,5 +1,25 @@
 # Providers
 
+## Connect what you have
+
+`/providers` is where you sign in: `/providers <provider>` opens one provider, and **+ Add a provider** lists every sign-in (type `chatgpt`, `copilot` or `subscription` to search). `/login` was renamed `/providers`; typing it points there.
+
+| You have                                    | Do this                                                                                                                                                                                               | Models appear as                   |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| ChatGPT Plus/Pro (Codex)                    | `/providers openai` → **Sign in — OpenAI (ChatGPT subscription)**. The older `openai-codex` (legacy) sign-in still works                                                                              | `openai/…`                         |
+| Claude Pro/Max (Claude Code)                | `/providers anthropic` → **Sign in with your Claude subscription** (needs Claude Code installed; [details](#use-your-claude-subscription))                                                            | `anthropic/…`                      |
+| GitHub Copilot                              | `/providers github-copilot` (device sign-in), or turn on the `COPILOT_GITHUB_TOKEN` [source](#sources)                                                                                                | `github-copilot/…`                 |
+| Grok, Kimi Code or Meta subscription        | `/providers xai`, `/providers kimi-coding` or `/providers meta` → sign in                                                                                                                             | `xai/…`, `kimi-coding/…`, `meta/…` |
+| OpenCode Zen or Go                          | `/providers opencode` or `/providers opencode-go` → **Add API key**: the OpenCode Console opens; subscribe to Go there, copy the key, paste it ([details](#use-opencode-and-choose-a-model))          | `opencode/…`, `opencode-go/…`      |
+| An API key (Anthropic, OpenAI, OpenRouter…) | `/providers <provider>` → **Add API key** (keychain when available; OpenAI and OpenCode open their key page first), or export the provider's variable ([below](#use-an-api-key-from-the-environment)) | `<provider>/…`                     |
+| A gateway, proxy or self-hosted endpoint    | Add `baseUrl`, `api` and `apiKey` in `models.json` ([compatible endpoint](models.md#configure-a-compatible-endpoint), [redirect a built-in provider](models.md#configure-a-compatible-endpoint))      | `<your id>/…`                      |
+| A local GGUF model                          | `/llama` ([local models](models.md#connect-local-models)); Ollama, LM Studio and vLLM go in `models.json`                                                                                             | `llama.cpp/…` or your id           |
+| Pi already set up                           | Nothing: Pi's sign-ins and `models.json` load beside Octocode's ([Use Pi configuration](#use-pi-configuration))                                                                                       | the Pi provider ids                |
+
+Then switch freely: `/model` picks this chat's model (`/model openai/` limits it to one provider, `Ctrl+S` saves the default), `Ctrl+P` and `Shift+Ctrl+P` cycle models, `octocode --model <provider>/<id>` starts on one, and `e` on a provider in `/providers` hides or restores it. To check a credential without starting a chat, run `octocode auth check --provider <provider>` or `/modelsettings check`.
+
+## How sign-in works
+
 Most hosted providers support one or both of these authentication methods:
 
 - Sign in through a browser or device flow backed by OAuth.
@@ -9,6 +29,15 @@ Use `/providers` to manage providers and sources, and `/providers <provider>` to
 
 GitHub Copilot model access uses `/providers github-copilot`. The separate `/octocode auth login` (and `/octocode auth status|logout`) manages GitHub code-search credentials; signing in there does not configure Copilot inference.
 
+Which credential a request uses (first match wins):
+
+```mermaid
+flowchart LR
+    A["--api-key (this run)"] --> B["auth.json (sign-in or saved key)"] --> C["apiKey in models.json"] --> D["environment variable or ambient cloud credentials"]
+```
+
+Sign in with ChatGPT retains account/client registrations and offers a saved account or a new account on the next login. Saved account selection reuses its issued client ID and available ID-token hint, then verifies the returned account. Logout revokes saved renewable sessions and removes their local tokens; nonsecret registrations remain for reuse. If remote revocation cannot be confirmed, local tokens are still removed and the error explains how to disconnect the app in account settings. Model availability comes from the selected account's vendor list; see [model discovery](models.md#discover-vendor-models).
+
 For instruction and conversation retention, see [Prompt caching](prompt-caching.md).
 
 ## The /providers page
@@ -17,7 +46,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 - **Signed in**: each provider that has credentials, with the credential source (a label or variable name, never a value), its model count and whether it is enabled. “Configured” means credentials are present; it does not verify that the provider will accept a request.
 - **Disabled**: providers you turned off, hidden from `/model`.
-- **Sign in**: one row, **+ Add a provider**, opens the sign-in flow: pick a provider, then its browser/device sign-in, **Add API key** or **Replace API key**. Only supported methods appear. Successful sign-in opens the model picker; Esc keeps the current model and Ctrl+S explicitly changes the default.
+- **Sign in**: one row, **+ Add a provider**, opens the sign-in flow: pick a provider (those with a subscription or account sign-in are listed first), then its browser/device sign-in, **Add API key** or **Replace API key**. Only supported methods appear. Successful sign-in opens the model picker; Esc keeps the current model and Ctrl+S explicitly changes the default.
 - **Sources**: where providers, models and credentials come from: Octocode (always on), Pi, and the `COPILOT_GITHUB_TOKEN` variable. See [Sources](#sources).
 - **Detected**: other coding tools found on this machine (Claude Code, Codex CLI, Grok CLI and others), each with the action Octocode offers for the same account.
 - **Custom models**: the Octocode and Pi `models.json` files with their paths and the providers each defines; a missing file is marked `not found`.
@@ -28,7 +57,7 @@ A provider's page shows its status, credential source, enabled state, model coun
 
 On a remote or headless machine, an OAuth callback may not reach the local process. When prompted, paste the final redirect URL or authorization code back into Octocode.
 
-Choose **Sign out** or **Remove saved credential** on the provider’s page, or run `/logout` and select a provider, then confirm removal. This does not unset environment variables, remove authentication from `models.json`, or revoke the credential at the provider.
+Choose **Sign out** or **Remove saved credential** on the provider’s page, or run `/logout [provider]` (the argument prefills the search) and select a provider, then confirm removal. A saved credential whose provider is no longer defined (its `models.json` entry was removed) is listed as **provider not defined**; remove it the same way. This does not unset environment variables, remove authentication from `models.json`, or revoke the credential at the provider.
 
 Secret input and pasted authorization codes are hidden. When macOS Keychain or Linux Secret Service is available, API-key entry offers it first: only a command reference is written to `auth.json`. A failed keychain write aborts without silently saving plaintext. You can explicitly choose local-file storage; new files use mode `0600` and new directories `0700`. Existing administrator-managed modes and ACLs are preserved. Startup warns when its credential file has group/world permissions or is inside a Git worktree; injected SDK model runtimes retain responsibility for their own credential storage. OAuth tokens and file-stored API keys remain plaintext; keep `auth.json` private and out of Git. Removal also attempts to delete an owned keychain entry.
 
@@ -46,13 +75,15 @@ Press `e` on a provider in `/providers`, or choose **Disable provider** on its p
 
 Open a source (or press `e` on it) to turn it on or off. The choice is saved in the global `providerSources` setting (only changes from the defaults; project settings cannot set it) and takes effect at once: turning Pi off hides Pi-only providers and models from `/model` and `/providers`, turning it on restores them. Files are never changed.
 
+The web Settings page (opened with `/web`) shows the same sources and each provider's origin (Octocode or Pi, `auth.json` or `models.json`; never a value) and has the same switches for the Pi source and for each provider. The terminal and the page write the same settings; a running session applies a provider switch (a provider or the Pi source) saved on the page or in another terminal within a second or two, without `/reload`. Other settings still need `/reload`.
+
 ### Detected tools
 
-Claude Code, Codex CLI, Grok CLI, Gemini CLI, Cursor, opencode, crush, Copilot CLI, Qwen Code and Aider are recognized by their known install and config paths. Octocode never reads their tokens or databases. Each row offers either Octocode's own sign-in for the same account (for example Codex CLI → sign in with ChatGPT) or API-key entry for the vendor (Claude Code → add an Anthropic API key). Choosing the row opens that flow.
+Claude Code, Codex CLI, Grok CLI, Gemini CLI, Cursor, opencode, crush, Copilot CLI, Qwen Code and Aider are recognized by their known install and config paths. Octocode never reads their tokens or databases. Each row offers either Octocode's own sign-in for the same account (Codex CLI → sign in with OpenAI, which runs Sign in with ChatGPT) or API-key entry for the vendor (Gemini CLI → add an API key for Google). Claude Code offers both: sign in with your Claude subscription (through `claude setup-token`, when `claude` is on `PATH`; see [Use your Claude subscription](#use-your-claude-subscription)) or an Anthropic API key. Choosing the row opens that flow.
 
 ## Find custom providers
 
-The **Custom models** section of `/providers` lists the Octocode `models.json` and the Pi `models.json` files that are read, with their paths and the providers each defines; choose one to see its path in plain text you can open or copy. A provider defined in one of them lists its file as **Edit definition** and in the **Definition** line of its page. Edits apply when models refresh (opening `/model`) or after a restart. See [Custom providers](custom-provider.md) and [Models](models.md).
+The **Custom models** section of `/providers` lists the Octocode `models.json` and the Pi `models.json` files that are read, with their paths and the providers each defines; choose one to see its path in plain text you can open or copy. A provider defined in one of them lists its file as **Edit definition** and in the **Definition** line of its page. Edits apply when models refresh (opening `/model`) or after a restart. See [Models](models.md).
 
 ## Use Pi configuration
 
@@ -77,15 +108,27 @@ export ANTHROPIC_API_KEY=sk-ant-...
 octocode
 ```
 
-The provider library's [environment variable table](../../ai/docs/auth.md#environment-variables) lists the variable each built-in provider reads and their precedence; `octocode --help` also lists provider key variables. Providers that need additional configuration or support ambient credentials are covered under [Provider Specific Config](#provider-specific-config). TypeSafe keys serve [classifier models](models.md#use-classifier-models).
+The provider library's [environment variable table](https://github.com/bgauryy/octocodecode/blob/main/packages/ai/docs/auth.md#environment-variables) lists the variable each built-in provider reads and their precedence; `octocode --help` also lists provider key variables. Providers that need additional configuration or support ambient credentials are covered under [Provider Specific Config](#provider-specific-config). TypeSafe keys serve [classifier models](models.md#classifier-and-image-models).
 
 Anthropic also recognizes `ANTHROPIC_OAUTH_TOKEN` as an API credential and `ANTHROPIC_AUTH_TOKEN` as bearer authentication.
 
-Private Copilot, Meta and fixed subscription-client contracts, and account or region entitlements, have not been validated live: a provider being listed does not prove a given account can use it. Anthropic's published policy does not permit offering Claude.ai subscription login in third-party applications, so the built-in Anthropic provider does not register subscription OAuth. Use an API key or supported cloud provider. Legacy subscription tokens do not mark this provider as configured.
+Private Copilot, Meta and fixed subscription-client contracts, and account or region entitlements, have not been validated live: a provider being listed does not prove a given account can use it.
 
-Sign in with ChatGPT retains account/client registrations and offers a saved account or a new account on the next login. Saved account selection reuses its issued client ID and available ID-token hint, then verifies the returned account. Logout revokes saved renewable sessions and removes their local tokens; nonsecret registrations remain for reuse. If remote revocation cannot be confirmed, local tokens are still removed and the error explains how to disconnect the app in account settings. Model availability comes from the selected account's vendor list; see [model discovery](model-discovery.md).
+## Use your Claude subscription
 
-With no key or token set, Anthropic uses workload identity federation when `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_IDENTITY_TOKEN_FILE` are set: the Anthropic SDK exchanges the identity token for a short-lived access token and refreshes it itself (re-reading the identity token file, so keep that file fresh for long sessions). `ANTHROPIC_SERVICE_ACCOUNT_ID` and `ANTHROPIC_WORKSPACE_ID` are passed through when set.
+Octocode has no claude.ai sign-in of its own: Anthropic's [terms](https://code.claude.com/docs/en/legal-and-compliance) do not permit third-party apps to offer Claude.ai login. Claude Code's `claude setup-token` runs Anthropic's own browser sign-in and prints a long-lived subscription token (`sk-ant-oat…`), and Octocode uses that token.
+
+1. Install [Claude Code](https://code.claude.com/docs/en/setup) so `claude` is on `PATH`.
+2. Run `/providers anthropic` → **Sign in with your Claude subscription — browser, through Claude Code**. Octocode hands the terminal to `claude setup-token`; finish the sign-in in your browser.
+3. When the command exits, Octocode saves the token it printed like a key (you choose the OS keychain or `auth.json`). Then pick a model, for example `/model anthropic/claude-opus-5-5`.
+
+`claude setup-token` saves the token nowhere and offers no way to hand it to another program, so on macOS and Linux Octocode runs it under the system `script` command, which records the terminal session to a file in a temporary folder only you can read. Octocode reads the token from that file, rejoining it where the terminal wrapped it, and deletes the folder before it continues. On Windows, without `script`, or when the token cannot be read, the key dialog asks you to paste the token instead.
+
+Without the menu, run `claude setup-token` yourself and either paste the token through **Add API key** or export `ANTHROPIC_OAUTH_TOKEN`. Requests made with the token draw on your Claude plan's usage limits ([Anthropic: Agent SDK and third-party apps on your plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)); Octocode warns once per run while one is in use (`warnings.anthropicExtraUsage` turns it off). Anthropic may restrict plan credentials outside its own apps; for usage it fully supports, Max, Ultra and Team plans include [monthly API credits](https://support.claude.com/en/articles/17154008) for an API key from the linked Console organization.
+
+To run on the Claude subscription only, turn off every other provider in `/providers` (`e` on each; subagent routes then stay on Anthropic models too), or start a separate home that loads nothing else: `OCTOCODE_HOME=~/.octocode/claude-only ANTHROPIC_OAUTH_TOKEN=sk-ant-oat… octocode --model anthropic/claude-opus-5-5` (an explicit home also skips Pi's configuration).
+
+To let Claude Code itself do a task instead, connect it as an [external agent](acp.md) through `claude-agent-acp`.
 
 ## Load an API key from a command
 
@@ -119,6 +162,10 @@ A stored API-key credential can include an `env` object. Its values take priorit
 	}
 }
 ```
+
+### Anthropic workload identity
+
+With no key or token set, Anthropic uses workload identity federation when `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_IDENTITY_TOKEN_FILE` are set: the Anthropic SDK exchanges the identity token for a short-lived access token and refreshes it itself (re-reading the identity token file, so keep that file fresh for long sessions). `ANTHROPIC_SERVICE_ACCOUNT_ID` and `ANTHROPIC_WORKSPACE_ID` are passed through when set.
 
 ### OpenRouter
 

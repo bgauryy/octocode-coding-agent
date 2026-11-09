@@ -2,6 +2,7 @@
 
 import { reconnect } from "./connections.ts";
 import { serverInstructions, toolCatalog } from "./inspection.ts";
+import { mcpServerGroup, mcpServerSource } from "./group.ts";
 import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
 import { describeState, isEnabled } from "./server.ts";
 import { registerMcpAddedServers } from "./session-servers.ts";
@@ -39,6 +40,9 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 					state: server.connection?.isStopped ? "stopped" : describeState(server, false),
 					connected: server.connection?.state === "connected",
 					...(server.connection?.error ? { error: server.connection.error } : {}),
+					group: mcpServerGroup(server.entry),
+					...(server.entry.config.description ? { description: server.entry.config.description } : {}),
+					source: mcpServerSource(server.entry),
 				})),
 			restart: async (name) => {
 				const server = state.findServer(name);

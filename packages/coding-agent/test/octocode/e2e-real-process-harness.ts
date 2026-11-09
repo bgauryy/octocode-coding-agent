@@ -247,6 +247,8 @@ export function sandbox(endpoint: Endpoint): Sandbox {
 		USERPROFILE: home,
 		PATH: process.env.PATH,
 		TMPDIR: process.env.TMPDIR,
+		// Booting from source is most of a process's cost: see setup-env.ts.
+		NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE,
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_SKIP_VERSION_CHECK: "1",
 		OCTOCODE_MODELS_DEV: "0",

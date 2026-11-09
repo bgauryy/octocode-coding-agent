@@ -6,10 +6,16 @@
  * skill drives these commands; MCP server files are rewritten with the skill's scripts.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { generatedDir, readGenerated } from "../../../../mcp/src/compact/index.ts";
+import { withPluginServers } from "../../../../mcp/src/cli/plugins.ts";
+import { hostTrust } from "../../../../mcp/src/host.ts";
+import { loadMcpConfig } from "../../../../mcp/src/config.ts";
+import { presetEntries } from "../../../../mcp/src/preset.ts";
+import { browserPreset } from "../../../../mcp/src/presets/browser/index.ts";
+import { recommendedPresets } from "../../../../mcp/src/recommended/index.ts";
 import { APP_NAME } from "../../config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { contextOptimizationDirs } from "../shared/home.ts";
@@ -57,7 +63,30 @@ function scopes(options: ContextCommandOptions): Scope[] {
 	].map((scope) => ({ ...scope, store: readSkillsStore(scope.dir) }));
 }
 
-function mcpFiles(dir: string): Array<{ server: string; chars: number; optimized: boolean; generatedAt: string }> {
+/** A generated file's stem for a server name (the store's own rule: characters outside `\w.-` become `_`). */
+const serverStem = (name: string): string => name.replace(/[^\w.-]/g, "_");
+
+/**
+ * The stems of the servers a session here configures: defaults, every loaded MCP file and enabled plugins, read through
+ * `packages/mcp`'s loader without connecting to any server.
+ */
+function configuredServerStems(options: ContextCommandOptions): Set<string> {
+	const place = {
+		agentDir: options.agentDir,
+		cwd: options.cwd,
+		projectTrusted: hostTrust().folderTrusted(options.cwd),
+	};
+	const loaded = loadMcpConfig({
+		...place,
+		defaults: presetEntries([...recommendedPresets(), browserPreset()]),
+	});
+	return new Set(withPluginServers(loaded, place).servers.map((server) => serverStem(server.name)));
+}
+
+function mcpFiles(
+	dir: string,
+	configured: ReadonlySet<string>,
+): Array<{ server: string; chars: number; optimized: boolean; generatedAt: string; stale: boolean }> {
 	let names: string[] = [];
 	try {
 		names = readdirSync(dir).filter((file) => file.endsWith(".json"));
@@ -69,7 +98,16 @@ function mcpFiles(dir: string): Array<{ server: string; chars: number; optimized
 		const generated = readGenerated(dir, server);
 		if (!generated) return [];
 		const { overrides, generatedAt } = generated.meta;
-		return [{ server, chars: generated.text.length, optimized: overrides !== undefined, generatedAt }];
+		// No configured server has this name any more (it was removed or renamed): the record only costs store space.
+		return [
+			{
+				server,
+				chars: generated.text.length,
+				optimized: overrides !== undefined,
+				generatedAt,
+				stale: !configured.has(server),
+			},
+		];
 	});
 }
 
@@ -82,18 +120,21 @@ function skillRows(store: SkillsStore) {
 			sourceChars: entry.source.length,
 			chars: (entry.description ?? entry.source).length,
 			file: entry.file,
+			// The skill's SKILL.md is gone (the skill was removed or moved): the record only costs store space.
+			stale: !existsSync(entry.file),
 			source: entry.source,
 			...(entry.description ? { description: entry.description } : {}),
 		}));
 }
 
 function list(options: ContextCommandOptions, json: boolean, log: (line: string) => void): number {
+	const configured = configuredServerStems(options);
 	const rows = scopes(options).map((scope) => ({
 		scope: scope.name,
 		dir: scope.dir,
 		skills: skillRows(scope.store),
 		// The user folder's MCP files are `generatedDir`, which also moves an earlier release's folder there.
-		mcp: mcpFiles(scope.name === "user" ? generatedDir(options.agentDir) : join(scope.dir, "mcp")),
+		mcp: mcpFiles(scope.name === "user" ? generatedDir(options.agentDir) : join(scope.dir, "mcp"), configured),
 	}));
 	if (json) {
 		log(JSON.stringify({ scopes: rows }, null, 2));
@@ -111,9 +152,13 @@ function list(options: ContextCommandOptions, json: boolean, log: (line: string)
 	for (const row of rows) {
 		log(`\n${row.scope === "project" ? "Project" : "User"}: ${row.dir}`);
 		for (const skill of row.skills)
-			log(`  skill ${skill.name}  ${skill.optimized ? "optimized" : "source"}  ${skill.sourceChars} → ${skill.chars}`);
+			log(
+				`  skill ${skill.name}  ${skill.optimized ? "optimized" : "source"}  ${skill.sourceChars} → ${skill.chars}${skill.stale ? "  stale (skill file no longer exists)" : ""}`,
+			);
 		for (const file of row.mcp)
-			log(`  mcp ${file.server}  ${file.optimized ? "optimized" : "source"}  ${file.chars} characters`);
+			log(
+				`  mcp ${file.server}  ${file.optimized ? "optimized" : "source"}  ${file.chars} characters${file.stale ? "  stale (no configured MCP server has this name)" : ""}`,
+			);
 		if (!row.skills.length && !row.mcp.length) log("  (nothing recorded)");
 	}
 	return 0;

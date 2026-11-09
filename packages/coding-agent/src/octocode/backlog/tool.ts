@@ -5,7 +5,6 @@ import {
 	isItemType,
 	ITEM_TYPES,
 	type CloseInput,
-	CloseInputSchema,
 } from "@octocodeai/octocode-contracts/backlogs";
 import { LIST_STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
 import { StringEnum } from "@octocodeai/octocode-ai";
@@ -19,6 +18,7 @@ import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemLine } from "./format.ts";
 import {
 	checkedEntry,
+	closeField,
 	entityFields,
 	ITEM_ENTRY_FIELDS,
 	type LinkArgument,
@@ -101,7 +101,7 @@ export function registerBacklogTool(
 					description: `Origin ID${subagent ? "" : '; update "" clears'}; list: items derived from it`,
 				}),
 			),
-			close: Type.Optional({ ...CloseInputSchema, description: "update: end an unneeded item" }),
+			close: Type.Optional(closeField),
 			note: Type.Optional(
 				Type.String({
 					description: `${subagent ? "update" : "update, or add with state ongoing/done"}: append progress or findings`,

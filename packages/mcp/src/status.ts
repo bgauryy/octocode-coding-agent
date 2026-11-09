@@ -1,4 +1,5 @@
 import type { EventBus } from "@octocodeai/octocode-agent-core";
+import type { McpServerGroup } from "./group.ts";
 import type { McpExposure } from "./servers.ts";
 
 export interface McpServerStatus {
@@ -9,6 +10,8 @@ export interface McpServerStatus {
 	toolCount: number;
 	source: string;
 	scope?: "global" | "project" | "extension" | "default";
+	/** The listing group (`mcpServerGroup`): core, workspace or global, as skills are grouped. */
+	group?: McpServerGroup;
 }
 
 export const MCP_STATUS_EVENT = "mcp:status";

@@ -148,10 +148,15 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 					} satisfies CompactDetails);
 				const refusal = requests.refusal(api, ctx);
 				if (refusal) throw new Error(refusal);
-				const focus = params.focus?.trim() ? params.focus.trim().slice(0, MAX_COMPACTION_INSTRUCTIONS) : undefined;
+				const wanted = params.focus?.trim();
+				const focus = wanted ? wanted.slice(0, MAX_COMPACTION_INSTRUCTIONS) : undefined;
 				requests.request(focus);
+				const clipped =
+					wanted && wanted.length > MAX_COMPACTION_INSTRUCTIONS
+						? ` Focus clipped to its first ${MAX_COMPACTION_INSTRUCTIONS} characters (of ${wanted.length}).`
+						: "";
 				return textResult(
-					"Compaction queued: it runs when this reply ends, and the task resumes from the summary. End your reply now with a one-line status.",
+					`Compaction queued: it runs when this reply ends, and the task resumes from the summary.${clipped} End your reply now with a one-line status.`,
 					{ queued: true } satisfies CompactDetails,
 				);
 			},

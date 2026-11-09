@@ -85,11 +85,14 @@ export function resolveLayeredCacheRetention(options?: StreamOptions): {
 /**
  * The instruction retention, or undefined to follow the history's. Explicit `cacheRetention` controls the whole prompt
  * unless a separate instruction preference is supplied, and history `none` turns off the instruction breakpoint too,
- * whatever instruction preference is supplied.
+ * whatever instruction preference is supplied, unless the request also sets `keepInstructionCache` (a summary whose
+ * history is cold while the longer-lived instruction entry is not).
  */
 export function resolveInstructionCacheRetention(options?: StreamOptions): CacheRetention | undefined {
 	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
-	if (history === "none") return "none";
+	if (history === "none") {
+		return options?.keepInstructionCache ? (options.instructionCacheRetention ?? "none") : "none";
+	}
 	if (options?.instructionCacheRetention !== undefined) return options.instructionCacheRetention;
 	if (options?.cacheRetention !== undefined) return undefined;
 	const value = getProviderEnvValue(INSTRUCTION_CACHE_RETENTION_ENV, options?.env);

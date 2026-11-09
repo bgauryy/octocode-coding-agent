@@ -1,16 +1,22 @@
 import type {
 	ConfigCredentialCommand,
+	ConfigProviderCommand,
 	ConfigSetting,
 	ConfigSettingCommand,
 	ConfigSnapshot,
+	SignInCommand,
+	SignInState,
 } from "@octocodeai/octocode-contracts/config";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { plural } from "../model/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { StateMark } from "../ui/StateMark.tsx";
-import { Badge, Button, EmptyState, Skeleton, SkeletonLine } from "../ui/primitives.tsx";
+import { Badge, Button, EmptyState } from "../ui/primitives.tsx";
 import { SettingEditor, type SaveSetting } from "./SettingEditor.tsx";
+import { ConfigSkeleton } from "./ConfigSkeleton.tsx";
+import { SourcesPanel, type SetProvider } from "./ProviderControls.tsx";
 import type { SaveCredential } from "./CredentialEditor.tsx";
+import type { SignInRequest } from "./SignIn.tsx";
 import { type ConfigProviders, ProviderRow } from "./sources.tsx";
 
 type LoadState =
@@ -20,21 +26,6 @@ type LoadState =
 
 const SETTING_SOURCE_LABELS = { global: "Global", workspace: "Workspace", default: "Default" } as const;
 
-function ConfigSkeleton() {
-	return (
-		<Skeleton label="Loading settings">
-			<div className="skeleton-list" aria-hidden="true">
-				{[0, 1, 2].map((row) => (
-					<div key={row} className="skeleton-card">
-						<SkeletonLine width="30%" height={14} />
-						<SkeletonLine width="55%" height={10} />
-					</div>
-				))}
-			</div>
-		</Skeleton>
-	);
-}
-
 function ProviderGroup({
 	title,
 	rows,
@@ -42,13 +33,19 @@ function ProviderGroup({
 	open,
 	save,
 	keychainAvailable,
+	signIn,
+	onSignedIn,
+	setProvider,
 }: {
 	title: string;
+	setProvider?: SetProvider;
 	rows: ConfigProviders;
 	now: number;
 	open: boolean;
 	save?: SaveCredential;
 	keychainAvailable: boolean;
+	signIn?: SignInRequest;
+	onSignedIn: () => void;
 }) {
 	if (rows.length === 0) return null;
 	return (
@@ -59,14 +56,35 @@ function ProviderGroup({
 			</summary>
 			<ul className="row-list" aria-label={title}>
 				{rows.map((row) => (
-					<ProviderRow key={row.provider} row={row} now={now} save={save} keychainAvailable={keychainAvailable} />
+					<ProviderRow
+						key={row.provider}
+						row={row}
+						now={now}
+						save={save}
+						keychainAvailable={keychainAvailable}
+						signIn={signIn}
+						onSignedIn={onSignedIn}
+						setProvider={setProvider}
+					/>
 				))}
 			</ul>
 		</details>
 	);
 }
 
-function Providers({ snapshot, save }: { snapshot: ConfigSnapshot; save?: SaveCredential }) {
+function Providers({
+	snapshot,
+	save,
+	signIn,
+	onSignedIn,
+	setProvider,
+}: {
+	setProvider?: SetProvider;
+	snapshot: ConfigSnapshot;
+	save?: SaveCredential;
+	signIn?: SignInRequest;
+	onSignedIn: () => void;
+}) {
 	const configured = snapshot.providers.filter((row) => row.configured);
 	const missing = snapshot.providers.filter((row) => !row.configured);
 	return (
@@ -93,7 +111,8 @@ function Providers({ snapshot, save }: { snapshot: ConfigSnapshot; save?: SaveCr
 				<>
 					{configured.length === 0 && (
 						<p className="panel-empty muted">
-							No provider has a credential yet. Sign in with <code>/providers</code> in a terminal session.
+							No provider has a credential yet. {signIn || save ? "Sign in or set a key below. " : ""}
+							<code>/providers</code> in a terminal session does the same.
 						</p>
 					)}
 					<ProviderGroup
@@ -103,6 +122,9 @@ function Providers({ snapshot, save }: { snapshot: ConfigSnapshot; save?: SaveCr
 						open
 						save={save}
 						keychainAvailable={snapshot.keychainAvailable}
+						signIn={signIn}
+						onSignedIn={onSignedIn}
+						setProvider={setProvider}
 					/>
 					<ProviderGroup
 						title="Not configured"
@@ -111,6 +133,9 @@ function Providers({ snapshot, save }: { snapshot: ConfigSnapshot; save?: SaveCr
 						open={configured.length === 0}
 						save={save}
 						keychainAvailable={snapshot.keychainAvailable}
+						signIn={signIn}
+						onSignedIn={onSignedIn}
+						setProvider={setProvider}
 					/>
 				</>
 			)}
@@ -246,6 +271,10 @@ export interface ConfigViewProps {
 	save?: (command: ConfigSettingCommand) => Promise<ConfigSnapshot>;
 	/** Sets, replaces or clears a provider key and returns the fresh snapshot (for the chosen workspace). Offered only when the host says the connection is `writable`. */
 	saveCredential?: (command: ConfigCredentialCommand, repoId?: string) => Promise<ConfigSnapshot>;
+	/** Starts, polls, answers or cancels a sign-in the host runs for a provider. Offered only when the host says the connection is `writable`. */
+	signIn?: (command: SignInCommand) => Promise<SignInState>;
+	/** Turns a provider or the Pi source on or off and returns the fresh snapshot. Offered only when the host says the connection is `writable`. */
+	saveProvider?: (command: ConfigProviderCommand, repoId?: string) => Promise<ConfigSnapshot>;
 	/** Repositories that can be chosen as the workspace whose trust and settings file are shown. */
 	repos?: readonly { id: string; name: string }[];
 }
@@ -255,7 +284,7 @@ export interface ConfigViewProps {
  * (editable through `save` when the host allows it), and workspace trust. Persistence, precedence and trust belong to
  * the host; the page only shows its answer and its refusals.
  */
-export function ConfigView({ load, save, saveCredential, repos }: ConfigViewProps) {
+export function ConfigView({ load, save, saveCredential, saveProvider, signIn, repos }: ConfigViewProps) {
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
 	const [repoId, setRepoId] = useState<string | undefined>();
@@ -303,6 +332,16 @@ export function ConfigView({ load, save, saveCredential, repos }: ConfigViewProp
 		[saveCredential, repoId],
 	);
 
+	const setProvider = useMemo<SetProvider | undefined>(
+		() =>
+			saveProvider &&
+			(async (command) => {
+				const next = await saveProvider(command, repoId);
+				setState((current) => (current.status === "ready" ? { ...current, snapshot: next } : current));
+			}),
+		[saveProvider, repoId],
+	);
+
 	if (state.status === "loading") return <ConfigSkeleton />;
 	if (state.status === "error") {
 		return (
@@ -330,7 +369,14 @@ export function ConfigView({ load, save, saveCredential, repos }: ConfigViewProp
 					Refresh
 				</Button>
 			</div>
-			<Providers snapshot={snapshot} save={snapshot.writable ? saveKey : undefined} />
+			<SourcesPanel sources={snapshot.sources ?? []} set={snapshot.writable ? setProvider : undefined} />
+			<Providers
+				setProvider={snapshot.writable ? setProvider : undefined}
+				snapshot={snapshot}
+				save={snapshot.writable ? saveKey : undefined}
+				signIn={snapshot.writable ? signIn : undefined}
+				onSignedIn={reload}
+			/>
 			<Settings
 				snapshot={snapshot}
 				save={snapshot.writable ? saveSetting : undefined}

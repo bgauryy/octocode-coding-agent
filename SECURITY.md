@@ -1,25 +1,31 @@
 # Security in octocode-code
 
-octocode-code is an independent fork of [Pi](https://github.com/earendil-works/pi). It runs with the operating-system permissions of the user who launches it. Native permission checks, file guards, project trust and hook policies control supported agent actions; they are not an operating-system sandbox. Use process or container isolation when you need a stronger boundary.
+Octocode is an independent fork of [Pi](https://github.com/earendil-works/pi). It runs with the operating-system permissions of the user who launches it. Permission checks, file guards, project trust and hook policies control supported agent actions; they are **not** an operating-system sandbox. Use process or container isolation for a stronger boundary.
 
-Extensions and hooks execute local code. Install trusted packages and review project instructions, skills and configuration before granting trust. Retrieved text and model output can be adversarial; prompt instructions alone cannot enforce filesystem or network isolation.
+Extensions and hooks run local code: install trusted packages and review project instructions, skills and configuration before granting trust. Retrieved text and model output can be adversarial; prompts alone cannot enforce filesystem or network isolation.
 
-## Native boundaries
+## Boundaries
 
-- Permission modes and grants are enforced by `packages/coding-agent/src/octocode/permission/`. The current default mode is `full`; choose `OCTOCODE_PERMISSION=manual` or `workspace` when you want their additional checks.
-- File reservations and guarded edits are coordinated by `team/` and `files/` under the same native directory.
-- The local session API is opt-in. Its transport and authentication code lives in `api/`; keep discovery files and tokens private.
-- A process with the same user's filesystem or debugger access can influence this agent. Child nonces and private file modes do not isolate it from that user account.
-- External agents run with their own credentials, tools and permission policies.
+| Area                | Behavior                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Permission modes    | Default `full`; set `OCTOCODE_PERMISSION=manual` or `workspace` for more checks. Grants and modes: [permissions](packages/coding-agent/docs/permissions.md)                                |
+| File edits          | Guarded edits and path reservations coordinate agents working in one workspace                                                                                                             |
+| Local session API   | Opt-in; keep its discovery files and tokens private                                                                                                                                        |
+| Same-user processes | A process with the same user's filesystem or debugger access can influence the agent; child nonces and private file modes do not isolate it                                                |
+| External agents     | Run with their own credentials, tools and permission policies                                                                                                                              |
+| Credentials         | Manage AI credentials with `/providers` ([provider guide](packages/coding-agent/docs/providers.md#connect-what-you-have)); GitHub code-search login via `/octocode auth login` is separate |
 
-Manage AI credentials through `/providers`. The [provider guide](packages/coding-agent/docs/providers.md#authenticate-interactively) explains keychain and plaintext storage, file permissions, credential removal, and explicit Pi imports. GitHub code-search authentication through `/octocode auth login` is separate from AI provider access.
-
-See [configuration](packages/coding-agent/docs/configuration.md), [environment variables](packages/coding-agent/docs/environment-variables.md) and [native features](packages/coding-agent/docs/native-features.md).
+Related: [configuration](packages/coding-agent/docs/configuration.md), [environment variables](packages/coding-agent/docs/environment-variables.md), [native features](packages/coding-agent/docs/native-features.md).
 
 ## Reporting
 
-Report fork-specific defects to this fork's maintainers. If GitHub private vulnerability reporting is enabled for the fork, use its Security tab. Otherwise ask the maintainers for a private reporting channel without posting exploit details or secrets publicly. This repository does not specify a dedicated security email or response-time commitment.
+```mermaid
+flowchart TD
+  A[Defect found] --> B{In upstream Pi code?}
+  B -->|yes| C["Upstream security policy\nhttps://github.com/earendil-works/pi/security/policy"]
+  B -->|no, fork feature| D{Private vulnerability reporting enabled?}
+  D -->|yes| E[Repository Security tab]
+  D -->|no| F[Ask maintainers for a private channel; post no exploit details]
+```
 
-Include the affected commit or package version, configuration, reproduction steps, expected boundary and observed impact. Redact credentials and personal session contents. A bypass of an implemented permission, trust or API-authentication check is worth investigating even though the process is not sandboxed.
-
-For defects confirmed in upstream Pi, follow the [upstream security policy](https://github.com/earendil-works/pi/security/policy). Upstream maintainers and infrastructure are not the reporting destination for fork-specific features.
+This repository names no security email or response-time commitment. Include the commit or package version, configuration, reproduction steps, expected boundary and observed impact; redact credentials and session contents. A bypass of an implemented permission, trust or API-authentication check is worth investigating even though the process is not sandboxed.

@@ -4,6 +4,7 @@ import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
 import type { RunRoute } from "./claim.ts";
 import { routeSummary } from "./model.ts";
+import { BILLING_ERROR, CREDENTIAL_ERROR, refusedBeforeWork } from "./provider-health.ts";
 import type { RunDetails } from "./run-types.ts";
 import { runFooter } from "./tracking.ts";
 
@@ -35,12 +36,20 @@ export const ranOn = (route: RunRoute): string => (route.model ? `Ran on ${route
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
 export const FAILED_NEXT = renderInstruction("notices/subagents/failed-narrower.md");
 
+/** An unknown or unavailable model id: the provider's other models may work. */
+const MODEL_UNKNOWN =
+	/no such model|unknown model|model[^\n]{0,40}(?:not found|not available|does not exist|not supported)/i;
+
 /**
- * A provider refusing the credential or the model (an expired key, no access, an unknown id): retrying the same route
- * fails the same way, whatever the task.
+ * Why a provider refused the route, which decides the advice: no funds (the key is fine), the credential (fix it with
+ * /providers), or the request or model (another model may work). All of them fail the same way again on this route.
  */
-const MODEL_REFUSED =
-	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|permission[ _]denied|no such model|unknown model|model[^\n]{0,40}(?:not found|not available|does not exist|not supported)|insufficient[ _](?:quota|credit|balance)|billing/i;
+function refusalKind(error: string, nothingSpent: boolean): "billing" | "credential" | "request" | undefined {
+	if (BILLING_ERROR.test(error)) return "billing";
+	if (CREDENTIAL_ERROR.test(error)) return "credential";
+	if (MODEL_UNKNOWN.test(error) || refusedBeforeWork(error, nothingSpent)) return "request";
+	return undefined;
+}
 
 /** The provider throttled the request: every concurrent run shares its limit, so an immediate retry hits it again. */
 const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests|overloaded/i;
@@ -49,15 +58,17 @@ const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("
 
 /**
  * What the parent does after a failed subagent, then the model it ran on and what chose it. When the provider refused
- * the credential or the model, a narrower task cannot help: the advice names this session's model to pass as `model`
- * (its credential works) or the credential to fix.
+ * the route (no funds, the credential, the request or the model), a narrower task cannot help: the advice names this
+ * session's model to pass as `model` or what to fix, by cause.
  */
-export function failedNext(route: RunRoute, error: string, partial: boolean): string {
+export function failedNext(route: RunRoute, error: string, partial: boolean, nothingSpent = false): string {
 	const ran = ranOn(route);
-	const refused = MODEL_REFUSED.test(error);
+	const kind = refusalKind(error, nothingSpent);
 	const provider = route.model ? providerOf(route.model) : "";
 	const advice = renderInstruction("notices/subagents/failed-next.md", {
-		refused,
+		billing: kind === "billing",
+		credential: kind === "credential",
+		request: kind === "request",
 		rateLimited: RATE_LIMITED.test(error),
 		narrower: FAILED_NEXT,
 		other: Boolean(route.parent) && provider !== providerOf(route.parent ?? ""),

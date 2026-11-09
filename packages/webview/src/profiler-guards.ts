@@ -32,6 +32,10 @@ function isUsage(value: unknown): boolean {
 	);
 }
 
+function isCacheGroup(value: unknown): boolean {
+	return isRecord(value) && typeof value.prefix === "string" && optional(value.key, isString);
+}
+
 function isLayer(value: unknown): boolean {
 	return (
 		isRecord(value) &&
@@ -96,7 +100,8 @@ export function isProfileAgent(value: unknown): value is ProfileAgent {
 		optional(value.startedAt, finite) &&
 		optional(value.endedAt, finite) &&
 		optional(value.activity, isActivity) &&
-		optional(value.cacheTtlMs, finite)
+		optional(value.cacheTtlMs, finite) &&
+		optional(value.cacheGroup, isCacheGroup)
 	);
 }
 
@@ -114,6 +119,8 @@ export function isProfileRequest(value: unknown): value is ProfileRequest {
 		value.layers.every(isLayer) &&
 		optional(value.firstBreak, finite) &&
 		optional(value.missReason, isString) &&
+		optional(value.providerMissReason, isString) &&
+		optional(value.cacheGroup, isCacheGroup) &&
 		optional(value.idleMs, finite) &&
 		typeof value.estimated === "boolean"
 	);

@@ -16,7 +16,7 @@ export function openaiProvider(): Provider<"openai-responses"> {
 		name: "OpenAI",
 		baseUrl: "https://api.openai.com/v1",
 		auth: {
-			apiKey: envApiKeyAuth("OpenAI API key", apiKeyEnvVars("openai")),
+			apiKey: envApiKeyAuth("OpenAI API key", apiKeyEnvVars("openai"), "https://platform.openai.com/api-keys"),
 			oauth: lazyOAuth({
 				name: "OpenAI (ChatGPT subscription)",
 				isSubscription: true,

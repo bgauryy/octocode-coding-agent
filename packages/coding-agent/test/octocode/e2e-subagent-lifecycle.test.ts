@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { prompt, requestsOf as requestsOfScript, session } from "./e2e-a2a-helpers.ts";
+import { prompt, session } from "./e2e-a2a-helpers.ts";
 import {
 	alive,
 	type Endpoint,
@@ -17,10 +17,10 @@ import {
 } from "./e2e-real-process-harness.ts";
 
 /**
- * The subagent lifecycle through real processes on the scripted model: a child that answers while its own background job
- * runs (B82), and the outcome words of its report. Resume, stop, the request budget and an isolated child's merge have
- * their own real-process suites (e2e-features, e2e-budget-conversation, e2e-all-tools); the subagent hooks run against a
- * real child in subagent-hooks-session.test.ts.
+ * The subagent lifecycle through real processes on the scripted model: the outcome word reaching a `-p` parent, a
+ * coordinator that exits (SIGTERM, SIGKILL) with a running child, and a resumed child that sends its earlier transcript.
+ * Held jobs, report outcomes, path queues and the isolated start text are asserted in-process (subagent-job-hold,
+ * subagent-report, subagent-reservation-queue, subagent-isolated-start); the request budget has e2e-budget-conversation.
  */
 let endpoint: Endpoint;
 
@@ -52,51 +52,22 @@ const parentOf = (child: readonly Step[]): Step[] => [
 ];
 
 describe("a subagent's run and report", () => {
-	it("holds a child that answers while its own background job runs, and gives it the job's completion before it reports", async () => {
+	it("hands a blocked report to the parent with its outcome word", async () => {
 		const box = sandbox(endpoint);
-		const child: Step[] = [
-			{ tool: "bash", args: { command: "sleep 1; echo e2e-job-marker", background: true, reason: "the suite" } },
-			{ text: "I'll wait for the completion message." },
-			{ text: "done: the job printed its marker" },
-		];
+		const child: Step[] = [{ text: "blocked: stopped at step two; the build needs a decision" }];
 		const parent = parentOf(child);
 		const { code } = await box.start(["-p", script(parent)]).exited;
 		expect(code).toBe(0);
-
-		const childRequests = requestsOf(child);
-		expect(childRequests).toHaveLength(3);
-		const afterHold = allText(childRequests[2] ?? { messages: [] });
-		expect(afterHold).toContain("e2e-job-marker");
-		expect(afterHold).not.toMatch(/stopped[^\n]*run end/i);
 		const report = requestsOf(parent).at(-1)!.toolResults.join("\n");
-		expect(report).toMatch(/reported done/);
-		// The answer to the job's completion follows the earlier answer as its own section, not glued to it.
-		expect(report).not.toContain("message.done:");
-		expect(report).toMatch(/Follow-up to the report above[^\n]*\n[\s\S]*done: the job printed its marker/);
+		expect(report).toContain("blocked: stopped at step two");
+		expect(report).toMatch(/\bblocked\b/);
 	});
-
-	for (const outcome of ["partial", "blocked", "failed"] as const)
-		it(`hands a ${outcome} report to the parent with its outcome word`, async () => {
-			const box = sandbox(endpoint);
-			const child: Step[] = [{ text: `${outcome}: stopped at step two; the build needs a decision` }];
-			const parent = parentOf(child);
-			const { code } = await box.start(["-p", script(parent)]).exited;
-			expect(code).toBe(0);
-			const report = requestsOf(parent).at(-1)!.toolResults.join("\n");
-			expect(report).toContain(`${outcome}: stopped at step two`);
-			expect(report).toMatch(new RegExp(`\\b${outcome}\\b`));
-		});
 });
 
 const background = (goal: string, task: string, extra: Record<string, unknown> = {}): Step => ({
 	tool: "agent",
 	args: { type: "task", background: true, goal, task, ...extra },
 });
-const heardBy = (steps: string): string =>
-	requestsOfScript(endpoint, steps)
-		.flatMap((request) => request.messages.map((each) => each.text))
-		.join("\n");
-
 /**
  * Every process below `root` by parent pid. A subagent retitles itself (`octocode-<role>-<id>`), so its command line no
  * longer names the sandbox and only its ancestry finds it.
@@ -158,44 +129,6 @@ describe("a coordinator that exits with a running background child", () => {
 	});
 });
 
-describe("starts that name the same paths", () => {
-	it("queues the second until the first reports, then both report", async () => {
-		const box = sandbox(endpoint);
-		const gate = path.join(box.root, "first-may-finish");
-		const first = script([
-			{
-				tool: "bash",
-				args: { command: `for i in $(seq 1 1200); do [ -f ${JSON.stringify(gate)} ] && break; sleep 0.1; done` },
-			},
-			{ text: "done: first report marker" },
-		]);
-		const second = script([{ text: "done: second report marker" }]);
-		const parent = await session(box);
-		const steps = script([
-			background("edit shared", first, { paths: ["shared.txt"] }),
-			background("edit shared too", second, { paths: ["shared.txt"] }),
-			{ text: "both started" },
-		]);
-		prompt(parent.run, "go", steps);
-		await until(() => requestsOfScript(endpoint, steps).some((request) => request.step >= 2), "both starts to answer");
-		const results = requestsOfScript(endpoint, steps).at(-1)!.toolResults.join("\n");
-		expect(results).toMatch(/Reserved until it reports: shared\.txt/);
-		expect(results).toMatch(/Queued \S+ [^\n]*it holds no paths yet: it waits for the children holding them/);
-		// Held back: the second child has not asked the model anything while the first holds the paths.
-		await until(() => requestsOfScript(endpoint, first).length > 0, "the first child to run");
-		await new Promise((resolve) => setTimeout(resolve, 1500));
-		expect(requestsOfScript(endpoint, second)).toHaveLength(0);
-
-		fs.writeFileSync(gate, "");
-		await until(() => heardBy(steps).includes("first report marker"), "the first report", 120_000);
-		await until(() => heardBy(steps).includes("second report marker"), "the second report", 120_000);
-		const firstEnd = requestsOfScript(endpoint, first).at(-1)!.at;
-		expect(requestsOfScript(endpoint, second)[0].at).toBeGreaterThanOrEqual(firstEnd);
-		parent.run.process.stdin?.end();
-		await parent.run.exited;
-	});
-});
-
 describe("a resumed child", () => {
 	it("sends its earlier transcript with its first request", async () => {
 		const box = sandbox(endpoint);
@@ -215,26 +148,5 @@ describe("a resumed child", () => {
 		expect(text).toContain("done: earlier answer marker");
 		expect(text).toContain(script(first));
 		expect(resumed.lastUserText).toContain(script(second));
-	});
-});
-
-describe("an isolated start", () => {
-	it("names the child's worktree and the ref its result lands on", async () => {
-		const box = sandbox(endpoint);
-		const child: Step[] = [{ text: "done: nothing to change" }];
-		const parent: Step[] = [
-			{
-				tool: "agent",
-				args: { type: "task", background: true, isolate: true, goal: "work apart", task: script(child) },
-			},
-			{ text: "started" },
-		];
-		const { code } = await box.start(["-p", script(parent)]).exited;
-		expect(code).toBe(0);
-		const started = requestsOf(parent).at(-1)!.toolResults.join("\n");
-		const id = /Started (\S+) \(/.exec(started)?.[1];
-		expect(id, started).toBeDefined();
-		expect(started).toContain(`Works in its own worktree ${id}`);
-		expect(started).toContain(`refs/octocode/${id}`);
 	});
 });

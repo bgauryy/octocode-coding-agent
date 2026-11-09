@@ -1,7 +1,10 @@
 import type {
 	ConfigCredentialCommand,
+	ConfigProviderCommand,
 	ConfigSettingCommand,
 	ConfigSnapshot,
+	SignInCommand,
+	SignInState,
 } from "@octocodeai/octocode-contracts/config";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import type { DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contracts/daemon";
@@ -43,6 +46,26 @@ export function createDaemonApi(access: string) {
 				{ method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(command) },
 				"Could not save the credential",
 			),
+		/** Turns a provider or the Pi source on or off; the host writes the setting and answers with the fresh snapshot. */
+		saveProvider: (command: ConfigProviderCommand, repoId?: string): Promise<ConfigSnapshot> =>
+			requestJson<ConfigSnapshot>(
+				repoId
+					? `${DAEMON_ROUTES.configProviders}?repoId=${encodeURIComponent(repoId)}`
+					: DAEMON_ROUTES.configProviders,
+				{ method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(command) },
+				"Could not change the provider",
+			),
+		/** Starts, polls, answers or cancels a sign-in the host runs. An answer may carry a pasted code; the reply is the sign-in's state. */
+		signIn: (command: SignInCommand): Promise<SignInState> =>
+			requestJson(
+				DAEMON_ROUTES.configSignin,
+				{ method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(command) },
+				"Could not reach the sign-in",
+			).then((value) => {
+				if (!isRecord(value) || typeof value.status !== "string" || !Array.isArray(value.events))
+					throw new Error("Invalid sign-in response");
+				return value as unknown as SignInState;
+			}),
 		/** Changes one setting; the host answers with the fresh snapshot or refuses with its reason. */
 		saveSetting: (command: ConfigSettingCommand): Promise<ConfigSnapshot> =>
 			requestJson<ConfigSnapshot>(

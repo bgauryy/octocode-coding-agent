@@ -110,6 +110,28 @@ describe("a worktree merge is ready before anyone is asked", () => {
 		expect(approve).not.toHaveBeenCalled();
 	});
 
+	it("refuses a branch that changes a file another agent holds, naming it, before the dialog", async () => {
+		const { main } = repository();
+		const approve = vi.fn(async () => undefined);
+		const reservation = (_absolute: string, display: string) =>
+			display === "b.txt" ? "b.txt is held by another agent" : undefined;
+		const result = await mergeWorktreeBranch(main, "feature", { reservation, approve });
+		expect(result.ok).toBe(false);
+		expect(result.text).toMatch(/feature changes files another agent holds/);
+		expect(result.text).toMatch(/b\.txt is held/);
+		expect(approve).not.toHaveBeenCalled();
+		expect(fs.existsSync(path.join(main, "b.txt"))).toBe(false);
+	});
+
+	it("refuses to merge from a linked worktree: only the session in the main checkout merges", async () => {
+		const { worktree } = repository();
+		const approve = vi.fn(async () => undefined);
+		const result = await mergeWorktreeBranch(worktree, "feature", { reservation: free, approve });
+		expect(result.ok).toBe(false);
+		expect(result.text).toMatch(/only the session in the main checkout merges/);
+		expect(approve).not.toHaveBeenCalled();
+	});
+
 	it("reads the backlog of the worktree being merged, not the main checkout's", async () => {
 		const { main, worktree } = repository();
 		const own = openBacklog(fakeCtx({ cwd: worktree }), { isSubagent: false }).store;

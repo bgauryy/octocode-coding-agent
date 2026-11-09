@@ -407,6 +407,12 @@ describe("the timer tool in a session", () => {
 		await host.fire("session_shutdown", {}, ctx);
 	});
 
+	it("refuses a wait of more than 30 days instead of storing a time that is no integer", () => {
+		expect(() => timerFields({ note: "x", after: 1e20 }, T0, owner())).toThrow(/after is at most 2592000 seconds/);
+		expect(() => timerFields({ note: "x", every: 1e9 }, T0, owner())).toThrow(/every is at most/);
+		expect(timerFields({ note: "x", after: 2592000 }, T0, owner()).dueAt).toBe(T0 + 2592000_000);
+	});
+
 	it("refuses a repeating timer faster than the minimum and an eleventh active timer", async () => {
 		expect(() => timerFields({ note: "x", every: 5 }, T0, owner())).toThrow(/at least 30 seconds/);
 		for (let i = 0; i < 10; i++) add({ note: `t${i}`, after: 600 });

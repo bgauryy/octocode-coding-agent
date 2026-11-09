@@ -204,6 +204,8 @@ export async function writeSummary(
 	cacheTtlMs?: number,
 	/** The Recovery lines for the state the tools report (`live-state.ts`), read when the summary is written, never from the model. */
 	liveState?: () => readonly string[],
+	/** The lifetime of the instruction entry when it outlives the history's (`long` tier); the history's when omitted. */
+	instructionTtlMs?: number,
 ): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
@@ -269,6 +271,7 @@ export async function writeSummary(
 						},
 						recordUsage,
 						cacheCold(ctx.sessionManager, cacheTtlMs),
+						cacheCold(ctx.sessionManager, instructionTtlMs ?? cacheTtlMs),
 					)
 				: undefined;
 			// Passes the session's preferences with history `none`, so octocode-ai sends no cache markers and the adapters drop

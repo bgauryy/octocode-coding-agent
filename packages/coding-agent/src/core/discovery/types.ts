@@ -94,6 +94,8 @@ export interface DiscoverInput {
 	includeUntrusted?: boolean;
 	/** The merged `toggles` setting (project keys prefixed); without it every harness takes its default. */
 	toggles?: Toggles;
+	/** The Octocode skill collection (`getOctocodeSkillsDir`), listed with scope `builtin`; the loader resolves it itself. */
+	builtinSkillsDir?: string;
 }
 
 /** A provider of items for one kind. Core ships the file-based ones; the host registers the rest (hooks, agents, plugins). */

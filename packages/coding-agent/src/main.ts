@@ -29,6 +29,7 @@ import { loadMcpCommand } from "../../mcp/src/cli.lazy.ts";
 import { runAuthCommand } from "./main/auth-command.ts";
 import { runModelDiscoveryCommand } from "./main/model-discovery.ts";
 import { startupCwd } from "./cli/worktree-startup.ts";
+import { applyRunConfigurationOrExit } from "./main/run-configuration.ts";
 import { createCliRuntimeFactory } from "./main/runtime-factory.ts";
 import { folderTrustAsker, gateStartup, prepareAcpTrust } from "./main/trust-startup.ts";
 import { folderTrustResolver } from "./octocode/trust/port.ts";
@@ -93,6 +94,7 @@ export async function main(args: string[]) {
 	}
 
 	if (await handleConfigCommand(args)) {
+		process.exit(process.exitCode ?? 0);
 		return;
 	}
 
@@ -191,6 +193,12 @@ export async function main(args: string[]) {
 	const startupSettingsManager = SettingsManager.createForStartup(cwd, agentDir, folderTrust(cwd).state === "trusted");
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);
 
+	await applyRunConfigurationOrExit(parsed, {
+		cwd,
+		agentDir,
+		settings: startupSettingsManager,
+		projectTrusted: folderTrust(cwd).state === "trusted",
+	});
 	if (appMode === "interactive" && parsed.useTheme !== undefined) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
 	}

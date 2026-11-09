@@ -17,13 +17,17 @@ function createTestSkill(options: {
 	baseDir: string;
 	disableModelInvocation?: boolean;
 	source?: string;
+	scope?: "user" | "project" | "temporary";
 }): Skill {
 	return {
 		name: options.name,
 		description: options.description,
 		filePath: options.filePath,
 		baseDir: options.baseDir,
-		sourceInfo: createSyntheticSourceInfo(options.filePath, { source: options.source ?? "test" }),
+		sourceInfo: createSyntheticSourceInfo(options.filePath, {
+			source: options.source ?? "test",
+			...(options.scope ? { scope: options.scope } : {}),
+		}),
 		disableModelInvocation: options.disableModelInvocation ?? false,
 	};
 }
@@ -353,17 +357,23 @@ describe("skills", () => {
 			);
 		});
 
-		it("groups Octocode's core skills, the bundled Octocode collection and external skills, in that order", () => {
-			const skill = (name: string, dir: string, source?: string) =>
+		it("groups core, Octocode collection, workspace and global skills, in that order, each with name, description and path", () => {
+			const skill = (name: string, dir: string, source?: string, scope?: "user" | "project") =>
 				createTestSkill({
 					name,
 					description: `${name} work.`,
 					filePath: join(dir, name, "SKILL.md"),
 					baseDir: join(dir, name),
 					source,
+					scope,
 				});
 			const result = formatSkillsForPrompt(
-				[skill("mine", "/home/u/.agents/skills"), skill("octocode-debugging", getNativeSkillsDir())],
+				[
+					skill("mine", "/home/u/.agents/skills", "auto", "user"),
+					skill("repo-release", "/repo/.octocode/skills", "auto", "project"),
+					skill("octocode-roast", "/opt/octocode/skills", "builtin", "user"),
+					skill("octocode-debugging", getNativeSkillsDir()),
+				],
 				"skill",
 			);
 			const catalog = result.slice(result.indexOf("<available_skills>"));
@@ -372,15 +382,25 @@ describe("skills", () => {
 				"<available_skills>",
 				"<core_skills>",
 				"</core_skills>",
-				"<external_skills>",
-				"</external_skills>",
+				"<octocode_skills>",
+				"</octocode_skills>",
+				"<workspace_skills>",
+				"</workspace_skills>",
+				"<global_skills>",
+				"</global_skills>",
 				"</available_skills>",
 			]);
-			const order = ["octocode-debugging", "mine"].map((name) => catalog.indexOf(`<name>${name}</name>`));
+			const order = ["octocode-debugging", "octocode-roast", "repo-release", "mine"].map((name) =>
+				catalog.indexOf(`<name>${name}</name>`),
+			);
 			expect(order).toEqual([...order].sort((a, b) => a - b));
-			expect(catalog).toMatch(/<core_skills>\n {2}<skill><name>octocode-debugging<\/name>/);
-			// A catalog with only external skills has only that group.
-			expect(formatSkillsForPrompt([skill("mine", "/home/u/.agents/skills")], "skill")).not.toMatch(/<core_skills>/);
+			expect(catalog).toContain(
+				"<workspace_skills>\n  <skill><name>repo-release</name><description>repo-release work.</description><location>/repo/.octocode/skills/repo-release/SKILL.md</location></skill>",
+			);
+			// An empty group is left out.
+			expect(formatSkillsForPrompt([skill("mine", "/home/u/.agents/skills")], "skill")).not.toMatch(
+				/<core_skills>|<workspace_skills>/,
+			);
 		});
 
 		it("should escape XML special characters", () => {

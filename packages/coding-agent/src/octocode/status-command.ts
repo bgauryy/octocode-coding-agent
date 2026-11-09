@@ -1,6 +1,8 @@
 import { builtinDescription } from "../core/slash-commands.ts";
 import type { ExtensionAPI } from "../core/features/index.ts";
+import { mcpGroupLabel, mcpServerSource } from "../../../mcp/src/group.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
+import { tildePath } from "./shared/home.ts";
 import { computeSessionStats } from "../core/session-stats.ts";
 import { bypassMergeLine } from "./permission/ask/text.ts";
 import type { PermissionMode } from "./permission/mode.ts";
@@ -50,7 +52,7 @@ export function statusCommand(
 					...(servers.length
 						? servers.map(
 								(server) =>
-									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.source}`,
+									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.group ? `${mcpGroupLabel(server.group)} · ` : ""}${mcpServerSource(server, (file) => tildePath(file))}`,
 							)
 						: ["  none"]),
 					"",

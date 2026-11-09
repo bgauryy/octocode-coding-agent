@@ -55,6 +55,7 @@ type AgentEventsHost = Pick<
 	| "streamingMessage"
 	| "ui"
 	| "unsubscribe"
+	| "updateAvailableProviderCount"
 	| "updateEditorBorderColor"
 	| "updateTerminalTitle"
 	| "workingVisible"
@@ -79,7 +80,13 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 		if (host.session !== session) return;
 		await host.handleEvent(event);
 	}, onError);
+	const closeProviders = session.onProviderSettingsApplied(() => {
+		if (host.session !== session) return;
+		host.updateAvailableProviderCount();
+		host.ui.requestRender();
+	});
 	host.unsubscribe = () => {
+		closeProviders();
 		closeApplication();
 		closeQueue();
 		closeNative();

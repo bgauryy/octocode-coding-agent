@@ -1,6 +1,22 @@
 # Customize Octocode with themes
 
-Themes control the colors Octocode uses in interactive mode and HTML exports. Octocode includes the `system`, `dark`, and `light` themes. You can select one theme, follow your terminal's light or dark appearance, or create your own palette.
+Themes control the colors Octocode uses in interactive mode and HTML exports. Octocode includes `system` (default), `dark` and `light`. Pick one, follow your terminal's light or dark appearance, or write your own.
+
+```mermaid
+flowchart TD
+    A[Theme chosen by] --> B{"--use-theme given?"}
+    B -- yes --> T[that theme, this run only]
+    B -- no --> C{"theme setting"}
+    C -- "name" --> N[that theme]
+    C -- "light/dark" --> D["terminal appearance picks one"]
+    C -- unset --> S["system: built from your terminal colors"]
+```
+
+| Way to choose | Example                                                            |
+| ------------- | ------------------------------------------------------------------ |
+| Picker        | `/configuration` → **Interface and session** → **Theme**           |
+| Setting       | `{ "theme": "dark" }` or `{ "theme": "light/dark" }` (light first) |
+| One run       | `octocode --use-theme light` (`--no-themes` skips theme discovery) |
 
 ## Use your terminal's colors
 
@@ -25,7 +41,7 @@ Octocode asks the terminal for its colors when it starts. Terminals usually answ
 
 ## Choose a theme
 
-Open `/settings` and select **Theme**. You can use one theme for every terminal appearance or choose separate themes for light and dark terminals.
+Open `/configuration`, choose **Interface and session** and select **Theme**. You can use one theme for every terminal appearance or choose separate themes for light and dark terminals.
 
 The selection is saved as the `theme` setting:
 
@@ -54,16 +70,14 @@ octocode --use-theme light
 octocode --use-theme light/dark
 ```
 
-See CLI resources for the command-line option.
-
 ## Create a custom theme
 
-Copy one of the [built-in themes](../src/theme/) or create a new JSON file conforming to the [schema](../schemas/theme.schema.json). The built-in themes use OKHSL colors, with variables for colors that several roles share, so you can adjust a hue, saturation, or lightness directly.
+Create a new JSON file conforming to `schemas/theme.schema.json` in the installed package (or start from a built-in theme's values). The built-in themes use OKHSL colors, with variables for colors that several roles share, so you can adjust a hue, saturation, or lightness directly.
 
-1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration locations](../../../CONFIGURATIONS.md).
+1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration](configuration.md#agent-directory).
 2. Set its `name` to `my-theme`.
 3. Change values in `vars` and `colors`.
-4. Select `my-theme` through `/settings`.
+4. Select `my-theme` through `/configuration` (**Interface and session**).
 
 Use the theme name as the filename. Octocode hot-reloads the active user theme only from `<agent-dir>/themes/<name>.json`. Run `/reload` after adding or changing a theme from any other source.
 
@@ -91,11 +105,11 @@ A color can be written in six forms:
 | Variable reference | `"primary"`             | The value of an entry in `vars`.                                                                                                                                                            |
 | Terminal default   | `""`                    | The terminal's default foreground or background color.                                                                                                                                      |
 
-Terminal default colors render as the terminal's own colors. Where Octocode needs a concrete value, such as HTML export or extension color math, it uses the default colors the terminal reports, or a black or white guess based on the theme's appearance.
+Terminal default colors render as the terminal's own colors. Where Octocode needs a concrete value, such as HTML export, it uses the default colors the terminal reports, or a black or white guess based on the theme's appearance.
 
 Octocode resolves chained variable references. A missing variable or circular reference makes the theme invalid. Octocode uses truecolor when available, gamut-maps OKLCH to sRGB, and approximates colors for 256-color terminals. HTML exports convert OKHSL values to hexadecimal because CSS does not support them. If colors differ from their source values, check your terminal's truecolor detection and contrast settings. See Configure Your Terminal.
 
-Use the [theme JSON schema](../schemas/theme.schema.json) for the exact properties, required colors, and accepted value types.
+`schemas/theme.schema.json` in the installed package lists the exact properties, required colors and accepted value types.
 
 Octocode reports invalid theme files during startup and `/reload`.
 
@@ -134,6 +148,6 @@ If `export` colors are omitted, Octocode derives HTML page and panel backgrounds
 
 Place a project theme in `.octocode/themes/`. Project themes load only after project trust is granted.
 
-You can also load theme files and directories through the `themes` setting or distribute them in a Octocode package. See Configuration, Settings, and [Octocode Packages](packages.md).
+You can also load theme files and directories through the `themes` setting or distribute them in a Octocode package. See [configuration](configuration.md#where-each-configuration-belongs), [settings](settings.md) and [packages](packages.md).
 
 Each loaded theme must have a unique name. Octocode reports duplicate names as resource collisions.

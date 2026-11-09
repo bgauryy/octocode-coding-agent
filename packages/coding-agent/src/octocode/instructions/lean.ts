@@ -5,8 +5,13 @@ import { renderInstruction } from "../../core/prompt-template.ts";
  * `lean/lean.md` instead of the work, research, delegation and communication sections. The report contract the parent
  * parses rides in its task (`report.ts`). Depends only on the selected tools, so lean siblings share one cached prompt.
  */
-export function leanPromptSections(input: { canShell: boolean; canSave: boolean; readOnly: boolean }): {
+export function leanPromptSections(input: {
+	canShell: boolean;
+	canSave: boolean;
+	readOnly: boolean;
+	agentTool?: boolean;
+}): {
 	lean: string;
 } {
-	return { lean: renderInstruction("sections/lean.md", input) };
+	return { lean: renderInstruction("sections/lean.md", { ...input, agentTool: input.agentTool !== false }) };
 }

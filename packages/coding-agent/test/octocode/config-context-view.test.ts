@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as Config from "../../src/config.ts";
 import { getNativeSkillsDir } from "../../src/config.ts";
 import { claudeConfigDir } from "../../src/utils/host-config.ts";
 import { collectContextView } from "../../src/core/discovery/context-snapshot.ts";
@@ -17,6 +18,13 @@ import { LoadedRow, loadedColumns } from "../../src/modes/interactive/interactiv
 import { initTheme } from "../../src/theme/theme.ts";
 import { type Sandbox, createSandbox, skillFile, write } from "../discovery/fixtures.ts";
 import { createTestSession } from "../helpers/session.ts";
+
+// The fixture counts its own skills; the Octocode skill collection installed on this machine stays out, as
+// `OCTOCODE_MCP=0` keeps the default server out.
+vi.mock("../../src/config.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof Config>()),
+	getOctocodeSkillsDir: () => undefined,
+}));
 
 let box: Sandbox;
 

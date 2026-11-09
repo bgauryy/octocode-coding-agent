@@ -81,6 +81,7 @@ export class DefaultPackageManager implements PackageManager {
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
 			builtinExtensions: this.builtinExtensions,
+			builtinSkillsDir: options.builtinSkillsDir,
 			withProgress: (...args) => this.withProgress(...args),
 			installParsedSource: (...args) => this.installParsedSource(...args),
 			refreshTemporaryGitSource: (...args) => this.refreshTemporaryGitSource(...args),

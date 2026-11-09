@@ -11,6 +11,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { parseArgs } from "../../../src/cli/args.ts";
+import { getOctocodeSkillsDir } from "../../../src/config.ts";
 import type { ExtensionFactory } from "../../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import { createTestSession } from "../../helpers/session.ts";
@@ -96,6 +97,7 @@ export function fixture(): Fixture {
 		const homed = forms.map((form) => shortPath(form)).filter((form) => form.startsWith("~"));
 		return [...new Set([...forms, ...homed])].map((form): [string, string] => [form, shown]);
 	};
+	const octocodeSkills = getOctocodeSkillsDir();
 	// Longest first, so a folder inside another is replaced before its parent.
 	const replacements = [
 		...both(cwd, "/workspace/project"),
@@ -104,6 +106,8 @@ export function fixture(): Fixture {
 		...both(home, "~"),
 		...both(root, "/tmp/octocode-context"),
 		[PACKAGE_DIR, "<octocode package>"] as [string, string],
+		// The Octocode skill collection lives in the installed research CLI package, wherever this machine has it.
+		...(octocodeSkills ? [[octocodeSkills, "<octocode skills>"] as [string, string]] : []),
 	].sort((a, b) => b[0].length - a[0].length);
 	const fx = { root, cwd, home, agentDir, octocodeHome, scratch, replacements };
 	// The user trusted this project: the child processes read the agent database under this Octocode home.
@@ -125,6 +129,11 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		OCTOCODE_MODELS_DEV: "0",
 		// The default follows the machine, and the rendered tool descriptions must not.
 		OCTOCODE_MAX_SUBAGENTS: "6",
+		// The octocode-mcp server lists `securityCheck` and `clasify` only when the user's home enables them, and the
+		// fixture home is empty. A real session declares both: opt in so the capture lists the same tools. The listing
+		// makes no call; the API host is a placeholder that is never contacted.
+		OCTOCODE_SECURITY_CHECKS: "1",
+		OCTOCODE_CLASSIFICATION_API: "https://classification.example.invalid",
 	};
 }
 

@@ -1,7 +1,12 @@
-# @octocodeai/octocode-common (private workspace)
+# @octocodeai/octocode-common
 
-This private workspace holds host-free utilities that the coding-agent host, `packages/mcp` and `packages/acp` share: JSON and text helpers, environment names, atomic and locked file writes, path and child-process helpers, terminal-text sanitizing and secret redaction (`sanitize.ts`), the SSRF-safe web guard (`web-guard.ts`), and the MCP and browser server names. It imports nothing from `packages/coding-agent/src`, `packages/mcp` or `packages/acp`; `scripts/check-package-boundaries.mjs` enforces that through its package policy (`common: ["contracts"]`).
+Private workspace of host-free utilities shared by coding-agent, `packages/mcp` and `packages/acp`: JSON and text helpers, environment names, atomic and locked file writes, path and child-process helpers, terminal-text sanitizing and secret redaction (`sanitize.ts`), the SSRF-safe web guard (`web-guard.ts`), MCP and browser server names.
 
-Like the MCP and ACP workspaces it is not published. `octocodeSource` declares the `common` mount, `scripts/build-coding-agent.mjs` bundles it into coding-agent's `dist/bundle/`, and the host ships its runtime dependencies. Import it with relative source paths (for example `../../../common/src/text.ts`, as the host and the sibling workspaces already import each other) so the bundler follows them. Workspace exports (`@octocodeai/octocode-common/<module>`) resolve to source for tests and tooling.
+| Rule              | Detail                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Belongs here      | Needs only Node, its own dependencies and `contracts` (`common: ["contracts"]` in the package policy, enforced by `yarn run check:boundaries`)                                 |
+| Stays in the host | Anything needing configuration, agent directories, themes, settings, trust or the model registry; reach shared packages through an injected port                               |
+| Not published     | `octocodeSource` declares the `common` mount; the coding-agent build bundles it into its one bundle                                                                            |
+| Importing         | Relative source paths (for example `../../../common/src/text.ts`) so the bundler follows them; `@octocodeai/octocode-common/<module>` resolves to source for tests and tooling |
 
-A module belongs here when it needs only Node, its own dependencies and other published packages. Anything that needs host configuration (`config.ts`, agent directories, themes, settings, trust or the model registry) stays in the host and reaches a shared package through an injected port.
+Test: `yarn workspace @octocodeai/octocode-common run test`.

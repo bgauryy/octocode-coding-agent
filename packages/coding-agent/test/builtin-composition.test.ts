@@ -3,15 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { selectConfig } from "../src/cli/config-selector.ts";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import type { InlineExtension } from "../src/core/features/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { main } from "../src/main.ts";
 import { handleConfigCommand } from "../src/package-manager-cli/config-command.ts";
-
-vi.mock("../src/cli/config-selector.ts", () => ({ selectConfig: vi.fn() }));
 
 describe("built-in composition", () => {
 	let root: string;
@@ -40,19 +37,18 @@ describe("built-in composition", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it.each(["main", "config"])("shows default built-ins through %s without injected factories", async (entry) => {
+	it.each(["main", "configuration"])("lists default built-ins through %s without injected factories", async (entry) => {
 		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:llama.cpp"] }));
-		const args = ["config"];
-		await expect(entry === "main" ? main(args) : handleConfigCommand(args)).rejects.toBe(exited);
+		const out: string[] = [];
+		vi.spyOn(console, "log").mockImplementation((line) => void out.push(String(line)));
+		const args = ["configuration", "list", "extension", "--json"];
+		if (entry === "main") await expect(main(args)).rejects.toBe(exited);
+		else expect(await handleConfigCommand(args)).toBe(true);
 
-		const options = vi.mocked(selectConfig).mock.calls[0]?.[0];
-		expect(options).toBeDefined();
-		for (const scope of ["global", "project"] as const) {
-			const builtins = options.resolvedPaths[scope].extensions.filter((item) => item.path.startsWith("builtin:"));
-			// MCP is core, so no row offers to switch it off.
-			expect(builtins.map((item) => item.path)).toEqual(["builtin:llama.cpp"]);
-			expect(builtins[0]?.enabled).toBe(false);
-		}
+		const ids = JSON.parse(out.join("\n")) as Array<{ id: string; value: boolean }>;
+		expect(ids.find((item) => item.id === "extension:llama.cpp")).toMatchObject({ value: false });
+		// MCP is core, so no row offers to switch it off.
+		expect(ids.map((item) => item.id)).not.toContain("extension:mcp");
 	});
 
 	it("uses the caller's built-in factory once and respects disabled defaults", async () => {

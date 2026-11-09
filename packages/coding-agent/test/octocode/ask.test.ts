@@ -480,16 +480,47 @@ describe("askUser tool", () => {
 			options: ["A", "B", "C", "D", "E"].map((label) => ({ label })),
 		}));
 		const ctx = fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A", "1. A", "1. A", "1. A"] } });
-		const result = await tool.execute("c", { questions }, undefined, undefined, ctx);
-		expect((result.details as AskResult).answers).toHaveLength(4);
-		expect(result.content[0].text).toContain(
-			"(Not asked: 2 questions past the first 4 and 4 options past the first 4.)",
+		await expect(tool.execute("c", { questions }, undefined, undefined, ctx)).rejects.toThrow(
+			/at most 4 questions; got 6/,
 		);
+		const four = await tool.execute("c", { questions: questions.slice(0, 4) }, undefined, undefined, ctx);
+		expect((four.details as AskResult).answers).toHaveLength(4);
+		expect(four.content[0].text).toContain("(Not asked: 4 options past the first 4.)");
+	});
+
+	it("drops only a bare write-in option and refuses a lone option", async () => {
+		const ctx = () => fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Other tools only"] } });
+		const kept = await tool.execute(
+			"c",
+			{
+				questions: [
+					{
+						question: "Which?",
+						options: [{ label: "A" }, { label: "Other tools only" }, { label: "Other (specify)" }, { label: "Other" }],
+					},
+				],
+			},
+			undefined,
+			undefined,
+			ctx(),
+		);
+		expect(kept.content[0].text).toBe(
+			'"Which?" → Other tools only\n(Not asked: 2 "Other" options (the UI adds a write-in).)',
+		);
+		await expect(
+			tool.execute(
+				"c",
+				{ questions: [{ question: "Which?", options: [{ label: "A" }] }] },
+				undefined,
+				undefined,
+				ctx(),
+			),
+		).rejects.toThrow(/one usable option; give 2-4/);
 	});
 
 	it("says how many empty questions and options it did not ask", async () => {
 		const questions = [
-			{ question: "Which?", options: [{ label: "A" }, { label: "  " }, { label: "" }] },
+			{ question: "Which?", options: [{ label: "A" }, { label: "B" }, { label: "  " }, { label: "" }] },
 			{ question: "   " },
 			{ question: "" },
 			{ question: " " },
@@ -506,7 +537,7 @@ describe("askUser tool", () => {
 		);
 		const one = await tool.execute(
 			"c",
-			{ questions: [{ question: "Which?", options: [{ label: "A" }] }, { question: "" }] },
+			{ questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }, { question: "" }] },
 			undefined,
 			undefined,
 			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A"] } }),
@@ -517,7 +548,7 @@ describe("askUser tool", () => {
 			(
 				await tool.execute(
 					"c",
-					{ questions: [{ question: "Which?", options: [{ label: "A" }] }] },
+					{ questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }] },
 					undefined,
 					undefined,
 					fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A"] } }),

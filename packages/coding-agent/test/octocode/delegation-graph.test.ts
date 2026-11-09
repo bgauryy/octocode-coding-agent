@@ -54,7 +54,7 @@ describe("coordinator planning graph", () => {
 			// Build cycles: children never run whole builds, and a broken build is not a new child.
 			expect(waves).toContain("children run only the focused tests of their own files");
 			expect(waves).toContain(
-				"a failing build or test goes back to the child that owns the item (resume it), not to a new child",
+				"a failing build or test goes back to the child that owns the item (continue it as below), not to a new child",
 			);
 			expect(waves).toContain("review the combined diff");
 		}
@@ -78,6 +78,20 @@ describe("coordinator planning graph", () => {
 
 	it("puts the coordinator's own work in the graph, not only its children's", () => {
 		for (const text of delegation()) expect(text).toContain("its owner (you or one child)");
+	});
+
+	it("plans the graph without the backlog when the session runs without the backlog tool", () => {
+		const text =
+			octocodePromptSections({ research: FAKE_RESEARCH, profiles: [], canDelegate: true, canBacklog: false })
+				.delegation ?? "";
+		const plan = text.split("\n").find((line) => line.startsWith("- Before you start two or more children")) ?? "";
+		expect(plan).toContain("plan the work as a graph: one part per piece");
+		expect(plan).toContain("show the user the plan as one short list: part, owner, depends on");
+		// No rule may send the coordinator to a tool it lacks.
+		expect(text).not.toContain("backlog");
+		expect(text).not.toContain("`dependsOn`");
+		expect(text).not.toContain("`until item`");
+		expect(text).toContain("Read `coordinate` `list` for status");
 	});
 
 	it("states each planning rule once", () => {

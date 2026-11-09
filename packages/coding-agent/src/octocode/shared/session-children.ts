@@ -90,6 +90,24 @@ function reportOf(entry: unknown, message: Record<string, unknown>): { text: str
 
 const text = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);
 
+/**
+ * The children a batch call (`agent` `tasks`) started: each successful entry's run details with the arguments it ran with
+ * (the call's top-level fields as defaults, the entry's own over them). Undefined when `details` is not a batch result.
+ */
+function batchStarts(
+	details: Record<string, unknown>,
+	call: Record<string, unknown> | undefined,
+): { details: Record<string, unknown>; input: Record<string, unknown> }[] | undefined {
+	if (!Array.isArray(details.batch)) return undefined;
+	const { tasks, ...defaults } = call ?? {};
+	const own = Array.isArray(tasks) ? tasks : [];
+	return details.batch.flatMap((entry, index) =>
+		isRecord(entry) && entry.ok === true && isRecord(entry.details)
+			? [{ details: entry.details, input: { ...defaults, ...(isRecord(own[index]) ? own[index] : {}) } }]
+			: [],
+	);
+}
+
 /** Every subagent the entries name, in the order they started, each with its latest status and files. */
 export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 	const inputs = new Map<string, Record<string, unknown>>();
@@ -139,6 +157,36 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		if (isRecord(details.startup) && details.startup.failed === true) child.startupFailed = true;
 		else delete child.startupFailed;
 	};
+	/** Records the start of one child from its run `details` (and the arguments of the task that started it). */
+	const recordStart = (
+		entry: unknown,
+		message: Record<string, unknown>,
+		details: Record<string, unknown>,
+		input: Record<string, unknown>,
+		withReport: boolean,
+	) => {
+		const id = text(details.id);
+		const profile = text(details.profile);
+		if (!id || !profile) return;
+		const child: SessionChild = children.get(id) ?? { id, profile, goal: text(details.goal) ?? "", status: "" };
+		if (children.has(id)) {
+			delete child.report;
+			delete child.reportArtifact;
+			delete child.reportText;
+			delete child.reportAt;
+		}
+		rememberRun(id, details);
+		delete child.outcome;
+		child.profile = profile;
+		child.goal = text(details.goal) ?? child.goal;
+		if (input.isolate === true) child.isolated = true;
+		else delete child.isolated;
+		if (typeof input.headless === "boolean") child.headless = input.headless;
+		const task = text(input.task);
+		if (task && !(input.resume === id && tasks.has(id))) tasks.set(id, task);
+		update(child, details, withReport ? reportOf(entry, message) : undefined);
+		children.set(id, child);
+	};
 	for (const entry of entries) {
 		const message = entryMessage(entry);
 		if (!isRecord(message)) continue;
@@ -147,6 +195,14 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 				if (isRecord(part) && part.type === "toolCall" && typeof part.id === "string" && isRecord(part.arguments))
 					inputs.set(part.id, part.name === "agent" ? agentCall(part.arguments).input : part.arguments);
 			continue;
+		}
+		if (message.role === "toolResult" && message.toolName === "agent" && isRecord(message.details)) {
+			const batch = batchStarts(message.details, inputs.get(String(message.toolCallId)));
+			if (batch) {
+				// One call started several children: each entry's details are its own run, its report is not recorded apart.
+				for (const started of batch) recordStart(entry, message, started.details, started.input, false);
+				continue;
+			}
 		}
 		const details = isRecord(message.details) ? message.details : undefined;
 		const id = text(details?.id);
@@ -179,27 +235,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		}
 		if (message.role !== "toolResult" || message.toolName !== "agent") continue;
 		if (details.agentType !== undefined && details.agentType !== "task") continue;
-		const profile = text(details.profile);
-		if (!profile) continue;
-		const input = inputs.get(String(message.toolCallId)) ?? {};
-		const child: SessionChild = children.get(id) ?? { id, profile, goal: text(details.goal) ?? "", status: "" };
-		if (children.has(id)) {
-			delete child.report;
-			delete child.reportArtifact;
-			delete child.reportText;
-			delete child.reportAt;
-		}
-		rememberRun(id, details);
-		delete child.outcome;
-		child.profile = profile;
-		child.goal = text(details.goal) ?? child.goal;
-		if (input.isolate === true) child.isolated = true;
-		else delete child.isolated;
-		if (typeof input.headless === "boolean") child.headless = input.headless;
-		const task = text(input.task);
-		if (task && !(input.resume === id && tasks.has(id))) tasks.set(id, task);
-		update(child, details, reportOf(entry, message));
-		children.set(id, child);
+		recordStart(entry, message, details, inputs.get(String(message.toolCallId)) ?? {}, true);
 	}
 	for (const child of children.values()) {
 		const task = child.startupFailed ? tasks.get(child.id) : undefined;

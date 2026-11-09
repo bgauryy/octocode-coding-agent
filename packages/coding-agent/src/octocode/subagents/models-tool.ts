@@ -23,19 +23,19 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 		label: "Models",
 		promptSnippet: renderInstruction("tools/models/snippet.md"),
 		description:
-			"This session's model and thinking level; configured providers with credential status; models with price, context and abilities; the small/medium and profile routes. Filters combine.",
+			"This session's model and thinking level; configured providers and credential status; models with price, context and abilities; small/medium and profile routes. Filters combine.",
 		parameters: Type.Object({
 			provider: Type.Optional(Type.String({ description: "Keep this provider's models" })),
 			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
 			query: Type.Optional(Type.String({ description: "Keep models whose provider/id contains this text" })),
 			check: Type.Optional(
 				Type.Boolean({
-					description: "true: send one small request per provider to test the listed models' credentials first",
+					description: "true: first test credentials with one small request per provider",
 				}),
 			),
 			scope: Type.Optional(
 				StringEnum(["connected", "catalog"] as const, {
-					description: "connected (default); catalog also lists unconnected models",
+					description: "connected (default); catalog adds unconnected models",
 				}),
 			),
 		}),
@@ -51,8 +51,7 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 				named(model) && (!params.ability || modelAbilities(model, catalog).includes(params.ability));
 			const all = ctx.modelRegistry.getAvailable();
 			const shown = all.filter(matches);
-			// Unconnected catalog models have no abilities to test: only the name filters apply to them.
-			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(named) : [];
+			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
 			const filtered = query || provider || params.ability;
 			if (filtered && shown.length === 0 && unconnected.length === 0)
 				return textResult(

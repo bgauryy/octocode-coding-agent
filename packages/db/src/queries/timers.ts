@@ -204,6 +204,23 @@ export function finish(
 	);
 }
 
+/**
+ * Ends every active `until` timer whose deadline passed before `now` as `expired` (`deadline`), except those of session
+ * `except`: that session's own scheduler checks them once more and wakes it. Without it an `until` timer of a session
+ * that never ran again stays active for good, though no check can come in time. A `once` or `every` timer is never
+ * touched: a resumed session still fires what is due. Returns the rows ended.
+ */
+export function expireOverdue(db: DatabaseSync, now: number, except?: string): number {
+	return Number(
+		db
+			.prepare(
+				`UPDATE timers SET status = 'expired', stop_reason = 'deadline', ended_at = ?1, updated_at = ?1
+				 WHERE status = 'active' AND kind = 'until' AND deadline_at IS NOT NULL AND deadline_at < ?1 AND session_id IS NOT ?2`,
+			)
+			.run(now, except ?? null).changes,
+	);
+}
+
 /** Cancels the session's active timer `id`; returns it, or undefined when the session has no such active timer. */
 export function cancel(db: DatabaseSync, id: number, sessionId: string, now: number): TimerRow | undefined {
 	return row(

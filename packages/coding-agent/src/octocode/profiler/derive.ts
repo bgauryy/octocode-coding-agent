@@ -7,6 +7,7 @@ import type {
 } from "@octocodeai/octocode-contracts/profiler";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cacheMissLabel } from "../../core/cache-stats.ts";
+import { cacheGroupAt, hasCacheGroup, providerMissReason } from "./cache-group.ts";
 import { cacheLifetimeMs } from "./cache-lifetime.ts";
 import { num, str, prepare, promptTokens, type Entry, type Prepared } from "./entries.ts";
 import { requestLayers, type Draft, type RequestLayers } from "./layers.ts";
@@ -172,6 +173,7 @@ export function deriveRequests(entries: Entry[], opts: DeriveOptions): ProfileRe
 		if (!found) memo.set(k, (found = requestLayers(prepared, prepared.requests[k])));
 		return found;
 	};
+	const grouped = hasCacheGroup(prepared.entries);
 	const result: ProfileRequest[] = [];
 	for (let k = Math.max(0, first); k < last; k++) {
 		const position = prepared.requests[k];
@@ -197,6 +199,8 @@ export function deriveRequests(entries: Entry[], opts: DeriveOptions): ProfileRe
 		const { layers, starts } = assign(drafts, usage, tooShort);
 		const broke = drafts.findIndex((draft) => draft.broke);
 		const miss = prepared.misses.get(position);
+		const group = grouped ? cacheGroupAt(prepared, position) : undefined;
+		const providerReason = providerMissReason(message);
 		const firstBreak = broke < 0 ? undefined : starts[broke];
 		result.push({
 			agentId: opts.agentId,
@@ -211,6 +215,8 @@ export function deriveRequests(entries: Entry[], opts: DeriveOptions): ProfileRe
 			...(miss
 				? { missReason: cacheMissLabel(miss, before === undefined ? undefined : cacheLifetimeMs(prepared, before)) }
 				: {}),
+			...(providerReason ? { providerMissReason: providerReason } : {}),
+			...(group ? { cacheGroup: group } : {}),
 			...(previousAt === undefined ? {} : { idleMs: Math.max(0, started - previousAt) }),
 			estimated: current.estimated,
 		});
@@ -241,6 +247,10 @@ export function agentRow(base: AgentBase, prepared?: Prepared): ProfileAgent {
 	let model = base.model;
 	let provider = base.provider;
 	let lastRequestAt: number | undefined;
+	let cacheGroup: ProfileAgent["cacheGroup"];
+	const lastRequest = prepared?.requests[prepared.requests.length - 1];
+	if (prepared && lastRequest !== undefined && hasCacheGroup(prepared.entries))
+		cacheGroup = cacheGroupAt(prepared, lastRequest);
 	for (const position of prepared?.requests ?? []) {
 		const entry = prepared!.entries[position];
 		const message = asRecord(entry.message);
@@ -269,6 +279,7 @@ export function agentRow(base: AgentBase, prepared?: Prepared): ProfileAgent {
 		totals: { ...totals, ...(cost > 0 ? { cost } : {}) },
 		...(prompt > 0 ? { hitRate: totals.cacheRead / prompt } : {}),
 		...(lastRequestAt === undefined ? {} : { lastRequestAt }),
+		...(cacheGroup ? { cacheGroup } : {}),
 		profiled: prepared !== undefined,
 	};
 }

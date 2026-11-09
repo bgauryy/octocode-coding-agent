@@ -13,6 +13,7 @@ import { contentText, textResult } from "../shared/util.ts";
 import { sharedAgentDb } from "../../config/database.ts";
 import { agentEvents } from "../../../../db/src/api.ts";
 import { historyScope, PAGE_CHARS } from "../shared/history.ts";
+import { isScanCursor } from "../shared/history-search.ts";
 import { HistoryRepair } from "./repair.ts";
 import { createHistoryTool, pattern } from "./history-tool.ts";
 import { getRecord, readRecords } from "./reads.ts";
@@ -28,6 +29,9 @@ type MemoryTool = ReturnType<typeof createMemoryActions>;
 function opShape<T>(args: T): T {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return args;
 	const input = args as Record<string, unknown>;
+	// set and delete only exist for memories: the source follows the op.
+	if (input.op === "set" || input.op === "delete")
+		return input.source === undefined ? ({ ...input, source: "memories" } as T) : args;
 	if (input.op !== undefined) return args;
 	const search = Boolean(input.query || input.keywords || input.errors);
 	const op = input.id || (input.file && !search) ? "get" : search ? "search" : "list";
@@ -47,8 +51,10 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 			description:
 				"Search workspace memories, complete compaction summaries, session history and agent lifecycle events by op and source. " +
 				// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
-				"set and delete, where op lists them, need source memories; plan mode only reads; global or pinned changes ask for approval. " +
-				"source profile reads a session's agents, cache findings and request layers.",
+				"set and delete (where op lists them) act on memories; plan mode only reads; global or pinned changes ask for approval. " +
+				"source profile reads a session's agents, cache findings and request layers. " +
+				"A session search reads this session first, then newer sessions, and stops at a match or time budget with a cursor; " +
+				"narrow it with sessionId, file or since. keywords ranks, query filters; together they rank only matching passages.",
 			promptGuidelines: memory?.promptGuidelines,
 			parameters: Type.Object({
 				...history.parameters.properties,
@@ -60,14 +66,14 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 					}),
 				source: Type.Optional(
 					StringEnum(["all", "sessions", "compactions", "memories", "agents", "events", "profile"] as const, {
-						description: "Record collection (default all)",
+						description: "Record collection (default all; memories for set/delete)",
 					}),
 				),
 				id: Type.Optional(Type.String({ description: "Record reference from list/search; memories keep M<n> ids" })),
 				query: Type.Optional(
 					Type.String({
 						description:
-							"Case-insensitive regex; keywords provides ranked topic search. With errors: filters by tool name or error text",
+							"Case-insensitive regex (keywords: ranked topic search). With errors: filters by tool name or error text",
 					}),
 				),
 				keywords: Type.Optional(
@@ -79,12 +85,17 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 				),
 				agentId: Type.Optional(Type.String({ description: "Events, profile: existing agent name" })),
 				sessionId: Type.Optional(
-					Type.String({ description: "Events, profile: session id (profile default: current)" }),
+					Type.String({
+						description:
+							"Search sessions: one session's history (current: this session); events, profile: session id (profile default: current)",
+					}),
 				),
 				eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: lifecycle transition" })),
 				until: Type.Optional(Type.String({ description: "Events: inclusive ISO timestamp" })),
-				limit: Type.Optional(Type.Integer({ description: "Records per source per page, 1–50 (default 10)" })),
-				cursor: Type.Optional(Type.String({ description: "Continue the same record search with its returned cursor" })),
+				limit: Type.Optional(Type.Integer({ description: "1–50 records per source (default 10)" })),
+				cursor: Type.Optional(
+					Type.String({ description: "Continue a stopped search with its cursor (record or session-history)" }),
+				),
 			}),
 			// Validation runs on the result, so the declared type is checked there, not here.
 			prepareArguments: (args) => opShape(args) as never,
@@ -123,7 +134,8 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 				if (!input.reason?.trim()) throw new Error("archive needs reason (why history is needed, not the code).");
 				if (!archiveRead(input) && !archiveMutation(input)) throw new Error("Unknown archive operation.");
 				if (archiveMutation(input)) {
-					if (input.source !== "memories") throw new Error("Only source memories supports set and delete.");
+					if (input.source !== "memories")
+						throw new Error(`${input.op} works on source memories only; drop source or set source "memories".`);
 					if (!memory) throw new Error("Memory operations are unavailable in this tool loadout.");
 					return memory.execute(callId, input as Parameters<MemoryTool["execute"]>[1], signal, onUpdate, ctx);
 				}
@@ -187,7 +199,10 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 				const source = input.source ?? "all";
 				const pieces: string[] = [...coverage];
 				let historyDetails: unknown;
-				const records = await readRecords(ctx.cwd, { ...input, source, op }, signal, memory?.storeFor(ctx));
+				// A session-history cursor continues that search alone: the records it came with were already shown.
+				const records = isScanCursor(input.cursor)
+					? { text: "", hits: 0, cursor: undefined }
+					: await readRecords(ctx.cwd, { ...input, source, op }, signal, memory?.storeFor(ctx));
 				pieces.push(records.text);
 				const nextCursor = records.cursor;
 				const hits = records.hits;

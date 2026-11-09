@@ -31,6 +31,9 @@ export class ModelAvailability {
 	constructor(models: MutableModels, credentials: RuntimeCredentials) {
 		this.models = models;
 		this.credentials = credentials;
+		// A credential another process saved or removed reaches the sync snapshot only through a refresh pass. The
+		// failure is kept in `availabilityError`; the next pass retries.
+		credentials.watch(() => void this.queueAvailabilityRefresh().catch(() => {}));
 	}
 
 	/**

@@ -234,7 +234,9 @@ describe("cache configuration", () => {
 			// Instructions `none` sends no breakpoints, so the text names none.
 			for (const history of ["short", "long"] as const) {
 				const text = describeWith(optedIn, { cacheRetention: history, instructionCacheRetention: "none" });
-				expect(text).toContain(`Explicit mode opted in; request TTL ${history === "long" ? "12h" : "30m"} covers history.`);
+				expect(text).toContain(
+					`Explicit mode opted in; request TTL ${history === "long" ? "12h" : "30m"} covers history.`,
+				);
 				expect(text).not.toContain("breakpoint");
 			}
 			expect(describeWith(optedIn, { cacheRetention: "none", instructionCacheRetention: "long" })).toContain(

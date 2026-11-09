@@ -1,5 +1,7 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Skill } from "../../core/skills.ts";
+import type { SkillCategory } from "../../core/skills/category.ts";
+import { plural } from "../shared/render/text.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { toolHeader } from "../shared/render.ts";
 import type { RenderContext } from "../shared/render/types.ts";
@@ -28,4 +30,30 @@ const FOLDER_SOURCES = new Set(["local", "auto"]);
 export function skillOrigin(skill: Pick<Skill, "sourceInfo">): string {
 	const { scope, source } = skill.sourceInfo;
 	return FOLDER_SOURCES.has(source) || source === scope ? scope : `${scope} \u00b7 ${source}`;
+}
+
+const GROUP_LABELS: Readonly<Record<SkillCategory, string>> = {
+	core: "Core skill",
+	octocode: "Octocode skill",
+	workspace: "Workspace skill",
+	global: "Global skill",
+};
+
+/** What a skill-load row records about the skill, beside its instructions. */
+export interface SkillLoadFacts {
+	lines: number;
+	category?: SkillCategory;
+	origin?: string;
+}
+
+/**
+ * The collapsed line of a loaded skill: `Octocode skill \u00b7 120 lines`, or `Global skill \u00b7 40 lines \u00b7 user \u00b7
+ * npm:pkg`. Core and Octocode skills ship with the build, so only the other groups say where they were found.
+ */
+export function skillLoadSummary(facts: SkillLoadFacts): string {
+	const shipped = facts.category === "core" || facts.category === "octocode";
+	const lines = plural(facts.lines, "line");
+	// A result recorded before rows had a group reads as it did then.
+	const head = facts.category ? [GROUP_LABELS[facts.category], lines] : [`Loaded ${lines}`];
+	return [...head, shipped ? undefined : facts.origin].filter(Boolean).join(" \u00b7 ");
 }

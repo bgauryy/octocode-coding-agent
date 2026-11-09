@@ -37,6 +37,14 @@ describe("resolveLayeredCacheRetention", () => {
 			instructions: "none",
 		});
 	});
+	it("keeps the instruction retention under history none only for keepInstructionCache", () => {
+		const kept = { cacheRetention: "none", instructionCacheRetention: "long", keepInstructionCache: true } as const;
+		expect(resolveLayeredCacheRetention(kept)).toEqual({ history: "none", instructions: "long" });
+		expect(resolveLayeredCacheRetention({ ...kept, instructionCacheRetention: undefined })).toEqual({
+			history: "none",
+			instructions: "none",
+		});
+	});
 	it("keeps long history behind short instructions; ordering is each adapter's rule", () => {
 		const env = { OCTOCODE_CACHE_RETENTION: "long", OCTOCODE_INSTRUCTION_CACHE_RETENTION: "short" };
 		expect(resolveLayeredCacheRetention({ env })).toEqual({ history: "long", instructions: "short" });
@@ -71,6 +79,28 @@ describe("layered retention on adapters with explicit breakpoints", () => {
 		});
 		expect(payload.tools.at(-1)?.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 		expect((last.content as { cache_control?: unknown }[])[0].cache_control).toEqual({ type: "ephemeral" });
+	});
+
+	it("history none with long instructions marks only the instructions; both none marks nothing", async () => {
+		const model: Model<"anthropic-messages"> = getBuiltinModel("anthropic", "claude-haiku-4-5");
+		type Payload = {
+			system: { cache_control?: { ttl?: string } }[];
+			messages: { content: { cache_control?: unknown }[] }[];
+		};
+		const run = (options: StreamOptions) =>
+			capture<Payload>((onPayload) =>
+				anthropicStream(model, context, { apiKey: "sk-ant-api-test", ...options, onPayload }),
+			);
+		const instructionsOnly = await run({
+			cacheRetention: "none",
+			instructionCacheRetention: "long",
+			keepInstructionCache: true,
+		});
+		expect(instructionsOnly.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(instructionsOnly.messages.at(-1)?.content.at(-1)?.cache_control).toBeUndefined();
+		const none = await run({ cacheRetention: "none", instructionCacheRetention: "long" });
+		expect(none.system[0].cache_control).toBeUndefined();
+		expect(none.messages.at(-1)?.content.at(-1)?.cache_control).toBeUndefined();
 	});
 
 	it("Anthropic caps an env-only short-instruction/long-history pair instead of failing", async () => {

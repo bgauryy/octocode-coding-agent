@@ -2,6 +2,7 @@ import { type Static, Type } from "typebox";
 import type { McpContext, McpToolDefinition } from "./host/types.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { MCP_MANAGE_TOOL_NAME } from "./servers.ts";
+import { mcpGroupLabel, type McpServerGroup } from "./group.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 
 const INTENTS = ["list", "tools", "restart", "stop"] as const;
@@ -27,6 +28,12 @@ export interface ManagedMcpServer {
 	state: string;
 	connected: boolean;
 	error?: string;
+	/** Where it comes from, as skills are grouped: core (built in), workspace (project file) or global. */
+	group?: McpServerGroup;
+	/** The configured one-line purpose (`description` in its configuration). */
+	description?: string;
+	/** Where it is defined: `built in`, the configuration file, or `plugin <path>`. */
+	source?: string;
 }
 
 /** What the `mcp` tool does to servers; the MCP extension owns the servers and supplies these. */
@@ -51,8 +58,17 @@ const ManageSchema = Type.Object({
 	tool: Type.Optional(Type.String({ description: "tools: the tool to inspect" })),
 });
 
-const describe = (server: ManagedMcpServer): string =>
-	`${server.name}: ${server.state}${server.error && !server.connected ? ` — ${server.error.split("\n")[0]}` : ""}`;
+/**
+ * One server's line, like a skill's listing entry: name, state, group and purpose, then the last error of one that is
+ * not connected. With `withSource` (a single-server list) a second line names where it is defined.
+ */
+const describe = (server: ManagedMcpServer, withSource = false): string => {
+	const head = [server.state, server.group ? mcpGroupLabel(server.group) : undefined].filter(Boolean).join(" · ");
+	const purpose = server.description?.replace(/\s+/g, " ").trim();
+	const error = server.error && !server.connected ? ` — ${server.error.split("\n")[0]}` : "";
+	const line = `${server.name}: ${head}${error}${purpose ? `. ${purpose}` : ""}`;
+	return withSource && server.source ? `${line}\nDefined in: ${server.source}` : line;
+};
 
 /**
  * The model's `mcp` tool. It acts on this session's servers only, and changes no configuration file: a subagent
@@ -76,7 +92,7 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 		label: "MCP",
 		promptSnippet: "When an MCP server's tools fail, time out or disappear, or to check its state",
 		description:
-			"Manage this session's MCP servers; configuration files are not changed. list: state, tool count and last error of every server, or of one with server. tools: the current catalog; add tool for its full description and schemas, without running it. restart: start a stopped or failed server, or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session, default servers included.",
+			"Manage this session's MCP servers; no configuration file changes. list: state, tool count, group, purpose and last error (one server with server, plus where it is defined). tools: the catalog; with tool, its full description and schemas, without running it. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.",
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {
@@ -92,11 +108,14 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 			});
 			switch (params.intent) {
 				case "list": {
-					if (params.server) return reply(describe(find(params.server)));
+					if (params.server) return reply(describe(find(params.server), true));
 					const servers = operations.servers();
-					return reply(servers.length ? servers.map(describe).join("\n") : "No MCP servers in this session.", {
-						servers,
-					});
+					return reply(
+						servers.length ? servers.map((server) => describe(server)).join("\n") : "No MCP servers in this session.",
+						{
+							servers,
+						},
+					);
 				}
 				case "tools": {
 					const server = find(params.server);
@@ -116,7 +135,9 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 					const instructions = server.connected ? operations.instructions?.(server.name) : undefined;
 					const catalog = tools.length
 						? tools.map((tool) => formatMcpTool(tool)).join("\n")
-						: "No tools available in the current connection.";
+						: server.connected
+							? "No tools available in the current connection."
+							: `MCP server "${server.name}" is not connected (${server.state}); restart it with intent restart and server "${server.name}", then list its tools again.`;
 					return reply(instructions ? `Instructions:\n${instructions}\n\nTools:\n${catalog}` : catalog, {
 						server: server.name,
 						tools: tools.map(({ name, exposure }) => ({ name, exposure })),

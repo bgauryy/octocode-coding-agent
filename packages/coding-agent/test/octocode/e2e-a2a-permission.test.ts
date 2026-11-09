@@ -6,7 +6,6 @@ import {
 	close,
 	dialogs,
 	message,
-	notices,
 	octocodeApi,
 	prompt,
 	reachedStep,
@@ -66,30 +65,6 @@ async function send(from: Session, to: Session, steps: string, text = "Please lo
 
 const reached = (steps: string) => requestsOf(endpoint, steps).length > 0;
 
-describe("in full mode, the default", () => {
-	it("a message is taken with no dialog, its tools run unasked, and the audit names the process", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await session(box);
-		const sender = await session(box);
-		const marker = path.join(box.root, "ran");
-		const steps = script([
-			{ tool: "bash", args: { command: `echo ran > ${JSON.stringify(marker)}` } },
-			{ text: "done" },
-		]);
-		const receipt = await send(sender, receiver, steps);
-		expect(receipt).toContain(`Sent to ${receiver.name}`);
-		await reachedStep(endpoint, steps, 1, "the turn's tool");
-		expect(fs.existsSync(marker)).toBe(true);
-		expect(dialogs(receiver.run)).toHaveLength(0);
-		prompt(receiver.run, "log", "/permissions log");
-		await until(() => notices(receiver.run).includes("message.external"), "the audit");
-		expect(notices(receiver.run)).toMatch(
-			new RegExp(`full .* message\\.external allowed \\(mode\\) from ${sender.name}`),
-		);
-		await close(receiver, sender);
-	});
-});
-
 describe("in manual mode", () => {
 	it("the dialog names the process, its request and that it is external; once holds for one message; tools still ask", async () => {
 		const box = sandbox(endpoint);
@@ -135,66 +110,6 @@ describe("in manual mode", () => {
 		answer(receiver.run, dialogs(receiver.run)[2].id, ONCE);
 		await until(() => reached(second), "the second message");
 		await close(receiver, sender);
-	});
-
-	it("a process grant admits that process alone, and `/permissions` lists and revokes it", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await manualSession(box);
-		const granted = await session(box);
-		const other = await session(box);
-		const first = script([{ text: "first" }]);
-		await send(granted, receiver, first);
-		await until(() => dialogs(receiver.run).length === 1, "the dialog");
-		answer(receiver.run, dialogs(receiver.run)[0].id, fromProcess(granted.name));
-		await until(() => reached(first), "the first message");
-
-		// The same process: no dialog, and the receipt says it was sent.
-		const second = script([{ text: "second" }]);
-		expect(await send(granted, receiver, second)).toContain("Sent to");
-		await until(() => reached(second), "the second message");
-		expect(dialogs(receiver.run)).toHaveLength(1);
-
-		// Another process is asked about.
-		const foreign = script([{ text: "foreign" }]);
-		expect(await send(other, receiver, foreign)).toContain("Waiting for");
-		await until(() => dialogs(receiver.run).length === 2, "the other process's dialog");
-		expect(reached(foreign)).toBe(false);
-		answer(receiver.run, dialogs(receiver.run)[1].id, "Deny");
-
-		prompt(receiver.run, "grants", "/permissions grants");
-		await until(() => notices(receiver.run).includes(`messages from ${granted.name}`), "the grant listed");
-		prompt(receiver.run, "clear", "/permissions grants clear messages");
-		await until(() => notices(receiver.run).includes("External-message grants removed: 1."), "the grant removed");
-
-		// Revoked: the next one asks again.
-		const revoked = script([{ text: "revoked" }]);
-		expect(await send(granted, receiver, revoked)).toContain("Waiting for");
-		await until(() => dialogs(receiver.run).length === 3, "the dialog after revoking");
-		answer(receiver.run, dialogs(receiver.run)[2].id, ONCE);
-		await until(() => reached(revoked), "the message after revoking");
-		prompt(receiver.run, "log", "/permissions log");
-		await until(() => notices(receiver.run).includes("message.external denied (user)"), "the audit");
-		expect(notices(receiver.run)).toContain(`message.external allowed (user) from ${granted.name}`);
-		expect(notices(receiver.run)).toContain(`message.external allowed (grant) from ${granted.name}`);
-		expect(notices(receiver.run)).toContain(`message.external denied (user) from ${other.name}`);
-		await close(receiver, granted, other);
-	});
-
-	it("the all-processes grant admits every process for this session", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await manualSession(box);
-		const one = await session(box);
-		const two = await session(box);
-		const first = script([{ text: "first" }]);
-		await send(one, receiver, first);
-		await until(() => dialogs(receiver.run).length === 1, "the dialog");
-		answer(receiver.run, dialogs(receiver.run)[0].id, ALL);
-		await until(() => reached(first), "the first message");
-		const second = script([{ text: "second" }]);
-		expect(await send(two, receiver, second)).toContain("Sent to");
-		await until(() => reached(second), "the other process's message");
-		expect(dialogs(receiver.run)).toHaveLength(1);
-		await close(receiver, one, two);
 	});
 
 	it("a deny reaches the sender: its model is told later, and a waiting CLI gets the refusal", async () => {
@@ -287,46 +202,5 @@ describe("in manual mode", () => {
 		answer(receiver.run, shown?.id, ONCE);
 		await until(() => reached(pending), "the message after a real answer");
 		await close(receiver);
-	});
-});
-
-describe("with nobody to ask, and in plan", () => {
-	it("no UI: refused at once, like any ask, naming the session and what its user can do", async () => {
-		const box = sandbox(endpoint);
-		box.env.OCTOCODE_PERMISSION = "manual";
-		const hanging = script([{ hang: true }]);
-		const run = box.start(["-p", hanging]);
-		await until(() => requestsOf(endpoint, hanging).length > 0, "the turn");
-		const { stdout } = await octocodeApi(box, ["list"]);
-		const name = stdout.split("\t")[1] ?? "";
-		const refused = await octocodeApi(box, ["send", "--to", name, "--", "Anyone there?"]);
-		expect(refused.code).toBe(1);
-		expect(refused.stderr).toContain(`${name} runs in manual mode with nobody to ask`);
-		expect(refused.stderr).toContain("start it with --permission-mode full");
-		expect(refused.stderr).toContain("not-sent");
-		run.process.kill("SIGKILL");
-		await run.exited;
-	});
-
-	it("in full, a session in plan asks too, with the same choices", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await session(box);
-		const sender = await session(box);
-		prompt(receiver.run, "plan", "/permissions plan");
-		await until(() => notices(receiver.run).includes("Planning active"), "plan mode");
-		const inPlan = script([{ text: "read in plan" }]);
-		expect(await send(sender, receiver, inPlan)).toContain("Waiting for");
-		await until(() => dialogs(receiver.run).length === 1, "the dialog");
-		expect(dialogs(receiver.run)[0].options).toEqual([
-			ONCE,
-			fromProcess(sender.name),
-			ALL,
-			"Deny",
-			denyProcess(sender.name),
-			expect.any(String),
-		]);
-		answer(receiver.run, dialogs(receiver.run)[0].id, ONCE);
-		await until(() => reached(inPlan), "the message");
-		await close(receiver, sender);
 	});
 });

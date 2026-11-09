@@ -6,7 +6,9 @@ import type {
 import { stamp } from "../model/format.ts";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, type BadgeTone } from "../ui/primitives.tsx";
-import { CredentialEditor, type SaveCredential } from "./CredentialEditor.tsx";
+import { CLAUDE_TOKEN_PROVIDER, CredentialEditor, type SaveCredential } from "./CredentialEditor.tsx";
+import { ProviderSwitch, type SetProvider } from "./ProviderControls.tsx";
+import { SignInControl, type SignInRequest } from "./SignIn.tsx";
 
 /** What a source is called on the page. Environment variables and expiry are added by `SourceBadge`. */
 const SOURCE_LABELS = {
@@ -73,17 +75,55 @@ function SourceItem({ source, now, editable }: { source: CredentialSourceStatus;
 	);
 }
 
+/** Names the sign-ins a provider offers, and links the page that issues its keys. */
+function Methods({ row }: { row: ProviderCredentialStatus }) {
+	const { oauth, keyAuth: apiKey } = row.auth ?? {};
+	const names = [
+		oauth ? (oauth.isSubscription ? "Subscription sign-in" : "Account sign-in") : undefined,
+		apiKey ? "API key" : undefined,
+		row.provider === CLAUDE_TOKEN_PROVIDER ? "Claude subscription token" : undefined,
+	].filter((name): name is string => !!name);
+	if (names.length === 0) return null;
+	return (
+		<p className="config-methods muted">
+			Sign in with: {names.join(" · ")}
+			{apiKey?.keyPage && (
+				<>
+					{" "}
+					<a
+						href={apiKey.keyPage}
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label={`Get key for ${row.name ?? row.provider}`}
+					>
+						Get key
+					</a>
+				</>
+			)}
+		</p>
+	);
+}
+
 export function ProviderRow({
 	row,
 	now,
 	save,
 	keychainAvailable,
+	signIn,
+	onSignedIn,
+	setProvider,
 }: {
 	row: ProviderCredentialStatus;
+	/** Present only when the host allows this connection to turn providers on or off. */
+	setProvider?: SetProvider;
 	now: number;
 	/** Present only when the host allows this connection to change credentials. */
 	save?: SaveCredential;
 	keychainAvailable: boolean;
+	/** Present only when the host allows this connection to sign in; the host runs the login. */
+	signIn?: SignInRequest;
+	/** Called when a sign-in finished, so the page reads the fresh snapshot. */
+	onSignedIn?: () => void;
 }) {
 	const title = row.name ?? row.provider;
 	return (
@@ -105,6 +145,9 @@ export function ProviderRow({
 					))}
 				</ul>
 			)}
+			<ProviderSwitch row={row} set={setProvider} />
+			<Methods row={row} />
+			{signIn && row.auth?.oauth && <SignInControl row={row} signIn={signIn} onSignedIn={onSignedIn ?? (() => {})} />}
 			{save && row.editable !== false && (
 				<CredentialEditor row={row} save={save} keychainAvailable={keychainAvailable} />
 			)}

@@ -14,13 +14,16 @@ import { describeState, isEnabled, type McpServer } from "./server.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import { getMcpSessionStatus } from "./status.ts";
-import { switchMcpServer } from "./switch.ts";
 import { showMcpManager } from "./ui.ts";
 
 /** `/mcp assign` values: every agent's default selection (`defaultActive: true`), or only agents that name the server. */
 const ASSIGNMENTS = ["all", "selected"] as const;
 
-const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp enable|disable <server> [--local], /mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [--local], /mcp assign <server> <all|selected> [--local], /mcp login|logout [server], /mcp reconnect [server|all]`;
+/** `/mcp enable|disable` moved to the one configuration command. */
+const enableMoved = (action: string, name: string, extra: readonly string[]): string =>
+	`/mcp ${action} moved to /configuration: run /configuration ${action} mcp:${name || "<server>"}${extra.some((word) => word === "--local" || word === "-l") ? " --local" : ""}`;
+
+const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [--local], /mcp assign <server> <all|selected> [--local], /mcp login|logout [server], /mcp reconnect [server|all]`;
 
 /** Resolve the server for a subcommand, asking when the name is omitted and ambiguous. */
 async function pickServer(
@@ -97,7 +100,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 	const words = prefix.trimStart().split(/\s+/);
 	const [action = "", name = "", value = ""] = words;
 	if (words.length === 1)
-		return ["list", "tools", "config", "enable", "disable", "exposure", "assign", "login", "logout", "reconnect"]
+		return ["list", "tools", "config", "exposure", "assign", "login", "logout", "reconnect"]
 			.filter((item) => item.startsWith(action))
 			.map((item) => ({ value: `${item} `, label: item }));
 	if (action === "exposure" && words.length === 3)
@@ -125,11 +128,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 				.map((server) => ({ value: `tools ${server.name} `, label: server.name, description: server.state }));
 		return null;
 	}
-	if (
-		words.length !== 2 ||
-		!["enable", "disable", "exposure", "assign", "login", "logout", "reconnect"].includes(action)
-	)
-		return null;
+	if (words.length !== 2 || !["exposure", "assign", "login", "logout", "reconnect"].includes(action)) return null;
 	return state.servers
 		.filter(
 			(candidate) =>
@@ -178,18 +177,18 @@ function showToolsCommand(state: McpExtensionState, name: string, extra: string[
 }
 
 /**
- * `/mcp enable|disable <server> [--local]`, `/mcp exposure <server> <mode> [--local]` and
+ * `/mcp exposure <server> <mode> [--local]` and
  * `/mcp assign <server> <all|selected> [--local]` (`defaultActive`; it decides which sessions start the server, so it
  * applies from the next session).
  */
 async function configureCommand(
 	state: McpExtensionState,
-	action: "enable" | "disable" | "exposure" | "assign",
+	action: "exposure" | "assign",
 	name: string,
 	extra: string[],
 	ctx: McpCommandContext,
 ): Promise<void> {
-	const mode = action === "exposure" || action === "assign" ? extra.shift() : undefined;
+	const mode = extra.shift();
 	const inProject = extra.length === 1 && (extra[0] === "--local" || extra[0] === "-l");
 	if (
 		!name ||
@@ -198,11 +197,6 @@ async function configureCommand(
 		(action === "assign" && !ASSIGNMENTS.some((value) => value === mode))
 	) {
 		say(ctx, MCP_USAGE, "warning");
-		return;
-	}
-	if (action === "enable" || action === "disable") {
-		const result = await switchMcpServer(state, { name, enabled: action === "enable", inProject });
-		say(ctx, result.message, result.ok ? "info" : state.findServer(name) ? "error" : "warning");
 		return;
 	}
 	const server = state.findServer(name);
@@ -294,7 +288,11 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				showToolsCommand(state, name, extra, ctx);
 				return;
 			}
-			if (action === "enable" || action === "disable" || action === "exposure" || action === "assign") {
+			if (action === "enable" || action === "disable") {
+				say(ctx, enableMoved(action, name, extra), "warning");
+				return;
+			}
+			if (action === "exposure" || action === "assign") {
 				await configureCommand(state, action, name, extra, ctx);
 				return;
 			}

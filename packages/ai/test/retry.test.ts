@@ -44,6 +44,22 @@ describe("provider retry classification", () => {
 	});
 
 	it.each([
+		"400 Upstream request failed: [invalid_request_error] Invalid request",
+		"422 Upstream request failed: [invalid_request_error] Invalid request",
+	])("does not retry a refused request that a gateway words as an upstream failure: %s", (errorMessage) => {
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(false);
+	});
+
+	it.each([
+		"Upstream request failed",
+		"upstream request failed: server_error",
+		"429 Upstream request failed: invalid_request rate limit",
+		"408 Upstream request failed: invalid_request_error",
+	])("still retries a gateway failure without a refusing status: %s", (errorMessage) => {
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
+	});
+
+	it.each([
 		'400 {"error":"max_tokens: 150000 > 64000, which is the maximum allowed"}',
 		"400 invalid request: messages.1500.content is empty",
 		// Digits inside an id are not a status code.

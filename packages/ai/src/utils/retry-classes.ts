@@ -43,6 +43,17 @@ export function isTerminalProviderLimitError(errorText: string): boolean {
 	return TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN.test(errorText);
 }
 
+/**
+ * A 4xx status other than 408, 409 and 429 (the statuses providers retry) leading the text, with invalid-request
+ * wording. The provider refused this request, so resending it fails the same way even when a gateway wraps the
+ * refusal as "Upstream request failed". A gateway `response.failed` event carries no status and keeps retrying.
+ */
+const REJECTED_REQUEST_PATTERN = /^\s*4(?!08\b|09\b|29\b)\d\d\b[\s\S]*invalid[_ ]?request/i;
+
+function isRejectedRequestText(errorText: string): boolean {
+	return REJECTED_REQUEST_PATTERN.test(errorText);
+}
+
 const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	// Generic provider load, HTTP status, and server-side transient failures.
 	"overloaded",
@@ -199,5 +210,6 @@ export function isRetryableAssistantError(message: AssistantMessage): boolean {
 /** {@link isRetryableAssistantError} for text a caller holds without the message, such as a run's recorded outcome. */
 export function isRetryableErrorText(errorMessage: string): boolean {
 	if (isTerminalProviderLimitError(errorMessage)) return false;
+	if (isRejectedRequestText(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

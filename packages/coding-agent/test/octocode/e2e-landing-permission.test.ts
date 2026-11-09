@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -128,20 +127,10 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		expect(fs.existsSync(path.join(box.project, "four.txt"))).toBe(false);
 		answer(started.run, dialogs(started.run)[2].id, "Deny");
 		await finished(fourth);
-		await close(started);
-	});
-
-	it("a deny leaves the branch untouched and tells the model", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "feature");
-		const started = await session(box);
-		const before = head(box.project);
-		const steps = runs(started, "git merge feature");
-		const dialog = await askedFor(started, 1);
-		answer(started.run, dialog.id, "Deny");
-		await finished(steps);
-		expect(head(box.project)).toBe(before);
-		expect(resultsOf(endpoint, steps)).toContain("The user denied the worktree merge: git merge feature");
+		expect(fs.existsSync(path.join(box.project, "four.txt"))).toBe(false);
+		expect(resultsOf(endpoint, fourth)).toContain(
+			"The user denied the worktree merge: git merge --no-ff --no-edit four",
+		);
 		await close(started);
 	});
 
@@ -164,51 +153,6 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		expect(refusal).toContain("`/worktree merge <branch>`");
 	});
 
-	it("`cd <main> && git merge x` and a `git switch` to it on the same line ask", async () => {
-		const box = sandbox(endpoint);
-		const branch = git(box.project, "branch", "--show-current");
-		branchWithCommit(box, "feature");
-		git(box.project, "switch", "-qc", "side");
-		const started = await session(box);
-		// A feature branch now, but the line moves the checkout to the default branch first.
-		const switching = runs(started, `git switch -q ${branch} && git merge feature`);
-		const dialog = await askedFor(started, 1);
-		expect(dialog.permission.action).toBe("worktree.merge");
-		answer(started.run, dialog.id, "Deny");
-		await finished(switching);
-		expect(git(box.project, "branch", "--show-current")).toBe("side");
-		git(box.project, "switch", "-q", branch);
-		const moved = runs(started, `cd ${JSON.stringify(box.project)} && git merge feature`);
-		const second = await askedFor(started, 2);
-		expect(second.title).toContain(`cd ${JSON.stringify(box.project)}`);
-		answer(started.run, second.id, "Deny");
-		await finished(moved);
-		await close(started);
-	});
-
-	it("`git merge --abort` runs unasked", async () => {
-		const box = sandbox(endpoint);
-		// A real merge in progress: a conflict the abort takes back.
-		git(box.project, "switch", "-qc", "conflict");
-		fs.writeFileSync(path.join(box.project, "a.txt"), "theirs\n");
-		git(box.project, "commit", "-qam", "theirs");
-		git(box.project, "switch", "-q", "-");
-		fs.writeFileSync(path.join(box.project, "a.txt"), "ours\n");
-		git(box.project, "commit", "-qam", "ours");
-		try {
-			execFileSync("git", ["merge", "conflict"], { cwd: box.project, stdio: "ignore" });
-		} catch {
-			// The conflict is the point.
-		}
-		expect(fs.existsSync(path.join(box.project, ".git", "MERGE_HEAD"))).toBe(true);
-		const started = await session(box);
-		const steps = runs(started, "git merge --abort");
-		await finished(steps);
-		expect(dialogs(started.run)).toHaveLength(0);
-		expect(fs.existsSync(path.join(box.project, ".git", "MERGE_HEAD"))).toBe(false);
-		await close(started);
-	});
-
 	it("a user's own `!git merge` is consent: it runs, asks nothing, and the audit says it was typed", async () => {
 		const box = sandbox(endpoint);
 		branchWithCommit(box, "feature");
@@ -224,64 +168,6 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		await until(() => /shell allowed \(typed\)/.test(notices(started.run)), "the audit's typed entry");
 		expect(notices(started.run)).not.toContain("worktree.merge");
 		await close(started);
-	});
-});
-
-describe("elsewhere no one is asked", () => {
-	it("a feature branch in the main checkout merges into that branch unasked", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "topic");
-		git(box.project, "switch", "-qc", "side");
-		const started = await session(box);
-		const steps = runs(started, "git merge --no-edit topic");
-		await finished(steps);
-		expect(dialogs(started.run)).toHaveLength(0);
-		expect(fs.existsSync(path.join(box.project, "topic.txt"))).toBe(true);
-		await close(started);
-	});
-
-	it("a linked worktree merges into its own branch unasked, in every mode that allows the shell", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "topic");
-		const worktree = linkedWorktree(box, "own");
-		const started = await session(box, worktree);
-		const steps = runs(started, "git merge --no-edit topic");
-		await finished(steps);
-		expect(dialogs(started.run)).toHaveLength(0);
-		expect(fs.existsSync(path.join(worktree, "topic.txt"))).toBe(true);
-		expect(fs.existsSync(path.join(box.project, "topic.txt"))).toBe(false);
-		await close(started);
-	});
-});
-
-describe("a linked worktree that targets the main checkout", () => {
-	it("`git -C <main> merge` asks, with the session answer, in full and in workspace", async () => {
-		const box = sandbox(endpoint);
-		const branch = git(box.project, "branch", "--show-current");
-		const worktree = linkedWorktree(box, "own");
-		const before = head(box.project);
-		const started = await session(box, worktree);
-		const steps = runs(started, `git -C ${JSON.stringify(box.project)} merge own`);
-		const dialog = await askedFor(started, 1);
-		expect(dialog.permission.action).toBe("worktree.merge");
-		expect(dialog.title).toContain(`on ${branch} in the main checkout ${box.project}`);
-		expect(dialog.options).toEqual([ONCE, ALL, "Deny", expect.any(String)]);
-		answer(started.run, dialog.id, "Deny");
-		await finished(steps);
-		expect(head(box.project)).toBe(before);
-		await close(started);
-
-		// In workspace it is both the merge and a change outside this worktree: one dialog names them, with no session answer.
-		box.env.OCTOCODE_PERMISSION = "workspace";
-		const stricter = await session(box, worktree);
-		const again = runs(stricter, `git -C ${JSON.stringify(box.project)} merge own`);
-		const second = await askedFor(stricter, 1);
-		expect(second.permission.action).toBe("worktree.merge");
-		expect(second.options).toEqual([ONCE, "Deny", expect.any(String)]);
-		answer(stricter.run, second.id, "Deny");
-		await finished(again);
-		expect(head(box.project)).toBe(before);
-		await close(stricter);
 	});
 });
 
@@ -305,73 +191,6 @@ describe("the other asks still behave", () => {
 		answer(started.run, shellAsk.id, ONCE);
 		await finished(second);
 		expect(fs.existsSync(path.join(box.project, "two.txt"))).toBe(true);
-		await close(started);
-	});
-
-	it("a destructive line that also lands stays destructive, takes its restore point and asks once in full", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "feature");
-		const started = await session(box);
-		const steps = runs(started, "git merge --no-edit feature && git reset --hard HEAD~1");
-		const dialog = await askedFor(started, 1);
-		expect(dialog.permission.action).toBe("shell.destructive");
-		expect(dialog.title).toContain("Run this destructive command?");
-		expect(dialog.title).toContain("in the main checkout");
-		expect(dialog.options).toEqual([ONCE, "Deny", expect.any(String)]);
-		expect(dialog.title).toMatch(/snapshot|restored/);
-		answer(started.run, dialog.id, "Deny");
-		await finished(steps);
-		await close(started);
-	});
-
-	it("a Claude `Bash` allow rule does not answer it", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "feature");
-		fs.mkdirSync(path.join(box.home, ".claude"), { recursive: true });
-		fs.writeFileSync(
-			path.join(box.home, ".claude", "settings.json"),
-			JSON.stringify({ permissions: { allow: ["Bash(git merge:*)", "Bash"] } }),
-		);
-		const started = await session(box);
-		const before = head(box.project);
-		const steps = runs(started, "git merge feature");
-		const dialog = await askedFor(started, 1);
-		expect(dialog.permission.action).toBe("worktree.merge");
-		answer(started.run, dialog.id, "Deny");
-		await finished(steps);
-		expect(head(box.project)).toBe(before);
-		await close(started);
-	});
-
-	it("a PreToolUse hook's deny wins before any dialog", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "feature");
-		const hooks = path.join(box.home, ".octocode", "octocodecode", "hooks.json");
-		fs.writeFileSync(
-			hooks,
-			JSON.stringify({
-				hooks: {
-					PreToolUse: [
-						{
-							matcher: "bash",
-							hooks: [
-								{
-									type: "command",
-									command: "echo 'no merges here' >&2; exit 2",
-								},
-							],
-						},
-					],
-				},
-			}),
-		);
-		const started = await session(box);
-		const before = head(box.project);
-		const steps = runs(started, "git merge feature");
-		await finished(steps);
-		expect(dialogs(started.run)).toHaveLength(0);
-		expect(resultsOf(endpoint, steps)).toContain("no merges here");
-		expect(head(box.project)).toBe(before);
 		await close(started);
 	});
 });

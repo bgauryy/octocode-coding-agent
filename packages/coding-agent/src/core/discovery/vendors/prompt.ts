@@ -44,7 +44,8 @@ export function foundSummary(status: HarnessStatus): string {
 /**
  * The main session's one line on every harness Octocode reads, on or off, so it knows what exists and that the user
  * decides (`instructions/system/harnesses.md`, one `system/harness.md` part per harness). A harness that is off names
- * what it holds; one that is on needs no count, its items are in the prompt and tools.
+ * what it holds; one that is on needs no count, its items are in the prompt and tools, unless a switchable one found
+ * nothing at all (a root `.mcp.json` that does not exist): "on" alone would claim it supplies something.
  */
 export function formatHarnessesForPrompt(statuses: readonly HarnessStatus[]): string {
 	if (statuses.length === 0) return "";
@@ -53,6 +54,7 @@ export function formatHarnessesForPrompt(statuses: readonly HarnessStatus[]): st
 			label: status.label,
 			on: status.on,
 			projectOnly: status.projectOnly === true,
+			empty: status.on && status.switchable && !Object.values(status.found).some(Boolean),
 			found: status.on ? "" : foundSummary(status),
 		}),
 	);

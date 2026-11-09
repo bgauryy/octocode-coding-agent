@@ -1,9 +1,11 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import { archiveFolder, ownArchives } from "../shared/archive.ts";
 import {
 	filesUnder,
 	type HistoryFile,
+	type HistorySearch,
 	historyFiles,
 	historyScope,
 	listHistory,
@@ -11,6 +13,7 @@ import {
 	readHistory,
 	searchHistory,
 } from "../shared/history.ts";
+import { isScanCursor } from "../shared/history-search.ts";
 import { findErrors, renderErrors, sinceTime } from "../shared/history-errors.ts";
 import { rankHistory } from "../shared/history-rank.ts";
 import { canonicalPath, isWithin } from "../shared/home/repo.ts";
@@ -39,6 +42,10 @@ interface ArchiveParams {
 	page?: number;
 	errors?: boolean;
 	since?: string;
+	/** Search: one session's history (`current` is this session's). */
+	sessionId?: string;
+	/** A search's continuation (`isScanCursor`); other cursors continue record listings. */
+	cursor?: string;
 }
 
 interface ArchiveDetails {
@@ -48,6 +55,8 @@ interface ArchiveDetails {
 	pages: number;
 	hits?: number;
 	files?: number;
+	/** A search stopped at its budget: the cursor that continues it. */
+	nextCursor?: string;
 }
 
 const pageNote = (page: number, pages: number, again: string): string =>
@@ -66,6 +75,39 @@ export function pattern(query: string): RegExp {
 			{ cause: error },
 		);
 	}
+}
+
+/** `files` limited to the session named by `sessionId` (`current`: this one) and to those changed since `since`. */
+function narrowFiles(files: HistoryFile[], params: ArchiveParams): HistoryFile[] {
+	const session = params.sessionId?.trim();
+	let kept = files;
+	if (session)
+		kept = kept.filter((file) =>
+			session === "current" ? file.session.relation === "this session" : file.session.id === session,
+		);
+	if (params.since?.trim() && !params.errors) {
+		const from = Date.parse(sinceTime(params.since.trim()));
+		kept = kept.filter((file) => {
+			try {
+				return fs.statSync(file.file).mtimeMs >= from;
+			} catch {
+				return false;
+			}
+		});
+	}
+	return kept;
+}
+
+/** What a bounded search read and how it goes on, so a short result is never taken for a complete one. */
+function scanNote(found: HistorySearch, total: number, sessions: number, source: string): string {
+	const skipped = [
+		...(found.unreadable ? [plural(found.unreadable, "file") + " unreadable"] : []),
+		...(found.skippedLines ? [plural(found.skippedLines, "line") + " over 16 MiB not tested"] : []),
+	];
+	const read = `Read ${found.scanned} of ${plural(total, "file")} (${plural(sessions, "session")})${skipped.length ? `; ${skipped.join(", ")}` : ""}.`;
+	return found.cursor
+		? `${read} The search stopped at its match or time budget: for more, repeat it with cursor ${found.cursor} (and the same query /${source}/i and file).`
+		: `${read} Every file was read.`;
 }
 
 export function createHistoryTool() {
@@ -92,10 +134,12 @@ export function createHistoryTool() {
 			page: Type.Optional(Type.Integer({ description: "Continue a result" })),
 			errors: Type.Optional(
 				Type.Boolean({
-					description: "true: tool errors in full transcripts, grouped, with rates by tool, model and day",
+					description: "true: tool errors in full transcripts, grouped, with rates by tool, model, day",
 				}),
 			),
-			since: Type.Optional(Type.String({ description: "With errors: from this ISO time" })),
+			since: Type.Optional(Type.String({ description: "From this ISO time: errors, or files changed since" })),
+			sessionId: Type.Optional(Type.String({ description: "Search one session's history; current: this session" })),
+			cursor: Type.Optional(Type.String({ description: "Continue a stopped search with its cursor" })),
 		}),
 		async execute(_toolCallId, input, signal, _onUpdate, ctx) {
 			const params = input;
@@ -181,7 +225,7 @@ export function createHistoryTool() {
 					pages: read.pages,
 				} satisfies ArchiveDetails);
 			}
-			let files: HistoryFile[] = historyFiles(scope);
+			let files: HistoryFile[] = narrowFiles(historyFiles(scope), params);
 			if (target !== undefined) {
 				const under = filesUnder(files, target);
 				// A readable file outside the listed ones (a `LIBRARY.md`) is searched on its own.
@@ -217,25 +261,33 @@ export function createHistoryTool() {
 				} satisfies ArchiveDetails);
 			}
 			if (!query) throw new Error("archive searches with query or keywords.");
-			const found = await searchHistory(files, query, page, signal);
+			const found = await searchHistory(
+				files,
+				query,
+				page,
+				signal,
+				isScanCursor(params.cursor) ? params.cursor : undefined,
+			);
 			const sessions = new Set(files.map((file) => file.session.id)).size;
-			if (found.hits === 0) {
+			const coverage = scanNote(found, files.length, sessions, query.source);
+			const details = {
+				...why,
+				mode: "search",
+				page: found.page,
+				pages: found.pages,
+				hits: found.hits,
+				files: found.files,
+				...(found.cursor ? { nextCursor: found.cursor } : {}),
+			} satisfies ArchiveDetails;
+			if (found.hits === 0)
 				return textResult(
-					`No line matches /${query.source}/i in ${plural(files.length, "file")} of ${plural(sessions, "session")}. Try another term or spelling, a shorter pattern, keywords for a ranked search, or list the sessions.`,
-					{ ...why, mode: "search", page: 1, pages: 0, hits: 0, files: 0 } satisfies ArchiveDetails,
+					`No line matches /${query.source}/i. ${coverage} Try another term or spelling, a shorter pattern, keywords for a ranked search, or list the sessions.`,
+					{ ...details, page: 1, pages: 0 },
 				);
-			}
-			const head = `${plural(found.hits, "matching line")} in ${found.files} of ${plural(files.length, "file")} (${plural(sessions, "session")}), nearest first; > marks a hit. Read around one with file and line.`;
+			const head = `${plural(found.hits, "matching line")} in ${plural(found.files, "file")}, this session first, then the most recently active; > marks a hit. Read around one with file and line. ${coverage}`;
 			return textResult(
-				[head, found.text, pageNote(found.page, found.pages, "query and file")].filter(Boolean).join("\n\n"),
-				{
-					...why,
-					mode: "search",
-					page: found.page,
-					pages: found.pages,
-					hits: found.hits,
-					files: found.files,
-				} satisfies ArchiveDetails,
+				[head, found.text, pageNote(found.page, found.pages, "query, cursor and file")].filter(Boolean).join("\n\n"),
+				details,
 			);
 		},
 		renderCall(args, theme, context) {

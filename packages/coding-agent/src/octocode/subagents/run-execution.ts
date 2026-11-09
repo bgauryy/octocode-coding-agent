@@ -11,7 +11,7 @@ import { withStopFacts } from "./budget.ts";
 import { hintEnd, hintOnStop, stopReason } from "./end-hint.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
 import type { AwaitedReply, LingerWindow } from "./linger.ts";
-import { providerHealth } from "./provider-health.ts";
+import { providerHealth, spentNothing } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
 import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
@@ -98,7 +98,7 @@ export function startBackground(
 	entry.done = (async () => {
 		try {
 			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
-			providerHealth.noteRun(run.route.model, outcome.error);
+			providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
 			if (outcome.error) hintEnd(runs, identity.id, "failed");
 			const awaited = linger && !outcome.error ? awaitedReply(runs, identity.id, details) : undefined;
 			// Asked before the footer is written: a child that stays reachable has not ended, and its item's graph line says so.
@@ -139,7 +139,9 @@ export function startBackground(
 				headline: firstLine(outcome.error ?? outcome.text),
 			};
 			const alreadyRead = read.consume(identity.id, outcome.reportArtifact);
-			const next = outcome.error ? failedNext(run.route, outcome.error, Boolean(outcome.text)) : "";
+			const next = outcome.error
+				? failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage))
+				: "";
 			const notices = noticeLines(details).join("\n");
 			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
 			const reachable = outcome.error ? "" : (linger?.(reported, awaited) ?? "");
@@ -263,7 +265,7 @@ export async function runForeground(
 	let outcome: Outcome;
 	try {
 		outcome = withStopFacts(await launch(controller.signal), details, runs.team);
-		providerHealth.noteRun(run.route.model, outcome.error);
+		providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
 		if (outcome.error) hintEnd(runs, identity.id, "failed");
 	} catch (error) {
 		// An Esc aborts the controller without `stoppedBy`: that stop already left its hint.
@@ -310,7 +312,7 @@ export async function runForeground(
 		const text = reportMessage(
 			`Subagent ${identity.id} failed${citable(identity.id)}`,
 			`${outcome.error}${outcome.text ? `\n\nPartial answer:\n${outcome.text}` : ""}`,
-			[failedNext(run.route, outcome.error, Boolean(outcome.text)), note],
+			[failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage)), note],
 		);
 		return { isError: true, content: [{ type: "text" as const, text }], details, usage: outcome.usage };
 	}

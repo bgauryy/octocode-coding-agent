@@ -20,7 +20,7 @@ import { login } from "./cli/login.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { createConnection, helpHint, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
 import { formatMcpConfigLocations, getMcpConfigLocations, untrustedProjectNote } from "./inspection.ts";
-import { loadMcpConfig, type McpExposure, updateMcpServerConfig, writableSource } from "./config.ts";
+import { loadMcpConfig, updateMcpServerConfig, writableSource } from "./config.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 
@@ -28,7 +28,6 @@ const help = (): string => `${chalk.bold("Usage:")}
   ${hostIdentity().appName} mcp add <server> [options] -- <command> [args...]
   ${hostIdentity().appName} mcp add <server> [options] --url <url>
   ${hostIdentity().appName} mcp remove <server> [-l]
-  ${hostIdentity().appName} mcp enable|disable <server> [-l]
   ${hostIdentity().appName} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]
   ${hostIdentity().appName} mcp list [--json]
   ${hostIdentity().appName} mcp tools [server] [tool] [--json]
@@ -45,7 +44,7 @@ Commands:
 ${MCP_COMMANDS.map(([name, args, description]) => `  ${`${name} ${args}`.trimEnd().padEnd(26)}${description}`).join("\n")}
 
 Options for configuration commands:
-  -l, --local             Write project configuration (enable/disable/exposure require project trust)
+  -l, --local             Write project configuration (exposure requires project trust)
 
 Options for add:
   --url <url>             Streamable HTTP server URL (instead of a command)
@@ -130,19 +129,16 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 		}
 		case "enable":
 		case "disable":
+			error(
+				`"${hostIdentity().appName} mcp ${command}" moved to the one configuration command: ${hostIdentity().appName} configuration ${command} mcp:${rest.find((word) => !word.startsWith("-")) ?? "<server>"}${rest.includes("--local") || rest.includes("-l") ? " --local" : ""}`,
+			);
+			return 1;
 		case "exposure": {
 			const parsed = parseOptions(rest, { local: "flag" }, error);
 			if (!parsed) return 1;
 			const [name, mode, ...extra] = parsed.positional;
-			if (
-				!name ||
-				extra.length ||
-				(command !== "exposure" && mode !== undefined) ||
-				(command === "exposure" && !isMcpExposure(mode))
-			) {
-				error(
-					`Usage: ${hostIdentity().appName} mcp ${command} <server>${command === "exposure" ? ` <${MCP_EXPOSURES.join("|")}>` : ""} [-l]`,
-				);
+			if (!name || extra.length || !isMcpExposure(mode)) {
+				error(`Usage: ${hostIdentity().appName} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]`);
 				return 1;
 			}
 			const entry = loaded.servers.find((server) => server.name === name);
@@ -166,21 +162,14 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 						? (ownProject ?? loaded.projectConfig ?? projectConfig)
 						: (loaded.globalConfig ?? globalMcpConfigPath(options.agentDir));
 			try {
-				updateMcpServerConfig(
-					target,
-					name,
-					command === "exposure" ? { exposure: mode as McpExposure } : { enabled: command === "enable" },
-					{ override: target !== entry.source },
-				);
+				updateMcpServerConfig(target, name, { exposure: mode }, { override: target !== entry.source });
 			} catch (failure) {
 				error(`Could not update ${target}: ${errorMessage(failure)}`);
 				return 1;
 			}
+			log(`MCP server "${name}": exposure ${mode}. Saved to ${target}.`);
 			log(
-				`MCP server "${name}": ${command === "exposure" ? `exposure ${mode}` : command === "enable" ? "enabled" : "disabled"}. Saved to ${target}.`,
-			);
-			log(
-				`Running sessions keep their current configuration; use /mcp ${command} ${name}${mode ? ` ${mode}` : ""}${local ? " --local" : ""} there, or restart.`,
+				`Running sessions keep their current configuration; use /mcp exposure ${name} ${mode}${local ? " --local" : ""} there, or restart.`,
 			);
 			return 0;
 		}

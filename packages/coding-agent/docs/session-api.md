@@ -1,212 +1,195 @@
 # Local session API
 
-Use `octocode-api` to send messages to a running Octocode host, read its status, watch events, request cancellation and read which agents started and ended (`events`). Every top-level session (terminal, print, RPC, ACP worker) serves this API on an owner-only Unix socket, so other processes of the same user can reach it with no setup; subagents do not. It is separate from [Agent Client Protocol](acp.md): an ACP client launches an agent process; this API attaches to an already running host.
+`octocode-api` talks to Octocode sessions already running on this machine: list them, send a message, read status, watch events, request cancellation and read which agents started and ended. Every top-level session (terminal, print, RPC, ACP worker) serves the API on an owner-only Unix socket, so other processes of the same user reach it with no setup. Subagents do not serve it.
 
-## Start and discover
+It differs from [ACP](acp.md): an ACP client launches an agent and owns its stdio; this API attaches to a host that is already running.
 
-From the repository root, start a terminal session:
-
-```sh
-yarn start
+```mermaid
+flowchart LR
+  C[Script, agent or tool of the same user] -->|octocode-api| K[(Owner-only Unix socket)]
+  C -.->|opt-in loopback HTTP + bearer token| K
+  K --> H[Running session]
+  H --> G{Permission mode}
+  G -->|full, or a grant| T[Run the turn]
+  G -->|workspace, manual| U[Ask the session's user]
 ```
 
-In a second terminal in the same checkout:
+## Commands
 
-```sh
-yarn node packages/coding-agent/src/octocode/api/cli.ts list
-yarn node packages/coding-agent/src/octocode/api/cli.ts status --to <instance-id>
-```
+| Command                                                                                                                                                         | Does                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `octocode-api list`                                                                                                                                             | One line per instance: instance id, process name, pid, `idle`/`busy`/`not answering`, session id, folder. Removes records whose socket refuses connections. |
+| `octocode-api status [--to <id>]`                                                                                                                               | Conversation identity, model, activity, pending input, event sequence                                                                                       |
+| `octocode-api send [--to <id>] [--from <name>] [--wait] [--mode steer\|followUp] [--key <key>] [--session <id>] [--timeout <ms>] [--require-idle] [--] <text…>` | Send a message                                                                                                                                              |
+| `octocode-api watch [--to <id>] [--types a,b] [--top-level] [--since <seq>]`                                                                                    | Stream events, one JSON line each                                                                                                                           |
+| `octocode-api abort [--to <id>]`                                                                                                                                | Request cancellation of the current turn                                                                                                                    |
+| `octocode-api events [--since <seq>] [--limit <n>] [--json]`                                                                                                    | Agent lifecycle of this folder's workspace, read from the database; needs no session                                                                        |
+| `octocode-api external [--to <id>] '<JSON>'`                                                                                                                    | Ask a host to connect to or message another agent                                                                                                           |
+| `octocode-api completion <bash\|zsh\|fish>`                                                                                                                     | Shell completion                                                                                                                                            |
 
-`list` prints one line per instance: instance ID, process name, pid, `idle`, `busy` or `not answering`, session ID and working directory. A record whose socket refuses the connection has nothing behind it, whatever now holds its pid, and `list` removes it: the instance's own file, `instances/<id>.json`, with its socket when that file holds exactly that record, and otherwise only the other file the copy came from, so a duplicate with a dead socket cannot remove a live instance's record ([probe](../src/octocode/api/probe.ts)). Replace `<instance-id>` with an ID from `list`. Installed builds use `octocode-api` instead of `yarn node packages/coding-agent/src/octocode/api/cli.ts`. The commands below use that installed name.
+From a source checkout use `yarn start` for the session and the same commands through the checkout's `octocode-api` entry.
 
-`/api` shows status inside an interactive session. `/api on` starts the API, `/api on http` also enables loopback HTTP on an available port, and `/api off` stops it; either choice holds for that process across `/new` and `/resume`. The global `sessionApi` setting (`false`) keeps new sessions from starting it. A session whose API cannot start warns and carries on. Subagents do not expose their own API.
+`--to` accepts an instance id (`oc-1a2b3c`), a process name (`octocode-main-c0ea9f3e`, as in `ps` and `/processes`), a session id or a pid. Without it the CLI picks the only instance, or the unique one in the current folder, and rejects ambiguity: use `--to` in scripts. A session switch (`/new`, `/resume`) starts a new endpoint with a new id. `send` refuses the caller's own session. The same names work for `/agents external connect octocode`, the `agent` tool's `instanceId`, and `agent` type `message` ([protocol](native-features.md#communication-and-results)).
 
-The Unix socket is mode 0600 in a mode 0700 folder, bound under a restrictive umask, so only the owning user reaches it. It sits beside its record under `<Octocode home>/api`, unless that path would pass 100 bytes (a deep home); then it goes in a private folder in the temp directory, `octocode-<uid>-<pid>-XXXXXX`. A session removes its own on exit. A killed one cannot, so each start with the API on removes such folders whose owner pid is gone and whose socket refuses a connection, whichever home they came from; a live session's folder stays. Loopback HTTP stays opt-in: any local program can open a TCP port, of any user, and only the bearer token stands in its way. `OCTOCODE_API_HTTP` adds it on the port it names (0 picks an available one, up to 65535), and `/api on http` does the same. Windows has no owner-only socket here, so a Windows session starts no API unless `OCTOCODE_API_HTTP` is set or you run `/api on`, which uses HTTP. The HTTP server drops a request whose headers or body take longer than 10 seconds and accepts at most 64 connections at once (`API_HTTP_LIMITS` in `src/octocode/api/server.ts`). See [environment variables](environment-variables.md) and the [configuration map](../../../CONFIGURATIONS.md) for configuration and discovery storage.
+## Turn it on or off
 
-An **instance ID** (`oc-1a2b3c`) identifies a running API endpoint. `status.sessionId` identifies its current conversation, and a process is named `octocode-<role>-<last 8 characters of the session ID>` in `ps` and `/processes`. `--to` takes any of them: the instance ID, the process name (`octocode-main-c0ea9f3e`), the id `/processes` shows, the session ID or the pid. `/agents external connect octocode` and the `agent` tool's `instanceId` take the same, and a session's model reaches another by `agent` type `message` to its exact name, instance ID or session ID ([the protocol](native-features.md#communication-and-results)). A name no running instance has, or that several have, is an error listing what would work. A session switch (`/new`, `/resume`) starts a new endpoint with a new instance ID and name. Prefer explicit `--to` in scripts; if omitted, the CLI selects the only instance or the unique instance in the current directory and rejects ambiguity. `send` refuses the caller's own session: its run could never answer a call its own tool is waiting on.
+| Control                       | Effect                                                                                                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api`                        | Show status in an interactive session                                                                                                                                                 |
+| `/api on` / `/api on http`    | Start the API; `http` also opens loopback HTTP on a free port. Holds for that process across `/new` and `/resume`.                                                                    |
+| `/api off`                    | Stop it for that process                                                                                                                                                              |
+| `sessionApi` (global setting) | Default `true`; `false` keeps new sessions from starting it. A project file cannot change it. On Windows (no owner-only socket) it starts only with `/api on` or `OCTOCODE_API_HTTP`. |
+| `OCTOCODE_API_HTTP=<port>`    | Also serve loopback HTTP on that port (`0` picks a free one, up to 65535)                                                                                                             |
+
+A session whose API cannot start warns and carries on. The socket is mode 0600 in a 0700 folder under `<Octocode home>/api` (a private temp folder when that path is too long); a session removes its own on exit and each start cleans up dead ones. HTTP is opt-in because any local program can open a TCP port: only the bearer token protects it. The HTTP server drops a request whose headers or body take over 10 seconds and accepts at most 64 connections. See [environment variables](environment-variables.md).
 
 ## Send and receive a reply
 
-Read `status`, then substitute its `sessionId` below:
-
 ```sh
+octocode-api status --to <instance-id>        # note sessionId
 octocode-api send --to <instance-id> --session <session-id> \
   --from "external script" --key greeting-1 --require-idle \
   --wait --timeout 120000 -- "Reply with ACK."
 ```
 
-`--session` checks that the conversation has not changed, including while the host prepares the message. `--require-idle` rejects busy or queued work before dispatch. Without it, the default delivery mode starts a run when idle and steers the next model step when busy. `--mode steer` selects that behavior explicitly; `--mode followUp` queues a later turn when busy. `--` ends flag parsing so message text can begin with a dash.
+| Flag             | Meaning                                                                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--session`      | Refuse delivery if the conversation changed, also while the host prepares the message                                                                                                            |
+| `--require-idle` | Refuse busy or queued work before dispatch. Default delivery starts a run when idle and steers the next model step when busy.                                                                    |
+| `--mode`         | `steer` (steer the running turn) or `followUp` (queue a later turn when busy)                                                                                                                    |
+| `--wait`         | Print the final assistant text when the run settles (after queued continuations and retries). Exit `1`, empty stdout and the JSON result on stderr when `stopReason` is not `stop` or `toolUse`. |
+| `--timeout`      | Server wait in milliseconds, 1,000–3,600,000, default 600,000 (the CLI adds ten seconds)                                                                                                         |
+| `--key`          | Deduplicate; see [Retry](#retry-without-duplicate-dispatch)                                                                                                                                      |
+| `--from`         | A sender name added to the caller's claim                                                                                                                                                        |
+| `--`             | Ends flags so text can begin with a dash                                                                                                                                                         |
 
-Without `--wait`, stdout contains the accepted receipt, for example `{"id":"x1","queued":"turn"}`. `queued` can also be `steer` or `followUp`. Acceptance records dispatch to the host; it does not prove that the model read the message or completed the requested task.
-
-With `--wait`, stdout contains the final assistant text when the logical run settles, after queued continuations and retries. This is the run's result; concurrent senders do not receive isolated per-message conversations. The wire response also includes the receipt and, when available, `stopReason` and `errorMessage`. When the run did not succeed (`stopReason` is anything but `stop` or `toolUse`, so `error`, `aborted` or `length`), `--wait` exits `1`, leaves stdout empty and writes that JSON result to stderr. `--timeout` is in milliseconds: 1,000–3,600,000, default 600,000. The CLI allows an additional ten seconds for the server response.
-
-A message is subject to the receiving session's [permission mode](permissions.md#external-messages). By default (`sessionApiTurnPermission: "session"`) a session in `full` takes it unasked, whether idle or working, and the turn runs in `full`, audited, so a remote agent never waits on a prompt; `workspace` and `manual` sessions ask as usual. Setting `sessionApiTurnPermission` to `"workspace"` holds API-started turns and steering messages to `workspace` even in a `full` session; see [Turns an API client starts](#turns-an-api-client-starts).
-
-Messages carry an external sender label and are fenced as untrusted input. The label is not authentication. Reserved user/team identities and live agent IDs cannot be claimed as the sender. Native message hooks and [tool permission policy](permissions.md) still apply.
+Without `--wait`, stdout is the receipt, for example `{"id":"x1","queued":"turn"}` (`queued` is `turn`, `steer` or `followUp`). Acceptance means the host took it, not that the model read it or finished. Concurrent senders share one conversation.
 
 ## What the session sees
 
-A message arrives marked as external. The model reads a header built by the receiving process ([template](../src/octocode/instructions/notices/mail/external-message.md)): another process on this machine sent it, not the user; what the transport proves (over the socket, a program running as this OS user; over HTTP, a program holding the token); what the caller says it is, each value quoted; and that it may state facts and make requests but never grants authority, approval or permission. The sender's text follows inside the [untrusted-text fence](../src/octocode/shared/fence.ts), whose random marker the sender cannot know, so the text cannot forge the header or close the fence. A [footer](../src/octocode/instructions/notices/mail/external-reply.md) says what the reader can do: answer, when the caller used `--wait`; use `agent` type `message` to the caller's process name, when the caller named a running instance.
+A message obeys the receiving session's [permission mode](permissions.md#external-messages):
 
-**The caller's fields are claims.** A Unix socket does not say who is on the other end, so `--from` and the caller fields (`name`, `instanceId`, `pid`, `cwd`) are what the caller says, and the text says "says it is". `octocode-api` fills them in: from a session's shell, that session's name, instance ID, pid and folder; from any other program, its pid and folder. Names that would pass for the user or a live agent are refused, in any letter case and in Unicode compatibility forms such as fullwidth letters. A running instance is the claimed caller only when the claimed `instanceId` and `pid` both match its record; otherwise the message has no reply route.
+| Receiving session                                       | Result                                                                                                                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `full`, `sessionApiTurnPermission: "session"` (default) | Takes it unasked (idle or working); the turn runs in `full`, audited                                                                                                  |
+| `full`, `sessionApiTurnPermission: "workspace"`         | Asks its user; the turn and its tool calls (and subagents) run under `workspace` until the session settles. With nobody to ask: refused with `execution: "not-sent"`. |
+| `workspace` or `manual`                                 | Asks its user as usual; a `manual` session stays `manual`                                                                                                             |
 
-**Only a confirmed instance holds a process grant.** An instance's pid and ID are in the readable registry, so any process of the user can copy them. Before a "messages from this process" grant or denial applies, the receiver calls the claimed instance back on that instance's own registered socket with `identity.confirm`, passing a random nonce and the `ticket` the caller put in its `caller` field. The [ticket](../src/octocode/api/identity.ts) lives only in the calling process, for that one call to this receiver at the socket or URL the call was sent to, so only the real caller echoes the nonce ([check](../src/octocode/api/bridge/verify.ts)). The receiver passes its own ID and endpoint (`to`, `via`): a ticket collected by pointing the receiver's record file at another socket names that socket, and the caller does not confirm it for the receiver's real one. The claimed instance is read only from its own record file, `instances/<id>.json`, and must carry the claimed pid ([registry check](../src/octocode/api/registry-integrity.ts)). The receiver's own file must still hold the record it wrote, and no other live record may repeat the receiver's ID or pid, or the claimed instance's: a sender could have handed such a record a ticket for this receiver. A confirmation lasts for the connection it came on while the instances folder and the claimed instance's own file are unchanged (their modification times, so a file overwritten in place counts); when either changes, the next call or read on that connection checks the registry again and drops the confirmation if it no longer agrees or the file now holds another record. The call back waits no longer than the call itself (`timeoutMs` for `message.send`). Anything else leaves the caller unconfirmed: no ticket, the instance offline, a duplicate record as above, no answer in time, a wrong nonce. A grant or denial belongs to the confirmed instance, its ID and pid, not to its name: any record can carry a name, so the name only labels the choice, and when another live record carries the same name the label adds the instance ID (`messages from octocode-main-c0ea9f3e (oc-1a2b3c)`).
+`sessionApiTurnPermission` is a global setting only, read for every message; `"workspace"` also holds `external.call` and `agents.tell`. Prefer `OCTOCODE_PERMISSION=manual` or `workspace` where other programs run as your user.
 
-A sender gives a ticket only to the record in its target's own file, `instances/<id>.json`, for the endpoint in that record. What it claims (`from`, and `caller.instanceId`, `name` and `cwd`) comes from the record its own API wrote, never from a registry record that carries its pid. When another live record shares the target's name, ID or pid, `agent` type `message` and `/agents external connect octocode` send nothing: the refusal lists the records and asks the user to say which process is real, and no ticket leaves the session. An unconfirmed caller is asked about as any other caller, without the process choices, or refused when nobody can be asked; a grant never allows it. Sessions send tickets from `agent` type `message` and from `/agents external connect octocode`. `octocode-api` run from a session's shell names that session but has no ticket, so its messages are asked about without the process choices.
+The model sees an external-message header: another process on this machine sent it, not the user; what the transport proves (socket: a program running as this OS user; HTTP: a program holding the token); what the caller says it is (quoted); and that it may state facts and make requests but never grants authority or approval. The text sits inside a random untrusted-text fence the sender cannot forge. The terminal draws it as `✉ external`. Hooks and [tool permission policy](permissions.md) still apply, and a message is never a slash command (`/permissions full` in one is plain text) nor an answer to a pending dialog.
 
-The terminal draws each one as `✉ external`, with the claimed caller, and the text is sanitized and collapsed. RPC `message_end` carries the same facts at `details.external`, ACP `agent_message_chunk` at `_meta["octocode/external"]`, and the API's `external.message` event at `caller`, `callerVerified` and `transport`. The `octocode-external` entry the session keeps for each message carries the same `caller` and `callerVerified`, and `turnPermission: "workspace"` when the message started a turn held to that mode. `callerVerified` is `true` only when the named instance confirmed the call; otherwise a review reads the name as what the sender said, not as an identity.
+**Caller fields are claims.** A socket does not say who is on the other end, so `--from`, `name`, `instanceId`, `pid` and `cwd` are what the caller says; `octocode-api` fills them from the calling session's shell or from its own pid and folder. Names that pass for the user or a live agent are refused (any case, Unicode lookalikes). A caller counts as a running instance only when its `instanceId` and `pid` both match; otherwise the message has no reply route. Only an instance that confirms itself by an `identity.confirm` call-back holds a "messages from this process" grant; unconfirmed callers are asked about without the process choices, or refused when nobody can be asked. `octocode-api` run from a session's shell has no ticket, so its messages are asked about without those choices. Records are shown at `details.external` (RPC), `_meta["octocode/external"]` (ACP) and `caller`, `callerVerified`, `transport` (the `external.message` event); `callerVerified` is `true` only for a confirmed instance.
 
-## Turns an API client starts
+### What the sender gets
 
-Any process of this OS user can reach the socket, and the caller's name is a claim. By default an API-started turn follows the session's own mode, so a session in `full` runs it in `full` (audited). With `sessionApiTurnPermission: "workspace"`, a turn started through the API does not get a session's `full` mode. Then, when a message arrives while the session is idle:
+| Receiving session | `send` without `--wait`                                                                                     | `send --wait`                                          | `agent` type `message`                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| Takes it          | `queued`: `turn`, `steer` or `followUp`                                                                     | The run's result                                       | "Sent to `<name>`"                                           |
+| Asks its user     | At once `queued: "waiting-for-user"` and a `key`; repeat the send with that `--key` to wait for the outcome | Waits within `--timeout`, which also closes the dialog | At once "Waiting for `<name>`'s user"; told later if refused |
+| User denies       | The retry fails with the refusal                                                                            | Exit `1`, refusal on stderr                            | A notice in the sender's session                             |
+| Nobody to ask     | Exit `1`, refusal on stderr                                                                                 | The same                                               | The tool call fails with the refusal                         |
 
-- Admission (the `message.external` class) is judged in the stricter of the session's mode and `workspace`. A session in `full` asks its user, or, with nobody to ask (print mode, an RPC or ACP worker without a dialog), refuses with `execution: "not-sent"` and a message naming the setting below.
-- The turn's tool calls are judged in the same mode until the session settles (`agent_settled`, so retries and queued continuations stay held): calls `workspace` asks about, such as a file change outside the repository or a destructive shell command, ask the user and are refused when nobody can answer, like any other ask. Subagents started during the turn inherit that mode.
-- A session already in `manual` stays in `manual`; the ceiling only tightens, and neither the footer chip nor the user's mode choice changes. The audit log records the calls under the mode that judged them.
-- A message to a session that is working (`steer`, `followUp`) is held too: its admission is judged as above, and once admitted the running turn, a user turn in `full` included, runs under the ceiling until the session settles. Timing a message to a running turn never yields more than `workspace`.
-
-The global setting `sessionApiTurnPermission` chooses: `"session"` (default) follows the session's mode, where a session in `full` takes the message unasked and runs the turn in `full`; `"workspace"` holds API-started turns as above, and also caps the session for the length of an `external.call` and makes an `external.call` or `agents.tell` ask (or be refused) before it is admitted. An `agents.tell` that reaches a member this process runs (named, or through `"all"`) holds that turn to the ceiling until the session settles; a recipient in another process runs under its own session's mode. Any other value follows the session's mode. A project settings file cannot change it. It is read for each message, so a change applies to the next one. Prefer `OCTOCODE_PERMISSION=manual` or `workspace` over `"session"` where other programs run as the same user.
-
-Tool permissions otherwise do not change. An external message reaches the model; it is not a reply to a dialog. A pending permission dialog or `askUser` question waits for the terminal or RPC client that owns it, and a session in `manual` mode stays manual. A message is not a slash command either: `/permissions full` in one is just text. See [the security notes](#who-can-reach-a-session) for what this does and does not protect.
-
-## What the sender gets
-
-| The receiving session                                                                      | `send` without `--wait`                                                                                                                 | `send --wait`                                          | `agent` type `message`                                             |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| Takes it (a `full` session unless `sessionApiTurnPermission` is `"workspace"`, or a grant) | `queued`: `turn`, `steer` or `followUp`                                                                                                 | The run's result                                       | "Sent to `<name>`"                                                 |
-| Asks its user                                                                              | At once, `queued: "waiting-for-user"` and a `key` (yours, or one given now); repeating the send with that `--key` waits for the outcome | Waits within `--timeout`, which also closes the dialog | At once, "Waiting for `<name>`'s user"; told later only if refused |
-| Its user denies                                                                            | The retry fails with the refusal                                                                                                        | Exit `1`, the refusal on stderr                        | A notice in the sender's session, which starts a turn              |
-| Has nobody to ask                                                                          | Exit `1`, the refusal on stderr                                                                                                         | The same                                               | The tool call fails with the refusal                               |
-
-A refusal names the session and what its user can do, with `execution: "not-sent"`. The same key repeats it; only a new key asks again. No deadline applies beyond the sender's `--timeout`; a sender's `agent` call allows the API's maximum, one hour.
+A refusal names the session and what its user can do, with `execution: "not-sent"`. The same key repeats it; a new key asks again.
 
 ## Retry without duplicate dispatch
 
-Use a unique `--key` for each intended message. To recover after a lost response, repeat the same message, sender, delivery mode and idle requirement with the **same key**. You may add `--wait` or change the wait timeout. Changing keyed input is rejected; a new key means new work.
+Use a unique `--key` per intended message (up to 128 characters). After a lost response repeat the same message, sender, mode and idle requirement with the **same key**; you may add `--wait` or change the timeout. Changed input with the same key is rejected. The host keeps up to 128 receipts per conversation in memory and refuses new keys at capacity; a session switch, `/api off` then `on`, or a restart forgets them.
 
-Keys are at most 128 characters. The host retains up to 128 keyed receipts for the current conversation in memory and refuses new keys at capacity instead of evicting old receipts. Session replacement, API restart (including `/api off` followed by `/api on`) or process restart loses these receipts. A saved conversation is not a durable idempotency store.
+| Result                                                     | Meaning and next step                                                                                        |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `execution: "not-sent"`                                    | Refused before dispatch. Fix the cause, then retry.                                                          |
+| Server wait timeout (`-32001`)                             | Accepted; work may still run. Check status or wait again with the original key.                              |
+| `execution: "uncertain"`                                   | Handoff failed after dispatch. The key keeps the failure and cannot dispatch again. Inspect before new work. |
+| Connection failure or client timeout without a disposition | Delivery may have happened. Do not assume it did not.                                                        |
 
-| Result                                                     | Meaning and next step                                                                                                                                         |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `execution: "not-sent"`                                    | The operation was refused before dispatch. Correct the cause before retrying.                                                                                 |
-| Server wait timeout (`-32001`)                             | The message was accepted; work may still be running. Inspect status or wait again with the original key.                                                      |
-| `execution: "uncertain"`                                   | The host handoff failed after dispatch. The original key retains the failure and cannot dispatch again. Inspect the conversation before deciding on new work. |
-| Connection failure or client timeout without a disposition | Delivery may have happened. Do not infer failure before dispatch from a missing response.                                                                     |
-
-Errors exit nonzero, including a `--wait` whose run failed. Protocol errors are JSON on stderr with `error`, `code` and optional `data`; client failures may include `execution`. Other CLI errors are plain text. Preserve this information when integrating. Neither the CLI nor the external-agent adapter automatically replays a possibly executed prompt.
-
-Socket failures include a recognized operating-system error code, for example `API socket transport failed (EPERM)` for a permission refusal or `(ENOENT)` for a missing socket. Raw operating-system messages and paths are omitted. A sandboxed process may discover an instance but still lack permission to connect; use its host's scoped authorization or an explicitly configured callback integration. The error code does not replace the delivery-disposition rules above. See the [Codex integration](acp.md#connect-to-codex) for a tested example and its limits.
+Errors exit nonzero. Protocol errors are JSON on stderr (`error`, `code`, optional `data`; client failures may add `execution`); other CLI errors are plain text. Socket failures carry an OS code such as `(EPERM)` or `(ENOENT)` without paths. A sandboxed process may discover an instance yet lack permission to connect; use its host's scoped authorization or a callback integration (see [Codex](acp.md#connect-to-codex)). Nothing replays a possibly executed prompt automatically.
 
 ## Watch and cancel
 
-Start watching before sending if you need the whole event sequence:
-
 ```sh
-octocode-api watch --to <instance-id> \
-  --types agent.start,message.delta,message,tool.start,tool.end,agent.settled
-octocode-api watch --to <instance-id> --since <last-sequence> --top-level
+octocode-api watch --to <id> --types agent.start,message.delta,message,tool.start,tool.end,agent.settled
+octocode-api watch --to <id> --since <last-seq> --top-level
+octocode-api abort --to <id>
 ```
 
-Each stdout line is an event with `seq`, `at`, `type` and `data`. The log retains 500 events; `--since` replays retained events after the supplied sequence. The CLI warns on stderr if replay has a gap. Cursors belong to one instance and are not portable across API restarts. `--top-level` filters nested tool events carrying `parentId`.
+Each line is an event with `seq`, `at`, `type`, `data`. The log keeps 500 events; `--since` replays what is retained and the CLI warns on stderr about a gap. Cursors belong to one instance and do not survive an API restart. `--top-level` hides nested tool events (those with `parentId`). Default types: `agent.start`, `agent.end`, `agent.settled`, `message`, `tool.start`, `tool.end`, `external.message`, `compaction`; `message.delta` is opt-in (flushed at message or run boundaries, not token by token). A `--types` list replaces the default.
 
-Default event types are `agent.start`, `agent.end`, `agent.settled`, `message`, `tool.start`, `tool.end`, `external.message` and `compaction`. `message.delta` is opt-in and currently flushes accumulated text at message/run boundaries; it is not a token-by-token stream. A `types` list replaces the default selection.
+`abort` acknowledges the request, not finished cleanup: watch for `agent.settled`. It targets the current turn with no guard; programmatic callers can pass `expectedSessionId` and the message `key` to `turn.abort`. Abort is admitted like a message (taken in `full`, asked in `workspace` and `manual`, refused with nobody to ask). If the run settled while the user decided, it stops nothing and answers `aborted: false`, `settled: true`. Withdrawing your own waiting message by `key`, and aborting an idle session, never ask. Closing a client or its wait does not abort the turn.
 
-To request cancellation:
-
-```sh
-octocode-api abort --to <instance-id>
-```
-
-This acknowledges the abort request, not completed cleanup. Observe `agent.settled` and status afterward. CLI `abort` targets the host's current turn and has no session/key guard. Programmatic callers can pass `expectedSessionId` and the owning message `key` to `turn.abort` to avoid cancelling unrelated work. Cancelling a client wait or closing its connection does not itself abort the host's turn.
-
-Stopping a running turn is admitted like a message: taken in `full`, asked in `workspace` and `manual`, and refused when nobody can be asked. A confirmed instance's "messages from this process" grant covers it, and its denial refuses it. The answer can come long after the call, so an abort whose run settled while the user decided stops nothing and answers `aborted: false` with `settled: true` and a `message` saying so: the run going by then is another one. Two cases do not ask: withdrawing your own message while it is still waiting for admission (its `key`), and an idle session with nothing queued, where there is nothing to stop (`aborted: false`). Each admitted abort is recorded as an `octocode-external` entry.
-
-The read methods, `status`, `messages.list`, `events.subscribe`, `GET /events` and `agents.list`, stay open to every process of this user, so the user's own tools never wait on a prompt. Each call is recorded as an `octocode-external` entry with `read: true`, the method, the claimed `caller` (pass `caller` so the record names you), `callerVerified` (true when this connection already confirmed that instance) and `transport`.
+Reads (`status`, `messages.list`, `events.subscribe`, `GET /events`, `agents.list`) never ask; each is recorded with the claimed caller.
 
 ## Watch agents come and go
 
-`events` reads the agent lifecycle of this directory's workspace from the agent database, so it needs no running session and no `--to`. Each agent that joins is an `on`, a change to its record is a `state`, and the end of its row is an `off` with the reason (`completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed` or `left`) and its final numbers.
+`octocode-api events` reads the agent lifecycle of this folder's workspace from the agent database, so it needs no running session and no `--to`.
 
 ```sh
 octocode-api events --since 0
 octocode-api events --since <last-seq> --json
 ```
 
-Options: `--since <seq>` (default 0) shows events after that sequence; `--limit <n>` (1-1000, default 200) caps one page, oldest first; `--json` prints one object, `{"since", "last", "events": [...]}`. Text output has one tab-separated line per event, then `last seq: <n>`:
+| Event   | Meaning                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `on`    | An agent joined                                                                                                                            |
+| `state` | A change to its record                                                                                                                     |
+| `off`   | Its row ended, with `reason` (`completed`, `failed`, `stopped-user`, `stopped-parent`, `parent-gone`, `crashed`, `left`) and final numbers |
+
+`--since` default 0; `--limit` 1–1000, default 200, oldest first; `--json` prints `{"since","last","events":[…]}`. Text output is one tab-separated line per event, then `last seq: <n>`:
 
 ```text
 4	2026-11-04T23:13:54.297Z	on   	glowing-turtle	general	parent=spry-coral
 7	2026-11-04T23:13:54.437Z	off  	glowing-turtle	general	parent=spry-coral	reason=completed	toolCalls=0 input=100 cacheRead=0 output=5 cost=0.000105
-8	2026-11-04T23:13:54.622Z	off  	spry-coral	main	reason=left	toolCalls=1 input=100 cacheRead=0 output=5 cost=0.000105
-last seq: 8
+last seq: 7
 ```
 
-Poll by passing the last sequence back as `--since`; a call with nothing new prints no events and the same `last`. Sequences have gaps (other event kinds and workspaces share the counter), and `last` stays at `--since` when a page is empty. A `--limit` page that is full means more may follow: call again with its `last`. Each event has `seq`, `time`, `event`, `agent`, and when known `role`, `parent`, `session`, `state`, `changes`, `reason`, `detail`, `outcome`, `backlogItem` and, on `off`, `stats`. A directory Octocode never ran in, or a missing database, has no events: the command says so on stderr, exits 0 and creates nothing. `events` only reads, so it is not subject to the permission rules above.
+Poll by passing `last` back as `--since`. Sequences have gaps (other kinds and workspaces share the counter); a full page means more may follow. Events carry `seq`, `time`, `event`, `agent` and, when known, `role`, `parent`, `session`, `state`, `changes`, `reason`, `detail`, `outcome`, `backlogItem` and (on `off`) `stats`. A folder Octocode never ran in has no events: the command says so on stderr, exits 0 and creates nothing. `events` only reads.
 
-## Use from Claude Code or Codex
+## Use it from other tools
 
-A Claude Code or Codex session reaches Octocode through its shell. [`skill-templates/octocode-api/SKILL.md`](skill-templates/octocode-api/SKILL.md) is a ready-to-copy [Agent Skill](https://agentskills.io) that teaches that host to find sessions (`list`), send (`send`, with the idle-session permission behavior) and watch agents with `events --since`. Copy the folder into that host's skills directory yourself (for example `.claude/skills/` or `.codex/skills/` of a project); Octocode does not install it.
+| Caller                    | How                                                                                                                                                                                                                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code or Codex      | Through its shell. Copy the [`octocode-api` Agent Skill](skill-templates/octocode-api/SKILL.md) folder into that host's skills folder (`.claude/skills/` or `.codex/skills/`); Octocode does not install it. It teaches `list`, `send` (with the idle-session permission behaviour) and `events --since`. |
+| An ACP session            | Each session an ACP broker creates has its own endpoint, so `--to <ACP session id>` reaches it. API-started work streams to the ACP client; an overlapping `session/prompt` is refused while it runs; the client can cancel with `session/cancel`.                                                        |
+| Another agent, via a host | `external`, below                                                                                                                                                                                                                                                                                         |
 
-## Use alongside ACP
+### Ask a host to connect to another agent
 
-Each session an ACP broker creates has a native worker and its own discoverable API endpoint, so `--to <ACP session ID>` reaches it. The ACP client continues to own the broker's stdin and stdout.
-
-API-started work streams output to the connected ACP client. An overlapping ACP `session/prompt` is refused while that work is active; the session remains usable. The ACP client can cancel observed work with `session/cancel`. Direct API sends can steer busy work, while the native external-agent adapter uses an idle-only guarded send.
-
-## Ask a host to connect to another agent
-
-`external` invokes the host's existing external-agent operations and permission checks. Its JSON argument is the **inner action object**, not the native `agent` tool's outer `type`/`input`/`reason` envelope:
+`external` takes the **inner action object**, not the `agent` tool's outer envelope:
 
 ```sh
-octocode-api external --to <host-instance-id> '{"action":"list"}'
-octocode-api external --to <host-instance-id> \
-  '{"action":"connect","transport":"octocode","id":"peer","instanceId":"<peer-instance-id>","cwd":"/absolute/peer/workspace"}'
-octocode-api external --to <host-instance-id> \
-  '{"action":"prompt","id":"peer","text":"Reply with ACK.","timeoutMs":120000}'
-octocode-api external --to <host-instance-id> '{"action":"disconnect","id":"peer"}'
+octocode-api external --to <host-id> '{"action":"list"}'
+octocode-api external --to <host-id> \
+  '{"action":"connect","transport":"octocode","id":"peer","instanceId":"<peer-id>","cwd":"/absolute/peer/workspace"}'
+octocode-api external --to <host-id> '{"action":"prompt","id":"peer","text":"Reply with ACK.","timeoutMs":120000}'
+octocode-api external --to <host-id> '{"action":"disconnect","id":"peer"}'
 ```
 
-The peer must have its local API enabled. The adapter verifies its discovered instance, workspace and live conversation identity, and refuses busy peers. Disconnect releases the attachment and cancels work it owns; it does not terminate the peer host. To launch an ACP peer instead, use the `transport: "acp"`, `command`, `args` and `cwd` action from the [ACP guide](acp.md#connect-from-octocode-to-another-agent). Disconnect then stops the owned peer process tree. `instanceId` takes the same names as `--to`, and `cwd` defaults to the instance's own folder; a `cwd` that differs is refused.
+The peer must have its API enabled; the adapter checks its instance, workspace and live conversation and refuses busy peers. Disconnect releases the attachment and cancels work it owns, without stopping the peer. `instanceId` takes the same names as `--to`; `cwd` defaults to the instance's folder and a different one is refused. To launch an ACP peer use the `transport: "acp"` action in the [ACP guide](acp.md#connect-from-octocode-to-another-agent).
 
 ## Wire protocol
 
-The local API uses JSON-RPC 2.0, protocol version 1. The [protocol constants](../src/octocode/api/protocol.ts) and [method dispatch](../src/octocode/api/bridge.ts) own its contract. This version number is independent of ACP's version.
+JSON-RPC 2.0, API protocol version 1 (independent of ACP's).
 
-| Method                                   | Purpose                                                                                                                                                                            |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialize`, `ping`                     | Read API capabilities/instance identity; check liveness                                                                                                                            |
-| `status`                                 | Read conversation identity, model, activity, pending input and event sequence                                                                                                      |
-| `message.send`                           | Send `text` with optional `from`, `caller` (`name`, `instanceId`, `pid`, `cwd`, `ticket`), `mode`, `key`, `expectedSessionId`, `requireIdle`, `replyRequired`, `wait`, `timeoutMs` |
-| `turn.abort`                             | Request cancellation, admitted like a message; optional `expectedSessionId` and owning `key` guards, and `caller`                                                                  |
-| `identity.confirm`                       | Echo `nonce` when this process issued `ticket` for a call in flight to the instance `to` at the endpoint `via`; how a receiver confirms a caller                                   |
-| `messages.list`                          | Read bounded text history; `limit` defaults to 20, capped at 100; use the returned `earlier.before` as `before`                                                                    |
-| `events.subscribe`, `events.unsubscribe` | Manage a socket subscription, with optional `since` and `types`                                                                                                                    |
-| `agents.list`, `agents.tell`             | List the native Team directory or send Team mail with `to` and `text`; Team delivery has its own [acknowledgment contract](../../../docs/AGENT_COMMUNICATION.md)                   |
-| `external.call`                          | Invoke an external-agent action using its inner action object; `list` is open and recorded, every other action is admitted like a message                                          |
+| Method                                   | Purpose                                                                                                                                                                       |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize`, `ping`                     | Capabilities and instance identity; liveness                                                                                                                                  |
+| `status`                                 | Conversation identity, model, activity, pending input, event sequence                                                                                                         |
+| `message.send`                           | `text` plus optional `from`, `caller` (`name`, `instanceId`, `pid`, `cwd`, `ticket`), `mode`, `key`, `expectedSessionId`, `requireIdle`, `replyRequired`, `wait`, `timeoutMs` |
+| `turn.abort`                             | Cancel, admitted like a message; optional `expectedSessionId`, `key`, `caller`                                                                                                |
+| `identity.confirm`                       | Echo `nonce` for a ticket this process issued for a call to instance `to` at endpoint `via`                                                                                   |
+| `messages.list`                          | Bounded text history; `limit` default 20, max 100; pass `earlier.before` as `before`                                                                                          |
+| `events.subscribe`, `events.unsubscribe` | Socket subscription, optional `since`, `types`                                                                                                                                |
+| `agents.list`, `agents.tell`             | Team directory; Team mail to `to` with `text` ([acknowledgment contract](https://github.com/bgauryy/octocodecode/blob/main/docs/AGENT_COMMUNICATION.md))                      |
+| `external.call`                          | An external-agent action; `list` is open and recorded, every other action is admitted like a message                                                                          |
 
-On the Unix socket, each frame is one JSON line. Responses correlate by request ID; events are notifications with `method: "event"` and the event object in `params`. Replay notifications can arrive before the subscription response. That response includes `seq` and `gap`.
-
-HTTP binds to `127.0.0.1`. Use `POST /rpc` for requests, `GET /events` for SSE, and `GET /health` for liveness. Every request requires `Authorization: Bearer <token>` from the private discovery record. Requests with an `Origin` header or a non-loopback Host are refused. SSE accepts `Last-Event-ID` or `since`, plus comma-separated `types`; a `: gap` comment signals missing replay. `events.subscribe` is unavailable over one-shot HTTP RPC.
-
-Discovery records and Unix sockets are owner-only on POSIX systems. Clients must share the host's configured Octocode home to discover it. The API is not a remote network service or a browser API. Requests are bounded to 1 MiB; socket connections and HTTP event streams are each limited to 16. Slow readers are disconnected when queued output exceeds 4 MiB.
+On the socket each frame is one JSON line; events are `method: "event"` notifications, and replay can arrive before the subscribe response (which carries `seq` and `gap`). HTTP binds to `127.0.0.1`: `POST /rpc`, `GET /events` (SSE, with `Last-Event-ID` or `since` and `types`; a `: gap` comment marks missing replay) and `GET /health`. Every request needs `Authorization: Bearer <token>` from the private discovery record; a request with an `Origin` header or non-loopback Host is refused; `events.subscribe` is unavailable over one-shot HTTP. Requests are limited to 1 MiB; socket connections and HTTP event streams to 16 each; slow readers are dropped past 4 MiB queued. Clients must share the host's Octocode home to discover it. This is not a remote or browser API.
 
 ## Who can reach a session
 
-- **Who:** any process running as the same OS user, including ones you did not start: a build script, a dependency's install step, a tool an agent runs. Another OS user cannot: the socket is mode 0600 in a mode 0700 folder. Root can. A sandbox that denies the socket's path also stops it; one that does not (a same-user process with filesystem access) reaches it.
-- **What it can do:** read status, history and the event stream (assistant text, tool names and hints), unasked and recorded with the claimed caller; start or steer a turn, which spends model budget (it asks the session's user, unless the session is in `full` and `sessionApiTurnPermission` is not `"workspace"`); abort a turn, admitted like a message; call `external.call`, which can start an ACP agent: every action but `list` is admitted like a message (taken in `full`, asked in other modes, refused with nobody to ask), and then subject to the session's permission mode. An `agents.tell` to `"all"` wakes idle agents under the same pacing as a message between agents. A turn the API starts runs under the session's mode by default, so in `full` its tools run without asking (audited); `sessionApiTurnPermission: "workspace"` holds it to `workspace`, which still runs shell commands and file changes in the repository without asking. Either way a message the model acts on runs tools with this user's rights. The marker and the fence tell the model not to treat the message as authority, which lowers that risk and does not remove it. Use `manual` or `workspace` where it matters.
-- **What it cannot do:** answer a dialog, approve a [worktree merge](permissions.md#worktree-merges), change the permission mode, run a slash command, or claim to be the user or a live agent.
-- **What the identity check cannot prove:** Node exposes no peer credentials for a socket or loopback connection, so a receiver cannot see which process is on the other end. A same-user process that overwrites the caller's own record file, `instances/<id>.json`, with the caller's real ID and pid, and answers `identity.confirm` on a new socket, confirms the claims it sends itself, and the caller's process grant then admits its messages. The same holds for a process that replaces a session's socket file at its registered path: a ticket is bound to that path, not to the process listening on it. This is the accepted residual: any same-user process that rewrites a session's files on disk can pass as that session, and such a process can already read the session files.
-- **Off:** `sessionApi: false`, or `/api off` for one process.
-
-## Check an integration
-
-Start a host with an isolated `HOME`, then exercise `list` → `status` → guarded `send --wait` → same-key retry → `watch`. Confirm a retry produces no second `agent.start`, and confirm cancellation through a settlement event rather than the abort acknowledgment alone.
-
-From `packages/coding-agent`, these offline tests launch real source CLI workers and cover API/ACP coexistence and command completion:
-
-```sh
-yarn vitest run --config vitest.config.ts test/acp-api.test.ts test/acp-command-lifecycle.test.ts
-yarn vitest run --config vitest.octocode.config.ts test/octocode/api-cli-subprocess.test.ts test/octocode/api-socket.test.ts test/octocode/api-events.test.ts
-yarn vitest run --config vitest.e2e.config.ts test/octocode/e2e-reach-process.test.ts test/octocode/e2e-api-events.test.ts
-```
+| Question              | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Who?                  | Any process running as your OS user, including ones you did not start (a build script, an install step, a tool an agent runs). Not another user (socket 0600 in a 0700 folder); root can. A sandbox that denies the socket path stops it.                                                                                                                                                                                                                                                                                                                                                   |
+| What can it do?       | Read status, history and events (recorded, unasked). Start or steer a turn (spends model budget; asks unless the session is `full` and the setting is not `workspace`). Abort a turn. Use `external.call` (can start an ACP agent; admitted like a message). `agents.tell` to `"all"` wakes idle agents at message pacing. A turn it starts runs with your rights: in `full` without asking (audited); `workspace` still runs repository shell commands and file changes unasked. The untrusted fence lowers the risk, it does not remove it: use `manual` or `workspace` where it matters. |
+| What can it not do?   | Answer a dialog, approve a [worktree merge](permissions.md#worktree-merges), change the permission mode, run a slash command, or claim to be the user or a live agent.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| What can't be proven? | Node exposes no peer credentials for a socket, so the receiver cannot see which process is connected. A same-user process that rewrites an instance's record or socket file can pass as that session; it could already read your session files. This residual is accepted.                                                                                                                                                                                                                                                                                                                  |
+| Turn it off           | `sessionApi: false`, or `/api off` for one process.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |

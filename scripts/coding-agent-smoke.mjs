@@ -49,7 +49,7 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		if (!existsSync(join(packageDir, "dist/octocode/instructions/policy/work.md"))) {
 			throw new Error("Installed Octocode package is missing the bundled prompt instructions");
 		}
-		for (const skill of ["octocode-context-optimization", "octocode-debugging"]) {
+		for (const skill of ["octocode-context-optimization", "octocode-debugging", "resume-external-harness"]) {
 			if (!existsSync(join(packageDir, `dist/octocode/native-skills/${skill}/SKILL.md`))) {
 				throw new Error(`Installed Octocode package is missing the bundled ${skill} skill`);
 			}

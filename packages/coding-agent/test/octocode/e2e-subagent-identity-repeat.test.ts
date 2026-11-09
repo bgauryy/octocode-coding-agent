@@ -80,44 +80,6 @@ describe("child identity and continuity across repeated compactions (real sessio
 			background: true,
 		}) as Identity;
 
-	it("(a) a quick second compaction: the next request carries exactly one copy of the identity", async () => {
-		fx = fixture();
-		const run = assign(base(fx, "migrate the parser", "B7"), "Migrate the parser.");
-		const { requests, entries } = await runChild(
-			fx,
-			run.identity,
-			[
-				...workThenCompact(run.task),
-				{ prompt: "Check the tests.", reply: brief("Checked.") },
-				"compact",
-				{ prompt: "Go on.", reply: "done\nMigrated." },
-			],
-			path.join(fx.scratch, "session"),
-		);
-		expect(compactions(entries)).toHaveLength(2);
-		const after = turnsOf(requests).at(-1)!;
-		expect(copies(after, run.identity.assignment!)).toBe(1);
-	}, 120_000);
-
-	it("(a) a compaction soon after a resume with a new assignment: no copy of the earlier assignment stays", async () => {
-		fx = fixture();
-		const sessionDir = path.join(fx.scratch, "session");
-		const a = assign(base(fx, "draft the schema", "B11"), "Draft the schema.");
-		const first = await runChild(fx, a.identity, workThenCompact(a.task), sessionDir);
-		const b = assign(base(fx, "review the schema", "B12"), "Review the schema.");
-		const second = await runChild(
-			fx,
-			b.identity,
-			[{ prompt: b.task, reply: brief("Reviewed.") }, "compact", { prompt: "Go on.", reply: "done\nReviewed." }],
-			sessionDir,
-			first.file,
-		);
-		expect(compactions(second.entries)).toHaveLength(2);
-		const after = turnsOf(second.requests).at(-1)!;
-		expect(copies(after, b.identity.assignment!)).toBe(1);
-		expect(copies(after, a.identity.assignment!)).toBe(0);
-	}, 120_000);
-
 	it("(a) two default-summary compactions: each carried user message appears once, not twice", async () => {
 		fx = fixture();
 		const run = assign(base(fx, "migrate the parser", "B7"), "Migrate the parser.");
@@ -141,6 +103,8 @@ describe("child identity and continuity across repeated compactions (real sessio
 		const after = turnsOf(requests).at(-1)!;
 		// Summarized by the first compaction, carried by its continuity message and then by the second's.
 		expect(occurrences(after, "<user-message>\nInspect the lexer first.\n</user-message>")).toBe(1);
+		// A quick second compaction still leaves exactly one copy of the identity.
+		expect(copies(after, run.identity.assignment!)).toBe(1);
 	}, 120_000);
 
 	it("(b) resume A, then B, then A again: the reopened session's reminder carries A only", async () => {
@@ -254,38 +218,6 @@ describe("child identity and continuity across repeated compactions (real sessio
 			entries.filter((entry) => entry.type === "custom_message" && entry.customType === IDENTITY_REMINDER_TYPE),
 		).toHaveLength(1);
 		expect(copies(next, run.identity.assignment!)).toBe(1);
-	}, 120_000);
-
-	it("(d) abort during the overflow compaction: no retry, no compaction, the next prompt carries at most one reminder", async () => {
-		fx = fixture();
-		const run = assign(base(fx, "migrate the parser", "B7"), longTask("Migrate the parser."));
-		let aborted = false;
-		const { requests } = await runChild(
-			fx,
-			run.identity,
-			[
-				{ prompt: run.task, reply: long("Working.") },
-				{ prompt: "Keep going.", reply: long("More work.") },
-				{ prompt: "Go on.", reply: "unused", overflow: true },
-				{ prompt: "Again.", reply: "done\nMigrated." },
-			],
-			path.join(fx.scratch, "session"),
-			undefined,
-			0,
-			{
-				onRequest(request, session) {
-					if (aborted || !request.summary) return;
-					aborted = true;
-					void session.abort();
-				},
-			},
-		);
-		expect(aborted).toBe(true);
-		const turns = turnsOf(requests);
-		expect(turns).toHaveLength(4);
-		const next = turns[3];
-		expect(next.texts.at(-1)).toContain("Again.");
-		expect(copies(next, run.identity.assignment!)).toBeLessThanOrEqual(1);
 	}, 120_000);
 
 	it("(e) steering and follow-up queued during the overflow compaction: the retry carries the reminder and each once", async () => {

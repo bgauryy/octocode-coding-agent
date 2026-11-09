@@ -52,7 +52,7 @@ describe("ignored extension entries", () => {
 
 		expect(warnings.map((warning) => warning.path)).toEqual(["/pkg/index.ts", "/own/ext.ts"]);
 		expect(warnings[0]?.warning).toContain("shipped by package /pkg");
-		expect(warnings[0]?.warning).toContain("PLUGINS.md");
+		expect(warnings[0]?.warning).toContain("docs/plugins.md");
 		expect(warnings[1]?.warning).not.toContain("shipped by package");
 	});
 });

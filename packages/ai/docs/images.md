@@ -102,23 +102,7 @@ const pixels = createProvider({
 models.setProvider(pixels);
 ```
 
-The old global `generateImages()` remains available on the [compat entrypoint](providers-and-models.md#migrating-from-the-old-global-api); built-in image models are read with `getBuiltinImageModel()` / `getBuiltinImageModels()` from `providers/all`:
-
-```typescript
-import { generateImages } from "@octocodeai/octocode-ai/compat";
-import { getBuiltinImageModel } from "@octocodeai/octocode-ai/providers/all";
-
-const model = getBuiltinImageModel("openrouter", "google/gemini-2.5-flash-image");
-const result = await generateImages(
-	model,
-	{
-		input: [{ type: "text", text: "Generate a red circle on a plain white background." }],
-	},
-	{
-		apiKey: process.env.OPENROUTER_API_KEY,
-	},
-);
-```
+Built-in image models are read with `getBuiltinImageModel()` / `getBuiltinImageModels()` from `providers/all`; the old global `generateImages()` lives on the [compat entrypoint](providers-and-models.md#migrating-from-the-old-global-api).
 
 Some models also support image input:
 
@@ -141,13 +125,9 @@ console.log(model.input); // ['text'] or ['text', 'image']
 console.log(model.output); // ['image'] or ['image', 'text']
 ```
 
-### Notes and Limitations
+### Notes
 
-- Image models and chat models share `Models` and `Provider`; list them with `getModelsOfType('image')` and run them with `generateImages()`, never the chat/stream APIs.
-- Image-generation models do not participate in tool calling.
-- Outputs are returned in `AssistantImages.output` and can include both base64-encoded `ImageContent` blocks and `TextContent` blocks.
-- Some models return only images, others return images plus text. Check `model.output`.
-- Some models accept image input, others are text-to-image only. Check `model.input`.
-- Like the streaming APIs, image generation supports options such as `apiKey`, `signal`, `headers`, `onPayload`, and `onResponse`, and results may include `stopReason`, `responseId`, and `usage`.
-- If you want a model to analyze images in a conversation or call tools, use the regular chat APIs with a model that supports image input.
-- At the moment, image generation is available through only one provider, OpenRouter.
+- List image models with `getModelsOfType('image')`; run them with `generateImages()`, never the chat APIs. They do not use tools. For image analysis in a conversation, use a chat model whose `input` includes `image`.
+- `AssistantImages.output` holds base64 `ImageContent` and `TextContent` blocks; check `model.output` (images only, or images plus text) and `model.input` (text-to-image only, or image input too).
+- Options such as `apiKey`, `signal`, `headers`, `onPayload` and `onResponse` apply; results may include `stopReason`, `responseId` and `usage`.
+- Only OpenRouter provides image generation today.

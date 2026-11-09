@@ -71,6 +71,10 @@ export function detectOpenAICompletionsCompat(model: Model<"openai-completions">
 	const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
 	const isCerebras = provider === "cerebras" || baseUrl.includes("cerebras.ai");
 	const isTogetherReasoningOnly = isTogether && TOGETHER_REASONING_ONLY_MODELS.has(model.id);
+	// OpenCode gateways front many vendors; a vendor that rejects `strict` tool schemas fails the whole request, so
+	// strict mode stays off. models.dev `structured_output` is not a usable signal: it is true for beam-free, which
+	// answers 400 to a strict tool schema.
+	const isOpenCodeGateway = provider === "opencode" || provider === "opencode-go" || baseUrl.includes("opencode.ai");
 	const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
 
 	const isNonStandard =
@@ -133,7 +137,8 @@ export function detectOpenAICompletionsCompat(model: Model<"openai-completions">
 		chatTemplateArgs: {},
 		zaiToolStream: false,
 		// Preserve built-in behavior as explicit metadata against the conservative runtime default.
-		supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isCerebras,
+		supportsStrictMode:
+			!isOpenCodeGateway && !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isCerebras,
 		supportsOpenAIGrammarTools: false,
 		supportsMidConvoSystemMessages: false,
 		supportsMidConvoToolAdditions: false,

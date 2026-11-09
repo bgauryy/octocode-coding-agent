@@ -62,6 +62,7 @@ import type { SessionNameSource } from "./session-manager.ts";
 import { exportSessionToJsonl } from "./session-export.ts";
 import { computeSessionStats, lastAssistantText, type SessionStats } from "./session-stats.ts";
 import type { BashOperations } from "./tools/bash.ts";
+import { watchProviderSettings } from "./provider-sources/index.ts";
 import { disposeApplicationPort, getApplicationPort } from "./application/index.ts";
 
 export { type ParsedSkillBlock, parseSkillBlock } from "./agent-session/prompt-expansion.ts";
@@ -80,6 +81,10 @@ export type { SessionStats } from "./session-stats.ts";
 export class AgentSession extends AgentSessionControl implements AgentSessionApi {
 	/** Collaborators under `./agent-session/`, wired in the constructor. */
 	protected readonly _c: SessionCollaborators;
+	private readonly _providerSettingsListeners = new Set<() => void>();
+	private readonly _stopProviderWatch = watchProviderSettings(this.settingsManager, this._modelRuntime, () => {
+		for (const listener of this._providerSettingsListeners) listener();
+	});
 
 	constructor(config: AgentSessionConfig) {
 		super(config);
@@ -210,7 +215,14 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	subscribe(listener: AgentSessionEventListener): () => void {
 		return this._listeners.subscribe(listener);
 	}
+	/** Calls `listener` after a provider switch another process saved (the web page, another terminal) took effect here. */
+	onProviderSettingsApplied(listener: () => void): () => void {
+		this._providerSettingsListeners.add(listener);
+		return () => this._providerSettingsListeners.delete(listener);
+	}
 	dispose(): void {
+		this._stopProviderWatch();
+		this._providerSettingsListeners.clear();
 		clearSideQuestions(this);
 		clearPlanConstraint(this.sessionId);
 		disposeApplicationPort(this);

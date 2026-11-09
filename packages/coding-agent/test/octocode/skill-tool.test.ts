@@ -9,6 +9,7 @@ import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { FAKE_RESEARCH } from "./fake-research.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { closeNames, editDistance } from "../../src/octocode/skill/catalog.ts";
+import { skillLoadSummary } from "../../src/octocode/skill/render.ts";
 import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
 import { createHarness, getToolResult, type Harness } from "../suite/harness.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
@@ -178,7 +179,7 @@ describe("skill tool", () => {
 			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill: alpha");
 			const result = await call("alpha");
 			const collapsed = rendered(tool.renderResult(result, { expanded: false }, theme, context()));
-			expect(collapsed).toContain("Loaded 4 lines");
+			expect(collapsed).toContain("Global skill · 4 lines");
 			expect(collapsed).toContain("to expand");
 			expect(collapsed).not.toContain("BODY_alpha");
 			expect(rendered(tool.renderResult(result, { expanded: true }, theme, context({ expanded: true })))).toContain(
@@ -186,16 +187,40 @@ describe("skill tool", () => {
 			);
 		});
 
-		it("names where the skill came from and shows only its instructions when expanded", async () => {
+		it("names the skill's group and origin, and shows its description, file and instructions when expanded", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
 			const result = await call("alpha");
+			expect(result.details).toMatchObject({ category: "global", description: "Use for alpha work." });
 			const collapsed = rendered(tool.renderResult(result, { expanded: false }, theme, context()));
-			expect(collapsed).toMatch(/Loaded 4 lines \u00b7 temporary \u00b7 /);
+			expect(collapsed).toMatch(/Global skill \u00b7 4 lines \u00b7 temporary \u00b7 test/);
+			expect(collapsed).not.toContain("Use for alpha work.");
 			const expanded = rendered(tool.renderResult(result, { expanded: true }, theme, context({ expanded: true })));
-			expect(expanded).toContain("BODY_alpha");
-			expect(expanded).toMatch(/alpha\/SKILL\.md/);
+			const order = ["Use for alpha work.", "alpha/SKILL.md", "BODY_alpha"].map((text) => expanded.indexOf(text));
+			expect(order.every((index) => index >= 0)).toBe(true);
+			expect(order).toEqual([...order].sort((a, b) => a - b));
 			expect(expanded).not.toContain("<skill");
 			expect(expanded).not.toContain("References are relative");
+		});
+
+		it("says where only skills found in a folder came from: core and Octocode skills ship with the build", () => {
+			expect(skillLoadSummary({ lines: 10, category: "octocode", origin: "user" })).toBe(
+				"Octocode skill \u00b7 10 lines",
+			);
+			expect(skillLoadSummary({ lines: 1, category: "core", origin: "user" })).toBe("Core skill \u00b7 1 line");
+			expect(skillLoadSummary({ lines: 3, category: "workspace", origin: "project" })).toBe(
+				"Workspace skill \u00b7 3 lines \u00b7 project",
+			);
+			// A result recorded before the group existed still reads.
+			expect(skillLoadSummary({ lines: 2, origin: "user" })).toBe("Loaded 2 lines \u00b7 user");
+		});
+
+		it("gives other surfaces the same summary, then the description, the file and the instructions", async () => {
+			const { call, tool } = setup(fixtures().snapshot);
+			const result = await call("alpha");
+			const display = tool.display({ args: { name: "alpha" }, status: "completed", result });
+			expect(display.outcome.text).toBe("Global skill \u00b7 4 lines \u00b7 temporary \u00b7 test");
+			expect(display.blocks.map((block: { type: string }) => block.type)).toEqual(["text", "path", "markdown"]);
+			expect(display.blocks[0].text).toBe("Use for alpha work.");
 		});
 
 		it("keeps every line of a validation failure, not just its heading", () => {

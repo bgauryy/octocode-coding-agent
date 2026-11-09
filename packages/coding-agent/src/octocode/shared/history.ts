@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
 import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../../common/src/env.ts";
-import { HISTORY_BYTES, matchHistory } from "./history-search.ts";
+import { HISTORY_BYTES, scanCursor, scanHistory, scanResume } from "./history-search.ts";
 import { sessionsRoot, sessionTempRoot } from "./home.ts";
 import { RECORD_FILE, type RecordHeader, readRecordHeader } from "./archive/record.ts";
 import { canonicalPath, isWithin } from "./home/repo.ts";
@@ -159,22 +159,12 @@ export function filesUnder(files: readonly HistoryFile[], target: string): Histo
 
 /** Lines shown around each hit. */
 const HIT_CONTEXT = 4;
-/**
- * A context line (not a hit) longer than this is shown as a pointer to read it with `file` and `line`, never as a part of
- * it. A hit line is always whole, split across pages when it is longer than one.
- */
-const CONTEXT_LINE_CHARS = 400;
 /** Characters of one page of results or of a read. */
 export const PAGE_CHARS = 12_000;
 /** Lines one read shows (then it continues by `line`). */
 export const READ_LINES = 120;
 
 const lineLabel = (n: number, hit: boolean) => `${hit ? ">" : " "}${String(n).padStart(6)}│ `;
-
-const contextLine = (line: string, n: number): string =>
-	line.length <= CONTEXT_LINE_CHARS
-		? line
-		: `[a context line of ${line.length} characters, not a hit: read it with file and line ${n}]`;
 
 /** `lines` packed into pages of at most `PAGE_CHARS` (a longer line split across pages); each page's text, in order. */
 export function paginate(blocks: ReadonlyArray<{ heading?: string; lines: string[] }>): string[] {
@@ -273,22 +263,40 @@ export function listHistory(sessions: readonly HistorySession[], page = 1): Hist
 	return { text: pages[index - 1] ?? "", page: index, pages: pages.length };
 }
 
-/** Every line of `files` that `pattern` matches, with `HIT_CONTEXT` lines around it, paged; `page` is 1-based. */
+/** Matching lines one search collects before it stops and offers a cursor. */
+const MATCH_BUDGET = 200;
+
+export interface HistorySearch extends SearchResult {
+	/** Files read to their end by this search, of the files given; the rest, from `cursor`, were not read. */
+	scanned: number;
+	/** Continues the search after the last file or line read; absent when every file was read. */
+	cursor?: string;
+	unreadable: number;
+	skippedLines: number;
+}
+
+/**
+ * The lines of `files` that `pattern` matches, with `HIT_CONTEXT` lines around each, paged; `page` is 1-based. The
+ * files are read in order until `MATCH_BUDGET` lines matched or the scan's time budget passed, however large they
+ * are; `cursor` (from an earlier result) resumes where that stopped.
+ */
 export async function searchHistory(
 	files: readonly HistoryFile[],
 	pattern: RegExp,
 	page = 1,
 	signal?: AbortSignal,
-): Promise<SearchResult> {
-	const matches = await matchHistory(
-		files.map(({ file }) => file),
-		pattern,
-		signal,
-	);
+	cursor?: string,
+): Promise<HistorySearch> {
+	const paths = files.map(({ file }) => file);
+	const scan = await scanHistory(paths, pattern, signal, {
+		...(cursor ? { start: scanResume(paths, cursor) } : {}),
+		maxMatches: MATCH_BUDGET,
+		context: HIT_CONTEXT,
+	});
 	signal?.throwIfAborted();
 	const blocks: Array<{ heading: string; lines: string[] }> = [];
 	let hits = 0;
-	for (const { index: fileIndex, lines, matched } of matches) {
+	for (const { index: fileIndex, lines, matched } of scan.results) {
 		const { file, session, label } = files[fileIndex];
 		hits += matched.length;
 		const hit = new Set(matched);
@@ -297,9 +305,14 @@ export async function searchHistory(
 		for (const index of matched) {
 			const from = Math.max(index - HIT_CONTEXT, end + 1);
 			if (end >= 0 && from > end + 1) shown.push("     …");
-			for (let at = from; at <= Math.min(index + HIT_CONTEXT, lines.length - 1); at++)
-				shown.push(`${lineLabel(at + 1, hit.has(at))}${hit.has(at) ? lines[at] : contextLine(lines[at], at + 1)}`);
-			end = Math.max(end, Math.min(index + HIT_CONTEXT, lines.length - 1));
+			for (let at = from; at <= index + HIT_CONTEXT; at++) {
+				const text = lines[at];
+				if (text === undefined) continue;
+				shown.push(
+					`${lineLabel(at + 1, hit.has(at))}${typeof text === "number" ? `[a context line of ${text} characters, not a hit: read it with file and line ${at + 1}]` : text}`,
+				);
+			}
+			end = Math.max(end, index + HIT_CONTEXT);
 		}
 		blocks.push({ heading: `## ${file} · ${session.id} (${session.relation}) · ${label}`, lines: shown });
 	}
@@ -311,6 +324,10 @@ export async function searchHistory(
 		pages: blocks.length === 0 ? 0 : pages.length,
 		hits,
 		files: blocks.length,
+		scanned: scan.scanned,
+		...(scan.next ? { cursor: scanCursor(paths, scan.next) } : {}),
+		unreadable: scan.unreadable,
+		skippedLines: scan.skippedLines,
 	};
 }
 

@@ -92,7 +92,7 @@ describe("communication prompt contracts", () => {
 			"coordinate with teammates through reservations",
 		);
 		expect(message.parameters.properties.to.description).toContain("exact id across trees");
-		expect(message.parameters.properties.to.description).toContain('"all" reaches only your tree');
+		expect(message.parameters.properties.to.description).toContain('"all": your tree only');
 		// A subagent (no peers) reaches only its own session tree; its parent relays beyond it.
 		const child = fakeHost();
 		registerCollab(child.api, {} as Team);

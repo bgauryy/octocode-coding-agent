@@ -185,11 +185,39 @@ describe("cache-sharing compaction summary", () => {
 			},
 		];
 
-		it("does not cache the history of a summary nothing will read, and keeps the instruction preference", async () => {
+		it("sends no markers when history and instructions are both cold", async () => {
 			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - TTL - 1_000) });
 			await writeSummary(api, event, ctx, undefined, undefined, undefined, TTL);
-			expect(calls[0].options).toMatchObject({ cacheRetention: "none", instructionCacheRetention: "long" });
+			expect(calls[0].options).toMatchObject({ cacheRetention: "none" });
+			expect(calls[0].options.keepInstructionCache).toBeUndefined();
 			expect(calls[0].options.sessionId).toBe("sid-1");
+		});
+
+		it("marks the long instruction layer of a cold history while its own entry is live", async () => {
+			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - TTL - 1_000) });
+			await writeSummary(api, event, ctx, undefined, undefined, undefined, TTL, undefined, 3_600_000);
+			expect(calls[0].options).toMatchObject({
+				cacheRetention: "none",
+				instructionCacheRetention: "long",
+				keepInstructionCache: true,
+			});
+		});
+
+		it("sends no markers once the instruction entry has expired too", async () => {
+			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - 3_600_000 - 1_000) });
+			await writeSummary(api, event, ctx, undefined, undefined, undefined, TTL, undefined, 3_600_000);
+			expect(calls[0].options).toMatchObject({ cacheRetention: "none" });
+			expect(calls[0].options.keepInstructionCache).toBeUndefined();
+		});
+
+		it("does not keep short instructions under a cold history", async () => {
+			const { calls, api, ctx, event } = setup({
+				branch: replyAt(Date.now() - TTL - 1_000),
+				settings: { cacheRetention: "short", instructionCacheRetention: "short" },
+			});
+			await writeSummary(api, event, ctx, undefined, undefined, undefined, TTL, undefined, 3_600_000);
+			expect(calls[0].options).toMatchObject({ cacheRetention: "none" });
+			expect(calls[0].options.keepInstructionCache).toBeUndefined();
 		});
 
 		it("leaves a warm request unchanged, and an unknown lifetime or an empty clock", async () => {
@@ -208,6 +236,7 @@ describe("cache-sharing compaction summary", () => {
 			const { calls, api, ctx, event } = setup({ branch: replyAt(Date.now() - TTL - 1_000) });
 			await writeSummary(api, event, ctx, { ...model, id: "previous" } as never, undefined, undefined, TTL);
 			expect(calls[0].options.cacheRetention).toBe("none");
+			expect(calls[0].options.keepInstructionCache).toBeUndefined();
 		});
 	});
 

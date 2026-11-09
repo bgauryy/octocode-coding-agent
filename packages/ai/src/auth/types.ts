@@ -173,6 +173,9 @@ export interface ApiKeyAuth {
 	/** Display name, e.g. "Anthropic API key". */
 	name: string;
 
+	/** The provider's page that issues keys; `login` opens it before asking, and other hosts can link it. */
+	keyPage?: string;
+
 	/** Interactive setup (prompt for key/provider env). Absent = ambient-only. */
 	login?(interaction: ProviderAuthInteraction): Promise<ApiKeyCredential>;
 

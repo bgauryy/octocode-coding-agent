@@ -178,9 +178,16 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 	api.on("session_start", async (_event, ctx) => {
 		scheduler?.stop();
 		current = ctx;
+		const sessionId = ctx.sessionManager.getSessionId();
+		// Waits whose deadline passed while their session was not running can no longer be met in time: end them now, not at a later session's check.
+		try {
+			timers.expireOverdue(db().db, now(), sessionId);
+		} catch (error) {
+			warn(ctx, `Overdue timers were not expired: ${errorMessage(error)}`);
+		}
 		scheduler = new TimerScheduler({
 			db,
-			sessionId: ctx.sessionManager.getSessionId(),
+			sessionId,
 			now,
 			check,
 			watch,

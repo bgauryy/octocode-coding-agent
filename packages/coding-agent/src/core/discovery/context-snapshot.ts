@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { getOctocodeSkillsDir } from "../../config.ts";
 import { parseConfigDocument } from "../../utils/config-document.ts";
 import { effectivePlugins } from "../extensibility/toggles.ts";
 import type { Settings } from "../settings-schema.ts";
@@ -41,6 +42,7 @@ export function collectContextView(options: ContextSnapshotOptions): ContextView
 		agentDir: options.agentDir,
 		projectTrusted: options.projectTrusted,
 		includeUntrusted: true,
+		builtinSkillsDir: getOctocodeSkillsDir(),
 		...(options.contextRoot ? { contextRoot: options.contextRoot } : {}),
 		...(options.settings ? { plugins: effectivePlugins(options.settings, options.cwd) } : {}),
 	});

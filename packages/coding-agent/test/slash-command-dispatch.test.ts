@@ -30,7 +30,7 @@ describe("built-in slash commands", () => {
 			expect(Object.keys(command)).not.toContain("aliases");
 			expect(getBuiltinCommand(command.name)).toBe(command);
 		}
-		for (const name of ["qui", "Settings", "sessions", "login", "models", "thinking", "exit", "config"])
+		for (const name of ["qui", "Settings", "sessions", "login", "models", "thinking", "exit", "config", "settings"])
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
@@ -40,7 +40,6 @@ describe("built-in slash commands", () => {
 		for (const method of [
 			"handleClearCommand",
 			"shutdown",
-			"showSettingsSelector",
 			"handleProvidersCommand",
 			"handleModelCommand",
 			"handleThinkingCommand",
@@ -55,9 +54,10 @@ describe("built-in slash commands", () => {
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
 			"Unknown command /models. Did you mean /model?",
 			"Unknown command /thinking. Search commands with /help thinking.",
-			"Unknown command /login. Search commands with /help login.",
+			// /login became /providers in v20.0.1; the old name points there instead of a skill that mentions "login".
+			"Unknown command /login. Did you mean /providers?",
 			"Unknown command /exit. Search commands with /help exit.",
-			"Unknown command /config. Did you mean /reload?",
+			"Unknown command /config. Did you mean /configuration?",
 			"Unknown command /stats. Did you mean /status?",
 		]);
 		expect(instance.editor.setText).toHaveBeenLastCalledWith("/stats");

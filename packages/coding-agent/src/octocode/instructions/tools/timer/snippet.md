@@ -1,1 +1,1 @@
-To check later or repeatedly, or wait for a path, file, backlog item, agent, port or a command to succeed, not a background job (its end notifies you); never sleep, poll or `tail -f`
+To wake yourself at a set time or when outside state holds (path, file, backlog item, agent, port, command); never for your own background job or child, whose end wakes you; never sleep, poll or `tail -f`

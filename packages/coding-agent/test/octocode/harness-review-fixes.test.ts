@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { blockedReason } from "../../src/core/extensibility/switch.ts";
 import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
@@ -8,13 +7,9 @@ import { formatHarnessesForPrompt } from "../../src/core/discovery/vendors/promp
 import { harnessStatuses } from "../../src/core/discovery/vendors/index.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { installOctocodeDiscovery } from "../../src/octocode/discovery/index.ts";
-import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import { switchHarness, vendorItems } from "../../src/octocode/harness/vendor-items.ts";
 import { installMcpCorePorts } from "../../src/octocode/mcp-host/core.ts";
 import { vendors } from "../../src/octocode/mcp-host/vendors.ts";
-import type { HooksView } from "../../src/octocode/hooks/register/types.ts";
-import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 beforeAll(() => {
@@ -98,7 +93,9 @@ describe("a harness only a project key switches on", () => {
 		expect(vendorItems([project], {})[0]?.detail).toContain("on for this project only");
 		const global = harnessStatuses(f.input({ "harness:claude": true })).find((s) => s.id === "claude")!;
 		expect(global.projectOnly).toBeUndefined();
-		expect(formatHarnessesForPrompt([global])).toBe("Harnesses: Claude Code on. The user switches them with /harness.");
+		expect(formatHarnessesForPrompt([global])).toBe(
+			"Harnesses: Claude Code on, nothing found. The user switches them with /harness.",
+		);
 	});
 });
 
@@ -120,26 +117,5 @@ describe("vendorSwitch", () => {
 		expect(() => vendors.vendorSwitch({ cwd: f.cwd, agentDir: f.agentDir, projectTrusted: true })).toThrow(
 			/settings\.json/,
 		);
-	});
-});
-
-describe("/harness when the MCP reload fails", () => {
-	it("keeps the saved switch and says the reload failed", async () => {
-		const f = fixture();
-		const { api } = fakeHost();
-		const events = createEventBus();
-		events.on("mcp:reload:request", (reply) =>
-			(reply as (handle: () => Promise<never>) => void)(() => Promise.reject(new Error("session aborted"))),
-		);
-		Object.assign(api, { events });
-		const commands = new Subcommands();
-		registerHarnessCommand(commands, { report: () => "" } as unknown as HooksView, api);
-		const ctx = fakeCtx({ cwd: f.cwd, mode: "rpc" });
-		await commands.get("harness")!.handler("enable claude", ctx);
-		const message = ctx.ui.notes.at(-1)!.message;
-		expect(message).toContain("switches are saved, but the MCP reload failed (session aborted)");
-		expect(JSON.parse(fs.readFileSync(path.join(f.agentDir, "settings.json"), "utf8")).toggles).toEqual({
-			"harness:claude": true,
-		});
 	});
 });

@@ -57,16 +57,34 @@ describe("octocode mcp", () => {
 			log: (line: string) => output.push(line),
 			error: (line: string) => output.push(line),
 		};
-		expect(await runMcpCommand(["disable", "octocode"], options)).toBe(0);
-		expect(readConfig(join(agentDir, "mcp.json"))).toEqual({ mcpServers: { octocode: { enabled: false } } });
+		expect(await runMcpCommand(["exposure", "octocode", "hidden"], options)).toBe(0);
+		expect(readConfig(join(agentDir, "mcp.json"))).toEqual({ mcpServers: { octocode: { exposure: "hidden" } } });
+		// A disabled default is a control-only override too; `octocode configuration disable mcp:octocode` writes it.
+		writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: { enabled: false } } }));
 		output.length = 0;
 		expect(await runMcpCommand(["list", "--json"], options)).toBe(0);
 		expect(JSON.parse(output.join("\n")).servers).toMatchObject([
 			{ name: "octocode", state: "disabled", scope: "default" },
 			{ name: "browser", scope: "default" },
 		]);
-		expect(await runMcpCommand(["enable", "octocode"], options)).toBe(0);
-		expect(readConfig(join(agentDir, "mcp.json"))).toEqual({ mcpServers: { octocode: { enabled: true } } });
+	});
+
+	it("retires enable and disable with the configuration command that replaces them", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-retired-"));
+		dirs.push(agentDir);
+		const output: string[] = [];
+		const options = {
+			cwd: agentDir,
+			agentDir,
+			log: (line: string) => output.push(line),
+			error: (line: string) => output.push(line),
+		};
+		expect(await runMcpCommand(["disable", "docs", "--local"], options)).toBe(1);
+		expect(output.join("\n")).toContain("configuration disable mcp:docs --local");
+		output.length = 0;
+		expect(await runMcpCommand(["enable", "docs"], options)).toBe(1);
+		expect(output.join("\n")).toContain("configuration enable mcp:docs");
+		expect(existsSync(join(agentDir, "mcp.json"))).toBe(false);
 	});
 
 	it("lists servers with their state, tools, and errors, and fails while anything is wrong", async () => {
@@ -189,37 +207,36 @@ describe("octocode mcp", () => {
 		expect((await run(["frobnicate"], servers)).exitCode).toBe(1);
 	});
 
-	it("enables, disables, and changes exposure without connecting or replacing transport settings", async () => {
-		const initial = await run(["disable", "broken"], {
+	it("changes exposure without connecting or replacing transport settings", async () => {
+		const initial = await run(["exposure", "broken", "hidden"], {
 			broken: { command: "never-launch-this", env: { TOKEN: "secret" } },
 		});
 		expect(initial.exitCode).toBe(0);
 		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({
-			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, enabled: false } },
+			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, exposure: "hidden" } },
 		});
 		expect((await run(["exposure", "broken", "direct"], undefined, initial.agentDir)).exitCode).toBe(0);
-		expect((await run(["enable", "broken"], undefined, initial.agentDir)).exitCode).toBe(0);
 		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({
 			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" } } },
 		});
 		const before = readFileSync(join(initial.agentDir, "mcp.json"), "utf8");
 		expect((await run(["exposure", "broken", "invalid"], undefined, initial.agentDir)).exitCode).toBe(1);
-		expect((await run(["disable", "missing"], undefined, initial.agentDir)).exitCode).toBe(1);
+		expect((await run(["exposure", "missing", "hidden"], undefined, initial.agentDir)).exitCode).toBe(1);
 		expect(readFileSync(join(initial.agentDir, "mcp.json"), "utf8")).toBe(before);
 	});
 
 	it("requires trust for project controls and saves an override without copying secrets", async () => {
-		const initial = await run(["disable", "remote", "--local"], {
+		const initial = await run(["exposure", "remote", "direct", "--local"], {
 			remote: { url: "https://example.test/mcp", headers: { Authorization: "secret" } },
 		});
 		expect(initial.exitCode).toBe(1);
 		expect(initial.output).toContain("requires a trusted folder");
 		grantFolder(initial.agentDir, "folder", { source: "command", surface: "test" });
-		expect((await run(["disable", "remote", "--local"], undefined, initial.agentDir)).exitCode).toBe(0);
+		expect((await run(["exposure", "remote", "direct", "--local"], undefined, initial.agentDir)).exitCode).toBe(0);
 		const project = join(initial.agentDir, ".octocode", "mcp.json");
-		expect(readConfig(project)).toEqual({ mcpServers: { remote: { enabled: false } } });
+		expect(readConfig(project)).toEqual({ mcpServers: { remote: { exposure: "direct" } } });
 		expect((await run(["exposure", "remote", "hidden"], undefined, initial.agentDir)).exitCode).toBe(0);
-		expect(readConfig(project)).toEqual({ mcpServers: { remote: { enabled: false, exposure: "hidden" } } });
+		expect(readConfig(project)).toEqual({ mcpServers: { remote: { exposure: "hidden" } } });
 		expect(JSON.stringify(readConfig(project))).not.toContain("secret");
 	});
 

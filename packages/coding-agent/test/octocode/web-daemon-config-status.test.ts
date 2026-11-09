@@ -164,6 +164,7 @@ describe("credential sources", () => {
 		expect(snapshot.providers.at(-1)).toEqual({
 			provider: "my-gateway",
 			configured: true,
+			origins: [{ product: "octocode", file: "auth-json" }],
 			sources: [{ kind: "auth-json" }],
 		});
 	});

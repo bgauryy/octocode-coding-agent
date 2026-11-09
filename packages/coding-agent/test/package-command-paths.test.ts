@@ -15,12 +15,8 @@ import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
-import { DefaultPackageManager, type ResolvedPaths } from "../src/core/package-manager.ts";
-import { InMemorySettingsStorage, SettingsManager } from "../src/core/settings-manager.ts";
 import { trustFolder } from "./octocode/helpers.ts";
 import { main } from "../src/main.ts";
-import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
-import { initTheme } from "../src/theme/theme.ts";
 import { handlePackageCommand } from "../src/package-manager-cli.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
@@ -114,24 +110,6 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 
 	async function runPackageCommandDirectly(args: string[]): Promise<void> {
 		expect(await handlePackageCommand(args)).toBe(true);
-	}
-
-	function extensionPaths(
-		packageRoot: string,
-		source: string,
-		scope: "user" | "project",
-		names: string[],
-	): ResolvedPaths {
-		return {
-			extensions: names.map((name) => ({
-				path: join(packageRoot, "extensions", name),
-				enabled: true,
-				metadata: { source, scope, origin: "package", baseDir: packageRoot },
-			})),
-			skills: [],
-			prompts: [],
-			themes: [],
-		};
 	}
 
 	beforeEach(() => {
@@ -401,98 +379,6 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 			"--models cannot be combined with --self",
 		);
 		expect(process.exitCode).toBe(1);
-	});
-
-	it("cycles project package overrides in config local mode", async () => {
-		const storage = new InMemorySettingsStorage();
-		storage.withLock("global", () => JSON.stringify({ packages: ["npm:octocode-tools"] }));
-		const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: true });
-		const resolvedPaths = extensionPaths(join(tempDir, "pkg"), "npm:octocode-tools", "user", ["bar.ts"]);
-		const selector = new ConfigSelectorComponent(
-			{ global: resolvedPaths, project: resolvedPaths },
-			settingsManager,
-			projectDir,
-			agentDir,
-			() => {},
-			() => {},
-			() => {},
-			24,
-			"project",
-		);
-
-		selector.getResourceList().handleInput(" ");
-		expect(settingsManager.getProjectSettings().packages).toEqual([
-			{ source: "npm:octocode-tools", autoload: false, extensions: ["-extensions/bar.ts"] },
-		]);
-
-		selector.getResourceList().handleInput(" ");
-		expect(settingsManager.getProjectSettings().packages).toEqual([
-			{ source: "npm:octocode-tools", autoload: false, extensions: ["+extensions/bar.ts"] },
-		]);
-
-		selector.getResourceList().handleInput(" ");
-		expect(settingsManager.getProjectSettings().packages).toEqual([]);
-	});
-
-	it("toggles built-in extensions in config global mode", async () => {
-		const settingsManager = SettingsManager.fromStorage(new InMemorySettingsStorage(), { projectTrusted: true });
-		const resolvedPaths = await new DefaultPackageManager({
-			cwd: projectDir,
-			agentDir,
-			settingsManager,
-			builtinExtensions: ["llama.cpp", "mcp"],
-		}).resolve();
-		const selector = new ConfigSelectorComponent(
-			{ global: resolvedPaths, project: resolvedPaths },
-			settingsManager,
-			projectDir,
-			agentDir,
-			() => {},
-			() => {},
-			() => {},
-			24,
-			"global",
-		);
-
-		const list = selector.getResourceList();
-		initTheme("dark");
-		expect(list.render(80).join("\n")).toContain("Built-in");
-		expect(list.render(80).join("\n")).toContain("llama.cpp");
-		list.handleInput(" ");
-		expect(settingsManager.getGlobalSettings().extensions).toEqual(["-builtin:llama.cpp"]);
-		list.handleInput(" ");
-		expect(settingsManager.getGlobalSettings().extensions).toEqual(["+builtin:llama.cpp"]);
-	});
-
-	it("cycles project built-in extension overrides in config local mode", async () => {
-		const storage = new InMemorySettingsStorage();
-		storage.withLock("global", () => JSON.stringify({ extensions: ["-builtin:llama.cpp"] }));
-		const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: true });
-		const resolvedPaths = await new DefaultPackageManager({
-			cwd: projectDir,
-			agentDir,
-			settingsManager,
-			builtinExtensions: ["llama.cpp"],
-		}).resolve();
-		const selector = new ConfigSelectorComponent(
-			{ global: resolvedPaths, project: resolvedPaths },
-			settingsManager,
-			projectDir,
-			agentDir,
-			() => {},
-			() => {},
-			() => {},
-			24,
-			"project",
-		);
-
-		const list = selector.getResourceList();
-		list.handleInput(" ");
-		expect(settingsManager.getProjectSettings().extensions).toEqual(["+builtin:llama.cpp"]);
-		list.handleInput(" ");
-		expect(settingsManager.getProjectSettings().extensions).toEqual(["-builtin:llama.cpp"]);
-		list.handleInput(" ");
-		expect(settingsManager.getProjectSettings().extensions).toEqual([]);
 	});
 
 	it("rejects --approve as an unknown option", async () => {

@@ -207,7 +207,8 @@ export interface InteractiveModeMethods {
 	shouldShowStartupDetails(): boolean;
 	shouldShowStartupHeader(): boolean;
 	showAmbientAuthDialog(providerOption: AuthSelectorProvider, onBack?: () => void): void;
-	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
+	/** `secret`: a key already in hand (the token `claude setup-token` printed) answers the key prompt instead of the user. */
+	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void, secret?: string): Promise<void>;
 	showError(errorMessage: string): void;
 	showExtensionConfirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
 	showExtensionCustom: ExtensionUIContext["custom"];
@@ -231,11 +232,11 @@ export interface InteractiveModeMethods {
 	showModelSelector(initialSearchInput?: string): void;
 	showModelsSelector(): void;
 	showNewVersionNotification(release: LatestOctocodeRelease): void;
-	showOAuthSelector(mode: "logout"): Promise<void>;
+	/** `/logout`: the picker of saved credentials, its search prefilled with `query`. */
+	showOAuthSelector(mode: "logout", query?: string): Promise<void>;
 	showPackageUpdateNotification(packages: string[]): void;
 	showSelector(create: (done: () => void) => { component: Component; focus: Component; dispose?: () => void }): void;
 	showSessionSelector(): void;
-	showSettingsSelector(): void;
 	showStartupNoticesIfNeeded(): void;
 	/** Open the queued-messages list focused on the first (default) or last message; false when nothing is queued. */
 	showQueueManager(focus?: "first" | "last"): boolean;

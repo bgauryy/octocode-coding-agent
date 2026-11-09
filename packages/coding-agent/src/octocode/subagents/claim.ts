@@ -9,7 +9,7 @@ import { shortPath } from "../shared/format.ts";
 import { sessionFolderNames } from "../shared/home.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "./handoff/scratch.ts";
-import type { Identity } from "./process/env.ts";
+import { childCachePreferences, type Identity } from "./process/env.ts";
 import type { Team } from "../team/session.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
@@ -248,7 +248,7 @@ export function planRun(
 		available,
 		parent: ctx.model,
 		catalog: currentCatalog(),
-		refused: (provider) => providerHealth.refused(provider),
+		refused: (provider, id, proven) => providerHealth.refused(provider, id, proven),
 		thinking: subagentThinking(),
 	});
 	if ("error" in routed) throw new Error(routed.error);
@@ -260,8 +260,13 @@ export function planRun(
 	// The default purpose names its route only when it chose a model other than this session's.
 	const onParent = !route.model || route.model === parent || route.model.startsWith(`${parent}:`);
 	const defaulted = !params.model && !profile && !onParent;
+	// A model that cannot run at the asked level (glm-5.3-flash has no `off`) runs at the nearest one it supports.
+	const clamped =
+		routed.model && route.model && routed.model !== route.model
+			? route.model.slice(routed.model.lastIndexOf(":") + 1)
+			: "";
 	const via = params.model
-		? `model argument: ${params.model}`
+		? `model argument: ${params.model}${clamped ? `; the model does not support ${routed.model?.slice(routed.model.lastIndexOf(":") + 1)}, so it runs at ${clamped}` : ""}`
 		: profile?.model && !route.fallback
 			? `profile ${profile.name}: ${profile.model}`
 			: defaulted
@@ -314,9 +319,12 @@ export function claimRun(
 		? (routedModel(route.model, ctx.modelRegistry.getAvailable()) ?? ctx.model)
 		: undefined;
 	if (childModel && ctx.modelRegistry) {
-		identity.cachePreferences = ctx.modelRegistry.getCachePolicy(childModel, [
+		const policy = ctx.modelRegistry.getCachePolicy(childModel, [
 			{ source: "parent settings", values: runs.api.getSettings() },
-		]).options;
+		]);
+		// A resumed run, or one that stays reachable, may be asked again after the short history entry expired.
+		const lingers = resumed !== undefined || reachableSeconds(undefined, process.env, profile?.linger) > 0;
+		identity.cachePreferences = childCachePreferences(policy, lingers);
 		// How long the entry the child writes lives: the stagger keeps its prefix warm for that long.
 		identity.cacheTtlMs = getPromptCacheTtlMs(childModel, identity.cachePreferences);
 	}

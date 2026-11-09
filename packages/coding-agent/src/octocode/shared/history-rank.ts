@@ -4,7 +4,7 @@ import { setImmediate as yieldTurn } from "node:timers/promises";
 import { archiveRankedText } from "./archive/ranked.ts";
 import type { HistoryFile } from "./history.ts";
 import { paginate } from "./history.ts";
-import { matchHistory } from "./history-search.ts";
+import { scanHistory, type ScanPosition } from "./history-search.ts";
 import { plural } from "./render/text.ts";
 
 /**
@@ -14,8 +14,9 @@ import { plural } from "./render/text.ts";
  * passage scores by BM25 over the query terms, weighted by how many of them it covers and by quoted phrases it contains.
  * Each archive file counts only what the session said (`archiveRankedText`), not the wording its writer repeats in
  * every file of its kind; shown lines are the file's own. Files are read one at a time, yielding between them, and only
- * matching passages are kept, so no size cap applies; a `query` filter is the exception, since it runs in the
- * archive-search worker, which reads at most 32 MiB.
+ * matching passages are kept, so no size cap applies; a `query` filter runs first, in the archive-search worker, in
+ * bounded scans that resume until every file is read. A file whose own label (its TL;DR) or header (its TL;DR and topics
+ * lines) has query terms ranks its passages higher, since a segment about the topic is likelier to hold the answer.
  */
 
 const K1 = 1.2;
@@ -28,6 +29,8 @@ const SHOWN_LINES = 8;
 /** Characters of a shown line before it points to `file` and `line`. */
 const LINE_CHARS = 400;
 const PHRASE_BOOST = 1.5;
+/** Added to a passage's multiplier when its file's label and header cover every query term (less for fewer). */
+const HEADER_BOOST = 0.25;
 const WORD = /[\p{L}\p{N}]+(?:[._\-/][\p{L}\p{N}]+)*/gu;
 const BOUNDARY = /^(?:#{1,4} |Tool `)/;
 const STOPWORDS = new Set(
@@ -115,21 +118,36 @@ function count(line: string, wanted: ReadonlySet<string>, tf?: Map<string, numbe
 	return words;
 }
 
+/** Matching lines one filter scan collects before it resumes (a scan ends sooner at its time budget). */
+const FILTER_SCAN_MATCHES = 200_000;
+
 /**
  * The lines `filter` matches in each file, by file index. The expression comes from the model, so it runs where a query
- * search runs it: in the archive-search worker, which stops it after 5 seconds and reads at most 32 MiB.
+ * search runs it: in the archive-search worker, which stops it after 5 seconds; each scan is bounded by matches and
+ * time, and the next one resumes where it stopped, so the corpus size is no limit.
  */
 async function filterMatches(
 	files: readonly HistoryFile[],
 	filter: RegExp,
 	signal?: AbortSignal,
-): Promise<Map<number, ReadonlySet<number>>> {
-	const matches = await matchHistory(
-		files.map(({ file }) => file),
-		filter,
-		signal,
-	);
-	return new Map(matches.map(({ index, matched }) => [index, new Set(matched)]));
+): Promise<Map<number, Set<number>>> {
+	const paths = files.map(({ file }) => file);
+	const found = new Map<number, Set<number>>();
+	let start: ScanPosition | undefined;
+	do {
+		signal?.throwIfAborted();
+		const scan = await scanHistory(paths, filter, signal, {
+			...(start ? { start } : {}),
+			maxMatches: FILTER_SCAN_MATCHES,
+		});
+		for (const { index, matched } of scan.results) {
+			const lines = found.get(index) ?? new Set<number>();
+			for (const line of matched) lines.add(line);
+			found.set(index, lines);
+		}
+		start = scan.next;
+	} while (start);
+	return found;
 }
 
 function matchesWithin(matched: ReadonlySet<number> | undefined, start: number, end: number): boolean {
@@ -157,6 +175,8 @@ export async function rankHistory(
 	const passages: Passage[] = [];
 	/** Each kept file's lines as read and as counted (`archiveRankedText`), by file index. */
 	const texts = new Map<number, { lines: string[]; ranked: readonly string[] }>();
+	/** The query terms each kept file's label and header carry, by file index. */
+	const headed = new Map<number, number>();
 	const filtered = filter ? await filterMatches(files, filter, signal) : undefined;
 	let total = 0;
 	let totalLength = 0;
@@ -176,6 +196,9 @@ export async function rankHistory(
 		}
 		const ranked = archiveRankedText(files[index].file, lines);
 		let kept = false;
+		const headTerms = new Set<string>();
+		for (const word of files[index].label.match(WORD) ?? [])
+			for (const term of wordTerms(word)) if (wanted.has(term)) headTerms.add(term);
 		for (let start = 0; start < lines.length;) {
 			let end = start;
 			while (end + 1 < lines.length && end + 1 - start < PASSAGE_LINES && !BOUNDARY.test(lines[end + 1])) end++;
@@ -184,6 +207,7 @@ export async function rankHistory(
 			for (let at = start; at <= end; at++) length += count(ranked[at], wanted, tf);
 			total++;
 			totalLength += length;
+			if (start === 0) for (const term of tf.keys()) headTerms.add(term);
 			if (tf.size > 0 && (!filtered || matchesWithin(filtered.get(index), start, end))) {
 				for (const term of tf.keys()) df.set(term, (df.get(term) ?? 0) + 1);
 				passages.push({ file: index, start, end, tf, length, score: 0 });
@@ -191,7 +215,10 @@ export async function rankHistory(
 			}
 			start = end + 1;
 		}
-		if (kept) texts.set(index, { lines, ranked });
+		if (kept) {
+			texts.set(index, { lines, ranked });
+			headed.set(index, headTerms.size);
+		}
 		await yieldTurn();
 	}
 	const average = total > 0 ? totalLength / total : 1;
@@ -206,6 +233,7 @@ export async function rankHistory(
 		for (const [term, tf] of passage.tf)
 			score += (idf.get(term) ?? 0) * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * passage.length) / average)));
 		score *= 0.5 + (0.5 * passage.tf.size) / query.terms.length;
+		score *= 1 + (HEADER_BOOST * (headed.get(passage.file) ?? 0)) / query.terms.length;
 		if (query.phrases.length > 0) {
 			const text = texts
 				.get(passage.file)!

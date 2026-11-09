@@ -183,12 +183,12 @@ function registerCoordinateTool(
 				action: StringEnum(actions, {
 					description:
 						"list: agents and held paths; " +
-						(canStop ? "join: set your goal; leave: unregister and release reservations; " : "") +
-						"lock: reserve paths, all or none; unlock: release paths (none given: all); " +
+						(canStop ? "join: set your goal; leave: unregister, release reservations; " : "") +
+						"lock: reserve paths, all or none; unlock: release (none given: all); " +
 						(canStop
-							? "stop: kill a background subagent you started; merge: land an isolated subagent's work in this tree, or a linked worktree's branch in the main checkout (asks the user); grant: add model requests to a running subagent you started, this run only; "
+							? "stop: kill a background subagent you started; merge: land an isolated subagent's work here, or a linked worktree's branch in the main checkout (asks the user); grant: add model requests to a running subagent you started, this run only; "
 							: "") +
-						"changes: recent agent file changes, newest first",
+						"changes: recent agent file changes",
 				}),
 				...(canStop
 					? {

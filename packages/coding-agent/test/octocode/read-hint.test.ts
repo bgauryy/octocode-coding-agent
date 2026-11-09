@@ -92,18 +92,22 @@ describe("createReadHint", () => {
 		const hint = createReadHint(active);
 		for (let i = 0; i < READ_HINT_LIMIT; i++)
 			expect(hint("rg foo", cwd, "s1")).toBe(
-				"Hint: for code reads like this, use `mcp__research__search_code`. Keep bash for builds, tests, scripts and git.",
+				"Hint: for code research and checks, use `mcp__research__search_code`. Bash suits builds, tests, scripts, git and command output.",
 			);
 		expect(hint("rg foo", cwd, "s1")).toBeUndefined();
 	});
 
-	it("stays silent for a read of a log or other output, and keeps the hint for source", () => {
+	it("stays silent for a read of a log, doc, config or other output, and keeps the hint for source", () => {
 		const hint = createReadHint(active);
 		for (const command of [
 			"rg ERROR .octocode/tmp/int2-sys.log",
 			"tail -n 50 build.log",
 			"cat notes.txt",
 			"head out.OUT",
+			"cat README.md",
+			"sed -n '1,40p' docs/guide.md",
+			"cat package.json",
+			"head config.yaml",
 			"ls .octocode/tmp",
 			"rg foo node_modules/x/index.js",
 		])

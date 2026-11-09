@@ -78,6 +78,8 @@ export interface ProfileAgent {
 	activity?: ProfileActivity;
 	/** How long its provider keeps the prompt cache warm after a request, in ms: with `lastRequestAt`, when the cache goes cold. */
 	cacheTtlMs?: number;
+	/** The cache group of its latest request; absent when it recorded none. */
+	cacheGroup?: ProfileCacheGroup;
 }
 
 export const PROFILE_ACTIVITY_KINDS = ["request", "tool", "wait", "compaction"] as const;
@@ -110,6 +112,17 @@ export interface ProfileLayer {
 	entry?: number;
 }
 
+/**
+ * The prompt-cache group a child's requests belong to, as the child recorded it. The same `prefix` with a different
+ * `key` points at provider routing, a different `prefix` at a prompt or tool difference.
+ */
+export interface ProfileCacheGroup {
+	/** The shared prompt cache key (`OCTOCODE_PROMPT_CACHE_KEY`) the parent gave the child; absent when none was given. */
+	key?: string;
+	/** 16-hex hash of the system prompt and the active tool declarations. */
+	prefix: string;
+}
+
 export interface ProfileRequest {
 	agentId: string;
 	/** 0-based position among the agent's requests; pages continue with `after`. */
@@ -125,6 +138,10 @@ export interface ProfileRequest {
 	firstBreak?: number;
 	/** Why the cache missed, as the provider or Octocode's own accounting explains it (`idle past the cache lifetime`). */
 	missReason?: string;
+	/** The provider's own `cache_miss` reason when it reported one (`tools_changed`), verbatim. */
+	providerMissReason?: string;
+	/** The cache group in force for the request; absent for an agent that recorded none (the coordinator). */
+	cacheGroup?: ProfileCacheGroup;
 	/** Milliseconds since the agent's previous request finished. */
 	idleMs?: number;
 	/** True when the layers were inferred from the transcript instead of recorded from the request that was sent. */
