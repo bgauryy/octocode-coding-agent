@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getNativeSkillsDir, getOctocodeHome, getOctocodeSkillsDir } from "../../src/config.ts";
-import { buildInventory } from "../../src/core/extensibility/inventory.ts";
+import { buildInventory } from "../../src/octocode/harness/inventory.ts";
 import { switchItem } from "../../src/core/extensibility/switch.ts";
 import { DefaultPackageManager } from "../../src/core/package-manager.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";

@@ -1,4 +1,4 @@
-import { gitQuiet } from "../shared/git.ts";
+import { gitQuiet } from "../../utils/git-run.ts";
 import { heldChanges, mergeRef } from "../worktrees/merge.ts";
 import { ID_PATTERN, LEGACY_REF_PREFIX, REF_PREFIX, repoRoot } from "./worktree-base.ts";
 

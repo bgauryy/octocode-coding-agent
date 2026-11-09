@@ -1,7 +1,7 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { workspaces } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { startAttachServer } from "../../src/octocode/web-daemon/attach-server.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";

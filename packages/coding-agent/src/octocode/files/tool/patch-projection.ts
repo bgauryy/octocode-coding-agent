@@ -9,7 +9,7 @@ import {
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { splitBom } from "../../../../../common/src/text.ts";
-import { parsePatch, transformPatch } from "../../shared/codex-patch/patch.ts";
+import { parsePatch, transformPatch } from "../../tool-input/codex-patch/patch.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { resolveAnchoredEdits } from "./anchored.ts";
 import type { FileGuard } from "./guard.ts";

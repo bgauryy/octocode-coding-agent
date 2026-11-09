@@ -3,13 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb, workspaces } from "../../../db/src/api.ts";
-import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
 import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
 import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
 import { tmp } from "./helpers.ts";
-import { repoKey } from "../../src/octocode/shared/home/repo.ts";
+import { repoKey } from "../../src/utils/git-repository.ts";
 
 const modeOf = (file: string) => fs.statSync(file).mode & 0o777;
 

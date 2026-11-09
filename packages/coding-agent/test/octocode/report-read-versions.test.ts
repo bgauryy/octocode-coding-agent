@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
-import { snapshotReport } from "../../src/octocode/shared/report-artifact.ts";
+import { snapshotReport } from "../../src/octocode/child-sessions/report-artifact.ts";
 import { tmp } from "./helpers.ts";
 
 function saved(text: string, scratch = tmp()) {

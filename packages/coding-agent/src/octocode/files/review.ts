@@ -5,7 +5,7 @@ import { ask } from "../ask/ask.ts";
 import { approvalQuestion } from "../ask/question.ts";
 import { kindOption } from "../permission/ask/text.ts";
 import { systemNote } from "../permission/ask/view.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import { foldLines } from "../permission/effect.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { clipText } from "../shared/util.ts";

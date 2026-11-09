@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { openScratchFile, writeScratchFile } from "../../shared/report-artifact.ts";
+import { openScratchFile, writeScratchFile } from "../../child-sessions/report-artifact.ts";
 import path from "node:path";
 import { tailNote } from "../../shared/format.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";

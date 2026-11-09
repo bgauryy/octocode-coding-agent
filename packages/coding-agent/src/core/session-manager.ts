@@ -4,33 +4,27 @@ import { normalizePath, resolvePath } from "../../../common/src/paths.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { SessionManagerApi } from "./session-manager/api.ts";
 import * as appends from "./session-manager/appends.ts";
-import { buildContextEntries, buildSessionProjection } from "./session-manager/context.ts";
 import { findSessionFileById, listAllSessions, listSessions } from "./session-manager/listing.ts";
 import { recordFork } from "./session-manager/mirror.ts";
 import * as persistence from "./session-manager/persistence.ts";
+import { SessionReader } from "./session-manager/reader.ts";
 import type { SessionRepair } from "./session-manager/repair.ts";
 import * as sessionState from "./session-manager/state.ts";
 import {
 	findMostRecentForCwd,
 	forkSessionFile,
 	getDefaultSessionDir,
-	getDefaultSessionDirPath,
 	resolveOpenedSession,
 } from "./session-manager/storage.ts";
-import { buildSessionTree } from "./session-manager/tree.ts";
 import type {
 	InputOrigin,
 	ContextEditEntry,
 	FileEntry,
 	NewSessionOptions,
-	SessionContext,
 	SessionEntry,
-	SessionHeader,
 	SessionInfo,
 	SessionListProgress,
 	SessionNameSource,
-	SessionProjection,
-	SessionTreeNode,
 	UsageEntry,
 } from "./session-manager/types.ts";
 
@@ -59,9 +53,7 @@ export * from "./session-manager/types.ts";
  * handles compaction summaries and follows the path from root to current leaf.
  *
  */
-export class SessionManager implements SessionManagerApi {
-	/** Entry, label and leaf state shared with the `session-manager/` modules. */
-	private readonly state: sessionState.SessionState;
+export class SessionManager extends SessionReader implements SessionManagerApi {
 	/** Set by `retire()` once the runtime replaced this manager. */
 	private retired = false;
 
@@ -73,7 +65,7 @@ export class SessionManager implements SessionManagerApi {
 		newSessionOptions?: NewSessionOptions,
 		preloadedFileEntries?: FileEntry[],
 	) {
-		this.state = sessionState.createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist);
+		super(sessionState.createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist));
 		persistence.initializeSession(this.state, sessionFile, newSessionOptions, preloadedFileEntries);
 	}
 
@@ -93,30 +85,6 @@ export class SessionManager implements SessionManagerApi {
 	/** Rewrites the whole session file atomically (`persistence.ts`); storage tests call it directly. */
 	private _rewriteFile(): void {
 		persistence.rewriteSessionFile(this.state);
-	}
-
-	isPersisted(): boolean {
-		return this.state.persist;
-	}
-
-	getCwd(): string {
-		return this.state.cwd;
-	}
-
-	getSessionDir(): string {
-		return this.state.sessionDir;
-	}
-
-	usesDefaultSessionDir(): boolean {
-		return this.state.sessionDir === getDefaultSessionDirPath(this.state.cwd);
-	}
-
-	getSessionId(): string {
-		return this.state.sessionId;
-	}
-
-	getSessionFile(): string | undefined {
-		return this.state.sessionFile;
 	}
 
 	_persist(entry: SessionEntry): void {
@@ -193,14 +161,6 @@ export class SessionManager implements SessionManagerApi {
 		return appends.appendSessionInfo(this.state, name, source);
 	}
 
-	getSessionName(): string | undefined {
-		return sessionState.getLatestSessionName(this.state);
-	}
-
-	getSessionNameSource(): SessionNameSource | undefined {
-		return sessionState.getLatestSessionNameSource(this.state);
-	}
-
 	appendCustomMessageEntry<T = unknown>(
 		customType: string,
 		content: string | (TextContent | ImageContent)[],
@@ -215,61 +175,8 @@ export class SessionManager implements SessionManagerApi {
 		return appends.appendContextEdit(this.state, targetId, replacement);
 	}
 
-	getLeafId(): string | null {
-		return this.state.leafId;
-	}
-
-	getLeafEntry(): SessionEntry | undefined {
-		return this.state.leafId ? this.state.byId.get(this.state.leafId) : undefined;
-	}
-
-	getEntry(id: string): SessionEntry | undefined {
-		return this.state.byId.get(id);
-	}
-
-	getChildren(parentId: string): SessionEntry[] {
-		return sessionState.getChildEntries(this.state, parentId);
-	}
-
-	getLabel(id: string): string | undefined {
-		return this.state.labelsById.get(id);
-	}
-
 	appendLabelChange(targetId: string, label: string | undefined): string {
 		return appends.appendLabelChange(this.state, targetId, label);
-	}
-
-	getBranch(fromId?: string): SessionEntry[] {
-		return sessionState.getBranchEntries(this.state, fromId);
-	}
-
-	buildContextEntries(): SessionEntry[] {
-		return buildContextEntries(this.getEntries(), this.state.leafId, this.state.byId);
-	}
-
-	buildSessionProjection(): SessionProjection {
-		return buildSessionProjection(this.getEntries(), this.state.leafId, this.state.byId);
-	}
-
-	buildSessionContext(): SessionContext {
-		const { messages, thinkingLevel, model } = this.buildSessionProjection();
-		return { messages, thinkingLevel, model };
-	}
-
-	getHeader(): SessionHeader | null {
-		return this.state.fileEntries.find((e) => e.type === "session") ?? null;
-	}
-
-	getEntryCount(): number {
-		return this.state.byId.size;
-	}
-
-	getEntries(): SessionEntry[] {
-		return sessionState.getSessionEntries(this.state);
-	}
-
-	getTree(): SessionTreeNode[] {
-		return buildSessionTree(this.getEntries(), this.state.labelsById, this.state.labelTimestampsById);
 	}
 
 	branch(branchFromId: string): void {

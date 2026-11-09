@@ -7,7 +7,7 @@ import { CLEARED_RESULTS_TYPE, contextReads } from "../../src/octocode/files/rea
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
-import { shortPath } from "../../src/octocode/shared/format.ts";
+import { shortPath } from "../../src/utils/display-path.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

@@ -87,3 +87,17 @@ export type AuthStatus = {
 	source?: "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
 	label?: string;
 };
+
+const CREDENTIAL_SOURCE_LABELS = {
+	stored: "saved credential",
+	runtime: "session credential",
+	environment: "environment",
+	fallback: "extension configuration",
+	models_json_key: "models.json",
+	models_json_command: "secret command in models.json",
+} as const satisfies Record<NonNullable<AuthStatus["source"]>, string>;
+
+/** Where a credential comes from, for a row: its own label (a variable name) or the source's words, never a value. */
+export function credentialSourceLabel(status: AuthStatus): string {
+	return status.label ?? CREDENTIAL_SOURCE_LABELS[status.source ?? "environment"];
+}

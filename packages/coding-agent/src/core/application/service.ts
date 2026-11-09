@@ -1,13 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { Value } from "typebox/value";
 import {
-	ApplicationCommandSchema,
-	applicationCommandFingerprint,
 	type ApplicationCommand,
 	type ApplicationConnection,
 	type ApplicationCursor,
 	type ApplicationEvent,
-	type ApplicationFrame,
 	type ApplicationMessage,
 	type ApplicationAsset,
 	type ApplicationAssetInput,
@@ -22,24 +18,20 @@ import {
 } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../agent-session/types.ts";
 import { type ApplicationOperations, type ApplicationSession, invokeOperation } from "./session-port.ts";
-import { commandImages, dispatchCommand, invokeCommand } from "./service/commands.ts";
+import { acceptApplicationCommand } from "./service/accept.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
 import { publishLifecycle } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
-import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
+import { acceptApplicationEvent, createApplicationState, initialApplicationState } from "./state.ts";
 import { readOnlyApplicationState } from "./service/state-source.ts";
 import { ApplicationActivities } from "./service/activities.ts";
 import { ApplicationDelivery, type ListenerErrorHandler, type NativeListener } from "./service/delivery.ts";
 import { ContextSource } from "./service/context-source.ts";
 import { cloneDisplay } from "./normalize.ts";
-import {
-	createApplicationFrame,
-	createFrameQueue,
-	ReplayBuffer,
-	type ApplicationFramePayload,
-} from "./service/frames.ts";
-import { ApplicationWire, type StreamHint } from "./service/wire.ts";
+import { ReplayBuffer } from "./service/frames.ts";
+import { ApplicationFrameStream } from "./service/stream.ts";
+import type { StreamHint } from "./service/wire.ts";
 import type { ApplicationReceiptStore, ToolOutputProjector } from "./service/types.ts";
 
 export type { ApplicationReceiptStore, ToolOutputProjector } from "./service/types.ts";
@@ -69,11 +61,8 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		};
 	}
 	private invalidateReplay(): void {
-		this.epoch = randomUUID();
-		this.sequence = 0;
-		this.replay.clear();
-		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
-		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "overflow" }));
+		this.stream.restart(false);
+		this.stream.resync("overflow");
 		this.delivery.notify();
 	}
 
@@ -81,16 +70,12 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	setReceiptStore(store: ApplicationReceiptStore): void {
 		this.receiptStore = store;
 	}
-	private epoch = randomUUID();
-	private sequence = 0;
 	private get currentSession(): string {
 		return this.state.getState().sessionId;
 	}
 	private unsubscribe?: () => void;
-	private closes = new Set<() => void>();
-	private sinks = new Set<(frame: ApplicationFrame) => void>();
 	private readonly replay = new ReplayBuffer();
-	private readonly wire = new ApplicationWire();
+	private readonly stream = new ApplicationFrameStream(() => this.currentSession, this.replay);
 	private disposed = false;
 
 	private readonly session: ApplicationSession;
@@ -163,10 +148,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		if (!changedSession && this.source.unchanged(this.session, this.transcript)) return;
 		this.state.setState({ sessionId: this.session.sessionId, model: applicationModel(this.session) });
 		this.source.reset(this.session);
-		this.epoch = randomUUID();
-		this.sequence = 0;
-		this.replay.clear();
-		this.wire.clear();
+		this.stream.restart(true);
 		this.transcript.clear();
 		this.activities.clear();
 		this.state.setState(
@@ -174,8 +156,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 				? { ...initialApplicationState(this.session.sessionId), revision: this.state.getState().revision }
 				: { errors: [] },
 		);
-		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
-		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "session-changed" }));
+		this.stream.resync("session-changed");
 		this.hydrate();
 		this.seedActivities();
 		this.publish({
@@ -184,16 +165,6 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			...this.activities.window(),
 			errors: cloneDisplay(this.state.getState().errors),
 		});
-	}
-	private cursor(): ApplicationCursor {
-		return {
-			sessionId: this.currentSession,
-			epoch: this.epoch,
-			sequence: this.sequence,
-		};
-	}
-	private frame(payload: ApplicationFramePayload): ApplicationFrame {
-		return createApplicationFrame(this.cursor(), payload);
 	}
 	publishDomain(event: ApplicationEvent): void {
 		if (this.disposed) throw new Error("Application service is closed");
@@ -211,19 +182,9 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			received.type === "tool.started" || received.type === "tool.progress" || received.type === "tool.completed"
 				? this.transcript.acceptTool(received)
 				: received;
-		this.emit(event, hint);
+		this.stream.emit(event, hint);
 		this.delivery.notify(event);
 		return !this.disposed;
-	}
-	// A streamed delta that releases nothing yet becomes no frame and uses no sequence.
-	private emit(event: ApplicationEvent, hint?: StreamHint): void {
-		const wired = this.wire.event(event, hint);
-		if (!wired) return;
-		this.sequence++;
-		const frame = this.frame({ type: "event", event: wired });
-		this.replay.push(frame);
-		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
-		for (const sink of [...this.sinks]) sink(frame);
 	}
 	private snapshot(): ApplicationSnapshot {
 		return applicationSnapshot(this.state.getState(), this.transcript, this.activities);
@@ -244,27 +205,8 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.delivery.run(() => this.checkSession());
 		if (options.sessionId && options.sessionId !== this.currentSession) throw new Error("Session changed");
 		const boundSession = this.currentSession;
-		const connection = createFrameQueue(
-			() => this.frame({ type: "resync", reason: "overflow" }),
-			() => {
-				this.closes.delete(connection.close);
-				this.sinks.delete(connection.push);
-			},
-		);
-		const { push, close } = connection;
-		const cursor = options.cursor;
-		if (
-			cursor &&
-			cursor.sessionId === this.currentSession &&
-			cursor.epoch === this.epoch &&
-			cursor.sequence <= this.sequence &&
-			cursor.sequence >= (this.replay.frames[0]?.cursor.sequence ?? this.sequence + 1) - 1
-		) {
-			push({ ...this.frame({ type: "resumed" }), cursor: { ...cursor } });
-			for (const frame of this.replay.frames) if (frame.cursor.sequence > cursor.sequence) push(frame);
-		} else push(this.frame({ type: "snapshot", snapshot: this.wire.snapshot(this.snapshot()) }));
-		this.sinks.add(push);
-		this.closes.add(close);
+		const connection = this.stream.connect(options.cursor, () => this.snapshot());
+		const { close } = connection;
 		return {
 			[Symbol.asyncIterator]: () => connection.iterator,
 			close,
@@ -325,40 +267,18 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private acceptCommand(command: ApplicationCommand): ApplicationReceipt {
 		this.attach();
 		this.checkSession();
-		if (!Value.Check(ApplicationCommandSchema, command)) throw new Error("Invalid application command");
-		if (command.sessionId !== this.currentSession) throw new Error("Session changed");
-		const fingerprint = applicationCommandFingerprint(command);
-		const previous = this.state.getState().receipts.get(command.id);
-		if (previous) {
-			if (previous.fingerprint !== fingerprint) throw new Error("Request ID already used with another command");
-			return { ...previous.receipt };
-		}
-		if (command.action === "abort" && command.runId !== this.state.getState().runId) throw new Error("Run changed");
-		const images = commandImages(command, this.transcript.assets, this.session);
-		reserveReceipt(this.state);
-		const receiptStore = this.receiptStore;
-		const recorded = receiptStore?.begin(command);
-		if (recorded && !recorded.fresh) return recorded.receipt;
-		const receipt: ApplicationReceipt = recorded?.receipt ?? { id: command.id, status: "accepted" };
-		this.state.setState(({ receipts }) => ({
-			receipts: new Map(receipts).set(command.id, { fingerprint, receipt: { ...receipt } }),
-		}));
-		this.publish({ type: "command.receipt", receipt: { ...receipt } });
-		const sessionAtDispatch = this.currentSession;
-		dispatchCommand({
-			command,
-			receipt,
-			receiptStore,
-			isCurrent: () => !this.disposed && this.sessionId === sessionAtDispatch,
-			runId: () => this.state.getState().runId,
-			invoke: () => {
-				if (this.disposed) throw new Error("Application service is closed");
-				return invokeCommand(command, images, this.session);
-			},
+		return acceptApplicationCommand(command, {
+			state: this.state,
+			assets: this.transcript.assets,
+			session: this.session,
+			receiptStore: this.receiptStore,
+			currentSession: this.currentSession,
+			isOpen: () => !this.disposed,
+			sessionId: () => this.sessionId,
+			publish: (event) => this.publish(event),
 			publishDomain: (event) => this.publishDomain(event),
 			reportFailure: (error) => this.delivery.reportFailure(error),
 		});
-		return { ...receipt };
 	}
 	private project(event: AgentSessionEvent): void {
 		publishModelChange(this.session, this.state, (change) => this.publish(change));
@@ -366,7 +286,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			case "message_start":
 			case "message_end":
 			case "message_update":
-				this.transcript.message(event, this.publish.bind(this), this.emit.bind(this));
+				this.transcript.message(event, this.publish.bind(this), this.stream.emit.bind(this.stream));
 				break;
 			case "tool_execution_start":
 			case "tool_execution_update":
@@ -384,15 +304,13 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		if (this.disposed) return;
 		this.disposed = true;
 		this.delivery.close();
-		for (const close of this.closes) close();
+		this.stream.closeConnections();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.transcript.clear();
 		this.activities.clear();
 		this.state.setState(initialApplicationState(this.sessionId));
-		this.sinks.clear();
-		this.replay.clear();
-		this.wire.clear();
+		this.stream.clear();
 		this.source.clear();
 		this.receiptStore = undefined;
 		this.onDispose?.(this);

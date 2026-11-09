@@ -125,6 +125,15 @@ export function isUnderPath(target: string, root: string): boolean {
 	return target.startsWith(prefix);
 }
 
+/**
+ * Whether `file` is `dir` or under it (both already resolved; no symlinks are followed here). Unlike `isUnderPath`, it is
+ * purely lexical and does not resolve `dir`.
+ */
+export function isWithin(file: string, dir: string): boolean {
+	const between = relative(dir, file);
+	return between !== ".." && !between.startsWith(`..${sep}`) && !isAbsolute(between);
+}
+
 export function getCwdRelativePath(filePath: string, cwd: string): string | undefined {
 	const resolvedCwd = resolvePath(cwd);
 	const resolvedPath = resolvePath(filePath, resolvedCwd);

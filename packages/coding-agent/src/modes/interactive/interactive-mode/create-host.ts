@@ -8,7 +8,7 @@ import { getAgentDir, VERSION } from "../../../config.ts";
 import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts";
 import { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
-import { CustomEditor } from "../components/custom-editor.ts";
+import { CustomEditor } from "../../../theme/custom-editor.ts";
 import { FooterComponent } from "../components/footer.ts";
 import { createMermaidMarkdownTransformer } from "../components/mermaid.ts";
 import { IdleStatus } from "../components/status-indicator.ts";

@@ -284,7 +284,3 @@ export function highlight(code: string, options: HighlightOptions = {}): string 
 		: hljs.highlightAuto(code, options.languageSubset).value;
 	return renderHighlightedHtml(html, options.theme);
 }
-
-export function supportsLanguage(name: string): boolean {
-	return resolveLanguage(name) !== undefined;
-}

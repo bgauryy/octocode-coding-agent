@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { notify } from "../../src/octocode/shared/commands.ts";
-import { resultBlock, resultText, toolHeader } from "../../src/octocode/shared/render.ts";
+import { resultBlock, resultText, toolHeader } from "../../src/octocode/render/tool.ts";
 import {
 	redactSecrets,
 	sanitizeTerminalText,

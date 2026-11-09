@@ -4,9 +4,10 @@ import path from "node:path";
 import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-file.ts";
 import { withFileLockSync } from "../../../../common/src/file-write-lock.ts";
 import { type AgentDb, agentEvents } from "../../../../db/src/api.ts";
-import { isCurrentWorkspace, workspaceStateDir } from "../../config/workspace.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
-import { canonicalPath, workspaceRoot } from "../shared/home/repo.ts";
+import { isCurrentWorkspace, workspaceStateDir } from "../../storage/workspace.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { workspaceRoot } from "../../utils/git-repository.ts";
 
 /** No symlink in the projection path may redirect a workspace write. */
 function checkPath(expected: ReturnType<typeof registeredWorkspace>, directory: string, file: string): void {

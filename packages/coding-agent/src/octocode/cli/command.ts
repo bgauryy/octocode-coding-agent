@@ -87,9 +87,6 @@ export const createOctocodeCommand = (
 	},
 });
 
-/** `/octocode` without an audit record, for callers that have no permission state. */
-export const octocodeCommand: Subcommand = createOctocodeCommand();
-
 /**
  * Registers `/octocode` and, for a session a person watches, one background GitHub sign-in check per Octocode run
  * (`githubLoginMissing`): a single notice when the CLI says GitHub is not connected, silence otherwise. Session end

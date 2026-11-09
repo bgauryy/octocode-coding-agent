@@ -1,6 +1,6 @@
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { McpServerGroup } from "./group.ts";
-import type { McpExposure } from "./servers.ts";
+import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 
 export interface McpServerStatus {
 	name: string;

@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { mutatedPaths } from "../shared/file-input.ts";
+import { mutatedPaths } from "../tool-input/file-input.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE_NOTE } from "../shared/fence.ts";
 import { formatAgo, formatDuration } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";

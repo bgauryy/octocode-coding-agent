@@ -28,7 +28,7 @@ import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionManager } from "../../../core/session-manager.ts";
 import type { AssistantMessageComponent } from "../components/assistant-message.ts";
 import type { BashExecutionComponent } from "../components/bash-execution.ts";
-import type { CustomEditor } from "../components/custom-editor.ts";
+import type { CustomEditor } from "../../../theme/custom-editor.ts";
 import type { ExtensionEditorComponent } from "../components/extension-editor.ts";
 import type { ExtensionInputComponent } from "../components/extension-input.ts";
 import type { ExtensionSelectorComponent } from "../components/extension-selector.ts";

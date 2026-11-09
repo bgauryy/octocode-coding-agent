@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-file.ts";
 import { HOME_NAMES, octocodeHome } from "../shared/home.ts";
-import { repoKey } from "../shared/home/repo.ts";
+import { repoKey } from "../../utils/git-repository.ts";
 import { processStartTime } from "../shared/process.ts";
 
 /** What isolated subagent worktrees share across the modules that create, save, merge and prune them (`worktree.ts` re-exports the public parts). */
@@ -38,7 +38,7 @@ export interface WorktreeResult {
 	conflict?: { patch: string; reason: string };
 }
 
-export { worktreesDir } from "../shared/own-worktree.ts";
+export { worktreesDir } from "../worktree-paths/own-worktree.ts";
 
 /** The folder earlier versions used: named by the checkout's own root, so a linked worktree's orphans were not shared. */
 export function legacyWorktreesDir(root: string, home = octocodeHome()): string {

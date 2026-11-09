@@ -1,10 +1,10 @@
 import { agentEvents, agents, compactions } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { memoryStore, describeMemory, noMemory, memoryToolLine } from "../memory/store.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
-import { matchTexts, HISTORY_BYTES } from "../shared/history-search.ts";
-import { ownArchives } from "../shared/archive.ts";
-import { historyScope } from "../shared/history.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { matchTexts, HISTORY_BYTES } from "../history/search.ts";
+import { ownArchives } from "../history/archive.ts";
+import { historyScope } from "../history/transcripts.ts";
 import path from "node:path";
 
 const SOURCES = ["memories", "compactions", "events", "agents", "sessions"] as const;

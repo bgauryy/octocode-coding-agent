@@ -11,13 +11,13 @@ import {
 	segmentTldr,
 	sessionLineage,
 	writeSegment,
-} from "../shared/archive.ts";
+} from "../history/archive.ts";
 import { isStaleSessionError, stringList } from "../shared/util.ts";
 import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
- * The archive of compacted history (`shared/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized
+ * The archive of compacted history (`history/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized
  * messages too, but outside the folders Octocode's tools may read and in lines of hundreds of thousands of characters;
  * here each compaction's messages become one Markdown file the research tools search. The messages are captured when
  * Octocode prepares the compaction (`session_before_compact`) and written only after it succeeded (`session_compact`), so a

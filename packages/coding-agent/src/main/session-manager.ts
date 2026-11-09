@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import { dirname } from "node:path";
 import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { transcripts } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../config/database.ts";
+import { sharedAgentDb } from "../storage/database.ts";
 import chalk from "chalk";
 import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";

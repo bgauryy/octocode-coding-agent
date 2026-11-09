@@ -1,4 +1,4 @@
-import type { FileInputReplacement } from "../../shared/claude-file.ts";
+import type { FileInputReplacement } from "../../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../../core/features/types.ts";
 import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";

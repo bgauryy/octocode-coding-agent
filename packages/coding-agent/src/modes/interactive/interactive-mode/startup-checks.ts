@@ -19,7 +19,7 @@ import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelo
 import { isOfflineModeEnabled } from "../../../utils/env-flag.ts";
 import { getOctocodeUserAgent } from "../../../utils/user-agent.ts";
 import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
-import { DynamicBorder } from "../components/dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";

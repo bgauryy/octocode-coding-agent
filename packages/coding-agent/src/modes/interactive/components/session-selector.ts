@@ -2,7 +2,7 @@ import { type Component, Container, type Focusable, getKeybindings, Input, Space
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { SessionSelectorHeader } from "./session-selector/header.ts";
 import { SessionLoads, type SessionsLoader } from "./session-selector/loads.ts";
 import { type ActionsMenu, actionsMenuFor, renamePanel } from "./session-selector/panels.ts";

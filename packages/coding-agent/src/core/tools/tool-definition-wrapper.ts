@@ -1,4 +1,4 @@
-import { withSessionStorage } from "../../config/runtime-paths.ts";
+import { withSessionStorage } from "../../storage/runtime-paths.ts";
 import { captureToolInvocation } from "./tool-invocation.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import type { ExtensionToolContext, ToolDefinition } from "../features/types.ts";

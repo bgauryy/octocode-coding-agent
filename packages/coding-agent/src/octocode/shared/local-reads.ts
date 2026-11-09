@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveToolPath } from "./home.ts";
-import { canonicalPath } from "./home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { sha256, sha256File } from "../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { currentToolRoles } from "../../../../mcp/src/roles.ts";

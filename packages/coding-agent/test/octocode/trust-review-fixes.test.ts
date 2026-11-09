@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { closeSharedAgentDb, trust } from "../../../db/src/api.ts";
 import { enforceFolderTrust } from "../../src/main/trust-gate.ts";
 import { runTrustCommand } from "../../src/cli/trust-command.ts";

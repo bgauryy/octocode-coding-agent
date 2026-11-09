@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { historyWindows, resolveRetention, retentionProblems } from "../../src/config/retention.ts";
+import { historyWindows, resolveRetention, retentionProblems } from "../../src/storage/retention.ts";
 
 describe("resolveRetention", () => {
 	it("defaults to 30 days for data and 90 for transcripts", () => {

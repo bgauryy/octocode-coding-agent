@@ -3,11 +3,11 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
+import { getPackageDir, isBunBinary } from "./install/package-detection.ts";
 import { normalizePath } from "../../common/src/paths.ts";
 import { readJsonFile } from "../../common/src/json.ts";
 
-export { findNodePackageDir, getPackageDir, isBundledNode, isBunBinary } from "./config/package-detection.ts";
+export { findNodePackageDir, getPackageDir, isBundledNode, isBunBinary } from "./install/package-detection.ts";
 export {
 	detectInstallMethod,
 	getSelfUpdateCommand,
@@ -15,7 +15,7 @@ export {
 	getUpdateInstruction,
 	type SelfUpdateCommand,
 	type SelfUpdatePackageTarget,
-} from "./config/self-update.ts";
+} from "./install/self-update.ts";
 
 // =============================================================================
 // Package Asset Paths (shipped with executable)

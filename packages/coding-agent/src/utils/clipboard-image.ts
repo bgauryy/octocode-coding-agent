@@ -1,4 +1,4 @@
-import { runtimeTempDir } from "../config/runtime-paths.ts";
+import { runtimeTempDir } from "../storage/runtime-paths.ts";
 import { getNativeClipboard } from "@octocodeai/octocode-tui";
 import { randomUUID } from "node:crypto";
 import { readFileSync, unlinkSync } from "node:fs";

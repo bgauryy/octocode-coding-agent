@@ -1,12 +1,13 @@
-import { readWorkspaceIdentity } from "../../config/workspace.ts";
+import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { HistoryRepair } from "./repair.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { type AgentDb, compactions, sessions, workspaces } from "../../../../db/src/api.ts";
-import { resolveRetention } from "../../config/retention.ts";
+import { resolveRetention } from "../../storage/retention.ts";
 import { DAY_MS } from "../shared/util.ts";
-import { archiveFolder, isSegmentFile } from "../shared/archive.ts";
-import { canonicalPath, isWithin } from "../shared/home/repo.ts";
+import { archiveFolder, isSegmentFile } from "../history/archive.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
 import { writeSummaryLibrary } from "./summaries.ts";
 
 /** Index before deleting; a damaged/unavailable transcript never authorizes loss of its only archive copy. */

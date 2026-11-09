@@ -1,6 +1,6 @@
 import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
 
 /** Loader wrapped with borders for extension UI */

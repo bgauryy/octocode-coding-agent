@@ -5,7 +5,7 @@ import path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, expect, it } from "vitest";
 import { DocsIndexSchema } from "@octocodeai/octocode-contracts/docs";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { docKind, readDocFile, readDocsIndex } from "../../src/octocode/workspace/docs.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 

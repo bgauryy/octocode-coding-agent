@@ -14,7 +14,7 @@ import {
 } from "@octocodeai/octocode-contracts/docs";
 import { mermaidScript } from "@octocodeai/octocode-webview";
 import { redactData } from "../../../../common/src/sanitize.ts";
-import { WORKSPACE_STATE, workspaceStateDir } from "../../config/workspace.ts";
+import { WORKSPACE_STATE, workspaceStateDir } from "../../storage/workspace.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { docKind, MAX_DOC_BYTES, summarize } from "./doc-summary.ts";
 import { isSymlink } from "./reports.ts";

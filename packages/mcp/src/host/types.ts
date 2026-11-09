@@ -10,7 +10,7 @@ import type { AgentToolResult, AgentToolUpdateCallback, EventBus } from "@octoco
 import type { ModelInputLimits } from "@octocodeai/octocode-ai";
 import type { AutocompleteItem, Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
-import type { McpServerConfig, RegisteredMcpServer } from "../servers.ts";
+import type { McpServerConfig, RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { McpPresentationMode } from "../presentation/mode.ts";
 
 /** The colours and weights MCP renderers draw with. */

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { adoptChildTasks, finishChildNotes, isolatedChildSteps } from "../../src/octocode/subagents/child-tasks.ts";
-import { readWorkspaceIdentity } from "../../src/config/workspace.ts";
+import { readWorkspaceIdentity } from "../../src/storage/workspace.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { compactions } from "../../../db/src/api.ts";
 import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import { tmp } from "./helpers.ts";

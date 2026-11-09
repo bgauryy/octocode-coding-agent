@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Thought, thoughtGist } from "../../src/octocode/shared/thought.ts";
+import { Thought, thoughtGist } from "../../src/octocode/render/thought.ts";
 import { Activity, callTarget } from "../../src/octocode/ui/activity-model.ts";
 
 /** A window title, a hyperlink, a screen clear and a bidi override: none may reach a reader's terminal. */

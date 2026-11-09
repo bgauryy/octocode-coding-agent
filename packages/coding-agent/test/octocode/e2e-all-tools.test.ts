@@ -293,7 +293,10 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 		fail: [answers(call("skill", { name: "no-such-skill" }), 'Unknown skill "no-such-skill"', "octocode-debugging")],
 	},
 	models: {
-		ok: [answers(call("models"), "This session: scripted/model", "● scripted/model", "Profiles:")],
+		ok: [
+			answers(call("models"), "This session: scripted/model", "scripted · models.json · 1 runnable", "Profiles:"),
+			answers(call("models", { provider: "scripted" }), "● scripted/model", "Profiles:"),
+		],
 		fail: [answers(call("models", { ability: "nonsense" }), 'Validation failed for tool "models"', "ability")],
 	},
 	compact: {

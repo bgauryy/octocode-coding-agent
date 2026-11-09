@@ -7,7 +7,7 @@
 import type { ImageContent } from "@octocodeai/octocode-ai/compat";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { InputSource } from "../../../core/features/index.ts";
-import { plural } from "../../../octocode/shared/render/text.ts";
+import { plural } from "../../../octocode/shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { QueuedInput } from "../../../core/agent-session.ts";
 import type { InteractiveModeHost } from "./host.ts";

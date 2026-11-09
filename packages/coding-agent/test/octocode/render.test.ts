@@ -4,14 +4,14 @@ import { animationClock, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatAgo, formatDuration, formatSpan } from "../../src/octocode/shared/format.ts";
 import { recordCheck } from "../../src/octocode/shared/locks.ts";
-import { resultBlock, toolHeader } from "../../src/octocode/shared/render.ts";
+import { resultBlock, toolHeader } from "../../src/octocode/render/tool.ts";
 import { wholeSeconds } from "../../src/octocode/shared/util.ts";
 import { rendered, theme } from "./fake-host.ts";
-import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/render/text.ts";
-import { stopRowMotion } from "../../src/octocode/shared/render/motion.ts";
+import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/text.ts";
+import { stopRowMotion } from "../../src/octocode/render/motion.ts";
 import { WAIT_PULSE_MS } from "../../src/theme/status.ts";
-import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/shared/render/rows.ts";
-import type { ToolRow } from "../../src/octocode/shared/render/types.ts";
+import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/render/rows.ts";
+import type { ToolRow } from "../../src/octocode/render/types.ts";
 
 const row = (overrides: Record<string, unknown> = {}) => ({
 	state: {} as ToolRow,

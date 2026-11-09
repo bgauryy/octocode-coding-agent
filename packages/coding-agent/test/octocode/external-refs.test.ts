@@ -6,7 +6,7 @@ import { ExternalAgents, type ExternalFactories, type ExternalPolicy } from "../
 import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
 import { registerExternal } from "../../src/octocode/external/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import type * as ReferenceResolver from "../../src/octocode/shared/references.ts";
+import type * as ReferenceResolver from "../../src/octocode/child-sessions/references.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -16,7 +16,7 @@ const resolver = vi.hoisted(() => ({
 	referencedContentBlock: vi.fn(),
 	referenceContext: vi.fn(),
 }));
-vi.mock("../../src/octocode/shared/references.ts", async (importOriginal) => ({
+vi.mock("../../src/octocode/child-sessions/references.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof ReferenceResolver>()),
 	...resolver,
 }));

@@ -1,8 +1,8 @@
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import type { WebSocket } from "ws";
 import { afterEach, expect, vi } from "vitest";
-import { sharedAgentDb } from "../../src/config/database.ts";
-import { decodeKey, roomOf } from "../../src/octocode/web-daemon/remote/seal.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { roomOf } from "../../src/octocode/web-daemon/remote/seal.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { startRelayFixture } from "./remote-relay-fixture.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
@@ -54,7 +54,7 @@ export async function publishOn(
 	cleanup.push(() => relay.close());
 	const published = server.remote.publish({ transport: "relay", access, relayUrl: relay.url });
 	const link = new URL(published.url);
-	const key = decodeKey(link.hash.slice(3))!;
+	const key = Buffer.from(link.hash.slice(3), "base64url");
 	const room = roomOf(key);
 	await vi.waitFor(() => expect(relay.rooms.get(room)?.host).toBeDefined());
 	await vi.waitFor(() => expect((server.remote.status().relay as { state: string }).state).toBe("connected"));

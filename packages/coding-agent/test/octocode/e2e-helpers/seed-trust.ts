@@ -1,6 +1,6 @@
 import path from "node:path";
-import { openAgentDb } from "../../../src/config/database.ts";
-import { globalPaths } from "../../../src/config/state-paths.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
+import { globalPaths } from "../../../src/storage/state-paths.ts";
 import { grantFolder } from "../../../src/octocode/trust/grants.ts";
 import type { Sandbox } from "../e2e-real-process-harness.ts";
 

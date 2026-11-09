@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { atomicWriteFile, atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
-import { dirsToRepoRoot, repoKey, workspaceRoot } from "../../src/octocode/shared/home/repo.ts";
+import { dirsToRepoRoot } from "../../src/utils/repo-dirs.ts";
+import { repoKey, workspaceRoot } from "../../src/utils/git-repository.ts";
 import { statusCommand } from "../../src/octocode/status-command.ts";
 import { Subcommands, say, wordCompletions, retiredCommandReplacement } from "../../src/octocode/shared/commands.ts";
 import {

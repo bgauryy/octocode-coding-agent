@@ -1,6 +1,6 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type AgentDb, type FolderDecision, type FolderGrantRow, trust } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { agentDbPath } from "../shared/home.ts";
 import {
 	folderChain,

@@ -4,21 +4,20 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { sameBinding, transcripts, workspaces } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import {
 	ensureWorkspaceStateDir,
 	isCurrentWorkspace,
 	readWorkspaceIdentity,
 	workspaceIdentity,
 	workspaceStateDir,
-} from "../../src/config/workspace.ts";
-import { readRepositoryDiff, readUntrackedDiff } from "../../src/octocode/files/repository-diff.ts";
+} from "../../src/storage/workspace.ts";
+import { readRepositoryDiff, readUntrackedDiff } from "../../src/utils/repository-diff.ts";
 import { createWorktree, finishWorktree } from "../../src/octocode/subagents/worktree.ts";
 import { copyIncluded } from "../../src/octocode/worktrees/include.ts";
 import { dirtyCounts } from "../../src/octocode/worktrees/status.ts";
-import { workspaceGit } from "../../src/utils/git-repository.ts";
-import { workspaceRoot } from "../../src/octocode/shared/home/repo.ts";
+import { workspaceGit, workspaceRoot } from "../../src/utils/git-repository.ts";
 import { tmp } from "./helpers.ts";
 import { makeRepo, sh } from "./worktree-fixture.ts";
 
@@ -166,7 +165,7 @@ describe("workspace identity", () => {
 
 	it("publishes one complete ID to concurrent processes on first use", async () => {
 		const root = fs.realpathSync(tmp());
-		const entry = new URL("../../src/config/workspace.ts", import.meta.url).href;
+		const entry = new URL("../../src/storage/workspace.ts", import.meta.url).href;
 		const code = `import { workspaceIdentity } from ${JSON.stringify(entry)}; process.stdout.write(workspaceIdentity(process.argv[1]).id)`;
 		const ids = await Promise.all(
 			Array.from({ length: 5 }, () => promisify(execFile)(process.execPath, ["--input-type=module", "-e", code, root])),

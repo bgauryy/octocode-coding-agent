@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { webLauncher } from "../../src/octocode/shared/web.ts";
+import { webLauncher } from "../../src/octocode/browser/launcher.ts";
 import { fakeHost } from "./fake-host.ts";
 
 it("revalidates a cached shared endpoint and replaces an unhealthy owner", async () => {

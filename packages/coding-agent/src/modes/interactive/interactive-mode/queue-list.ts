@@ -4,7 +4,7 @@
  * edited so it can be neither delivered mid-edit nor sent twice.
  */
 
-import { plural } from "../../../octocode/shared/render/text.ts";
+import { plural } from "../../../octocode/shared/text.ts";
 import { ExtensionEditorComponent } from "../components/extension-editor.ts";
 import { type QueueListAction, QueueListComponent, type QueueListRow } from "../components/queue-list.ts";
 import type { InteractiveModeHost } from "./host.ts";

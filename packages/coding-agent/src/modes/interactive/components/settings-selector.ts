@@ -2,7 +2,7 @@ import { Container, getCapabilities, type SettingItem, SettingsList } from "@oct
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import { CACHE_WARMING_MODES } from "../../../core/settings-manager.ts";
 import { getSettingsListTheme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyText } from "./keybinding-hints.ts";
 import { applySettingChange } from "./settings-selector/change-handler.ts";
 import { addConditionalItems } from "./settings-selector/conditional-items.ts";

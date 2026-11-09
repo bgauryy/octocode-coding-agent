@@ -1,6 +1,6 @@
 import type { ToolDisplay, ToolDisplayBlock } from "@octocodeai/octocode-contracts";
 import type { ToolDisplayInput } from "../../core/features/types.ts";
-import { displayText, pathBlock, textResultDisplay } from "../shared/display.ts";
+import { displayText, pathBlock, textResultDisplay } from "../render/display.ts";
 import { fencedParts } from "../shared/fence.ts";
 import { withoutProvider } from "./model.ts";
 import { doneSummary, finishedStats, runStats } from "./render.ts";

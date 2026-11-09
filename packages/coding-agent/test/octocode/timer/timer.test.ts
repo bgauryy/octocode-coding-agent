@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, expire, leases, openDatabase, sessions, timers } from "../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
 import { TIMER_TYPE } from "../../../src/octocode/shared/messages.ts";
 import { runningWorkOf } from "../../../src/octocode/shared/running-work.ts";
 import { conditionChecker } from "../../../src/octocode/timer/condition.ts";

@@ -1,4 +1,4 @@
-import { type ReferenceContext, referencedContentBlock, resolveReferences } from "../shared/references.ts";
+import { type ReferenceContext, referencedContentBlock, resolveReferences } from "../child-sessions/references.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 
 /**

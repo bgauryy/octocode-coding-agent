@@ -2,7 +2,7 @@ import "../mcp-host.ts";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildInventory } from "../../src/core/extensibility/inventory.ts";
+import { buildInventory } from "../../src/octocode/harness/inventory.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { writeHookFiles } from "./fixtures/hook-formats.ts";
 import { beforeAll, describe, expect, it } from "vitest";

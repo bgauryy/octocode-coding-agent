@@ -4,7 +4,7 @@ import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { CustomEditor } from "../src/theme/custom-editor.ts";
 import { showSessionSelector } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";

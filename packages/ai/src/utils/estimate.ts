@@ -95,7 +95,7 @@ export function estimateMessageTokens(message: Message): number {
  * Usage of an assistant message that describes its context, or undefined for other roles and for aborted, error and
  * all-zero responses, which carry no valid counts.
  */
-export function getContextUsage(message: { role: string }): Usage | undefined {
+function getContextUsage(message: { role: string }): Usage | undefined {
 	if (message.role !== "assistant") return undefined;
 	const assistant = message as Partial<AssistantMessage>;
 	if (

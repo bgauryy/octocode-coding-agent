@@ -2,7 +2,8 @@
 
 import { hostIdentity, hostTrust } from "../host.ts";
 import { globalMcpConfigPath } from "../paths.ts";
-import { type McpServerConfig, validateMcpServerConfig } from "../servers.ts";
+import { validateMcpServerConfig } from "../servers.ts";
+import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { addMcpServerConfig, loadMcpConfig, removeMcpServerConfig } from "../config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { helpHint, type McpCommandOptions, parseOptions } from "./shared.ts";

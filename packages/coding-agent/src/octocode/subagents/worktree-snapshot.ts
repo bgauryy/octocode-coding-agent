@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { octocodeTmpDir, workspaceScratchDir } from "../shared/home.ts";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { EXCLUDE_WORKSPACE_STATE, git, gitQuiet, type GitOptions } from "../shared/git.ts";
+import { EXCLUDE_WORKSPACE_STATE, git, gitQuiet, type GitOptions } from "../../utils/git-run.ts";
 
 /** Temporary Git indexes keep both snapshot and delta generation off the parent's branch and index. */
 const IDENTITY = ["-c", "user.name=Octocode", "-c", "user.email=octocode@localhost"];

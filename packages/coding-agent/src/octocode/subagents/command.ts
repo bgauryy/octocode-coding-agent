@@ -9,7 +9,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describeMembers } from "../team/member-list.ts";
 import type { Team } from "../team/session.ts";
 import type { BudgetStanding } from "../team/model.ts";
-import { sessionChildren } from "../shared/session-children.ts";
+import { sessionChildren } from "../child-sessions/session-children.ts";
 import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
 import { landChild } from "./merge-child.ts";

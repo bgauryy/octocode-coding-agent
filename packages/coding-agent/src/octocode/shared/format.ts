@@ -1,21 +1,8 @@
 /** Compact numbers, durations, clock times, paths, tokens and cost for the agents panel, the footer and `coordinate list`. */
-import os from "node:os";
-import path from "node:path";
+import { shortPath } from "../../utils/display-path.ts";
 import { formatDuration } from "../../utils/duration.ts";
-import { plural } from "./render/text.ts";
+import { plural } from "./text.ts";
 import { DAY_MS, HOUR_MS, type UsageTotals } from "./util.ts";
-
-/** `file` relative to `cwd` when inside it, else with the home directory as `~`; otherwise unchanged. */
-export function shortPath(file: string, cwd = process.cwd(), home = os.homedir()): string {
-	const inside = (root: string) => {
-		const relative = path.relative(root, file);
-		return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : undefined;
-	};
-	const local = inside(cwd);
-	if (local) return local;
-	const homed = inside(home);
-	return homed ? `~${path.sep}${homed}` : file;
-}
 
 /**
  * The line that goes before the end of a captured stream (`shown` of its `total` characters): how much it shows and where

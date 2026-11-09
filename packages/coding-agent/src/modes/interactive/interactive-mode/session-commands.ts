@@ -15,7 +15,7 @@ import { NothingToCompactError } from "../../../core/agent-session/compaction-co
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { reportBug } from "../bug-report.ts";
-import { DynamicBorder } from "../components/dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { shareSession } from "../session-share.ts";
 import { setRegisteredThemes, theme } from "../../../theme/theme.ts";

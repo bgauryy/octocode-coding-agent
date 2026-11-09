@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
 import { configDiscovery } from "../service.ts";
+import { definesHooks } from "../sources.ts";
 import type { ConfigItem, ConfigKind, DiscoverInput } from "../types.ts";
 import { VENDORS } from "./registry.ts";
 import { vendorOn } from "./switch.ts";
@@ -7,9 +7,12 @@ import type { HarnessStatus, VendorId } from "./types.ts";
 
 let cache: { key: string; statuses: HarnessStatus[] } | undefined;
 
-/** An item that exists as configuration: an MCP control-only override or a hook file nobody wrote is not counted. */
+/**
+ * An item that exists as configuration: an MCP control-only override is not counted, nor a hook file that is missing or
+ * defines no hooks (a Codex `config.toml` holding only MCP servers).
+ */
 const counts = (item: ConfigItem): boolean =>
-	item.role !== "override" && (item.kind !== "hook" || existsSync(item.provenance.path));
+	item.role !== "override" && (item.kind !== "hook" || definesHooks(item.provenance.path));
 
 /**
  * Each harness with whether it is on and what it supplies: `found` counts every item per kind (shadowed, switched off or

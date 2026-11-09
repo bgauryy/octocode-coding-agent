@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { generateDiffString } from "../src/core/tools/edit-diff.ts";
-import { renderDiff } from "../src/modes/interactive/components/diff.ts";
+import { renderDiff } from "../src/theme/diff.ts";
 import { hintLine, hintText } from "../src/modes/interactive/components/keybinding-hints.ts";
 import { OAuthSelectorComponent } from "../src/modes/interactive/components/oauth-selector.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";

@@ -8,7 +8,7 @@ import { firstGap, type LineRange, lineCount } from "../files/coverage.ts";
 import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";

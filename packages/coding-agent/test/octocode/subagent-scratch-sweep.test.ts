@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
+import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { agentScratch, scratchNames, scratchRoot, sweepScratch } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
 import { tmp } from "./helpers.ts";

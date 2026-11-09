@@ -1,9 +1,9 @@
 import { animationClock, MOTION } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { toolHeader } from "../../src/octocode/shared/render.ts";
-import { stopRowTimers } from "../../src/octocode/shared/render/rows.ts";
-import { stopRowMotion } from "../../src/octocode/shared/render/motion.ts";
-import type { ToolRow } from "../../src/octocode/shared/render/types.ts";
+import { toolHeader } from "../../src/octocode/render/tool.ts";
+import { stopRowTimers } from "../../src/octocode/render/rows.ts";
+import { stopRowMotion } from "../../src/octocode/render/motion.ts";
+import type { ToolRow } from "../../src/octocode/render/types.ts";
 import { rendered, theme } from "./fake-host.ts";
 
 const row = () => ({

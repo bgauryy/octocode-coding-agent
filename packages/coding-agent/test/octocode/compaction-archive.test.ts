@@ -20,7 +20,7 @@ import {
 	libraryPath,
 	readSegments,
 	segmentPath,
-} from "../../src/octocode/shared/archive.ts";
+} from "../../src/octocode/history/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

@@ -14,7 +14,8 @@ import {
 	sha256,
 	sha256File,
 } from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath, workspaceRoot } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { workspaceRoot } from "../../../utils/git-repository.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { notify } from "../../shared/commands.ts";
 import { resolveToolPath } from "../../shared/home.ts";

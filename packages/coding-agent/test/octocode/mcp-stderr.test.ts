@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { connectionFixture } from "../../../mcp/test/mcp-connection-fixture.ts";
-import { shortPath } from "../../src/octocode/shared/format.ts";
+import { shortPath } from "../../src/utils/display-path.ts";
 import { sessionOutputDir } from "../../src/octocode/shared/home.ts";
 
 /** A server that writes `stderr` and dies before it speaks MCP: the connect fails, and the failure carries its stderr. */

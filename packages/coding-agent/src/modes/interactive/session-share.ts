@@ -1,5 +1,5 @@
 import { ELLIPSIS } from "@octocodeai/octocode-tui";
-import { runtimeTempDir } from "../../config/runtime-paths.ts";
+import { runtimeTempDir } from "../../storage/runtime-paths.ts";
 import { getApplicationPort } from "../../core/application/index.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import * as crypto from "node:crypto";

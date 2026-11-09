@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { claimSuffix, releaseDeadClaims } from "../../shared/claims.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { WORKSPACE_STATE } from "../../../config/workspace.ts";
+import { WORKSPACE_STATE } from "../../../storage/workspace.ts";
 import { currentSessionWorkspace, globalPaths, sessionTempRoot } from "../../shared/home.ts";
 import {
 	groupAlive,

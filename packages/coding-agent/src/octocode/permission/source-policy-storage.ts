@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFile, sha256 } from "../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { PolicySource } from "./source-policy/rules.ts";
 import {

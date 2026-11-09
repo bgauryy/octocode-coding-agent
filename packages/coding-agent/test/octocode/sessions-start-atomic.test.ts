@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, sessions } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registerSessions } from "../../src/octocode/sessions/register.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";

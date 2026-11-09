@@ -2,7 +2,7 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import type { ReportStatus } from "../../instructions/report.ts";
 import type { WatchdogLimits } from "../events.ts";
 import type { StructuredResultV1 } from "../result-schema.ts";
-import type { ReportArtifact } from "../../shared/report-artifact.ts";
+import type { ReportArtifact } from "../../child-sessions/report-artifact.ts";
 
 /** How long a stopped subagent gets to exit after SIGTERM before it is killed (a session shutdown, a permission change, a stall). */
 export const SUBAGENT_STOP_GRACE_MS = 5_000;

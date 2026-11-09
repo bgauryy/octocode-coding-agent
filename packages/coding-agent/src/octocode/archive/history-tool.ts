@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
-import { archiveFolder, ownArchives } from "../shared/archive.ts";
+import { archiveFolder, ownArchives } from "../history/archive.ts";
 import {
 	filesUnder,
 	type HistoryFile,
@@ -12,24 +12,25 @@ import {
 	readableHistory,
 	readHistory,
 	searchHistory,
-} from "../shared/history.ts";
-import { isScanCursor } from "../shared/history-search.ts";
-import { findErrors, renderErrors, sinceTime } from "../shared/history-errors.ts";
-import { rankHistory } from "../shared/history-rank.ts";
-import { canonicalPath, isWithin } from "../shared/home/repo.ts";
-import { clip, plural } from "../shared/render/text.ts";
-import { timedTool, timingOf } from "../shared/render/rows.ts";
+} from "../history/transcripts.ts";
+import { isScanCursor } from "../history/search.ts";
+import { findErrors, renderErrors, sinceTime } from "../history/errors.ts";
+import { rankHistory } from "../history/rank.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { clip, plural } from "../shared/text.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { resultBlock, toolHeader } from "../shared/render.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
 import { contentText, textResult } from "../shared/util.ts";
 
 /**
  * Session history for the `archive` tool (`tool.ts`, its `sessions` source): the one way a model searches and reads
- * earlier history (`shared/history.ts` owns which, and how).
+ * earlier history (`history/transcripts.ts` owns which, and how).
  * Each call states its `reason` (why the history is needed, not the code), kept in the result's details so how history
  * is used can be measured; the former `goal` field of recorded calls is ignored. Without `query` it lists the sessions in scope; with one it
  * searches them; `file` narrows a search, or alone reads a file from `line`. With `errors` it finds and groups the tool
- * errors of those sessions' full transcripts by a script (`shared/history-errors.ts`), not by reading them, optionally
+ * errors of those sessions' full transcripts by a script (`history/errors.ts`), not by reading them, optionally
  * `since` a time. Every result says how it continues.
  */
 

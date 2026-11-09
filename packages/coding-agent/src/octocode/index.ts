@@ -5,9 +5,7 @@ import { registerHarnessCommand } from "./harness/command.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
 import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { BASH_READER, FileGuard, mcpReader } from "./files/tool/guard.ts";
-import { plural } from "./shared/render/text.ts";
-import { spilledMessage } from "./team/session/spilled-message.ts";
+import { FileGuard } from "./files/tool/guard.ts";
 import { registerWebCommands } from "./remote/register.ts";
 import { setShellPathEntries } from "../utils/shell.ts";
 import { registerOctocodeCli } from "./cli/command.ts";
@@ -16,10 +14,9 @@ import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startTrustedWorkspaceWeb } from "./workspace-web.ts";
 import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
-import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../mcp/src/status.ts";
 import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { agentModes, agentOperation } from "./agent-tool.ts";
-import { registerApi, runningApiInstances } from "./api/register.ts";
+import { runningApiInstances } from "./api/register.ts";
 import { registerAskUser } from "./ask/tool.ts";
 import { registerBacklog } from "./backlog/index.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
@@ -45,20 +42,14 @@ import { Permission } from "./permission/ask.ts";
 import { registerPermissionCommand } from "./permission/command.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { recordChildReports, startPermissionState } from "./permission/provenance/reports.ts";
-import { parsedShell, reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
 import { installPermissionPorts } from "./permission/ports.ts";
-import { readOnlyCommand } from "./permission/shell/read-only.ts";
 import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerProcesses } from "./processes/register.ts";
-import { registerSessions } from "./sessions/register.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
 import { Subcommands } from "./shared/commands.ts";
 import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { setCurrentSession } from "./shared/home.ts";
-import { interactive } from "./shared/interactive.ts";
-import { withDialog } from "./shared/locks.ts";
-import { EXTERNAL_SENDER } from "./shared/messages.ts";
 import { registerTrustCommand } from "./trust/command.ts";
 import { registerSkills } from "./skills.ts";
 import { registerPromptOptimization } from "./prompt-optimization/register.ts";
@@ -86,6 +77,8 @@ import { registerEditor } from "./ui/editor.ts";
 import { registerNotify } from "./ui/notify.ts";
 import { registerWebTool } from "./web/web.ts";
 import { installOctocodeDiscovery } from "./discovery/index.ts";
+import { registerLeaveConfirmation, registerReaderRole } from "./session-guards.ts";
+import { registerExternalApi, registerTeamSessions, shellCollaboration } from "./team-surfaces.ts";
 /**
  * Native features compose guarded tools, subagents, collaboration and session policy. The MCP host owns its servers.
  * Cross-cutting runtime policy is composed here, in an order that reads top to bottom: the `tool_call` gate pipeline
@@ -113,17 +106,7 @@ export default function octocode(host: ExtensionAPI): void {
 	let profiles = new Map<string, AgentProfile>();
 	/** Why each profile file was refused at load (`loadSessionProfiles`), by profile name: the `agent` tool names it for an unknown profile. */
 	let refused = new Map<string, string>();
-	// Refusals name the research entry's reader role (`roles`) while its server runs, and `bash` otherwise.
-	const updateReader = () => {
-		const research = currentToolRoles().research;
-		const server = research && getMcpSessionStatus(api.events).find((server) => server.name === research.server);
-		guard.reader =
-			research && server?.enabled && !["failed", "stopped", "disabled"].includes(server.state)
-				? mcpReader(research.reader)
-				: BASH_READER;
-	};
-	api.events.on(MCP_STATUS_EVENT, updateReader);
-	api.on("session_start", updateReader);
+	registerReaderRole(api, guard);
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ api, isSubagent, agent: () => team.id });
 	const provenance = createProvenance();
@@ -157,41 +140,9 @@ export default function octocode(host: ExtensionAPI): void {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
 	planning.readOnlyShell = planReadOnly;
-	// /new, /resume, /fork and /quit end this runtime, its bash jobs and subagents: ask first, before the checkpoint handlers.
-	const confirmLeave = async (ctx: ExtensionContext, action: string) => {
-		if (!interactive(ctx, isSubagent)) return undefined;
-		const running = [
-			ctx.mode === "tui" && !ctx.isIdle() && "the running reply",
-			jobs.jobs.size && plural(jobs.jobs.size, "bash job"),
-			agents?.background() && plural(agents.background(), "background subagent"),
-			external?.running && plural(external.running, "external prompt"),
-		].filter(Boolean);
-		if (running.length === 0) return undefined;
-		const leave = await withDialog(() =>
-			ctx.ui.confirm("Running work", `Stop ${running.join(" and ")} and ${action}?`),
-		);
-		return leave ? undefined : { cancel: true };
-	};
-	api.on("session_before_switch", async (event, ctx) =>
-		confirmLeave(ctx, event.reason === "new" ? "start a new session" : "switch sessions"),
-	);
-	api.on("session_before_fork", async (_event, ctx) => confirmLeave(ctx, "fork"));
-	api.on("session_before_quit", async (_event, ctx) => confirmLeave(ctx, "quit"));
+	registerLeaveConfirmation(api, { isSubagent, jobs, agents: () => agents, external: () => external });
 	registerCheckpoints(api, checkpoints, (file) => guard.forget(file), commands);
-	registerSessions(api, {
-		commands,
-		isSubagent,
-		...(isSubagent && process.env[AGENT_GOAL_ENV] ? { goal: process.env[AGENT_GOAL_ENV] } : {}),
-		filesChanged: () => new Set(checkpoints.list().map((entry) => entry.path)).size,
-		team: {
-			reservations: () => team.members().find((member) => member.id === team.id)?.locks ?? [],
-			questions: () =>
-				team
-					.openQuestions()
-					.filter((question) => question.recipient === team.id)
-					.map(({ id, from, text }) => ({ id, from, text })),
-		},
-	});
+	registerTeamSessions(api, team, checkpoints, { commands, isSubagent });
 	const workspace = isSubagent
 		? undefined
 		: new WorkspaceRuntime(api, {
@@ -240,13 +191,7 @@ export default function octocode(host: ExtensionAPI): void {
 		...(isSubagent ? {} : { budgets: budgetsThrough(() => agents) }),
 		beforeLeave: async (reason) => agents?.stopAll(reason),
 		registerTool: agentTool.collect,
-		shellWrites: (command) => shellParserReady().then(() => reservationTargets(command)),
-		shellReadOnly: readOnlyCommand,
-		shellCommands: parsedShell,
-		shellChanges: async (command) => {
-			await shellParserReady();
-			return shellMutation(command).writes;
-		},
+		...shellCollaboration(),
 	});
 	if (!isSubagent) {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
@@ -350,25 +295,7 @@ export default function octocode(host: ExtensionAPI): void {
 	else registerNotify(api, { onNotice: hooks.notification });
 	const externalApi = isSubagent
 		? undefined
-		: registerApi(
-				api,
-				commands,
-				{
-					list: () => team.members(),
-					tell: (to, text) => team.send(to, text, { from: EXTERNAL_SENDER }),
-					deliverable: spilledMessage,
-				},
-				packageVersion,
-				{
-					messageSend: messaging.inboundHooks,
-					admit: messaging.admit,
-					capTurn: (ceiling) => permission.turnCap.set(ceiling),
-					externalCall: (input, ctx) => {
-						if (planning.blocked()) throw new Error("External agent calls are unavailable during planning.");
-						return external!.call(input, ctx);
-					},
-				},
-			);
+		: registerExternalApi(api, commands, { team, messaging, permission, planning, external: () => external });
 	api.on("session_start", async (_event, ctx) => {
 		// Per-session state first: a later step that throws (API port in use) must not carry the old session's over.
 		turn.reset();

@@ -1,4 +1,4 @@
-import { setItemTitles } from "../shared/render/item-titles.ts";
+import { setItemTitles } from "../render/item-titles.ts";
 import type { BacklogStore } from "./store.ts";
 
 /**

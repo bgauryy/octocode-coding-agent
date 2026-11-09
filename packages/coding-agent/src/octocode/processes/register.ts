@@ -1,7 +1,7 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Db } from "../../../../db/src/api.ts";
 import { liveStdioServerPids } from "../../../../mcp/src/client/transports/stdio.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { processStartTime } from "../shared/process.ts";
 import type { Subcommands } from "../shared/commands.ts";

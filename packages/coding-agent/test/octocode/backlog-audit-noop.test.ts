@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openAgentDb, sharedAgentDb } from "../../src/config/database.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
 
 let tmp: string;
 let savedDb: string | undefined;

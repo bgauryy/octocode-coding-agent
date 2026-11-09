@@ -4,7 +4,7 @@ import { foregroundOperations } from "../../files/bash-run.ts";
 import { readOnlyRoleRefusal } from "../../permission/read-only-role.ts";
 import { shellParserReady } from "../../permission/shell/mutation.ts";
 import { planReadOnly } from "../../permission/shell/plan-reads.ts";
-import { planConstraintActive } from "../../plan/state.ts";
+import { planConstraintActive } from "../../../core/plan-state.ts";
 import { type CheckOutcome, type ConditionSpec, capped, text } from "./types.ts";
 
 /** How long one until-command check may run before it counts as not met. */

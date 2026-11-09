@@ -74,11 +74,6 @@ const CUT_NOTE = `[Incomplete: ${new TruncatedBodyError().message}; only the par
 const INLINE_IMAGE_HEADERS = new Set<string>([...APPLICATION_IMAGE_MIME_TYPES, "image/jpg"]);
 const mediaType = (contentType: string) => contentType.split(";")[0].trim().toLowerCase();
 
-/** Why a fetch result is a notice rather than page text (a cross-host redirect, a binary type), or undefined for a page. */
-export function unreadReason(value: Fetched): FetchedNotice["reason"] | undefined {
-	return typeof value !== "string" && "kind" in value ? value.reason : undefined;
-}
-
 const unsupported = (text: string): FetchedNotice => ({ kind: "notice", reason: "unsupported", text });
 
 /**

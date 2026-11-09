@@ -90,12 +90,6 @@ export function permissionAnswer(question: Question, reply: Reply | undefined): 
 	}
 }
 
-/** The label of the option a select question was answered with (its text when it was answered with a write-in); undefined when cancelled. */
-export function selectedLabel(question: Question, reply: Reply | undefined): string | undefined {
-	if (!answered(reply)) return undefined;
-	return picked(question, reply)[0]?.label ?? typedOf(reply);
-}
-
 /** Whether a confirm question was answered yes. A cancelled reply, or a pick that is not its `yes` option, is no. */
 export function confirmed(question: Question, reply: Reply | undefined): boolean {
 	if (question.type !== "confirm" || !answered(reply)) return false;

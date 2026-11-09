@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { buildInventory, type InventoryItem, renderInventory } from "../../src/core/extensibility/inventory.ts";
+import { buildInventory, type InventoryItem, renderInventory } from "../../src/octocode/harness/inventory.ts";
 import { switchItem } from "../../src/core/extensibility/switch.ts";
 import { effectivePlugins, isSwitchedOn, pluginToggleId } from "../../src/core/extensibility/toggles.ts";
 import type { Settings } from "../../src/core/settings-schema.ts";

@@ -1,7 +1,7 @@
-import type { FileInputReplacement } from "../shared/claude-file.ts";
+import type { FileInputReplacement } from "../tool-input/claude-file.ts";
 import type { SourcePermissionUpdate } from "../shared/permission-updates.ts";
 import { registerBackgroundHooks } from "./background.ts";
-import { parsePatch } from "../shared/codex-patch/patch.ts";
+import { parsePatch } from "../tool-input/codex-patch/patch.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { say } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
@@ -25,7 +25,7 @@ import { registerAgentHooks } from "./register/agents.ts";
 import { notificationHook, registerMessageHooks } from "./register/messages.ts";
 import { registerPostToolUseHook } from "./register/post-tool-use.ts";
 import { preToolUseGate } from "./register/pre-tool-use.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import { hooksPromptSection } from "./prompt-section.ts";
 import { hookCount, hooksReport } from "./register/report.ts";
 import { registerSessionStartHooks } from "./register/session-start.ts";

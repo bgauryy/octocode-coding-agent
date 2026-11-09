@@ -3,7 +3,7 @@ import { budgetOutcome } from "../budget.ts";
 import type { ChildState } from "../events.ts";
 import type { ReportTracker } from "../report.ts";
 import { unavailableResult } from "../result-schema.ts";
-import { shortPath } from "../../shared/format.ts";
+import { shortPath } from "../../../utils/display-path.ts";
 import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
 import type { Identity } from "./env.ts";
 import { exitReason, LOAD_ERROR, noAnswerError, StartupError, type SubagentOutcome } from "./outcome.ts";

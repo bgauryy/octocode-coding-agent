@@ -1,13 +1,13 @@
-import { textResultDisplay } from "../shared/display.ts";
+import { textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../theme/status.ts";
-import { resultBlock, toolHeader } from "../shared/render.ts";
-import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
-import { clip, plural } from "../shared/render/text.ts";
-import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
+import { shareRowState, sharedRowState } from "../render/row-mark.ts";
+import { clip, plural } from "../shared/text.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
 import { answerLine } from "../shared/ask-answer.ts";
 import { ask } from "./ask.ts";
 import { askUserResult } from "./decode.ts";

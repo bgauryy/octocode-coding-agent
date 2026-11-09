@@ -1,6 +1,6 @@
 import { type TSchema, Type } from "typebox";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { toolHint } from "./util.ts";
+import { toolHint } from "../../utils/tool-hint.ts";
 
 /**
  * The `reason` argument every native tool call carries: why the call is made, in the model's words. It is the first

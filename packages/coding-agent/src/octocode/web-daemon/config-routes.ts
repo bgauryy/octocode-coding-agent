@@ -4,11 +4,13 @@ import {
 	ConfigCredentialCommandSchema,
 	ConfigProviderCommandSchema,
 	ConfigSettingCommandSchema,
+	HarnessSwitchCommandSchema,
 	SignInCommandSchema,
 	SignInStateSchema,
 	type ConfigCredentialCommand,
 	type ConfigProviderCommand,
 	type ConfigSettingCommand,
+	type HarnessSwitchCommand,
 	type SignInCommand,
 	type SignInState,
 } from "@octocodeai/octocode-contracts/config";
@@ -33,6 +35,10 @@ export interface ConfigRoutes {
 	writeProvider?: (command: ConfigProviderCommand) => Promise<void>;
 	/** Runs one validated sign-in command (start, status, answer, cancel); throws `ConfigWriteError` for a refusal. */
 	signIn?: (command: SignInCommand) => Promise<SignInState>;
+	/** Lists the Harness panel's switches for the workspace; the caller validates its shape. */
+	harness?: (repo: Repo) => Promise<unknown>;
+	/** Switches one Harness row and returns the fresh list; throws `ConfigWriteError` for a refusal. */
+	writeHarness?: (command: HarnessSwitchCommand, repo: Repo) => Promise<unknown>;
 	/**
 	 * Records a credential request refused before `writeCredential` ran (`invalid` body, `forbidden` capability). Receives
 	 * a fixed code only: never the body, a provider id from it or a token. It must not throw. Requests without a valid
@@ -131,6 +137,43 @@ async function handleSignIn(req: http.IncomingMessage, routes: ConfigRoutes, rep
 	}
 }
 
+/** `GET` and `POST /api/admin/config/harness`: rows carry ids with file paths, so both are launch-capability only. */
+async function handleHarness(
+	req: http.IncomingMessage,
+	url: URL,
+	access: TokenAccess,
+	routes: ConfigRoutes,
+	reply: Reply,
+): Promise<void> {
+	// The admin prefix already refused other tokens; this keeps it true if the prefix gate moves.
+	if (!canWrite(access))
+		return reply(403, { error: "This link cannot change settings. Use the page opened from the Octocode terminal." });
+	if (req.method === "GET") {
+		if (!routes.harness) return reply(501, { error: "This daemon cannot list harness switches." });
+		const repoParam = url.searchParams.get("repoId");
+		const repo = repoParam ? routes.catalog.resolve(repoParam) : undefined;
+		if (repoParam && !repo) return reply(404, { error: "Unknown repository" });
+		try {
+			return reply(200, await routes.harness(repo));
+		} catch (error) {
+			return reply(500, { error: redactSecrets(errorMessage(error)).slice(0, 500) });
+		}
+	}
+	if (req.method !== "POST") return reply(405, { error: "Method not allowed" });
+	if (!routes.writeHarness) return reply(501, { error: "This daemon cannot change harness switches." });
+	const body = await readJsonBody(req, reply);
+	if (body === undefined) return;
+	if (!Value.Check(HarnessSwitchCommandSchema, body)) return reply(400, { error: "Invalid switch change" });
+	const repo = body.repoId ? routes.catalog.resolve(body.repoId) : undefined;
+	if (body.repoId && !repo) return reply(404, { error: "Unknown repository" });
+	try {
+		reply(200, await routes.writeHarness(body, repo));
+	} catch (error) {
+		if (error instanceof ConfigWriteError) return reply(error.status, { error: error.message });
+		reply(500, { error: "The switch could not be saved." });
+	}
+}
+
 /**
  * `GET /api/config` (every capability) and `POST /api/admin/config/settings` (launch capability only: the admin prefix
  * is refused to other tokens before this runs, and the check here keeps it true if the prefix gate moves). The write
@@ -148,6 +191,10 @@ export async function handleConfigRequest(
 		const repo = repoParam ? routes.catalog.resolve(repoParam) : undefined;
 		if (repoParam && !repo) reply(404, { error: "Unknown repository" });
 		else await snapshot(routes, repo, access, reply);
+		return true;
+	}
+	if (url.pathname === DAEMON_ROUTES.configHarness) {
+		await handleHarness(req, url, access, routes, reply);
 		return true;
 	}
 	const isCredentialRoute =

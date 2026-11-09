@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "../../cli/args.ts";
 import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
 import { type PluginProfileOptions, translateAgentFields } from "../../core/plugin-agent-fields.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
@@ -13,15 +12,17 @@ import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "..
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
 import { globalPaths } from "../shared/home.ts";
+import { CORE_TOOLS, DEFAULT_CHILD_TOOLS, localResearchTools, MCP_ACCESS_TOOLS, SHELL_TOOLS } from "./core-tools.ts";
 import {
-	CORE_TOOLS,
-	DEFAULT_CHILD_TOOLS,
-	LEAN_FLOOR,
-	localResearchTools,
-	MCP_ACCESS_TOOLS,
-	mcpFloor,
-	SHELL_TOOLS,
-} from "./core-tools.ts";
+	isRelative,
+	leanTools,
+	matchesTool,
+	mcpRequired,
+	refuseCoreRemoval,
+	selectedTools,
+	toolList,
+	withCoreTools,
+} from "./profile-tools.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 
 export interface AgentProfile {
@@ -64,9 +65,6 @@ export interface AgentProfile {
 	/** Skills the child gets when the task names none (`skills:` front matter): inlined in its role prompt, or its task when lean (`task-skills.ts`). */
 	skills?: string[];
 }
-
-/** A lean profile's tools when its front matter names none. */
-const LEAN_DEFAULT_TOOLS = "bash,agent,file";
 
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";
@@ -194,35 +192,6 @@ export function parseProfile(
 	};
 }
 
-/** A profile's comma-separated tool list. */
-const toolList = (list: string | undefined): string[] =>
-	(list ?? "")
-		.split(",")
-		.map((name) => name.trim())
-		.filter(Boolean);
-
-/** Octocode owns selector validation. Its matcher is private; only `*` is special in a tool-name pattern. */
-function selectedTools(tools: string | undefined): string[] | undefined {
-	if (!tools) return undefined;
-	const parsed = parseArgs(["--tools", tools]);
-	const error = parsed.diagnostics.find((diagnostic) => diagnostic.type === "error");
-	if (error) throw new Error(error.message);
-	return parsed.tools;
-}
-
-const matchesTool = (patterns: readonly string[], name: string): boolean =>
-	patterns.some((pattern) =>
-		new RegExp(
-			`^${pattern
-				.split("*")
-				.map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-				.join(".*")}$`,
-		).test(name),
-	);
-
-const isRelative = (selected: readonly string[] | undefined): boolean =>
-	selected?.some((name) => /^[+-]/.test(name)) === true;
-
 /** `skills:` front matter: a comma-separated string or a YAML list of skill names. */
 function skillNames(value: unknown): string[] | undefined {
 	if (value === undefined || value === null) return undefined;
@@ -230,48 +199,6 @@ function skillNames(value: unknown): string[] | undefined {
 	if (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
 		return value.map((entry) => entry.trim()).filter(Boolean);
 	throw new Error("skills must be a comma-separated string or a list of skill names");
-}
-
-/** A lean profile's tool list: explicit names only, since a relative selector would inherit the full default set; `LEAN_FLOOR` is added. */
-function leanTools(profile: string, tools: string | undefined): string {
-	const list = tools ?? LEAN_DEFAULT_TOOLS;
-	if (isRelative(selectedTools(list)))
-		throw new Error(
-			`Profile "${profile}" is lean: give it an explicit tool list such as ${LEAN_DEFAULT_TOOLS}, without + or - entries.`,
-		);
-	const selected = selectedTools(list);
-	return [...toolList(list), ...LEAN_FLOOR.filter((name) => !matchesTool(selected ?? [], name))].join(",");
-}
-
-const mcpRequired = (name: string): string =>
-	`Profile "${name}" disables MCP, but every specialist needs Octocode local research. Remove mcp: false.`;
-
-/**
- * An absolute allowlist replaces the selection, so add missing shared capabilities. Relative lists are completed
- * by profileTools at launch, after the parent defaults have been resolved.
- */
-function withCoreTools(tools: string, selected: readonly string[] | undefined): string {
-	if (isRelative(selected)) return tools;
-	// An allowlist without MCP entries implicitly keeps all MCP servers. Preserve that reach when adding local tools.
-	const required = [...SHELL_TOOLS, ...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...mcpFloor(selected)];
-	return [...toolList(tools), ...required.filter((name) => !matchesTool(selected ?? [], name))].join(",");
-}
-
-/** Reject selectors that remove the shared specialist capabilities. */
-function refuseCoreRemoval(
-	profile: string,
-	selected: readonly string[] | undefined,
-	excludeTools: string | undefined,
-): void {
-	const excluded = toolList(excludeTools);
-	const removed = (selected ?? []).filter((entry) => entry.startsWith("-")).map((entry) => entry.slice(1));
-	const named = [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...localResearchTools()].filter(
-		(name) => matchesTool(excluded, name) || removed.includes(name),
-	);
-	if (named.length === 0) return;
-	throw new Error(
-		`Profile "${profile}" removes ${named.join(", ")} with excludeTools or a "-" entry in tools, but every specialist keeps file, communication, history and Octocode local research. Remove ${named.length > 1 ? "them" : "it"} from the profile's excludeTools (a pattern such as "*" counts) or tools.`,
-	);
 }
 
 /** Resolve the same child selection for launch and permission reach, including programmatic profiles. */

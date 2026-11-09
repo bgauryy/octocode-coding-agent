@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type Retention, resolveRetention } from "../../config/retention.ts";
+import { type Retention, resolveRetention } from "../../storage/retention.ts";
 import type { SessionExtra } from "../../../../db/src/api.ts";
 import { mayRemoveArchive } from "../archive/retention.ts";
 import { liveJobFiles } from "../files/bash-jobs/records.ts";

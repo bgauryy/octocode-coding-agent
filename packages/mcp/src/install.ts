@@ -15,7 +15,7 @@ import type { McpServerEntry } from "./config.ts";
 import { binOf, hostDependencyBin } from "./host-dependency.ts";
 import { readManifest } from "../../common/src/package.ts";
 import { hostIdentity, hostPaths } from "./host.ts";
-import type { McpInstallConfig } from "./servers.ts";
+import type { McpInstallConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { warnOnce } from "./warnings.ts";
 
 /** Runs npm with `args` in `cwd`; rejects with a message naming the cause when npm is missing or fails. */

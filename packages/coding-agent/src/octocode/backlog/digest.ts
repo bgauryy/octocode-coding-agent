@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
-import { clip } from "../shared/render/text.ts";
+import { clip } from "../shared/text.ts";
 import { type BacklogOptions, openBacklog } from "./context.ts";
 import { priorityName } from "./item.ts";
 import type { BacklogStore } from "./store.ts";

@@ -3,7 +3,7 @@ import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TU
 import { openBrowser } from "../../../../../common/src/open-browser.ts";
 import { theme } from "../../../theme/theme.ts";
 import { AuthUrlComponent } from "./auth-url.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { hintLine, keyText } from "./keybinding-hints.ts";
 
 /**

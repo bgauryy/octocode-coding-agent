@@ -1,7 +1,7 @@
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { type Static, Type } from "typebox";
 import { Check } from "typebox/value";
-import { MAX_HANDOFF_REFERENCES } from "../shared/references.ts";
+import { MAX_HANDOFF_REFERENCES } from "../child-sessions/references.ts";
 
 /** The range of a prompt's `timeoutMs`: checked when the call is parsed and again by the backend that runs it. */
 export const PROMPT_TIMEOUT_MS = { min: 1000, max: 600_000 } as const;

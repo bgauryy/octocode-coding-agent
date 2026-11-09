@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
-import { repoKey } from "../../shared/home/repo.ts";
+import { repoKey } from "../../../utils/git-repository.ts";
 import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookIdentity } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";

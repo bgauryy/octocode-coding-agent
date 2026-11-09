@@ -7,7 +7,6 @@ import {
 	isHighlightable,
 	renderHighlightedHtml,
 	resolveLanguage,
-	supportsLanguage,
 } from "../src/utils/syntax-highlight.ts";
 
 const eagerLanguages = [
@@ -41,6 +40,7 @@ const eagerLanguages = [
 	"dockerfile",
 	"makefile",
 ];
+const supportsLanguage = (name: string) => resolveLanguage(name) !== undefined;
 const eagerLanguagesLoadedAtStartup = eagerLanguages.every(supportsLanguage);
 const uncommonLanguageLoadedAtStartup = supportsLanguage("ada");
 

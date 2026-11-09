@@ -1,7 +1,6 @@
 import { type Static, Type } from "typebox";
 import type { McpContext, McpToolDefinition } from "./host/types.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import { MCP_MANAGE_TOOL_NAME } from "./servers.ts";
+import { MCP_MANAGE_TOOL_NAME, mcpNamespace } from "../../common/src/mcp-names.ts";
 import { mcpGroupLabel, type McpServerGroup } from "./group.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 

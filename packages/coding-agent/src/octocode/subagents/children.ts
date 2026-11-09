@@ -2,7 +2,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { tildePath } from "../shared/home.ts";
-import { type ChildFiles, type SessionChild, sessionChildren } from "../shared/session-children.ts";
+import { type ChildFiles, type SessionChild, sessionChildren } from "../child-sessions/session-children.ts";
 import { type ChildSession, childSessionFile } from "./process/session.ts";
 import { REF_PREFIX } from "./worktree-base.ts";
 import { GENERAL_PROFILE } from "./profiles.ts";

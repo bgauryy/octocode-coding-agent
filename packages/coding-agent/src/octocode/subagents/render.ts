@@ -7,23 +7,17 @@ import type {
 	ToolRenderResultOptions,
 } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
+import { archiveSearch, LIBRARY_FILE } from "../history/archive.ts";
 import { fencedParts } from "../shared/fence.ts";
 import { presentAgentReport } from "./presentation.ts";
-import {
-	formatCost,
-	formatDuration,
-	formatTokens,
-	formatTokenUsage,
-	shortPath,
-	toolCallCount,
-} from "../shared/format.ts";
-import { resultBlock, toolHeader } from "../shared/render.ts";
+import { formatCost, formatDuration, formatTokens, formatTokenUsage, toolCallCount } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { modelLabel, withoutProvider } from "./model.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { noticeText } from "./notices.ts";
-import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../shared/row-mark.ts";
+import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../render/row-mark.ts";
 import { shareWorktree, sharedWorktree } from "./render-worktree.ts";
 import { agentState, headerOverride } from "./render-state.ts";
 
@@ -34,12 +28,12 @@ import { agentState, headerOverride } from "./render-state.ts";
  */
 
 import type { RunDetails, ResultDetails } from "./run-types.ts";
-import { bodyLines, clip, plural } from "../shared/render/text.ts";
-import { itemTitle, withItemTitles, withItemTitlesIn } from "../shared/render/item-titles.ts";
-import type { RenderContext } from "../shared/render/types.ts";
-import { ReportView } from "../shared/render/report.ts";
+import { bodyLines, clip, plural } from "../shared/text.ts";
+import { itemTitle, withItemTitles, withItemTitlesIn } from "../render/item-titles.ts";
+import type { RenderContext } from "../render/types.ts";
+import { ReportView } from "../render/report.ts";
 import { displayReport } from "./report-display.ts";
-import { timingOf } from "../shared/render/rows.ts";
+import { timingOf } from "../render/rows.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 

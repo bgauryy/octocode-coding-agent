@@ -1,4 +1,4 @@
-import { runtimeTempDir } from "../../config/runtime-paths.ts";
+import { runtimeTempDir } from "../../storage/runtime-paths.ts";
 import { createHash, type Hash } from "node:crypto";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 

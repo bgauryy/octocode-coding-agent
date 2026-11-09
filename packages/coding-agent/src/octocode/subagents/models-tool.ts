@@ -5,9 +5,20 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { formatTokens } from "../shared/format.ts";
 import { textResult } from "../shared/util.ts";
 import type { ModelRef } from "./model.ts";
-import { CREDENTIAL_MARKS, describeModels, MODEL_ABILITIES, modelAbilities, modelCatalog } from "./models-command.ts";
+import { THINKING_LEVELS } from "./thinking.ts";
+import { canRunTask } from "./model.ts";
+import {
+	CREDENTIAL_MARKS,
+	describeModels,
+	describeRoutes,
+	describeUnrunnable,
+	MODEL_ABILITIES,
+	modelAbilities,
+	modelCatalog,
+} from "./models-command.ts";
+import { providerRows, providerSummary } from "./models-summary.ts";
 import type { AgentProfile } from "./profiles.ts";
-import { checkCandidates, checkProviders, describeHealth, providerHealth } from "./provider-health.ts";
+import { checkCandidates, checkProviders, providerHealth } from "./provider-health.ts";
 
 type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRegistry">;
 
@@ -23,9 +34,9 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 		label: "Models",
 		promptSnippet: renderInstruction("tools/models/snippet.md"),
 		description:
-			"This session's model and thinking level; configured providers and credential status; models with price, context and abilities; small/medium and profile routes. Filters combine.",
+			"This session's model and thinking level; providers and credential status; models with price, context and abilities; small/medium and profile routes. No filter: one row per provider; `provider` lists its models. Filters combine.",
 		parameters: Type.Object({
-			provider: Type.Optional(Type.String({ description: "Keep this provider's models" })),
+			provider: Type.Optional(Type.String({ description: "List this provider's models" })),
 			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
 			query: Type.Optional(Type.String({ description: "Keep models whose provider/id contains this text" })),
 			check: Type.Optional(
@@ -63,20 +74,59 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 				);
 			if (params.check)
 				await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
+			const footer = `Pass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
+			const credentials = `${source}\n${CREDENTIAL_MARKS}`;
+			// An unfiltered call, or a query or ability that keeps too many rows, gets one row per provider; a provider
+			// (or a short filter) gets the models themselves.
+			if (!provider && (!filtered || shown.length > LISTING_ROWS)) {
+				const kept = filtered ? shown : undefined;
+				return textResult(
+					[
+						sessionHeader(ctx),
+						providerSummary(ctx.modelRegistry, all, catalog, kept),
+						...(kept
+							? [`${kept.length} models match; too many to list. Set \`provider\` to list one provider's models.`]
+							: []),
+						describeRoutes(all, ctx.model, getProfiles(), catalog),
+						...(kept ? [] : ["Set `provider` to list one provider's models."]),
+						credentials,
+						...catalogRows(unconnected),
+						footer,
+					].join("\n\n"),
+				);
+			}
 			// Credential status is on the provider rows; the model headings carry none so it is said once.
-			const listing = describeModels(all, ctx.model, getProfiles(), catalog, undefined, matches);
+			const listing = describeModels(
+				all,
+				ctx.model,
+				getProfiles(),
+				catalog,
+				undefined,
+				(model) => matches(model) && canRunTask(model, catalog),
+			);
+			const unrunnable = describeUnrunnable(shown, ctx.model, catalog);
 			return textResult(
 				[
 					sessionHeader(ctx),
 					providerRows(ctx.modelRegistry, all),
 					listing,
-					`${source}\n${CREDENTIAL_MARKS}`,
+					...(unrunnable ? [unrunnable] : []),
+					credentials,
 					...catalogRows(unconnected),
-					'Pass one as `model` ("provider/id") when you start a task; append :low, :medium or :high to set its thinking.',
+					footer,
 				].join("\n\n"),
 			);
 		},
 	});
+}
+
+/** A filtered call lists models up to this many rows; beyond it the per-provider summary comes first. */
+const LISTING_ROWS = 40;
+
+/** `:low, :medium … or :max`: the levels `agent` accepts, in its order. */
+function thinkingLevels(): string {
+	const levels = [...THINKING_LEVELS].map((level) => `:${level}`);
+	return `${levels.slice(0, -1).join(", ")} or ${levels.at(-1)}`;
 }
 
 /** This session's model, thinking level and working context: the call is the agent's only view of them. */
@@ -89,26 +139,6 @@ function sessionHeader(ctx: ModelsContext): string {
 			? `context budget ${formatTokens(model.contextWindow)} of ${formatTokens(capacity)} capacity`
 			: `context ${formatTokens(model.contextWindow)}`;
 	return `This session: ${model.provider}/${model.id} · thinking ${ctx.thinkingLevel ?? "off"} · ${budget}.`;
-}
-
-/**
- * Each configured provider (one with a usable model): where its credential comes from and what this process last
- * learned about it. A provider authenticated only by this session's --api-key is listed, but a task cannot run on it.
- */
-function providerRows(registry: ModelsContext["modelRegistry"], available: readonly ModelRef[]): string {
-	const providers = [...new Set(available.map((model) => model.provider))].sort();
-	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
-	return [
-		"Providers (credential source; last result):",
-		...providers.map((provider) => {
-			const auth = registry.getProviderAuthStatus?.(provider);
-			const from =
-				auth?.source === "runtime"
-					? "--api-key, this session only (tasks cannot use it)"
-					: (auth?.label ?? auth?.source);
-			return `  ${provider}${from ? ` · ${from}` : ""}${describeHealth(providerHealth.get(provider))}`;
-		}),
-	].join("\n");
 }
 
 /** Catalog models of providers that are not connected: what the user could connect, not what a task can run on. */

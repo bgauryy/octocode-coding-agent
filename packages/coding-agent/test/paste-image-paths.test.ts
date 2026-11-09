@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultEditorTheme } from "../../tui/test/test-themes.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { CustomEditor } from "../src/theme/custom-editor.ts";
 import { rewritePastedImagePaths } from "../src/modes/interactive/interactive-mode/paste-image-paths.ts";
 
 const PASTE = (text: string) => `\x1b[200~${text}\x1b[201~`;

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, openDatabase, timers } from "../../../db/src/api.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import { conditionChecker, conditionWatcher } from "../../src/octocode/timer/condition.ts";

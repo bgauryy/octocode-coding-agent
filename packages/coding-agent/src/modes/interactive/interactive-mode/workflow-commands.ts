@@ -5,7 +5,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleContextSize } from "./context-controls.ts";
 import { appendReport } from "./report-block.ts";
-import { fence } from "../../../octocode/shared/archive/text.ts";
+import { fence } from "../../../octocode/history/archive/text.ts";
 
 type Host = Pick<
 	InteractiveModeHost,

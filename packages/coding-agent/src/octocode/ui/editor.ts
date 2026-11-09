@@ -7,7 +7,7 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
+import { CustomEditor } from "../../theme/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;

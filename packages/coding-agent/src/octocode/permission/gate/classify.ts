@@ -1,12 +1,12 @@
 import type { ExtensionContext, ToolAnnotations, ToolCallEvent } from "../../../core/features/index.ts";
 import { mcpCallChange } from "../mcp-reads.ts";
-import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../../common/src/mcp-names.ts";
 import { callReason, derivedReason, hasDerivedReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
 import { takesCallReason } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
-import { canonicalPath } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { catastrophicCommand } from "../shell/destructive.ts";
 
 /** Whether `command` is a shell command a destructive pattern matches, relative targets resolved against `cwd`: a `shell.destructive` call, ask each time. */

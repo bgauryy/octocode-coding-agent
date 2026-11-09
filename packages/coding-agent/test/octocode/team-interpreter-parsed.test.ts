@@ -4,11 +4,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parsedShell } from "../../src/octocode/permission/shell/commands.ts";
 import { splitString, wrappedCommand } from "../../src/octocode/permission/shell/words.ts";
-import { inlineInterpreter, unconfinedInterpreter } from "../../src/octocode/team/interpreter.ts";
+import { inlineInterpreter, interpreterRefusal } from "../../src/octocode/team/interpreter.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+
+const unconfinedInterpreter = (...args: Parameters<typeof interpreterRefusal>) => interpreterRefusal(...args)?.name;
 
 const CONFINED = "node --permission --no-experimental-sqlite --allow-fs-read=*";
 

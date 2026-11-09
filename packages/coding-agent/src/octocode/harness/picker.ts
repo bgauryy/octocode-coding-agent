@@ -8,7 +8,7 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { EMPTY_INVENTORY, HOST_TITLES, type InventoryItem } from "../../core/extensibility/inventory.ts";
+import { EMPTY_INVENTORY, HOST_TITLES, type InventoryItem } from "./inventory.ts";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

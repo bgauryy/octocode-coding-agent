@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
-import { setItemTitles, withItemTitlesIn } from "../../src/octocode/shared/render/item-titles.ts";
+import { setItemTitles, withItemTitlesIn } from "../../src/octocode/render/item-titles.ts";
 import { renderAgentMessage, renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
 import { rendered, theme } from "./fake-host.ts";

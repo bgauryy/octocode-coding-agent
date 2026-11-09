@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { formatDuration, shortPath } from "../../shared/format.ts";
-import { plural } from "../../shared/render/text.ts";
+import { formatDuration } from "../../shared/format.ts";
+import { shortPath } from "../../../utils/display-path.ts";
+import { plural } from "../../shared/text.ts";
 import type { BashJob, VerificationReceipt } from "../bash-jobs/types.ts";
 import type { OrphanJob } from "../bash-jobs/records.ts";
 import { moveFile } from "../../shared/sweep.ts";

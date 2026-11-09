@@ -4,7 +4,7 @@ import { WorkingStatusIndicator } from "../../src/modes/interactive/components/s
 import { initTheme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";
 import { titledDialog, withDialog } from "../../src/octocode/shared/locks.ts";
-import { Thought, thoughtGist } from "../../src/octocode/shared/thought.ts";
+import { Thought, thoughtGist } from "../../src/octocode/render/thought.ts";
 import { Activity, callTarget, shortToolName } from "../../src/octocode/ui/activity-model.ts";
 import { registerActivity } from "../../src/octocode/ui/activity.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

@@ -1,6 +1,6 @@
 import { type Db, sessions } from "../../../../db/src/api.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { sameProcess } from "./process.ts";
 
 /**

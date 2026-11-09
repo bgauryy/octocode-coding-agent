@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type SessionInfo, SessionManager } from "../../src/core/session-manager.ts";
 import type { SessionPickerOptions } from "../../src/core/session-picker.ts";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { resumeBrief, shortDuration } from "../../src/octocode/sessions/brief.ts";
 import { RESUME_MESSAGE_TYPE, RUNNING_WORK_TYPE, registerSessions } from "../../src/octocode/sessions/register.ts";
@@ -19,7 +19,7 @@ import { sessionDir, sessionsRoot, setCurrentSession } from "../../src/octocode/
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

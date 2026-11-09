@@ -2,7 +2,7 @@ import type { ExtensionUIDialogOptions } from "../../src/core/features/types.ts"
 import type { OptionRole, Question, Reply } from "@octocodeai/octocode-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ask } from "../../src/octocode/ask/ask.ts";
-import { confirmed, askUserResult, inputText, permissionAnswer, selectedLabel } from "../../src/octocode/ask/decode.ts";
+import { confirmed, askUserResult, inputText, permissionAnswer } from "../../src/octocode/ask/decode.ts";
 import { degrade } from "../../src/octocode/ask/degrade.ts";
 import type { AskQuestion } from "../../src/octocode/ask/dialog/answers.ts";
 import { questionView } from "../../src/octocode/ask/dialog/view.ts";
@@ -261,10 +261,6 @@ describe("decode", () => {
 
 	it("decodes select labels, confirm booleans and input text", () => {
 		const pick = choice("s", "Which?", ["A", "B"]);
-		expect(selectedLabel(pick, picks("s", "2"))).toBe("B");
-		expect(selectedLabel(pick, said("s", " mine "))).toBe("mine");
-		expect(selectedLabel(pick, picks("s", "7"))).toBeUndefined();
-		expect(selectedLabel(pick, { id: "s", cancelled: "aborted" })).toBeUndefined();
 		const yes = confirm("c", "Sure?", "detail");
 		expect(confirmed(yes, picks("c", "yes"))).toBe(true);
 		expect(confirmed(yes, picks("c", "no"))).toBe(false);

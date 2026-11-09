@@ -14,7 +14,7 @@ import type { ModelRuntime } from "../../../core/model-runtime.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { HintBar } from "./hint-bar.ts";
 import { keyHint, keyText } from "./keybinding-hints.ts";
 import {

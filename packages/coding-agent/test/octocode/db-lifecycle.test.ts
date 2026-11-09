@@ -12,7 +12,7 @@ import {
 	transcripts,
 	workspaces,
 } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
 import { tmp } from "./helpers.ts";
 

@@ -1,12 +1,14 @@
 import { AGENT_SCRATCH_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV, envFlag } from "../../../../common/src/env.ts";
-import { mutatedPaths } from "../shared/file-input.ts";
+import { mutatedPaths } from "../tool-input/file-input.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { shellPath } from "./file-access.ts";
 import { bashSyntax } from "./bash-syntax.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { shellMutation } from "./shell/mutation.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { workspaceRoot } from "../../utils/git-repository.ts";
 
 /**
  * The containment half of `isolate: true`: the child works in a private worktree and its changes land on a saved ref,

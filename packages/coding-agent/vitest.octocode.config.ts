@@ -18,7 +18,11 @@ export default mergeConfig(
 				provider: "v8",
 				// The host tests exercise the database workspace compiled into this package.
 				allowExternal: true,
-				include: ["src/octocode/**/*.ts", "src/config/{database,workspace,workspace-database}.ts", "../db/src/**/*.ts"],
+				include: [
+					"src/octocode/**/*.ts",
+					"src/storage/{database,workspace,workspace-database}.ts",
+					"../db/src/**/*.ts",
+				],
 				// A floor against regressions, not a target: critical paths are proven by the e2e and feature tests.
 				thresholds: { statements: 89, branches: 84, functions: 90, lines: 91 },
 			},

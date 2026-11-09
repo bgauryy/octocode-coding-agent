@@ -17,7 +17,7 @@ import {
 	SUBAGENT_HOOKS_ENV,
 	TEAM_WORKSPACE_ENV,
 } from "../../../../../common/src/env.ts";
-import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
+import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../worktree-paths/prompt-root.ts";
 import { processAlive } from "../../shared/process.ts";
 import {
 	AGENT_GOAL_ENV,

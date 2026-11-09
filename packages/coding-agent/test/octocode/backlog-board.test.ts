@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { itemCounts } from "./counts-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { boardText, countsText, openTaskCount } from "../../src/octocode/backlog/format.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";

@@ -87,13 +87,6 @@ export async function getLatestOctocodeRelease(
 	};
 }
 
-export async function getLatestOctocodeVersion(
-	currentVersion: string,
-	options: { timeoutMs?: number; retry?: boolean } = {},
-): Promise<string | undefined> {
-	return (await getLatestOctocodeRelease(currentVersion, options))?.version;
-}
-
 export async function checkForNewOctocodeVersion(currentVersion: string): Promise<LatestOctocodeRelease | undefined> {
 	if (process.env.OCTOCODE_SKIP_VERSION_CHECK) return undefined;
 

@@ -6,7 +6,7 @@ import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { projectEditHunk } from "../../src/octocode/files/tool/patch-projection.ts";
 import { projectCodexPatch } from "../../src/octocode/hooks/patch.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { parsePatch, transformPatch } from "../../src/octocode/shared/codex-patch/patch.ts";
+import { parsePatch, transformPatch } from "../../src/octocode/tool-input/codex-patch/patch.ts";
 import { sha256 } from "../../../common/src/atomic-file.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";

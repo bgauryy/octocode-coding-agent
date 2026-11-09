@@ -9,7 +9,7 @@ import {
 	sessionLinks,
 	sessions,
 } from "../../../../db/src/api.ts";
-import { EXCLUDE_WORKSPACE_STATE, git } from "../shared/git.ts";
+import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 

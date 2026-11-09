@@ -1,4 +1,4 @@
-import { gitQuiet } from "../shared/git.ts";
+import { gitQuiet } from "../../utils/git-run.ts";
 import { locateRepo } from "./repo.ts";
 
 /**

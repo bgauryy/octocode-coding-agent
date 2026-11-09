@@ -1,5 +1,5 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sharedAgentDb } from "../../../config/database.ts";
+import { sharedAgentDb } from "../../../storage/database.ts";
 import { deleteSessionsById } from "../../../octocode/sessions/delete.ts";
 import {
 	blockerText,

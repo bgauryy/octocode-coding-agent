@@ -17,7 +17,7 @@ import {
 	serveServiceWorker,
 	settingsWebPrefs,
 	type WebPrefsStore,
-} from "../shared/web-page-routes.ts";
+} from "../browser/page-routes.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { daemonPage, type DaemonPage } from "./build.ts";
 import { type ConfigRoutes, handleConfigRequest } from "./config-routes.ts";
@@ -51,6 +51,10 @@ export interface DaemonServerOptions {
 	writeProvider?: ConfigRoutes["writeProvider"];
 	/** Runs a validated `POST /api/admin/config/signin` command; the reply is a `SignInState`. */
 	signIn?: ConfigRoutes["signIn"];
+	/** Lists the Harness panel's switches (`GET /api/admin/config/harness`). */
+	harness?: ConfigRoutes["harness"];
+	/** Applies a validated `POST /api/admin/config/harness` switch. */
+	writeHarness?: ConfigRoutes["writeHarness"];
 	/** Records a credential request refused before it reached `writeCredential`; see `ConfigRoutes.auditRefused`. */
 	auditRefused?: ConfigRoutes["auditRefused"];
 	/** Asked by `POST /api/admin/drain`. */

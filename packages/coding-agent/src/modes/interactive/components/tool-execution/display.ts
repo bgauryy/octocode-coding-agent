@@ -9,13 +9,13 @@ import type { Component } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { buildToolDisplay } from "../../../../core/application/transcript-display.ts";
 import type { ToolDefinition, ToolRenderers } from "../../../../core/features/types.ts";
-import { resultBlock, toolHeader } from "../../../../octocode/shared/render.ts";
-import { clip } from "../../../../octocode/shared/render/text.ts";
-import type { RenderContext } from "../../../../octocode/shared/render/types.ts";
+import { resultBlock, toolHeader } from "../../../../octocode/render/tool.ts";
+import { clip } from "../../../../octocode/shared/text.ts";
+import type { RenderContext } from "../../../../octocode/render/types.ts";
 import { stateMark } from "../../../../theme/status.ts";
 import type { Theme } from "../../../../theme/theme.ts";
 import type { ThemeColor } from "../../../../theme/theme-tokens.ts";
-import { renderDiff } from "../diff.ts";
+import { renderDiff } from "../../../../theme/diff.ts";
 
 const TONE: Record<Tone, ThemeColor> = {
 	normal: "toolOutput",

@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openBacklog } from "../backlog/context.ts";
-import { readWorkspaceIdentity } from "../../config/workspace.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { readWorkspaceIdentity } from "../../storage/workspace.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { tasks } from "../../../../db/src/api.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { cutText } from "../../../../common/src/text.ts";

@@ -1,6 +1,6 @@
 import { entryUsage } from "../../core/usage-totals.ts";
 import type { Settings } from "../../core/settings-schema.ts";
-import { sessionChildren } from "../shared/session-children.ts";
+import { sessionChildren } from "../child-sessions/session-children.ts";
 import type { RunDetails } from "./run-types.ts";
 
 /** What the limits read of the running subagents (`AgentRuns`). */

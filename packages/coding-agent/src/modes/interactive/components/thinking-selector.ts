@@ -12,7 +12,7 @@ import {
 	Text,
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { HintBar } from "./hint-bar.ts";
 import { keyText } from "./keybinding-hints.ts";
 

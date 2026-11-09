@@ -1,8 +1,8 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { git, GitError, gitQuiet, NO_HOOKS, rejectTrackedWorkspaceState } from "../shared/git.ts";
-import { plural } from "../shared/render/text.ts";
+import { git, GitError, gitQuiet, NO_HOOKS, rejectTrackedWorkspaceState } from "../../utils/git-run.ts";
+import { plural } from "../shared/text.ts";
 import { dirtyCounts } from "./status.ts";
 import { canonical, locateRepo } from "./repo.ts";
 import { mainCheckout } from "./target.ts";

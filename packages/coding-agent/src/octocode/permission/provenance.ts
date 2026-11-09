@@ -1,11 +1,13 @@
 import type { ToolCallEvent, ToolResultEvent } from "../../core/features/index.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { isWorkspaceReader, readerLocations } from "../shared/local-reads.ts";
 import { secretProblem } from "../../../../common/src/sanitize.ts";
 import { contentText } from "../shared/util.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { workspaceRoot } from "../../utils/git-repository.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { archiveRead } from "../shared/archive-operation.ts";
 import { KeyTable } from "./key-table.ts";

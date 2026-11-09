@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import { formatCount } from "../../../core/tools/bash/header.ts";
 import { formatBytes } from "../../../utils/bytes.ts";
-import { formatDuration, shortPath } from "../../shared/format.ts";
+import { formatDuration } from "../../shared/format.ts";
+import { shortPath } from "../../../utils/display-path.ts";
 import { visibleControls, withoutColors } from "../../../../../common/src/sanitize.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { BashJob, JobExit } from "./types.ts";

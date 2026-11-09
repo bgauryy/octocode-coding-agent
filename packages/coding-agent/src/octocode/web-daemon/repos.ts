@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import type { DaemonRepo } from "@octocodeai/octocode-contracts/daemon";
 import { workspaces } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
-import { isCurrentWorkspace } from "../../config/workspace.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { isCurrentWorkspace } from "../../storage/workspace.ts";
 import { BacklogStore } from "../backlog/store.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import type { SessionRegistry } from "./sessions.ts";

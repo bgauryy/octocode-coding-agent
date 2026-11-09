@@ -5,7 +5,7 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances, matchInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
-import type { ReferenceContext } from "../shared/references.ts";
+import type { ReferenceContext } from "../child-sessions/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../../acp/src/client/client.ts";
 import { connectAcp } from "./acp-host.ts";

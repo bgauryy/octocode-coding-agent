@@ -7,7 +7,7 @@ import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
-import { type Fetched, language, type PageFetcher, pageFetcher, unreadReason } from "../../src/octocode/web/fetch.ts";
+import { type Fetched, language, type PageFetcher, pageFetcher } from "../../src/octocode/web/fetch.ts";
 import type * as importedModule1 from "../../../common/src/web-guard.ts";
 import type { PublicFetchInit } from "../../../common/src/web-guard.ts";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
@@ -16,6 +16,9 @@ import { registerWebTool, webSummary } from "../../src/octocode/web/web.ts";
 import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
 import { asText, noisyPng, pixelSize, tmp } from "./helpers.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "./fake-research-roles.ts";
+
+/** Why a fetch result is a notice rather than page text, or undefined for a page. */
+const unreadReason = (value: Fetched) => (typeof value !== "string" && "kind" in value ? value.reason : undefined);
 
 type ToolResult = {
 	content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;

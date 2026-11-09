@@ -6,7 +6,7 @@ import { withDialog } from "../shared/locks.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
-import { referenceContext } from "../shared/references.ts";
+import { referenceContext } from "../child-sessions/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { describeExternal, describeExternalFailure, externalRows } from "./describe.ts";
 import { ExternalAgents, type ExternalFactories, type ExternalPolicy } from "./manager.ts";

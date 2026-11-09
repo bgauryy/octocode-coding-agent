@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AttachRecord, DaemonSession, DaemonUnavailableSession } from "@octocodeai/octocode-contracts/daemon";
 import { runningPid } from "../shared/session-liveness.ts";
 import { sessions } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { AttachClient } from "./attach-client.ts";
 import { webDaemonPaths } from "./paths.ts";
 import { readAttachRecord, recordProcessAlive, removeRecord } from "./records.ts";

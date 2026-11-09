@@ -1,4 +1,4 @@
-import { displayText, textResultDisplay } from "../shared/display.ts";
+import { displayText, textResultDisplay } from "../render/display.ts";
 import {
 	EntityFields,
 	type EntityInput,
@@ -10,7 +10,7 @@ import { LIST_STATES, type State } from "@octocodeai/octocode-contracts/snapshot
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { resultBlock, toolHeader } from "../shared/render.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
 import { storedText, visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
@@ -36,10 +36,10 @@ import { entities, keyed, replayText } from "./tool-support.ts";
 import { withReason } from "../shared/reason.ts";
 import { PRIORITIES } from "./store.ts";
 import { type BacklogToolDetails, backlogPrompt, backlogSummary } from "./tool-text.ts";
-import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
+import { itemTitle, withItemTitles } from "../render/item-titles.ts";
 import { styleBacklogLines } from "./tool-style.ts";
-import { clip } from "../shared/render/text.ts";
-import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { clip } from "../shared/text.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
 import {
 	DEFAULT_LIST_LIMIT,
 	legacyListFields,

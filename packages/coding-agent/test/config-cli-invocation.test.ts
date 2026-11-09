@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { getCliInvocation } from "../src/config.ts";
-import { getPackageDir } from "../src/config/package-detection.ts";
+import { getPackageDir } from "../src/install/package-detection.ts";
 
 const packageDir = getPackageDir();
 const bundleCli = join(packageDir, "dist", "bundle", "cli.js");

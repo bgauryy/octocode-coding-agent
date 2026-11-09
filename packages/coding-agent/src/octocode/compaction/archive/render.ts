@@ -1,5 +1,5 @@
 import type { SessionEntry } from "../../../core/session-manager.ts";
-import { fence, inlineCode, MESSAGE_LINES, oneLine, templateLine } from "../../shared/archive/text.ts";
+import { fence, inlineCode, MESSAGE_LINES, oneLine, templateLine } from "../../history/archive/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contentText, stringOrEmpty } from "../../shared/util.ts";
 

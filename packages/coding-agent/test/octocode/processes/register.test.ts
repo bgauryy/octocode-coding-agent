@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { processSamples, type AgentDb } from "../../../../db/src/api.ts";
-import { openAgentDb } from "../../../src/config/database.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
 import { registerProcesses } from "../../../src/octocode/processes/register.ts";
 import type { ProcessRow } from "../../../src/octocode/processes/table.ts";
 import { Subcommands } from "../../../src/octocode/shared/commands.ts";

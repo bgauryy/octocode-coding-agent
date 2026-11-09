@@ -1,5 +1,5 @@
 import type { ProfileRequest } from "@octocodeai/octocode-contracts/profiler";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { currentSessionId } from "../shared/home.ts";
 import { createProfiler } from "../profiler/index.ts";
 import { agentsTable, insightsTable, requestsTable } from "../profiler/format.ts";

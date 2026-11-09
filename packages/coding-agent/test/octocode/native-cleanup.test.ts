@@ -8,7 +8,7 @@ import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { CHIPS, chipText, shortChip } from "../../src/octocode/permission/mode.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
-import { appKey, expandKey } from "../../src/octocode/shared/render/text.ts";
+import { appKey, expandKey } from "../../src/octocode/shared/text.ts";
 import { hintText } from "../../src/octocode/ui/editor.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { hookPayload, matchesHook, supportsHookEvent } from "../../src/octocode/hooks/profiles.ts";
+import { profileSupport } from "../../src/octocode/hooks/catalog.ts";
+import { hookPayload, matchesHook } from "../../src/octocode/hooks/profiles.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 const run = (output: unknown, code = 0) => ({
 	code,
@@ -9,9 +10,9 @@ const run = (output: unknown, code = 0) => ({
 });
 it("supports source subagent lifecycle events without changing native events", () => {
 	for (const event of ["SubagentStart", "SubagentStop"]) {
-		expect(supportsHookEvent("codex", event)).toBe(true);
-		expect(supportsHookEvent("claude", event)).toBe(true);
-		expect(supportsHookEvent("octocode", event)).toBe(false);
+		expect(profileSupport("codex", event)).toBeDefined();
+		expect(profileSupport("claude", event)).toBeDefined();
+		expect(profileSupport("octocode", event)).toBeUndefined();
 		expect(matchesHook("codex", event, "^research$", ["general"])).toBe(false);
 	}
 });

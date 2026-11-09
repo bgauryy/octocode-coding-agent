@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { delegatePrompt, doItPrompt } from "../../src/octocode/backlog/actions.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { attachReport, heldItem } from "../../src/octocode/backlog/delegation.ts";

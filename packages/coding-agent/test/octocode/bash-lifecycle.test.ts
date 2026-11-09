@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { setCurrentSession } from "../../src/config/runtime-paths.ts";
+import { setCurrentSession } from "../../src/storage/runtime-paths.ts";
 import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { createLocalBashOperations } from "../../src/core/tools/bash/local-operations.ts";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";

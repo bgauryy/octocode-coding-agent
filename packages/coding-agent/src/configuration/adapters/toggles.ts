@@ -1,5 +1,5 @@
 import { CLAUDE_MEMORY_TOGGLE_ID } from "../../core/discovery/vendors/index.ts";
-import { buildInventory } from "../../core/extensibility/inventory.ts";
+import { buildInventory } from "../../octocode/harness/inventory.ts";
 import type { Inventory, InventoryItem } from "../../core/extensibility/inventory-types.ts";
 import { switchItem, vendorSwitchTarget } from "../../core/extensibility/switch.ts";
 import { applied, closestIds, kindOf, refused } from "../result.ts";

@@ -1,5 +1,5 @@
 import { currentToolRoles } from "../../../../mcp/src/roles.ts";
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 
 /** Every child can save files, communicate, wait with timers and recover history; local research is added separately. `steps` comes only from a profile that lists it. */
 export const CORE_TOOLS = ["file", "agent", "timer", "archive"] as const;

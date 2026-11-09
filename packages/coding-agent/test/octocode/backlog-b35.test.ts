@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import { itemLine } from "../../src/octocode/backlog/format.ts";
 

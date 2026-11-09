@@ -2,7 +2,7 @@ import { childCacheLabel } from "./cache-monitor.ts";
 import { REPORT_STATUSES } from "../instructions/report.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import { entryMessage, finiteOrZero } from "../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 

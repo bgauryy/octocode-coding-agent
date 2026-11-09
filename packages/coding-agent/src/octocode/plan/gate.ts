@@ -1,7 +1,7 @@
 import { archiveRead } from "../shared/archive-operation.ts";
 import type { ToolCallEvent, ToolInfo } from "../../core/features/index.ts";
 import { currentToolRoles } from "../../../../mcp/src/roles.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
 import { createMcpToolName } from "../../../../mcp/src/tool-names.ts";
 import type { McpServerStatus } from "../../../../mcp/src/status.ts";
 import { untilCommand } from "../shared/until-command.ts";

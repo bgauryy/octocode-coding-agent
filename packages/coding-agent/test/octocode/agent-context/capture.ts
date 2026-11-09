@@ -28,7 +28,7 @@ import { getSkillCommands } from "../../../src/core/skill-commands.ts";
 import type { SlashCommandInfo } from "../../../src/core/slash-commands.ts";
 import { writeRolePrompt } from "../../../src/octocode/instructions/role.ts";
 import { withIdentity } from "../../../src/octocode/instructions/task.ts";
-import { shortPath } from "../../../src/octocode/shared/format.ts";
+import { shortPath } from "../../../src/utils/display-path.ts";
 import { bundledSkillDirs } from "../../../src/octocode/skills.ts";
 import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.ts";

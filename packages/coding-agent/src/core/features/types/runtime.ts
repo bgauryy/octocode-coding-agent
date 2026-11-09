@@ -3,7 +3,7 @@
 import type { AgentTool, AgentToolCallOutcome, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, Provider, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
-import type { McpServerRegistry } from "../../../../../mcp/src/servers.ts";
+import type { McpServerChange, RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { CustomMessage } from "../../messages.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
 import type { SessionEntry, SessionManager, SessionNameSource } from "../../session-manager.ts";
@@ -41,6 +41,21 @@ export interface Feature {
 	/** The source path, when it is not `builtin:<id>` (native) or `<inline:<id>>`. */
 	readonly path?: string;
 	register: ExtensionFactory;
+}
+
+/** The servers extensions registered with `api.registerMcpServer()`; the MCP workspace's `McpServerRegistry` implements it. */
+interface McpServerStore {
+	validate(changes: readonly McpServerChange[]): void;
+	/** Revalidate against the current store before publishing the whole batch. */
+	apply(changes: readonly McpServerChange[]): void;
+	register(server: RegisteredMcpServer): void;
+	/** Remove a server registered by `extensionPath`. Servers of other extensions are left alone. */
+	unregister(name: string, extensionPath: string): void;
+	get(name: string): RegisteredMcpServer | undefined;
+	/** Copies of the registered servers, in registration order. */
+	list(): RegisteredMcpServer[];
+	/** Called after every change. */
+	setChangeListener(listener: (() => void) | undefined): void;
 }
 
 /** A feature supplied through `extensionFactories`: a bare factory, or one with a name and visibility. */
@@ -138,7 +153,7 @@ interface ExtensionRuntimeState {
 	registerNativeProvider: (provider: Provider, extensionPath?: string) => void;
 	unregisterProvider: (name: string, extensionPath?: string) => void;
 	/** Servers registered with `api.registerMcpServer()`. */
-	mcpServers: McpServerRegistry;
+	mcpServers: McpServerStore;
 	registerVirtualModel: (definition: VirtualModelDefinition, extensionPath?: string) => void;
 	unregisterVirtualModel: (provider: string, id: string) => void;
 }

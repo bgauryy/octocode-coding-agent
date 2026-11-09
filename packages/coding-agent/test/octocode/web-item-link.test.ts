@@ -2,7 +2,7 @@ import type http from "node:http";
 import { expect, it, vi } from "vitest";
 import { styleBacklogLines } from "../../src/octocode/backlog/tool-style.ts";
 import { openDoor, LaunchCodes } from "../../src/octocode/web-daemon/launch-code.ts";
-import { linkItem } from "../../src/octocode/shared/render/text.ts";
+import { linkItem } from "../../src/octocode/shared/text.ts";
 import {
 	itemLinkUrl,
 	openItemLink,

@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { getSessionsDir } from "../../src/config.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { getDefaultSessionDirPath } from "../../src/core/session-manager/storage.ts";
 import { legacySessionDirectoryPath } from "../../src/core/session-manager/directories.ts";

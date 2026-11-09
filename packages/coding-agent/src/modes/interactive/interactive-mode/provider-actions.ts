@@ -1,5 +1,6 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
+import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { confirmAction, successNotice } from "./provider-ui.ts";
 
@@ -14,18 +15,7 @@ export function providerStatus(host: Pick<ProviderManagerHost, "session">, id: s
 
 /** Where the credential comes from, for a row: a label or variable name, never a value. */
 export function credentialSource(host: Pick<ProviderManagerHost, "session">, id: string): string {
-	const status = host.session.modelRuntime.getProviderAuthStatus(id);
-	return (
-		status.label ??
-		{
-			stored: "saved credential",
-			runtime: "session credential",
-			environment: "environment",
-			fallback: "extension configuration",
-			models_json_key: "models.json",
-			models_json_command: "secret command in models.json",
-		}[status.source ?? "environment"]
-	);
+	return credentialSourceLabel(host.session.modelRuntime.getProviderAuthStatus(id));
 }
 
 export const isProviderDisabled = (host: Pick<ProviderManagerHost, "session">, id: string): boolean =>

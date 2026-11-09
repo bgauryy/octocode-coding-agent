@@ -1,6 +1,6 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
-import { BANNER_HEIGHT, type BannerPaint, bannerLines, ISSUES_URL } from "../../src/octocode/ui/banner.ts";
+import { type BannerPaint, bannerLines, ISSUES_URL } from "../../src/octocode/ui/banner.ts";
 
 const plain: BannerPaint = { fg: (_color, text) => text };
 const NOTICE = `BETA version ; please assign issues here ${ISSUES_URL}`;
@@ -54,7 +54,7 @@ describe('banner "OCTOCODE CODE"', () => {
 		for (const width of [1, 4, 20, 46, 47, 80, 200]) {
 			const lines = bannerLines(plain, width);
 			// A resize never changes the rows above the transcript, so it never forces a scrollback redraw by itself.
-			expect(lines, `width ${width}`).toHaveLength(BANNER_HEIGHT);
+			expect(lines, `width ${width}`).toHaveLength(3);
 			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 		}
 	});

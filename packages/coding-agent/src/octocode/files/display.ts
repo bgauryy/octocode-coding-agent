@@ -3,8 +3,8 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ToolDisplayInput } from "../../core/features/types.ts";
 import { formatDuration } from "../../utils/duration.ts";
 import { plural } from "../../../../common/src/clip.ts";
-import { pathBlock } from "../shared/display.ts";
-import { fileChanges } from "../shared/file-input.ts";
+import { pathBlock } from "../render/display.ts";
+import { fileChanges } from "../tool-input/file-input.ts";
 import { bashOutcome, diffStats, querySize, type BashDetails, type QueryOutcome } from "./outcome.ts";
 
 /** The text blocks of a result, joined. */

@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { agentRuns, agents, closeSharedAgentDb, resolveAgent } from "../../../db/src/api.ts";
 import type * as NativeConfig from "../../src/config.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { GRAPH_NOTICE_TYPE, USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";

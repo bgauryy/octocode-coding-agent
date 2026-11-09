@@ -1,6 +1,8 @@
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
 
+export * from "./harness-config.ts";
+
 /** Version of the configuration read model; bump when a field changes meaning. */
 export const CONFIG_PROTOCOL_VERSION = 1 as const;
 

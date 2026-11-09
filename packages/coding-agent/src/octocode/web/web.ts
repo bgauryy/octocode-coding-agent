@@ -1,13 +1,13 @@
-import { displayText, textResultDisplay } from "../shared/display.ts";
+import { displayText, textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";
-import { shortPath } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
 import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../../utils/output-budget.ts";
-import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
+import { resultBlock, resultText, spillPath, toolHeader } from "../render/tool.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { boundImagePart, capResultText, saveFullOutput, saveImageFile } from "../shared/spill.ts";
 import { capChars, textResult } from "../shared/util.ts";
@@ -18,8 +18,8 @@ import { classifyHost, metadataRefusal, reachesMetadata } from "../../../../comm
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
 import { search } from "./search.ts";
-import { plural } from "../shared/render/text.ts";
-import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { plural } from "../shared/text.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cutText } from "../../../../common/src/text.ts";
 

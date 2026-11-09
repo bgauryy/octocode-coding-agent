@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { backlog, type AgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { type BacklogError, type BacklogStore, TaskError } from "../../src/octocode/backlog/store.ts";
 

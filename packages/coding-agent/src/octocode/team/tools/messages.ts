@@ -1,18 +1,18 @@
-import { textResultDisplay } from "../../shared/display.ts";
+import { textResultDisplay } from "../../render/display.ts";
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import { Box, Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { formatClock } from "../../shared/format.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
-import { resultBlock, toolHeader } from "../../shared/render.ts";
+import { resultBlock, toolHeader } from "../../render/tool.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
 import type { MailDetails } from "../model.ts";
 import type { Team } from "../session.ts";
 import { PARENT_WAITS_ENV } from "../store/env.ts";
 import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
-import { clip, plural } from "../../shared/render/text.ts";
-import { timedTool, timingOf } from "../../shared/render/rows.ts";
+import { clip, plural } from "../../shared/text.ts";
+import { timedTool, timingOf } from "../../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Columns of the sent text shown on the collapsed Send row. */

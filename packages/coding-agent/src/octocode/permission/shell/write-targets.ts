@@ -4,7 +4,8 @@ import { RELATIVE_AFTER_CD } from "../bash-cwd.ts";
 import type { BashFileTarget } from "../bash-types.ts";
 import { DYNAMIC_TARGET, homeSpelling, shellPath, shellTargetPath, stateFolderRefusal } from "../file-access.ts";
 import { octocodeHome } from "../../shared/home.ts";
-import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../../common/src/paths.ts";
 import { shellMutation } from "./mutation.ts";
 
 type ShellTarget = BashFileTarget & { allowed: boolean };

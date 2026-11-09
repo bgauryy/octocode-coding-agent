@@ -4,7 +4,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
 import { EXPOSURE_NOTIFY_PREFIX } from "../permission/provenance/exposure.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
-import { Thought } from "../shared/thought.ts";
+import { Thought } from "../render/thought.ts";
 import { addUsage, contentText, emptyUsage } from "../shared/util.ts";
 import { JOB_TYPE, TIMER_TYPE } from "../shared/messages.ts";
 import { imagesOf } from "./screenshots.ts";

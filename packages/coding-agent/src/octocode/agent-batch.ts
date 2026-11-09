@@ -2,7 +2,7 @@ import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai"
 import type { TSchema } from "typebox";
 import type { ToolDefinition } from "../core/features/index.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { agentCall } from "./shared/agent-call.ts";
+import { agentCall } from "./child-sessions/agent-call.ts";
 import { declaresReason } from "./shared/reason.ts";
 
 /** The task type's `tasks` field: start several children in one call. */

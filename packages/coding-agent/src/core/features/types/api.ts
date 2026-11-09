@@ -6,7 +6,7 @@ import type { KeyId } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../../cache-warmer.ts";
 import type { ExecOptions, ExecResult } from "../../exec.ts";
-import type { McpServerConfig, RegisteredMcpServer } from "../../../../../mcp/src/servers.ts";
+import type { McpServerConfig, RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { CustomMessage } from "../../messages.ts";
 import type { Settings } from "../../settings-manager.ts";
 import type { SkillResourceSnapshot } from "../../skill-resource-snapshot.ts";

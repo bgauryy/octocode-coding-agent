@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { scanHistory } from "../../src/octocode/shared/history-search.ts";
+import { scanHistory } from "../../src/octocode/history/search.ts";
 import { tmp } from "./helpers.ts";
 
 function file(text: string): string {

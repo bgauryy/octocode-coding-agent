@@ -1,8 +1,9 @@
 import type { MarkdownTheme } from "@octocodeai/octocode-tui";
 import type { CompactionSummaryMessage } from "../../../core/messages.ts";
 import { viewSummary } from "../../../core/compaction/summary-view.ts";
-import { formatTokens, shortPath } from "../../../octocode/shared/format.ts";
-import { clip, plural } from "../../../octocode/shared/render/text.ts";
+import { formatTokens } from "../../../octocode/shared/format.ts";
+import { shortPath } from "../../../utils/display-path.ts";
+import { clip, plural } from "../../../octocode/shared/text.ts";
 import { getMarkdownTheme } from "../../../theme/theme.ts";
 import { SummaryMessageComponent, type SummaryMessageText } from "./summary-message.ts";
 

@@ -2,7 +2,7 @@ import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type AgentDb, meta } from "../../../../db/src/api.ts";
 import { expireArchiveDetails } from "../archive/retention.ts";
-import { resolveRetention } from "../../config/retention.ts";
+import { resolveRetention } from "../../storage/retention.ts";
 import { HOUR_MS } from "../shared/util.ts";
 import type { SessionIndex } from "./store.ts";
 import { applySweep, summarizeSweep } from "./sweep-apply.ts";

@@ -30,7 +30,7 @@ flowchart TD
 {{profiles}}
 {{/if}}
 {{#if providers}}
-- Models: you run {{sessionModel}}; providers: {{providers}}; `small` runs {{smallRoute}}, `medium` {{mediumRoute}} (also the default); `models` lists the rest.
+- Models: you run {{sessionModel}}; providers: {{providers}}; `small` runs {{smallRoute}}, `medium` {{mediumRoute}} (also the default); `models` with `provider` set to an id lists that provider's models.
 {{/if}}
 - Route each task to the cheapest model and lowest thinking that can meet its Definition of Done: the smallest tier for research, search, triage and mechanical edits; the middle tier for scoped implementation and review; your model only for design and root causes. `:high` only for security, permissions, credentials, data loss, migrations or releases.
 - For durable results or a shared brief, name a Markdown path under `.octocode/<topic>/`; nothing clears it. Throwaway files go in `.octocode/tmp/`. {{retention}}

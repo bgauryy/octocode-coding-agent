@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
-import { git, GitError, gitQuiet } from "../shared/git.ts";
+import { git, GitError, gitQuiet } from "../../utils/git-run.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { worktreeBranch } from "./name.ts";
 

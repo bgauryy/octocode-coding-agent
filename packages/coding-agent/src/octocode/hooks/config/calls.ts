@@ -1,6 +1,6 @@
-import { parsePatch } from "../../shared/codex-patch/patch.ts";
-import { CLAUDE_FILE_TOOL_NAMES, CLAUDE_TOOL_NAMES } from "../../shared/claude-tool-names.ts";
-import { fileChanges } from "../../shared/file-input.ts";
+import { parsePatch } from "../../tool-input/codex-patch/patch.ts";
+import { CLAUDE_FILE_TOOL_NAMES, CLAUDE_TOOL_NAMES } from "../../tool-input/claude-tool-names.ts";
+import { fileChanges } from "../../tool-input/file-input.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookConfig } from "../contracts.ts";
 import { resolveToolPath } from "../../shared/home.ts";

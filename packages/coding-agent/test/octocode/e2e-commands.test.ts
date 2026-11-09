@@ -10,13 +10,13 @@ import { type InteractiveHarness, type Outcome, startInteractive } from "./e2e-c
  * A command without a case below fails the coverage check, so a new command needs an observable assertion here.
  */
 const opened = vi.hoisted(() => [] as string[]);
-vi.mock("../../src/octocode/shared/open.ts", () => ({
+vi.mock("../../src/octocode/browser/open.ts", () => ({
 	openFile: async (file: string) => {
 		opened.push(file);
 	},
 }));
 // `/web` opens an app window by default: it is the external boundary, so no run can start a real browser.
-vi.mock("../../src/octocode/shared/browser-app.ts", async (importOriginal) => ({
+vi.mock("../../src/octocode/browser/app-window.ts", async (importOriginal) => ({
 	...(await importOriginal<Record<string, unknown>>()),
 	createAppWindow: () => ({
 		open: async (url: string) => void opened.push(url),

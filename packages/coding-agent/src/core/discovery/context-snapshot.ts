@@ -1,11 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { getOctocodeSkillsDir } from "../../config.ts";
-import { parseConfigDocument } from "../../utils/config-document.ts";
 import { effectivePlugins } from "../extensibility/toggles.ts";
 import type { Settings } from "../settings-schema.ts";
 import { type ContextView, type ContextViewInput, buildContextView } from "./context-view.ts";
 import { configDiscovery, discoveryInput } from "./service.ts";
+import { definesHooks } from "./sources.ts";
 
 export interface ContextSnapshotOptions extends Pick<ContextViewInput, "loaded" | "mcp"> {
 	cwd: string;
@@ -14,21 +12,6 @@ export interface ContextSnapshotOptions extends Pick<ContextViewInput, "loaded" 
 	contextRoot?: string;
 	/** For the `plugin` kind: the settings in effect. Without them no plugin is listed. */
 	settings?: Settings;
-}
-
-/**
- * Whether a hook file defines at least one hook. Claude's `settings.json` and Codex's `config.toml` exist for other
- * settings and are not hook sources then; a file that cannot be read or parsed still counts, so its failure shows.
- */
-function definesHooks(file: string): boolean {
-	if (!existsSync(file)) return false;
-	try {
-		const document = parseConfigDocument(readFileSync(file, "utf8"), file);
-		const hooks = isRecord(document) ? document.hooks : undefined;
-		return isRecord(hooks) && Object.values(hooks).some((groups) => !Array.isArray(groups) || groups.length > 0);
-	} catch {
-		return true;
-	}
 }
 
 /**

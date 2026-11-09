@@ -13,7 +13,7 @@ import { getNativeSkillsDir } from "../../config.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import type { Skill } from "../../core/skills.ts";
 import { contextOptimizationDirs, inContextProject } from "../shared/home.ts";
-import { isWithin } from "../shared/home/repo.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
 import {
 	effectiveDescription,
 	readSkillsStore,

@@ -15,6 +15,7 @@ import { Badge, Button, EmptyState } from "../ui/primitives.tsx";
 import { SettingEditor, type SaveSetting } from "./SettingEditor.tsx";
 import { ConfigSkeleton } from "./ConfigSkeleton.tsx";
 import { SourcesPanel, type SetProvider } from "./ProviderControls.tsx";
+import { type HarnessApi, HarnessPanel } from "./HarnessPanel.tsx";
 import type { SaveCredential } from "./CredentialEditor.tsx";
 import type { SignInRequest } from "./SignIn.tsx";
 import { type ConfigProviders, ProviderRow } from "./sources.tsx";
@@ -275,6 +276,8 @@ export interface ConfigViewProps {
 	signIn?: (command: SignInCommand) => Promise<SignInState>;
 	/** Turns a provider or the Pi source on or off and returns the fresh snapshot. Offered only when the host says the connection is `writable`. */
 	saveProvider?: (command: ConfigProviderCommand, repoId?: string) => Promise<ConfigSnapshot>;
+	/** Lists and switches the Harness panel's rows; used only when the host says the connection is `writable`. */
+	harness?: HarnessApi;
 	/** Repositories that can be chosen as the workspace whose trust and settings file are shown. */
 	repos?: readonly { id: string; name: string }[];
 }
@@ -284,7 +287,7 @@ export interface ConfigViewProps {
  * (editable through `save` when the host allows it), and workspace trust. Persistence, precedence and trust belong to
  * the host; the page only shows its answer and its refusals.
  */
-export function ConfigView({ load, save, saveCredential, saveProvider, signIn, repos }: ConfigViewProps) {
+export function ConfigView({ load, save, saveCredential, saveProvider, signIn, harness, repos }: ConfigViewProps) {
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
 	const [repoId, setRepoId] = useState<string | undefined>();
@@ -382,6 +385,7 @@ export function ConfigView({ load, save, saveCredential, saveProvider, signIn, r
 				save={snapshot.writable ? saveSetting : undefined}
 				workspace={repoId && snapshot.workspace ? { id: repoId, trusted: snapshot.workspace.trusted } : undefined}
 			/>
+			<HarnessPanel api={snapshot.writable ? harness : undefined} repoId={repoId} reloadKey={key} />
 			<Workspace workspace={snapshot.workspace} repos={repos} repoId={repoId} onRepo={setRepoId} />
 		</div>
 	);

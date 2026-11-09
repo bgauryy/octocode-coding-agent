@@ -1,5 +1,5 @@
 import { DAY_MS } from "../shared/util.ts";
-import { git as runGit, GitError } from "../shared/git.ts";
+import { git as runGit, GitError } from "../../utils/git-run.ts";
 
 /**
  * A restore point taken before a destructive shell command: `git stash create` writes a commit of the tracked files'

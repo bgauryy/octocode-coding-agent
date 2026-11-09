@@ -7,7 +7,7 @@ import { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeychainBackend } from "../../src/core/auth-storage/keychain.ts";
 import { configAudits } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { buildConfigSnapshot } from "../../src/octocode/web-daemon/config-status.ts";
 import { refusalAuditor, writeConfigCredential } from "../../src/octocode/web-daemon/credential-write.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";

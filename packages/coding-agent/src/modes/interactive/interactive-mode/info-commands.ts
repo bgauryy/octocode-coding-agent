@@ -14,7 +14,7 @@ import { formatCacheWarmingStatus } from "../../../core/cache-warmer.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
 import { formatSessionReport } from "../../../octocode/shared/session-report.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
-import { DynamicBorder } from "../components/dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { formatKeyText, keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";

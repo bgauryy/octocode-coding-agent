@@ -26,6 +26,11 @@
 			"types": "./dist/team.d.ts",
 			"import": "./dist/team.js"
 		},
+		"./mcp-server": {
+			"source": "./src/mcp-server.ts",
+			"types": "./dist/mcp-server.d.ts",
+			"import": "./dist/mcp-server.js"
+		},
 		"./profiler": {
 			"source": "./src/profiler.ts",
 			"types": "./dist/profiler.d.ts",

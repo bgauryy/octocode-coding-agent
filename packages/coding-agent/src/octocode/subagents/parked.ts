@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { childSession, childSessionFile } from "./process/session.ts";
 import { privateDir, sessionDir, sessionDirName, sessionFolderNames } from "../shared/home.ts";
 import { scratchRoot } from "./handoff/scratch.ts";

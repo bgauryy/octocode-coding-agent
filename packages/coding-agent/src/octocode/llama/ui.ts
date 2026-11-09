@@ -11,9 +11,8 @@ import {
 import { sanitizeTerminalText as plain } from "../../../../common/src/sanitize.ts";
 import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
-import { frame, renderClipped, runInView } from "../../modes/interactive/components/framed-view.ts";
-import { HintBar, type RankedHint } from "../../theme/theme-tui-helpers.ts";
-import { keyText } from "../../modes/interactive/components/keybinding-hints.ts";
+import { frame, renderClipped, runInView } from "../../theme/framed-view.ts";
+import { HintBar, keyText, type RankedHint } from "../../theme/theme-tui-helpers.ts";
 import type { Theme } from "../../theme/theme.ts";
 import type { LlamaModelInfo, LlamaProgress } from "./client.ts";
 import type { HuggingFaceModel } from "./huggingface.ts";

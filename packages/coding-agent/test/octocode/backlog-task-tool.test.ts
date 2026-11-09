@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV, READ_ONLY_ENV } from "../../../common/src/env.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { setItemTitles } from "../../src/octocode/shared/render/item-titles.ts";
+import { setItemTitles } from "../../src/octocode/render/item-titles.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
 const SESSION = "session-test";

@@ -1,6 +1,6 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { memberWorktree } from "../shared/member-worktree.ts";
+import { memberWorktree } from "../worktree-paths/member-worktree.ts";
 import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
 
 /** What the worktree command and footer need from the team, passed in so this domain does not depend on `team/`. */

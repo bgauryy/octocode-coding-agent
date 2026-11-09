@@ -1,0 +1,107 @@
+import { buildContextEntries, buildSessionProjection } from "./context.ts";
+import * as sessionState from "./state.ts";
+import { getDefaultSessionDirPath } from "./storage.ts";
+import { buildSessionTree } from "./tree.ts";
+import type {
+	SessionContext,
+	SessionEntry,
+	SessionHeader,
+	SessionNameSource,
+	SessionProjection,
+	SessionTreeNode,
+} from "./types.ts";
+
+/** The read-only accessors of a session manager over its shared state. */
+export abstract class SessionReader {
+	/** Entry, label and leaf state shared with the `session-manager/` modules. */
+	protected readonly state: sessionState.SessionState;
+
+	protected constructor(state: sessionState.SessionState) {
+		this.state = state;
+	}
+
+	isPersisted(): boolean {
+		return this.state.persist;
+	}
+
+	getCwd(): string {
+		return this.state.cwd;
+	}
+
+	getSessionDir(): string {
+		return this.state.sessionDir;
+	}
+
+	usesDefaultSessionDir(): boolean {
+		return this.state.sessionDir === getDefaultSessionDirPath(this.state.cwd);
+	}
+
+	getSessionId(): string {
+		return this.state.sessionId;
+	}
+
+	getSessionFile(): string | undefined {
+		return this.state.sessionFile;
+	}
+
+	getSessionName(): string | undefined {
+		return sessionState.getLatestSessionName(this.state);
+	}
+
+	getSessionNameSource(): SessionNameSource | undefined {
+		return sessionState.getLatestSessionNameSource(this.state);
+	}
+
+	getLeafId(): string | null {
+		return this.state.leafId;
+	}
+
+	getLeafEntry(): SessionEntry | undefined {
+		return this.state.leafId ? this.state.byId.get(this.state.leafId) : undefined;
+	}
+
+	getEntry(id: string): SessionEntry | undefined {
+		return this.state.byId.get(id);
+	}
+
+	getChildren(parentId: string): SessionEntry[] {
+		return sessionState.getChildEntries(this.state, parentId);
+	}
+
+	getLabel(id: string): string | undefined {
+		return this.state.labelsById.get(id);
+	}
+
+	getBranch(fromId?: string): SessionEntry[] {
+		return sessionState.getBranchEntries(this.state, fromId);
+	}
+
+	buildContextEntries(): SessionEntry[] {
+		return buildContextEntries(this.getEntries(), this.state.leafId, this.state.byId);
+	}
+
+	buildSessionProjection(): SessionProjection {
+		return buildSessionProjection(this.getEntries(), this.state.leafId, this.state.byId);
+	}
+
+	buildSessionContext(): SessionContext {
+		const { messages, thinkingLevel, model } = this.buildSessionProjection();
+		return { messages, thinkingLevel, model };
+	}
+
+	getHeader(): SessionHeader | null {
+		return this.state.fileEntries.find((e) => e.type === "session") ?? null;
+	}
+
+	getEntryCount(): number {
+		return this.state.byId.size;
+	}
+
+	getEntries(): SessionEntry[] {
+		return sessionState.getSessionEntries(this.state);
+	}
+
+	getTree(): SessionTreeNode[] {
+		return buildSessionTree(this.getEntries(), this.state.labelsById, this.state.labelTimestampsById);
+	}
+}

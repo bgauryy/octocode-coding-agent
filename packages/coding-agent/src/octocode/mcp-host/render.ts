@@ -7,8 +7,8 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/host.ts";
 import { formatToolCallWithArgs, getTextOutput } from "../../core/tools/render-utils.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { resultBlock, resultText, toolHeader } from "../shared/render.ts";
-import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { resultBlock, resultText, toolHeader } from "../render/tool.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
 
 const render: McpHostPorts["render"] = {
 	instruction: renderInstruction,

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../../common/src/paths.ts";
 
 /**
  * Text that carries no instruction however it got into a report: an existing path inside the workspace, the session's

@@ -2,7 +2,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
-import { shortPath } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { capOutput, contentText } from "../shared/util.ts";
@@ -14,7 +14,12 @@ import {
 } from "./result-schema.ts";
 import { asRecord, errorMessage as describeError } from "@octocodeai/octocode-contracts/guards";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { appendScratchFile, snapshotReport, writeScratchFile, type ReportArtifact } from "../shared/report-artifact.ts";
+import {
+	appendScratchFile,
+	snapshotReport,
+	writeScratchFile,
+	type ReportArtifact,
+} from "../child-sessions/report-artifact.ts";
 import { appendHead, emptyHead, headPreview, REPORT_MAX_LINES } from "./report-head.ts";
 import { isWaitingLine } from "./pending-waits.ts";
 

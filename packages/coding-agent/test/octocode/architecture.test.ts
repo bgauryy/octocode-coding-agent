@@ -35,46 +35,74 @@ function importsOf(file: string): string[] {
 }
 
 /**
- * The layering: each domain may depend only on the domains listed. `shared` is the leaf within `octocode/` (it still
- * uses host modules under `core/` and `modes/`); the root modules (`index.ts` wires everything) may use any domain.
+ * The layering: each domain may depend only on the domains listed. `shared` is the leaf within `octocode/`: only
+ * cross-domain utilities stay there. The leaf domains split from it (`render`, `history`, `tool-input`, `browser`,
+ * `child-sessions`, `worktree-paths`) depend on `shared` alone. Both still use host modules under `core/` and `modes/`;
+ * the root modules (`index.ts` wires everything) may use any domain.
  */
 const ALLOWED: Record<string, string[]> = {
 	shared: [],
-	"mcp-host": ["shared", "skill", "trust", "web"],
+	// Tool rows in the terminal: headers, result blocks, row state and motion, display blocks, thinking gists, item titles.
+	render: ["shared"],
+	// Session transcripts on disk: archive segments and LIBRARY, session records, history listing, search, ranking, errors.
+	history: ["shared"],
+	// Tool-call input formats: the file tool's input and patch grammar (Codex apply-patch), Claude Code's tool names and input shapes.
+	"tool-input": ["shared"],
+	// Opening local pages: the browser app window, where a page can open, the OS opener, the launcher, and routes every page serves.
+	browser: ["shared"],
+	// A parent's view of its children: the agent call's fields, child session files, report artifacts, handoff references.
+	"child-sessions": ["shared"],
+	// Where worktree sessions live: the member and own worktree roots and the prompt root a worktree session rebases to.
+	"worktree-paths": ["shared"],
+	"mcp-host": ["shared", "skill", "trust", "web", "render"],
 	llama: ["shared"],
-	api: ["shared"],
+	api: ["shared", "render"],
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
-	external: ["shared", "api", "worktrees", "ask"],
-	ask: ["shared"],
+	external: ["shared", "api", "worktrees", "ask", "child-sessions"],
+	ask: ["shared", "render"],
 	// `cli`: the bash guide names the research CLI only when its shim is installed. `ask`: the file review is an approval question.
-	files: ["shared", "permission", "cli", "ask"],
-	team: ["shared"],
+	files: ["shared", "permission", "cli", "ask", "render", "tool-input"],
+	team: ["shared", "render", "tool-input", "worktree-paths"],
 	discovery: ["shared"],
-	hooks: ["shared", "discovery"],
+	hooks: ["shared", "discovery", "render", "tool-input"],
 	plugins: ["shared", "hooks", "discovery"],
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
 	harness: ["shared", "plugins", "hooks", "discovery", "skill"],
-	web: ["shared", "permission"],
+	web: ["shared", "permission", "render"],
 	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`).
-	compaction: ["shared", "files", "permission", "archive", "sessions"],
+	compaction: ["shared", "files", "permission", "archive", "sessions", "history", "render"],
 	// The archive tool's profile source reads a stored session through the profiler.
-	archive: ["shared", "memory", "permission", "profiler"],
-	ui: ["shared", "permission"],
-	subagents: ["shared", "discovery", "team", "permission", "instructions", "backlog", "trust", "worktrees", "ask"],
-	instructions: ["shared"],
-	sessions: ["shared", "files", "subagents", "backlog", "archive"],
-	backlog: ["shared"],
+	archive: ["shared", "memory", "permission", "profiler", "history", "render"],
+	ui: ["shared", "permission", "render", "child-sessions", "tool-input"],
+	subagents: [
+		"shared",
+		"discovery",
+		"team",
+		"permission",
+		"instructions",
+		"backlog",
+		"trust",
+		"worktrees",
+		"ask",
+		"render",
+		"history",
+		"child-sessions",
+		"worktree-paths",
+	],
+	instructions: ["shared", "history", "worktree-paths"],
+	sessions: ["shared", "files", "subagents", "backlog", "archive", "child-sessions"],
+	backlog: ["shared", "render", "browser"],
 	trust: ["shared"],
 	// Rebuilds a stored session's profiler source from the team's message model; entry names from `shared`.
 	profiler: ["shared", "team"],
-	workspace: ["shared", "backlog", "team", "subagents", "profiler"],
-	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler"],
+	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths"],
+	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser"],
 	remote: ["shared", "web-daemon", "workspace"],
-	memory: ["shared", "permission"],
+	memory: ["shared", "permission", "render"],
 	plan: ["shared"],
 	// Every question to a person goes through `ask/` (one Question type); permission, external and subagents ask there.
-	permission: ["shared", "plan", "ask"],
-	skill: ["shared"],
+	permission: ["shared", "plan", "ask", "child-sessions", "tool-input", "worktree-paths"],
+	skill: ["shared", "render"],
 	"context-optimization": ["shared"],
 	// `/optimize`: its helper call is the small-tier route `subagents/` owns.
 	"prompt-optimization": ["shared", "subagents"],
@@ -82,9 +110,9 @@ const ALLOWED: Record<string, string[]> = {
 	processes: ["shared", "team"],
 	"native-skills": [],
 	"terminal-launch": [],
-	worktrees: ["shared", "terminal-launch", "trust"],
+	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
-	timer: ["shared", "files", "permission", "plan"],
+	timer: ["shared", "files", "permission", "plan", "render"],
 	// `/octocode` and the agent-shell shim for the research CLI.
 	cli: ["shared"],
 };
@@ -226,7 +254,7 @@ describe("source layout", () => {
 	// same day. When a count falls, lower its limit with it; raising one needs a reason in the commit. Nothing here asks for
 	// a refactor: `core` depending on `octocode` shrinks through ports, as `packages/acp` and `packages/mcp` show, and the
 	// interactive mode's shared host through narrow per-collaborator hosts, as `core/agent-session` shows.
-	it("does not grow the imports from core into octocode (measured 22)", () => {
+	it("does not grow the imports from core into octocode (measured 6)", () => {
 		const srcRoot = path.join(packageRoot, "src");
 		const edges = walk(path.join(srcRoot, "core")).flatMap((file) =>
 			[
@@ -241,7 +269,7 @@ describe("source layout", () => {
 		expect(
 			edges.length,
 			"src/core gained an import from src/octocode; pass the dependency through a port",
-		).toBeLessThanOrEqual(25);
+		).toBeLessThanOrEqual(6);
 	});
 
 	it("does not grow the uses of the interactive mode's shared host (measured 2,178)", () => {

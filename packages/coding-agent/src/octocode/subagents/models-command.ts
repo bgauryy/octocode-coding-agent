@@ -15,6 +15,7 @@ import {
 	readCatalog,
 } from "./catalog.ts";
 import {
+	canRunTask,
 	currentPrice,
 	fallbackNote,
 	isModelTier,
@@ -28,6 +29,7 @@ import {
 	SUBAGENT_THINKING_ENV,
 	subagentThinking,
 	supportedThinking,
+	taskBlocker,
 	usableModels,
 } from "./model.ts";
 import type { AgentProfile } from "./profiles.ts";
@@ -67,6 +69,54 @@ export function modelAbilities(model: ModelRef, catalog: Catalog | undefined): M
 	];
 }
 
+/** The price a model is listed at: its own current rates, else models.dev's. */
+export function modelCost(
+	model: ModelRef,
+	catalog: Catalog | undefined,
+): { input: number; output: number } | undefined {
+	const own = currentPrice(model.cost);
+	return own && own.input + own.output > 0 ? own : listedCost(catalog, model.provider, model.id);
+}
+
+/** Input and output rates as `$in/$out`, or `price ?`. */
+export const priceText = (cost: { input: number; output: number } | undefined): string =>
+	cost ? `${perMillion(cost.input)}/${perMillion(cost.output)}` : "price ?";
+
+/** Blended price for ordering: three input tokens to one output, as agent turns spend; Infinity when unknown. */
+export const priceRank = (cost: { input: number; output: number } | undefined): number =>
+	cost ? 3 * cost.input + cost.output : Infinity;
+
+/** One model's line: price, context window and abilities, the parent's marked. */
+function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog: Catalog | undefined): string {
+	const known = lookup(catalog, model.provider, model.id);
+	const abilities = modelAbilities(model, catalog);
+	const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
+	const mark = parent && name(model) === name(parent) ? "● " : "  ";
+	const description = known?.description ? ` — ${describe(known.description)}` : "";
+	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${description}`;
+}
+
+/**
+ * Models that cannot run a task (`taskBlocker`), each with why, under their own heading: they are listed so the user
+ * and the agent know them, never as candidates.
+ */
+export function describeUnrunnable(
+	models: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	catalog: Catalog | undefined,
+): string {
+	const rows = models
+		.map((model) => ({ model, why: taskBlocker(model, catalog) }))
+		.filter((row): row is { model: ModelRef; why: string } => row.why !== undefined)
+		.sort((a, b) => name(a.model).localeCompare(name(b.model)));
+	if (rows.length === 0) return "";
+	return [
+		"Cannot run a task (a task needs tool calls, a current model and 100k context):",
+		...rows.map(({ model, why }) => `${modelLine(model, parent, catalog)} · ${why}`),
+	].join("\n");
+}
+
 /**
  * One line per available model, the parent's marked, cheapest first; each provider's credential status when known.
  * `shown` limits the rows; the purposes and profile routes still resolve over every available model, skipping a
@@ -82,25 +132,37 @@ export function describeModels(
 	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
 ): string {
 	if (available.length === 0) return "No models are configured.";
-	const rows = available.filter(shown).map((model) => {
-		const known = lookup(catalog, model.provider, model.id);
-		const own = currentPrice(model.cost);
-		const cost = own && own.input + own.output > 0 ? own : listedCost(catalog, model.provider, model.id);
-		const abilities = modelAbilities(model, catalog);
-		const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
-		const price = cost ? `${perMillion(cost.input)}/${perMillion(cost.output)}` : "price ?";
-		const mark = parent && name(model) === name(parent) ? "● " : "  ";
-		const description = known?.description ? ` — ${describe(known.description)}` : "";
-		return {
+	const rows = available
+		.filter(shown)
+		.map((model) => ({
 			provider: model.provider,
-			parent: mark !== "  ",
-			sort: cost ? 3 * cost.input + cost.output : Infinity,
-			line: `${mark}${name(model)} · ${price} per M in/out · ${contextSize(model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context)} · ${caps}${description}`,
-		};
-	});
-	rows.sort((a, b) => a.provider.localeCompare(b.provider) || a.sort - b.sort);
+			sort: priceRank(modelCost(model, catalog)),
+			line: modelLine(model, parent, catalog),
+		}))
+		.sort((a, b) => a.provider.localeCompare(b.provider) || a.sort - b.sort);
+	return [
+		"Models this session can use (● this session; price per million tokens in/out; context window):",
+		...rows.flatMap((row, index) =>
+			index === 0 || rows[index - 1].provider !== row.provider
+				? ["", `${row.provider}:${describeHealth(health(row.provider))}`, row.line]
+				: [row.line],
+		),
+		"",
+		describeRoutes(available, parent, profiles, catalog, refused),
+	].join("\n");
+}
+
+/** The subagent purposes and profiles with the model each runs on now. */
+export function describeRoutes(
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	profiles: Map<string, AgentProfile>,
+	catalog: Catalog | undefined,
+	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
+): string {
+	const own = parent && (available.find((model) => name(model) === name(parent)) ?? parent);
 	const parentPriced =
-		rows.some((row) => row.parent && row.sort !== Infinity) ||
+		(own !== undefined && priceRank(modelCost(own, catalog)) !== Infinity) ||
 		(parent !== undefined && resolveTier("small", [...available, parent], parent, catalog) !== undefined);
 	const why = (tier: string) =>
 		!parent
@@ -130,19 +192,9 @@ export function describeModels(
 				: ` (${profile.model}${isModelTier(profile.model.split(":")[0]) ? ", a purpose" : ""})`;
 		return `  ${profile.name}: ${runs}${asked}`;
 	});
-	return [
-		"Models this session can use (● this session; price per million tokens in/out; context window):",
-		...rows.flatMap((row, index) =>
-			index === 0 || rows[index - 1].provider !== row.provider
-				? ["", `${row.provider}:${describeHealth(health(row.provider))}`, row.line]
-				: [row.line],
-		),
-		"",
-		"Subagent purposes:",
-		...tiers,
-		unsuffixed,
-		...(routed.length > 0 ? ["", "Profiles:", ...routed] : []),
-	].join("\n");
+	return ["Subagent purposes:", ...tiers, unsuffixed, ...(routed.length > 0 ? ["", "Profiles:", ...routed] : [])].join(
+		"\n",
+	);
 }
 
 /** The model a purpose resolves to now, skipping providers that refused their credential; undefined: the parent's. */
@@ -161,8 +213,8 @@ const profileRuns = (route: ReturnType<typeof routeModel>, available: readonly M
 /** Routing facts the coordinator's prompt states (`policy/delegation.md`): what each purpose and profile runs on now. */
 export interface RoutingFacts {
 	sessionModel: string;
-	/** Providers with a usable model, sorted. */
-	providers: string[];
+	/** Providers with a usable model, sorted, each with how many of its models can run a task. */
+	providers: Array<{ id: string; count: number }>;
 	small: string;
 	medium: string;
 	/** Profile name to the model it runs on. */
@@ -188,9 +240,12 @@ export function routingFacts(
 	};
 	return {
 		sessionModel: name(parent),
-		providers: [
-			...new Set(available.filter((model) => !refused(model.provider)).map((model) => model.provider)),
-		].sort(),
+		providers: [...new Set(available.filter((model) => !refused(model.provider)).map((model) => model.provider))]
+			.sort()
+			.map((id) => ({
+				id,
+				count: available.filter((model) => model.provider === id && canRunTask(model, catalog)).length,
+			})),
 		small: purpose("small"),
 		medium: purpose("medium"),
 		profiles: Object.fromEntries(

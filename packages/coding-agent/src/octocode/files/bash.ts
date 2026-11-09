@@ -1,35 +1,21 @@
 import { bashDisplay } from "./display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { StringEnum } from "@octocodeai/octocode-contracts/schema";
-import { Type } from "typebox";
-import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { bashSessionEnv, maxOutputTokensParameter } from "../../core/tools/bash.ts";
+import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
-import { formatDuration } from "../shared/format.ts";
-import { toolHeader } from "../shared/render.ts";
 import { runningWorkOf, type WorkRow } from "../shared/running-work.ts";
 import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
 import { createReadHint } from "./read-hint.ts";
 import { BASH_ABORT_GRACE_MS, foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
 import { foregroundPlan } from "./bash/auto.ts";
-import { LONG_COMMAND_AFTER_SECONDS, sleepHint } from "./bash/long-commands.ts";
+import { sleepHint } from "./bash/long-commands.ts";
 import { hostQuirkHint } from "./bash/host-hints.ts";
-import { probeCliHost, renderCliGuide } from "./bash/cli-guide.ts";
 import type { BashDetails } from "./outcome.ts";
 import { renderBashResult, renderJobMessage } from "./render.ts";
-import {
-	adoptFullOutput,
-	CLAMP_NOTE,
-	DEFAULT_BASH_TIMEOUT,
-	jobLines,
-	MAX_FOREGROUND_TIMEOUT,
-	foregroundFailure,
-	orphanNotice,
-} from "./bash/results.ts";
+import { adoptFullOutput, CLAMP_NOTE, foregroundFailure, orphanNotice } from "./bash/results.ts";
 import {
 	beginVerification,
 	finishVerification,
@@ -37,11 +23,9 @@ import {
 	pendingVerification,
 	verificationJson,
 	verificationLine,
-	verificationSchema,
 } from "./bash/verification.ts";
 import { recordShellMutation } from "./bash/mutation.ts";
-import { reasonSchema } from "../shared/reason.ts";
-import { timedTool } from "../shared/render/rows.ts";
+import { timedTool } from "../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
@@ -49,6 +33,8 @@ import { jobDetails, jobReport } from "./bash-jobs/report.ts";
 import { reapOrphanJobs } from "./bash-jobs/records.ts";
 import { registerJobsCommand, reloadNotice } from "./bash-jobs/command.ts";
 import { type ShellSettings, shellSettings, shellScript } from "./bash-jobs/shell.ts";
+import { backgroundStarted } from "./bash/background.ts";
+import { bashDescription, bashOutputSchema, bashParameters, renderBashCall } from "./bash/declaration.ts";
 
 /**
  * Octocode's `bash`, with two changes: a waited-for command has a deadline when the call names none (Octocode's has none, so a
@@ -59,14 +45,6 @@ import { type ShellSettings, shellSettings, shellScript } from "./bash-jobs/shel
  * and environment. Job logs and the full output of a truncated command live in the session's `bash/` folder
  * (`sessionOutputDir`), never in the shared temp directory.
  */
-
-/** `structuredContent` of a background start; a foreground command returns Octocode's own bash output. */
-const BACKGROUND_OUTPUT = Type.Object({
-	job: Type.String({ description: "Job id, for `/jobs kill <id>`" }),
-	pid: Type.Number({ description: "Process group leader" }),
-	log: Type.String({ description: "Log file with the combined output" }),
-	verification: Type.Optional(verificationSchema),
-});
 
 export function registerBashTool(
 	api: ExtensionAPI,
@@ -187,51 +165,16 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			abortGraceMs: BASH_ABORT_GRACE_MS,
-			description:
-				"Run a command in the working directory. Foreground returns the combined output. " +
-				`Background (use it for builds, full test suites, servers, anything over a minute) returns a job id, pid and log path; completion arrives as a message. A foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. A timeout does not undo side effects: inspect the result before rerunning.\n\n${renderCliGuide(probeCliHost())}`,
+			description: bashDescription(),
 			// What the shell is for, then the work other tools own: code research goes to the declared search and read tools,
 			// content changes to `file` (checkpointed for /rewind). `sed` stays out of the list so it does not read as an editor.
 			promptSnippet: renderInstruction("tools/bash/snippet.md"),
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
-			...(builtin.outputSchema !== undefined
-				? {
-						outputSchema: Type.Union([
-							Type.Intersect([builtin.outputSchema, Type.Object({ verification: Type.Optional(verificationSchema) })]),
-							BACKGROUND_OUTPUT,
-						]),
-					}
-				: {}),
+			...(builtin.outputSchema !== undefined ? { outputSchema: bashOutputSchema(builtin.outputSchema) } : {}),
 			// A pipe such as `cmd | tail` exits with the last command's status, so a failing build would read as passing.
 			promptGuidelines: [...(builtin.promptGuidelines ?? []), renderInstruction("tools/bash/guidelines.md")],
-			parameters: Type.Object({
-				type: Type.Optional(
-					StringEnum(["bash", "powershell"] as const, {
-						description: "bash (default, configured shell) or powershell (Windows)",
-					}),
-				),
-				command: Type.String({ description: "Command in the selected syntax" }),
-				timeout: Type.Optional(
-					Type.Number({
-						description: `Seconds until the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, max ${MAX_FOREGROUND_TIMEOUT}s; a background job has none unless set`,
-					}),
-				),
-				maxOutputTokens: maxOutputTokensParameter,
-				background: Type.Optional(
-					Type.Boolean({
-						description: "true: return at once; false with a timeout: wait; stop at the timeout or move after 10 min",
-					}),
-				),
-				verify: Type.Optional(
-					Type.Boolean({
-						description:
-							"Record a verification receipt tied to the current edits; a later edit makes it stale, and a zero exit proves only that the command succeeded.",
-					}),
-				),
-				// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.
-				reason: reasonSchema(),
-			}),
+			parameters: bashParameters,
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
 				current = ctx;
@@ -248,28 +191,8 @@ export function registerBashTool(
 						reason: params.reason,
 					});
 					if (verification) verification.startedAt = job.startedAt;
-					const timeout = job.timeout;
 					showJobs();
-					const text = [
-						`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, stopped after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
-						...jobLines(job, ctx.cwd),
-						...(verification ? [verificationLine(verification)] : []),
-					].join("\n");
-					return {
-						content: [{ type: "text" as const, text }],
-						structuredContent: {
-							job: job.id,
-							pid: job.pid,
-							log: job.log,
-							...(verification ? { verification: verificationJson(verification) } : {}),
-						},
-						details: {
-							job: job.id,
-							pid: job.pid,
-							log: job.log,
-							...(verification ? { verification, notices: [verificationLine(verification)] } : {}),
-						},
-					};
+					return backgroundStarted(job, ctx.cwd, verification);
 				}
 				const { timeout, clamped, movable, auto, deliberate, capped } = foregroundPlan(
 					params,
@@ -379,19 +302,7 @@ export function registerBashTool(
 					});
 				}
 			},
-			renderCall(args, theme, context) {
-				// The timeout shows only when the model set one; the default deadline is in the tool description.
-				const asked = typeof args.timeout === "number" && args.timeout > 0 ? args.timeout : undefined;
-				const timeout = asked ? `timeout ${formatDuration(asked * 1000)}` : "";
-				const meta = [args.background ? "background" : "", timeout].filter(Boolean).join(" · ");
-				return toolHeader(
-					theme,
-					context,
-					args.type === "powershell" ? "PowerShell" : "Bash",
-					typeof args.command === "string" ? args.command : "",
-					meta ? { meta } : {},
-				);
-			},
+			renderCall: renderBashCall,
 			renderResult: renderBashResult,
 			display: bashDisplay,
 		}),

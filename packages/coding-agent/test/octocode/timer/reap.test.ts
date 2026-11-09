@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, openDatabase, timers } from "../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
 import { timerFields } from "../../../src/octocode/timer/model.ts";
 import { registerTimers } from "../../../src/octocode/timer/register.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";

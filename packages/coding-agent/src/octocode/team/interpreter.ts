@@ -276,10 +276,3 @@ export function interpreterRefusals(
 		refusals.push({ name: named, cause: "the line could not be parsed, so it may run inline code", interpreter: true });
 	return refusals;
 }
-
-/** The name of the interpreter `interpreterRefusal` finds, or undefined. */
-export const unconfinedInterpreter = (
-	command: string,
-	env: NodeJS.ProcessEnv = process.env,
-	parsed?: ParsedShell | null,
-): string | undefined => interpreterRefusal(command, env, parsed)?.name;

@@ -10,7 +10,7 @@ import type {
 	ProfileTimeline,
 } from "@octocodeai/octocode-contracts/profiler";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { createProfiler } from "../../src/octocode/profiler/index.ts";
 import type { RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";

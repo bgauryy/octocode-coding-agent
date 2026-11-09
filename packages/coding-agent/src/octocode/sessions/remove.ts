@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { workspaces } from "../../../../db/src/api.ts";
-import { WORKSPACE_STATE, readWorkspaceIdentity } from "../../config/workspace.ts";
+import { WORKSPACE_STATE, readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { deleteSessionFile } from "../../core/session-manager/delete-file.ts";
 import { globalPaths, sessionDirName } from "../shared/home.ts";
 import type { SessionIndex } from "./store.ts";

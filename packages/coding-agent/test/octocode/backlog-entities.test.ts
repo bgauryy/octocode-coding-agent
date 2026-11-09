@@ -7,7 +7,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { backlog, type AgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";

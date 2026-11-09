@@ -9,7 +9,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agentDbPath } from "../../src/config/state-paths.ts";
+import { agentDbPath } from "../../src/storage/state-paths.ts";
 import type { AgentSessionEvent } from "../../src/core/agent-session/types.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "../../src/core/compaction/utils.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -20,7 +20,7 @@ import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts"
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { parseArgs } from "../../src/cli/args.ts";
 import { transcripts } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { baseEnv, type Fixture, fixture, scriptedSession, withEnv } from "./agent-context/capture.ts";
 import { assign, longTask, messageText, SUMMARY_REQUEST } from "./agent-context/child-run.ts";
 import { nativeCall } from "./e2e-calls.ts";

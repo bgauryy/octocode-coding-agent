@@ -10,7 +10,7 @@ it("projects Claude Bash units without native execution options", () => {
 	).toEqual({ command: "x", timeout: 2000, run_in_background: true });
 });
 
-import { rewriteClaudeBash } from "../../src/octocode/shared/claude-bash.ts";
+import { rewriteClaudeBash } from "../../src/octocode/tool-input/claude-bash.ts";
 it("whitelists source fields and never turns native-only keys into execution options", () => {
 	expect(
 		rewriteClaudeBash(

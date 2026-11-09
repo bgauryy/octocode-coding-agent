@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { workspaces } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { AttachClient } from "../../src/octocode/web-daemon/attach-client.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
 import { startDaemonServer } from "../../src/octocode/web-daemon/server.ts";

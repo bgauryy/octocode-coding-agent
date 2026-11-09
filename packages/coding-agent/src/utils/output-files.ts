@@ -21,7 +21,7 @@ import {
 	statSync,
 	type WriteStream,
 } from "node:fs";
-import { runtimeTempDir } from "../config/runtime-paths.ts";
+import { runtimeTempDir } from "../storage/runtime-paths.ts";
 import { basename, join } from "node:path";
 import { finished, pipeline } from "node:stream/promises";
 

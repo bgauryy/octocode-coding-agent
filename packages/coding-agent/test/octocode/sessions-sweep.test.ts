@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { sweepSessions } from "../../src/octocode/sessions/sweep.ts";
 import { sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";

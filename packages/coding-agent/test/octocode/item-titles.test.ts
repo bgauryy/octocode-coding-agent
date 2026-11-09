@@ -4,11 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { refreshItemTitles } from "../../src/octocode/backlog/title-lookup.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { itemTitle, setItemTitles, TITLE_CAP, withItemTitles } from "../../src/octocode/shared/render/item-titles.ts";
+import { itemTitle, setItemTitles, TITLE_CAP, withItemTitles } from "../../src/octocode/render/item-titles.ts";
 
 const known: Record<string, string> = { B92: "Clickable backlog IDs", B5: "Other work" };
 const titleOf = (ref: string) => known[ref];

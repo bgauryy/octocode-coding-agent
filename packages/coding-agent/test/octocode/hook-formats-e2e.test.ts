@@ -4,7 +4,7 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExtensionFactory } from "../../src/core/features/index.ts";
-import { buildInventory, renderInventory } from "../../src/core/extensibility/inventory.ts";
+import { buildInventory, renderInventory } from "../../src/octocode/harness/inventory.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";

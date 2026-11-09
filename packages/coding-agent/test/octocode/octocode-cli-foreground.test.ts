@@ -42,7 +42,8 @@ vi.mock("../../src/octocode/cli/resolve.ts", async (importOriginal) => ({
 	resolveOctocodeCli: () => ({ bin: "/fake/octocode.js", version: "0.0.0" }),
 }));
 
-const { octocodeCommand } = await import("../../src/octocode/cli/command.ts");
+const { createOctocodeCommand } = await import("../../src/octocode/cli/command.ts");
+const octocodeCommand = createOctocodeCommand();
 
 type Factory = (tui: unknown, theme: unknown, keys: unknown, done: (value: unknown) => void) => unknown;
 

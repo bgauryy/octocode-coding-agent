@@ -56,6 +56,19 @@ describe("harness vendors", () => {
 		expect(statuses.get("agents")).toMatchObject({ found: { skill: 1 }, loaded: { skill: 1 } });
 	});
 
+	it("counts a Codex config.toml or Claude settings.json as a hook source only when it defines hooks", () => {
+		const mcpOnly = '[mcp_servers.docs]\ncommand = "node"\n';
+		const found = (toml: string, claudeSettings: string) => {
+			const w = workspace();
+			write(path.join(w.home, ".codex", "config.toml"), toml);
+			write(path.join(w.home, ".claude", "settings.json"), claudeSettings);
+			return Object.fromEntries(harnessStatuses(w.input()).map((status) => [status.id, status.found.hook ?? 0]));
+		};
+		expect(found(mcpOnly, JSON.stringify({ theme: "dark" }))).toMatchObject({ codex: 0, claude: 0 });
+		const withHooks = `${mcpOnly}\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "echo done"\n`;
+		expect(found(withHooks, CLAUDE_HOOKS)).toMatchObject({ codex: 1, claude: 1 });
+	});
+
 	it("loads Claude Code skills and hooks once harness:claude is on", () => {
 		const w = workspace();
 		skill(path.join(w.home, ".claude", "skills"), "claude-one");

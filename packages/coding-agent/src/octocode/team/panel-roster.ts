@@ -1,5 +1,5 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { memberWorktree } from "../shared/member-worktree.ts";
+import { memberWorktree } from "../worktree-paths/member-worktree.ts";
 import { FINISHED_MS, type Finished } from "./panel-compact.ts";
 import { type Need, type PanelEntry, panelState } from "./panel-state.ts";
 

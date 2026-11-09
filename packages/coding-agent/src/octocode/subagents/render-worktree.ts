@@ -1,5 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import type { RenderContext } from "../shared/render/types.ts";
+import type { RenderContext } from "../render/types.ts";
 
 /**
  * An isolated run's worktree folder is named by its agent id, which only the result knows: the result's renderer records

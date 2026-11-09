@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { processSamples, type AgentDb } from "../../../../db/src/api.ts";
-import { openAgentDb } from "../../../src/config/database.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
 import {
 	DEFAULT_SAMPLE_MINUTES,
 	sampleIntervalMs,

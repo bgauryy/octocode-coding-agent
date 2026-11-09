@@ -2,7 +2,7 @@ import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, openDatabase, timers } from "../../../db/src/api.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { createExtensionRuntime } from "../helpers/features.ts";
 import { ExtensionRunner } from "../../src/core/features/runner.ts";
 import type { ExtensionActions, ExtensionContext, ExtensionContextActions } from "../../src/core/features/types.ts";

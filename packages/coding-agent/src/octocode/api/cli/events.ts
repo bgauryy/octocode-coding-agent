@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { agentEvents } from "../../../../../db/src/api.ts";
-import { openAgentDb } from "../../../config/database.ts";
-import { agentDbPath } from "../../../config/state-paths.ts";
-import { readWorkspaceIdentity } from "../../../config/workspace.ts";
+import { openAgentDb } from "../../../storage/database.ts";
+import { agentDbPath } from "../../../storage/state-paths.ts";
+import { readWorkspaceIdentity } from "../../../storage/workspace.ts";
 
 export const EVENTS_LIMIT = { min: 1, max: 1000, default: 200 } as const;
 

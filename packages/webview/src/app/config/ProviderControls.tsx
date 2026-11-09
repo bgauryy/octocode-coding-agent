@@ -16,7 +16,7 @@ const PRODUCT_LABELS = { octocode: "Octocode", pi: "Pi" } as const;
 const FILE_LABELS = { "auth-json": "auth.json", "models-json": "models.json" } as const;
 
 /** A switch button that shows the host's refusal next to it instead of changing anything itself. */
-function useSwitch(run: () => Promise<void>) {
+export function useSwitch(run: () => Promise<void>) {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | undefined>();
 	async function click() {

@@ -7,7 +7,7 @@ import { tildePath } from "../shared/home.ts";
 import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { BudgetStanding, OpenQuestion } from "./model.ts";
-import { memberWorktree, worktreeLabel } from "../shared/member-worktree.ts";
+import { memberWorktree, worktreeLabel } from "../worktree-paths/member-worktree.ts";
 import type { MemberDetails } from "./store/details.ts";
 import { STALLED_LISTED_MS } from "./store/limits.ts";
 

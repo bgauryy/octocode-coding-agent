@@ -1,6 +1,8 @@
 import path from "node:path";
 import { browserMcpEscalations } from "../../../../common/src/browser-mcp.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { workspaceRoot } from "../../utils/git-repository.ts";
 
 /**
  * What a browser MCP call does beyond the generic MCP class (`common/src/browser-mcp.ts` `browserMcpEscalations`), for

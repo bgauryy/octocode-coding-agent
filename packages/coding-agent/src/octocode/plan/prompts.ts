@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import type { PlanState } from "./state.ts";
+import type { PlanState } from "../../core/plan-state.ts";
 
 /** The `planning` section while planning is active (`octocode/instructions/workflows/planning.md`). */
 export const PLANNING_INSTRUCTIONS = renderInstruction("workflows/planning.md");

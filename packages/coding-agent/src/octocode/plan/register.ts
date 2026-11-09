@@ -6,7 +6,7 @@ import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { planningRefusal, type ShellReader } from "./gate.ts";
 import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
 import { planStartupRequested } from "./startup.ts";
-import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "./state.ts";
+import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "../../core/plan-state.ts";
 import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";
 
 /** User controls are commands, never model tools. Plan text lives in branch-aware custom entries. */

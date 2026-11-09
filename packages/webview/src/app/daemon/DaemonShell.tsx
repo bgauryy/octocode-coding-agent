@@ -128,6 +128,7 @@ function RepoRow({ repo }: { repo: DaemonRepo }) {
  */
 export function DaemonShell({ access }: { access: string }) {
 	const api = useMemo(() => createDaemonApi(access), [access]);
+	const harnessApi = useMemo(() => ({ list: api.harness, set: api.setHarness }), [api]);
 	const route = useHashRoute();
 	const tab = TABS.find((entry) => entry.name === route.name)?.name ?? "sessions";
 	const sessions = usePolled(api.sessions);
@@ -205,6 +206,7 @@ export function DaemonShell({ access }: { access: string }) {
 						saveCredential={api.saveCredential}
 						saveProvider={api.saveProvider}
 						signIn={api.signIn}
+						harness={harnessApi}
 						repos={repos.status === "ready" ? repos.value.repos : undefined}
 					/>
 				)}

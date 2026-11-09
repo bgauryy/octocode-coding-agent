@@ -44,14 +44,20 @@ import {
 	projectMcpConfigPath,
 } from "./paths.ts";
 import { mcpLaunchIdentity } from "./launch-identity.ts";
-import { DEFAULT_MCP_EXPOSURE, type McpExposure, type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
+import { DEFAULT_MCP_EXPOSURE, validateMcpServerConfig } from "./servers.ts";
+import { type McpExposure, type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
 import { stripBom } from "../../common/src/text.ts";
 import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
-export type { McpExposure, McpHttpServerConfig, McpOAuthConfig, McpServerConfig } from "./servers.ts";
+export type {
+	McpExposure,
+	McpHttpServerConfig,
+	McpOAuthConfig,
+	McpServerConfig,
+} from "@octocodeai/octocode-contracts/mcp-server";
 export { getMcpToolExposure } from "./servers.ts";
 
 export interface McpServerEntry {

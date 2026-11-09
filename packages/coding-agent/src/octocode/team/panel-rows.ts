@@ -11,7 +11,7 @@ import {
 	newPromptTokens,
 	toolCallCount,
 } from "../shared/format.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import { GOAL_SHOWN_CHARS } from "./identity.ts";
 import { fitName, NAME_MIN, safe } from "./panel-compact.ts";
 import { type PanelEntry, panelColor, panelMark, panelState } from "./panel-state.ts";

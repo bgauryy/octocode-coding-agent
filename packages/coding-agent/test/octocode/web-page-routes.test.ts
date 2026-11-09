@@ -5,14 +5,14 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SERVICE_WORKER_JS, SERVICE_WORKER_ROUTE, WEB_PREFS_ROUTE } from "@octocodeai/octocode-webview";
 import { type AgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { Readable } from "node:stream";
 import {
 	handleWebPrefsRequest,
 	settingsWebPrefs,
 	type WebPrefs,
 	type WebPrefsStore,
-} from "../../src/octocode/shared/web-page-routes.ts";
+} from "../../src/octocode/browser/page-routes.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import type { BacklogWeb } from "../../src/octocode/backlog/context.ts";

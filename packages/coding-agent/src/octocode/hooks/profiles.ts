@@ -1,11 +1,7 @@
-import { projectClaudeBash } from "../shared/claude-bash.ts";
+import { projectClaudeBash } from "../tool-input/claude-bash.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type HookProtocol, profileSupport } from "./catalog.ts";
 import { validateCodexOutput } from "./codex-output.ts";
-/** Whether `protocol` accepts `event` (see the catalog). */
-export const supportsHookEvent = (protocol: HookProtocol, event: string): boolean =>
-	profileSupport(protocol, event) !== undefined;
-
 /** Empty, `*`, or an event whose upstream host ignores matchers: every group matches. */
 const matchesAll = (protocol: HookProtocol, event: string, matcher: string): boolean =>
 	!matcher || matcher === "*" || profileSupport(protocol, event)?.ignoresMatcher === true;

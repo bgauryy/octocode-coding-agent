@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toolHint } from "../../src/octocode/shared/util.ts";
+import { toolHint } from "../../src/utils/tool-hint.ts";
 
 describe("browser activity hints", () => {
 	it("names a run by its plan steps and never by typed values", () => {

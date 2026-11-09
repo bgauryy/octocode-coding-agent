@@ -1,5 +1,5 @@
 import type { BashFileTarget } from "../bash-types.ts";
-import { CLAUDE_TOOL_NAMES } from "../../shared/claude-tool-names.ts";
+import { CLAUDE_TOOL_NAMES } from "../../tool-input/claude-tool-names.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import type { SourcePermissionMode } from "../../shared/permission-updates.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

@@ -1,7 +1,7 @@
 import { Markdown, Spacer } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "../components/dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import type { InteractiveModeHost } from "./host.ts";
 

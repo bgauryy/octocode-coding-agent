@@ -6,7 +6,7 @@ import type { SessionEntry } from "../../core/session-manager.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clearedResults } from "../files/reads.ts";
-import { shortPath } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
 import { sessionTempRoot, tildePath } from "../shared/home.ts";
 import { saveFullOutput } from "../shared/spill.ts";
 import { contentText, escapeRegExp } from "../shared/util.ts";

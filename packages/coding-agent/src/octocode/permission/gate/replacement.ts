@@ -1,5 +1,5 @@
 import { type JsonObject, validateToolArguments, type Tool } from "@octocodeai/octocode-ai";
-import { rewriteClaudeBash } from "../../shared/claude-bash.ts";
+import { rewriteClaudeBash } from "../../tool-input/claude-bash.ts";
 import { shellTargetAccess } from "../file-access.ts";
 import { isolatedTreeRefusal } from "../isolated-tree.ts";
 import { readOnlyRoleRefusal } from "../read-only-role.ts";

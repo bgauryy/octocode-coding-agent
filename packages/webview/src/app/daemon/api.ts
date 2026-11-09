@@ -3,6 +3,8 @@ import type {
 	ConfigProviderCommand,
 	ConfigSettingCommand,
 	ConfigSnapshot,
+	HarnessList,
+	HarnessSwitchCommand,
 	SignInCommand,
 	SignInState,
 } from "@octocodeai/octocode-contracts/config";
@@ -11,6 +13,11 @@ import type { DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contracts/
 import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+
+function harnessList(value: unknown): HarnessList {
+	if (!isRecord(value) || !Array.isArray(value.rows)) throw new Error("Invalid harness response");
+	return value as unknown as HarnessList;
+}
 
 /** Authenticated reads of the user-level daemon; every answer is shape-checked before the page uses it. */
 export function createDaemonApi(access: string) {
@@ -66,6 +73,20 @@ export function createDaemonApi(access: string) {
 					throw new Error("Invalid sign-in response");
 				return value as unknown as SignInState;
 			}),
+		/** The Harness panel's switches (launch capability only); `repoId` adds that workspace's own switches. */
+		harness: (repoId?: string): Promise<HarnessList> =>
+			requestJson(
+				repoId ? `${DAEMON_ROUTES.configHarness}?repoId=${encodeURIComponent(repoId)}` : DAEMON_ROUTES.configHarness,
+				{ headers },
+				"Could not load the harness switches",
+			).then(harnessList),
+		/** Switches one Harness row; the host answers with the fresh list or refuses with its reason. */
+		setHarness: (command: HarnessSwitchCommand): Promise<HarnessList> =>
+			requestJson(
+				DAEMON_ROUTES.configHarness,
+				{ method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(command) },
+				"Could not change the switch",
+			).then(harnessList),
 		/** Changes one setting; the host answers with the fresh snapshot or refuses with its reason. */
 		saveSetting: (command: ConfigSettingCommand): Promise<ConfigSnapshot> =>
 			requestJson<ConfigSnapshot>(

@@ -1,7 +1,8 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
-import { thoughtGist } from "../shared/thought.ts";
-import { contentText, toolHint } from "../shared/util.ts";
+import { thoughtGist } from "../render/thought.ts";
+import { contentText } from "../shared/util.ts";
+import { toolHint } from "../../utils/tool-hint.ts";
 
 export function assistantText(message: unknown): string | undefined {
 	if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) return undefined;

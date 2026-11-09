@@ -27,7 +27,11 @@ export function agentToolSpec() {
 						"MCP servers the child gets, plus its profile's. Omit: the profile's and the session's; []: the profile's only. An unknown or disabled name refuses the task.",
 				}),
 			),
-			goal: Type.String({ description: GOAL_DESCRIPTION }),
+			goal: Type.Optional(
+				Type.String({
+					description: `${GOAL_DESCRIPTION}. Required for a new child; with resume, omit to keep its goal`,
+				}),
+			),
 			task: Type.String({
 				description:
 					"The brief `<delegation>` describes. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",

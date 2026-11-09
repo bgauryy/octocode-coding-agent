@@ -4,7 +4,6 @@ import {
 	type AssistantImages,
 	type AssistantMessage,
 	type AssistantMessageEventStream,
-	type AuthCheck,
 	type AuthOperationOptions,
 	type AuthResult,
 	type ClassifierApi,
@@ -30,15 +29,10 @@ import {
 	type ModelsRefreshOptions,
 	type ModelsRefreshResult,
 	type ModelThinkingLevel,
-	type ModelType,
-	type ModelTypeMap,
 	type MutableModels,
 	type Provider,
-	type StreamOptions,
 } from "@octocodeai/octocode-ai";
-import type { CachePreferenceLayer } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { dirname } from "node:path";
-import { resolveConfiguredCache } from "./cache-configuration.ts";
+import { ModelCatalog } from "./model-runtime/catalog.ts";
 import { ModelAvailability } from "./model-runtime/availability.ts";
 import { loadModelRuntimeParts, type ModelRuntimeParts, refreshOnCreate } from "./model-runtime/create.ts";
 import { CredentialOperations } from "./model-runtime/credential-operations.ts";
@@ -57,12 +51,7 @@ import {
 } from "./model-runtime/requests.ts";
 import { type CreateModelRuntimeOptions, type ModelRuntimeAuthOverrides } from "./model-runtime/types.ts";
 import { routeVirtualModel } from "./model-runtime/virtual-routing.ts";
-import {
-	type AuthStatus,
-	type CompatibilityRequestConfig,
-	type ProviderConfigInput,
-	resolveCompatibilityRequestConfig,
-} from "./provider-composer.ts";
+import { type AuthStatus, type ProviderConfigInput } from "./provider-composer.ts";
 import type { RuntimeCredentials } from "./runtime-credentials.ts";
 import {
 	isVirtualModel,
@@ -80,13 +69,13 @@ export {
 } from "./model-runtime/types.ts";
 
 /** Configured octocode-ai Models collection used by coding-agent and SDK consumers. */
-export class ModelRuntime implements Models {
-	private readonly models: MutableModels;
+export class ModelRuntime extends ModelCatalog implements Models {
+	protected readonly models: MutableModels;
 	private readonly credentials: RuntimeCredentials;
-	private readonly layers: ProviderLayers;
-	private readonly modelsPath: string | undefined;
+	protected readonly layers: ProviderLayers;
+	protected readonly modelsPath: string | undefined;
 	private readonly modelNetworkEnabled: boolean;
-	private readonly availability: ModelAvailability;
+	protected readonly availability: ModelAvailability;
 	private readonly credentialOperations: CredentialOperations;
 	private readonly registrations: ProviderRegistrations;
 	/** Why the last refresh a provider (un)registration started failed; shown by getError until one succeeds. */
@@ -100,6 +89,7 @@ export class ModelRuntime implements Models {
 		providers,
 		modelNetworkEnabled,
 	}: ModelRuntimeParts) {
+		super();
 		this.credentials = credentials;
 		this.modelsPath = modelsPath;
 		this.modelNetworkEnabled = modelNetworkEnabled;
@@ -133,110 +123,12 @@ export class ModelRuntime implements Models {
 		this.availability.updateModelSnapshot();
 	}
 
-	getProviders(): readonly Provider[] {
-		return this.models.getProviders();
-	}
-	getConfigurationDirectory(): string | undefined {
-		return this.modelsPath ? dirname(this.modelsPath) : undefined;
-	}
-	getProvider(providerId: string): Provider | undefined {
-		return this.models.getProvider(providerId);
-	}
-	getModels(providerId?: string): readonly Model<Api>[] {
-		return this.models.getModels(providerId);
-	}
-
-	getCachePolicy(model: Model<Api>, options?: StreamOptions, settings?: readonly CachePreferenceLayer[]) {
-		return resolveConfiguredCache(model, this.layers.config.getProvider(model.provider), options, settings);
-	}
-
-	getModel(providerId: string, modelId: string): Model<Api> | undefined {
-		return this.models.getModel(providerId, modelId);
-	}
-
-	getModelsOfType<TType extends ModelType>(type: TType, providerId?: string): readonly ModelTypeMap[TType][] {
-		return this.models.getModelsOfType(type, providerId);
-	}
-
-	getModelOfType<TType extends ModelType>(
-		type: TType,
-		providerId: string,
-		modelId: string,
-	): ModelTypeMap[TType] | undefined {
-		return this.models.getModelOfType(type, providerId, modelId);
-	}
-
-	getAllModels(providerId?: string): readonly AnyModel[] {
-		return this.models.getAllModels(providerId);
-	}
-
-	getAvailableOfType<TType extends ModelType>(
-		type: TType,
-		providerId?: string,
-		options?: AuthOperationOptions,
-	): Promise<readonly ModelTypeMap[TType][]> {
-		return this.models.getAvailableOfType(type, providerId, options);
-	}
-
-	getAllAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly AnyModel[]> {
-		return this.models.getAllAvailable(providerId, options);
-	}
-
-	async checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
-		return this.models.checkAuth(providerId, options);
-	}
-
-	getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]> {
-		return this.availability.getAvailable(providerId, options);
-	}
-
-	setDisabledProviders(providerIds: readonly string[]): void {
-		this.availability.setDisabledProviders(providerIds);
-	}
-
-	getAvailableSnapshot(): readonly Model<Api>[] {
-		return this.availability.snapshot.available;
-	}
-
 	getError(): string | undefined {
 		const errors = this.layers.getErrors();
 		const availabilityError = this.availability.availabilityError;
 		if (availabilityError) errors.push(`Availability refresh: ${availabilityError}`);
 		if (this.registrationRefreshError) errors.push(`Model refresh: ${this.registrationRefreshError}`);
 		return errors.length > 0 ? errors.join("\n\n") : undefined;
-	}
-
-	getRegisteredProviderConfig(providerId: string): ProviderConfigInput | undefined {
-		return this.layers.extensionProviders.get(providerId);
-	}
-
-	getRegisteredProviderIds(): readonly string[] {
-		return [...new Set([...this.layers.extensionProviders.keys(), ...this.layers.nativeExtensionProviders.keys()])];
-	}
-
-	getRegisteredNativeProvider(providerId: string): Provider | undefined {
-		return this.layers.nativeExtensionProviders.get(providerId);
-	}
-
-	/** @internal Compatibility fallback for ModelRegistry when provider auth is unconfigured. */
-	getCompatibilityRequestConfig(model: Model<Api>): CompatibilityRequestConfig {
-		return resolveCompatibilityRequestConfig(
-			model,
-			this.layers.config.getProvider(model.provider),
-			this.layers.extensionProviders.get(model.provider),
-		);
-	}
-
-	isUsingOAuth(providerId: string): boolean {
-		return this.availability.snapshot.auth.get(providerId)?.type === "oauth";
-	}
-
-	isUsingSubscription(providerId: string): boolean {
-		return this.isUsingOAuth(providerId) && this.models.getProvider(providerId)?.auth.oauth?.isSubscription === true;
-	}
-
-	hasConfiguredAuth(providerId: string): boolean {
-		return this.availability.snapshot.configuredProviders.has(providerId);
 	}
 
 	getAuth(providerId: string, overrides?: ModelRuntimeAuthOverrides): Promise<AuthResult | undefined>;

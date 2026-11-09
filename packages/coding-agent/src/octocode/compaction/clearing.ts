@@ -11,15 +11,15 @@ import {
 } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { readOnlyCommand } from "../permission/shell/read-only.ts";
-import { canonicalPath } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { estimateTokens } from "../../core/compaction/tokens.ts";
 import { isVirtualModel } from "../../core/virtual-models.ts";
 import { trailingUpdateRewritesPrefix, type TranscriptModel } from "@octocodeai/octocode-ai";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { shortPath } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
 import { readPaths } from "../shared/home.ts";
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
 

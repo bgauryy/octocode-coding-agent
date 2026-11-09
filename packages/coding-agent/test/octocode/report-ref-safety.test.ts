@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveReferences } from "../../src/octocode/shared/references.ts";
-import { childFiles, type SessionChild } from "../../src/octocode/shared/session-children.ts";
+import { resolveReferences } from "../../src/octocode/child-sessions/references.ts";
+import { childFiles, type SessionChild } from "../../src/octocode/child-sessions/session-children.ts";
 import { tmp } from "./helpers.ts";
 
 const SECRET = "aws_secret_access_key = do-not-leak";

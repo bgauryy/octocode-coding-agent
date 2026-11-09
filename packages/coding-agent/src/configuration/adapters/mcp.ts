@@ -1,3 +1,5 @@
+// MCP config code reads files through the host ports; a process without a session (the web daemon) has not installed them.
+import "../../octocode/mcp-host/core-install.ts";
 import {
 	addMcpServerConfig,
 	loadMcpConfig,

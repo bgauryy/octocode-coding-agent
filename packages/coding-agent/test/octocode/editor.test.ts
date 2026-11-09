@@ -276,7 +276,7 @@ describe("Octocode prompt box", () => {
 
 	it("gives the top border to Octocode’s working line during a run", () => {
 		const { editor } = boxed();
-		editor.setWorkingStatusIndicator({ renderInBorder: () => "Working", renderSpinnerInBorder: () => "⠋" } as never);
+		editor.setWorkingStatusIndicator({ renderInBorder: () => "Working", renderSpinnerInBorder: () => "⠋" });
 		const top = plain(editor.render(60)[0]);
 		expect(top).toMatch(/^╭─── Working ─+╮$/);
 		expect(top).not.toContain("octocode");

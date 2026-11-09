@@ -7,7 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { McpInstallConfig } from "./servers.ts";
+import type { McpInstallConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { installedPackageDir, type PackageManifest, readManifest } from "../../common/src/package.ts";
 
 /** The bin file the manifest names: `spec.bin`, else its only bin, else the one named like the package. */

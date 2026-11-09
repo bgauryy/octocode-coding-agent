@@ -2,8 +2,7 @@ import { animationClock, Container, rgbColor, styleText } from "@octocodeai/octo
 import { describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../../src/modes/interactive/components/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
-import { toolHeader } from "../../src/octocode/shared/render.ts";
-import { BANNER_HEIGHT } from "../../src/octocode/ui/banner.ts";
+import { toolHeader } from "../../src/octocode/render/tool.ts";
 import {
 	bannerHeader,
 	packageVersion,
@@ -48,7 +47,7 @@ describe("chrome", () => {
 			{ children: [chat], requestRender: vi.fn(), mode: "fullscreen" },
 			theme,
 		);
-		expect(header.render(80)).toHaveLength(BANNER_HEIGHT);
+		expect(header.render(80)).toHaveLength(3);
 		// The user's hideThinkingBlock setting, owned by the host, stays in force.
 		expect(setHidden).not.toHaveBeenCalled();
 		expect(setMouseHint).not.toHaveBeenCalled();
@@ -84,7 +83,7 @@ describe("chrome", () => {
 			theme,
 		);
 		const lines = header.render(120);
-		expect(lines).toHaveLength(BANNER_HEIGHT);
+		expect(lines).toHaveLength(3);
 		expect(lines[0]).toContain("█▀█");
 		expect(lines.join("\n")).toContain("BETA version");
 		// Static: building and drawing the header never asks for another frame.

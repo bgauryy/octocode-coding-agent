@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, agentRuns, itemRef, parseItemRef, resolveAgent } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { itemDetail } from "../../src/octocode/backlog/format.ts";
 import { agentHookInput } from "../../src/octocode/hooks/register/agents.ts";
 import type { AgentLifecycleNotice } from "../../src/octocode/shared/agent-lifecycle.ts";

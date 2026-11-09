@@ -1,4 +1,4 @@
-import type { Retention } from "../../config/retention.ts";
+import type { Retention } from "../../storage/retention.ts";
 
 /** What a sweep pass removes, planned first (`planSweep`) and then applied (`applySweep`). */
 

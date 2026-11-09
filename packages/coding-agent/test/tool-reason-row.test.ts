@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { reasonRow } from "../src/octocode/ui/reason-row.ts";
-import { setItemTitles } from "../src/octocode/shared/render/item-titles.ts";
+import { setItemTitles } from "../src/octocode/render/item-titles.ts";
 import { initTheme } from "../src/theme/theme.ts";
 
 describe("reasonRow", () => {

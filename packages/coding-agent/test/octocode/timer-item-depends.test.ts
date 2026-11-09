@@ -1,8 +1,8 @@
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { backlog, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

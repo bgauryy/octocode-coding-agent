@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { interactive } from "../shared/interactive.ts";
 import { withDialog } from "../shared/locks.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import type { PermissionMode } from "./mode.ts";
 
 /**

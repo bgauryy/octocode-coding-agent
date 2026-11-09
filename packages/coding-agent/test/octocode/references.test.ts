@@ -10,8 +10,8 @@ import {
 	referencedContentBlock,
 	reportRef,
 	resolveReferences,
-} from "../../src/octocode/shared/references.ts";
-import { type SessionChild, sessionChildren } from "../../src/octocode/shared/session-children.ts";
+} from "../../src/octocode/child-sessions/references.ts";
+import { type SessionChild, sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { tmp } from "./helpers.ts";
 
 /** A store holding `messages`, readable by their sender and recipients only; others get "not found". */

@@ -1,11 +1,11 @@
-import { textResultDisplay } from "../shared/display.ts";
+import { textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { type AgentDb, type TimerRow, timers } from "../../../../db/src/api.ts";
 import type { ExtensionContext, ToolDefinition } from "../../core/features/index.ts";
-import { resultBlock, toolHeader } from "../shared/render.ts";
-import { clip } from "../shared/render/text.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
+import { clip } from "../shared/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import type { ConditionDeps } from "./conditions/types.ts";
 import { CHECK_CAPS } from "./judge.ts";

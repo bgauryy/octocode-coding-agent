@@ -15,10 +15,10 @@ import {
 	segmentLine,
 	segmentPath,
 	writeSegment,
-} from "../../src/octocode/shared/archive.ts";
+} from "../../src/octocode/history/archive.ts";
 import { sessionDir, sessionFolder, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { tmp } from "./helpers.ts";
-import { fence, inlineCode } from "../../src/octocode/shared/archive/text.ts";
+import { fence, inlineCode } from "../../src/octocode/history/archive/text.ts";
 
 let saved: string | undefined;
 

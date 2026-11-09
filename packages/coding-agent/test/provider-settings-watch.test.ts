@@ -5,7 +5,11 @@ import { InMemoryModelsStore } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelRegistry } from "../src/core/model-registry.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
-import { providerSourceGate, watchProviderSettings } from "../src/core/provider-sources/index.ts";
+import {
+	onProviderSettingsApplied,
+	providerSourceGate,
+	watchProviderSettings,
+} from "../src/core/provider-sources/index.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
 let home: string;
@@ -45,7 +49,11 @@ describe("provider switches saved by another process", () => {
 		});
 		const running = SettingsManager.create(join(home, "project"), agentDir);
 		let applied = 0;
-		stops.push(watchProviderSettings(running, runtime, () => applied++));
+		const session = {};
+		stops.push(
+			onProviderSettingsApplied(session, () => applied++),
+			watchProviderSettings(running, runtime, session),
+		);
 		expect(providers(runtime)).toContain("cerebras");
 
 		const other = SettingsManager.create(join(home, "project"), agentDir);
@@ -84,7 +92,11 @@ describe("provider switches saved by another process", () => {
 		});
 		const running = SettingsManager.create(join(home, "project"), agentDir);
 		let applied = 0;
-		stops.push(watchProviderSettings(running, runtime, () => applied++));
+		const session = {};
+		stops.push(
+			onProviderSettingsApplied(session, () => applied++),
+			watchProviderSettings(running, runtime, session),
+		);
 		const registry = new ModelRegistry(runtime);
 		const piProviders = () => new Set(registry.getAvailable().map((model) => model.provider));
 		expect(piProviders()).toContain("pi-local");

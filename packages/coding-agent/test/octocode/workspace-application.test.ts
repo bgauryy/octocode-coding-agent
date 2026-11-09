@@ -11,7 +11,7 @@ import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { ApplicationStream } from "../../../webview/src/application-stream.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => {

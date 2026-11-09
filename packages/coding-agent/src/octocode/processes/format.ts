@@ -1,5 +1,5 @@
 import { formatSpan } from "../shared/format.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import type { Growth, Orphan, ProcessEntry, ProcessReport } from "./classify.ts";
 
 const mb = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;

@@ -1,5 +1,5 @@
 import { fixtureBacklog } from "../backlog-fixture.ts";
-import { openAgentDb } from "../../../src/config/database.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
 import { sharedWorkspaceWeb } from "../../../src/octocode/backlog/shared-web.ts";
 import { startWorkspaceWeb } from "../../../src/octocode/workspace/server.ts";
 

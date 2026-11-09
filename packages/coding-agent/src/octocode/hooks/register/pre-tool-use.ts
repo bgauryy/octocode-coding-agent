@@ -1,11 +1,11 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
-import { rewriteClaudeBash } from "../../shared/claude-bash.ts";
-import { parsePatch } from "../../shared/codex-patch/patch.ts";
-import { validateFileInput } from "../../shared/file-input.ts";
+import { rewriteClaudeBash } from "../../tool-input/claude-bash.ts";
+import { parsePatch } from "../../tool-input/codex-patch/patch.ts";
+import { validateFileInput } from "../../tool-input/file-input.ts";
 import { rewriteCodexCommand } from "../rewrite.ts";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../../core/features/index.ts";
-import { rewriteFileQuery } from "../../shared/claude-file.ts";
+import { rewriteFileQuery } from "../../tool-input/claude-file.ts";
 import { say } from "../../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "../config/calls.ts";

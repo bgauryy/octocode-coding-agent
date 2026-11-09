@@ -1,15 +1,15 @@
 import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { workspaceStateDir } from "../../../config/workspace.ts";
+import { workspaceStateDir } from "../../../storage/workspace.ts";
 import { recordedLocalReads } from "../../shared/local-reads.ts";
 import { readPaths, workspaceScratchDir } from "../../shared/home.ts";
 import { processStartTime, sameProcess } from "../../shared/process.ts";
-import { resolveRetention } from "../../../config/retention.ts";
+import { resolveRetention } from "../../../storage/retention.ts";
 import { DAY_MS } from "../../shared/util.ts";
-import { canonicalPath } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { teamWorkspace } from "../../team/store/workspace.ts";
-import type { ReportArtifact } from "../../shared/report-artifact.ts";
+import type { ReportArtifact } from "../../child-sessions/report-artifact.ts";
 
 /**
  * `<team workspace>/.octocode/code/temp/agents`: one folder per subagent for the files it hands back. The team workspace

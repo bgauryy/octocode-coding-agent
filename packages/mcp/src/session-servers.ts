@@ -16,7 +16,8 @@
 import fs from "node:fs";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { McpExtensionApi } from "./host/types.ts";
-import { type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
+import { validateMcpServerConfig } from "./servers.ts";
+import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

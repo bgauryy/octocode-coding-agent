@@ -8,12 +8,12 @@ import type {
 } from "../../core/features/index.ts";
 import { appliedFileOutcomes, contextReads, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
-import { writeSessionRecord } from "../shared/archive/record.ts";
+import { writeSessionRecord } from "../history/archive/record.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
-import { sessionLineage, setSessionLineage } from "../shared/archive.ts";
+import { sessionLineage, setSessionLineage } from "../history/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { CACHE_RETENTION_ENV } from "../../../../common/src/env.ts";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";

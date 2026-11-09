@@ -14,7 +14,7 @@ import {
 	memoryToolLine,
 	refuseMemorySecrets,
 } from "./store.ts";
-import { timedTool } from "../shared/render/rows.ts";
+import { timedTool } from "../render/rows.ts";
 
 /** Why an agent's global or pinned change asks: the system's reason line on the card. */
 const WIDE_REASON =

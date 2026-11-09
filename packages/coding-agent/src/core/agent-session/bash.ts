@@ -1,7 +1,7 @@
 /** User bash commands run by the session (`!` and `!!`), recorded in session history. */
 
 import { randomUUID } from "node:crypto";
-import { sessionOutputDir, withSessionStorage } from "../../config/runtime-paths.ts";
+import { sessionOutputDir, withSessionStorage } from "../../storage/runtime-paths.ts";
 import { DISPLAY_OUTPUT_MAX_BYTES, outputFileReadable } from "../../utils/output-files.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";

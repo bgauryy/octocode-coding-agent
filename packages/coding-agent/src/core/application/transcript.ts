@@ -1,4 +1,4 @@
-import { withSessionStorage, runtimeTempDir } from "../../config/runtime-paths.ts";
+import { withSessionStorage, runtimeTempDir } from "../../storage/runtime-paths.ts";
 import { createHash } from "node:crypto";
 import type {
 	ApplicationEvent,
@@ -8,7 +8,7 @@ import type {
 } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../agent-session/types.ts";
 import { stoppedToolText } from "./interrupted-tools.ts";
-import { toolHint } from "../../octocode/shared/util.ts";
+import { toolHint } from "../../utils/tool-hint.ts";
 import { ApplicationAssets } from "./assets.ts";
 import type { ApplicationStateStore } from "./state.ts";
 import { ApplicationCollection } from "./collection.ts";

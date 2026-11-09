@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { memoryTemplate, parseTemplate } from "../../src/octocode/memory/command.ts";
 import {
 	injectedIds,

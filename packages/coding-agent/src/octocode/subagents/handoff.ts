@@ -8,7 +8,7 @@ import { onSecond } from "../shared/clock.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
 import { type ReceiptSession, ReportReceipts } from "./handoff/receipts.ts";
-import { shortPath } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery

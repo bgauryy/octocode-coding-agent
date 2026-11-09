@@ -8,7 +8,7 @@
  * A result carries what the agent's `bash` tool returns: a header line and the output trimmed to the same budget.
  */
 
-import { shortPath } from "../octocode/shared/format.ts";
+import { shortPath } from "../utils/display-path.ts";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../utils/ansi.ts";
 import { moveOutputFile } from "../utils/output-files.ts";
 import { sanitizeBinaryOutput } from "../utils/shell.ts";

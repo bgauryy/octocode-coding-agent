@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ApplicationCommand } from "@octocodeai/octocode-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { type AgentDb } from "../../../db/src/api.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";
 import { ApplicationCommands } from "../../src/octocode/workspace/application-commands.ts";

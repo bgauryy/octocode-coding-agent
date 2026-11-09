@@ -161,7 +161,7 @@ function copyAssets(hostedWorkspaces) {
 	copyInstructions(join(src, "octocode", "instructions"), join(dist, "octocode", "instructions"));
 	// Every core skill ships: `getNativeSkillsDir` reads the whole folder.
 	copy("octocode/native-skills", "octocode/native-skills");
-	copyMatching("octocode/shared/codex-patch", "licenses/codex-patch", /^(LICENSE|NOTICE)$/);
+	copyMatching("octocode/tool-input/codex-patch", "licenses/codex-patch", /^(LICENSE|NOTICE)$/);
 	for (const { directory, mount } of hostedWorkspaces) {
 		const licenses = join(directory, "LICENSES");
 		if (existsSync(licenses)) cpSync(licenses, join(dist, "licenses", mount), { recursive: true });

@@ -1,13 +1,13 @@
 import { getFileStamp } from "../../../common/src/paths.ts";
 import { transcripts } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
-import { writeSessionRecord } from "../../src/octocode/shared/archive/record.ts";
-import { errorSignature } from "../../src/octocode/shared/history-errors.ts";
+import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
+import { errorSignature } from "../../src/octocode/history/errors.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

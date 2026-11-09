@@ -1,4 +1,4 @@
-import type { PlanOptions, PlanState } from "../../octocode/plan/state.ts";
+import type { PlanOptions, PlanState } from "../../core/plan-state.ts";
 /**
  * RPC Client for programmatic access to the coding agent.
  *

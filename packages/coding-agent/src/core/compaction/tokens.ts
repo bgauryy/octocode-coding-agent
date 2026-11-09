@@ -4,30 +4,14 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage, getCurrentTools, type Tool } from "@octocodeai/octocode-ai";
-import type { Usage } from "@octocodeai/octocode-ai/compat";
 import {
 	type ContextUsageEstimate,
 	charsToTokens,
 	estimateContentTokens,
 	estimateContextTokensWith,
 	estimateMessageTokens,
-	getContextUsage,
 } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry, SessionProjection } from "../session-manager.ts";
-
-/**
- * Find the last valid assistant message usage from session entries.
- */
-export function getLastAssistantUsage(entries: SessionEntry[]): Usage | undefined {
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i];
-		if (entry.type === "message") {
-			const usage = getContextUsage(entry.message);
-			if (usage) return usage;
-		}
-	}
-	return undefined;
-}
 
 /**
  * Estimate context tokens from messages, using the last valid assistant usage and estimating what follows it with

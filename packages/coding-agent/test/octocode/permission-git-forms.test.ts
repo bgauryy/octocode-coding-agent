@@ -11,8 +11,8 @@ import { catastrophicCommand } from "../../src/octocode/permission/shell/destruc
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { commandWriteTargets } from "../../src/octocode/permission/shell/write-targets.ts";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
-import { worktreesDir } from "../../src/octocode/shared/own-worktree.ts";
-import { WORKTREE_ROOT_ENV } from "../../src/octocode/shared/prompt-root.ts";
+import { worktreesDir } from "../../src/octocode/worktree-paths/own-worktree.ts";
+import { WORKTREE_ROOT_ENV } from "../../src/octocode/worktree-paths/prompt-root.ts";
 import { tmp } from "./helpers.ts";
 
 /**

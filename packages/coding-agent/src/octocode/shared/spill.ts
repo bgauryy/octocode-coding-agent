@@ -3,7 +3,7 @@ import path from "node:path";
 import { formatSize, truncateHead, truncateTail } from "../../core/tools/index.ts";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
-import { shortPath } from "./format.ts";
+import { shortPath } from "../../utils/display-path.ts";
 import { sessionOutputDir } from "./home.ts";
 import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES, TEXT_MAX_CHARS } from "../../utils/output-budget.ts";
 import { capOutput, trimmedCounts } from "./util.ts";

@@ -1,4 +1,4 @@
-import { runtimeTempDir } from "../config/runtime-paths.ts";
+import { runtimeTempDir } from "../storage/runtime-paths.ts";
 import { randomUUID } from "node:crypto";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";

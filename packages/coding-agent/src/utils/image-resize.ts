@@ -1,5 +1,5 @@
 import { Worker } from "node:worker_threads";
-import { isBundledNode } from "../config/package-detection.ts";
+import { isBundledNode } from "../install/package-detection.ts";
 import {
 	IMAGE_RESIZE_WORKER_DATA,
 	IMAGE_RESIZE_WORKER_RESPONSE_TYPE,

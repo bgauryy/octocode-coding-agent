@@ -108,7 +108,7 @@ A harness is one source of configuration. `/harness` lists them.
 | `codex`    | Codex skills, MCP, hooks, plugins       | off       |
 | `cursor`   | Cursor skills, MCP                      | off       |
 
-Switch one with `/configuration enable|disable harness:<id> [--local]` (writes `toggles["harness:<id>"]`, removed when it equals the default).
+Switch one with `/configuration enable|disable harness:<id> [--local]` (writes `toggles["harness:<id>"]`, removed when it equals the default), or on the Harness panel of the [web Settings page](web-workspace.md#settings-page).
 
 - A project key reaches only that harness's project items, so a committed file cannot enable your global Claude Code content.
 - MCP servers connect or disconnect at once, also in running subagents; skills, hooks and prompts apply after `/reload`.

@@ -1,4 +1,4 @@
-import { planConstraintActive } from "../../octocode/plan/state.ts";
+import { planConstraintActive } from "../plan-state.ts";
 /**
  * One agent run of a session, from its starting messages to `agent_settled`: preparation and
  * `before_agent_start`, the post-run loop of retries, compaction and boundaries, interruption and

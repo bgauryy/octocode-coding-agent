@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
-import { createOctocodeCommand, octocodeCommand } from "../../src/octocode/cli/command.ts";
+import { createOctocodeCommand } from "../../src/octocode/cli/command.ts";
 import { parseCliHelp } from "../../src/octocode/cli/help.ts";
 import { resolveOctocodeCli } from "../../src/octocode/cli/resolve.ts";
+
+/** `/octocode` without an audit record. */
+const octocodeCommand = createOctocodeCommand();
 
 /** A command context without a terminal UI, as RPC and web modes give: `custom` never builds its component. */
 function headless() {

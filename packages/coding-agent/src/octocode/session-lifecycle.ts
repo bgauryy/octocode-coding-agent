@@ -5,7 +5,7 @@ import type { registerBashTool } from "./files/bash.ts";
 import type { Permission } from "./permission/ask.ts";
 import type { AgentControl } from "./subagents/tool.ts";
 import type { Team } from "./team/session.ts";
-import { stopRowTimers } from "./shared/render/rows.ts";
+import { stopRowTimers } from "./render/rows.ts";
 import { interactive } from "./shared/interactive.ts";
 import { contentText, MINUTE_MS, settleWithin } from "./shared/util.ts";
 import { reportStatus } from "./subagents/report.ts";

@@ -14,6 +14,7 @@ import {
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import { formatDuration } from "../../../octocode/shared/format.ts";
 import { theme } from "../../../theme/theme.ts";
+import { getRunClock } from "../../../utils/run-clock.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { hintText, keyText, rawKeyHint } from "./keybinding-hints.ts";
 import { styledLine } from "./styled-line.ts";
@@ -24,14 +25,6 @@ const SHIMMER_MAX_CHARS = 120;
 /** The interrupt key as the hints show it: `esc`, not `escape`. */
 function interruptKey(): string {
 	return keyText("app.interrupt").replace(/^escape$/, "esc");
-}
-
-/** When the current run began, so a working line created mid-run (after a retry or a compaction) keeps the run's clock. */
-let runStartedAt: number | undefined;
-
-/** Start (`at`) or end (`undefined`) the run clock the working line counts from. */
-export function setRunClock(at: number | undefined): void {
-	runStartedAt = at;
 }
 
 /** Room the detail keeps before the time and hint are given up one by one. */
@@ -105,7 +98,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 
 	/** The whole run's elapsed time, in the one duration format. */
 	private elapsed(): string {
-		return formatDuration(Date.now() - (runStartedAt ?? this.createdAt));
+		return formatDuration(Date.now() - (getRunClock() ?? this.createdAt));
 	}
 
 	/**

@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { sha256 } from "../../../common/src/atomic-file.ts";
-import { globalPaths } from "../octocode/shared/home.ts";
+import { globalPaths } from "../storage/state-paths.ts";
 import type { PluginManifest } from "./plugin-manifest.ts";
 
 export interface PluginContext {

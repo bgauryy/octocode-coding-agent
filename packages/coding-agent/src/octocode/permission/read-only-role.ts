@@ -2,18 +2,20 @@ import { archiveMutation } from "../shared/archive-operation.ts";
 import os from "node:os";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../../../../common/src/env.ts";
-import { mutatedPaths } from "../shared/file-input.ts";
+import { mutatedPaths } from "../tool-input/file-input.ts";
 import { resolveToolPath, workspacePaths } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { readOnlyCommand } from "./shell/read-only.ts";
 import { shellMutation } from "./shell/mutation.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { workspaceRoot } from "../../utils/git-repository.ts";
 import { shellPath } from "./file-access.ts";
 import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
 import { browserEscalations } from "./browser-escalation.ts";
 import { browserMcpTool } from "../../../../common/src/browser-mcp.ts";
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { mcpCallChange } from "./mcp-reads.ts";
 
 /**

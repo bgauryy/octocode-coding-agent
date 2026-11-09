@@ -7,7 +7,7 @@ import { type AgentDb, agentRuns, archiveHistory } from "../../../db/src/api.ts"
 import { openDatabase } from "../../../db/src/db.ts";
 import { SCHEMA_PLAN } from "../../../db/src/migrations.ts";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import type { LifecycleEvent } from "../../src/octocode/team/lifecycle-bus.ts";

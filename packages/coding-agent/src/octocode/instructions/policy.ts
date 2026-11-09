@@ -1,4 +1,4 @@
-import { resolveRetention } from "../../config/retention.ts";
+import { resolveRetention } from "../../storage/retention.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { SYSTEM_PROMPT_SECTIONS } from "../../core/system-prompt-spec.ts";
 import type { ResolvedRoles } from "../../../../mcp/src/roles.ts";
@@ -23,7 +23,9 @@ interface PromptInputs {
 	/** Subagent profile names and one-line descriptions, with the model each runs on when known. */
 	profiles: Array<{ name: string; description: string; model?: string | undefined }>;
 	/** The coordinator's model, providers and purpose routes, frozen per session (`subagents/routing-watch.ts`). */
-	routing?: { sessionModel: string; providers: string[]; small: string; medium: string } | undefined;
+	routing?:
+		| { sessionModel: string; providers: Array<{ id: string; count: number }>; small: string; medium: string }
+		| undefined;
 	/** Browser specialists to use when the main session has no browser tool. */
 	browserProfiles?: string[];
 	/** False inside a subagent: no delegation, report back to the parent. */
@@ -96,6 +98,9 @@ function policyFlags(input: PromptInputs) {
 /** A model route in backticks, or as prose when it is a routing error. */
 const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);
 
+/** A provider with how many of its models can run a task: `openai` (41). */
+export const providerCount = ({ id, count }: { id: string; count: number }): string => `${quote(id)} (${count})`;
+
 export function octocodePromptSections(input: PromptInputs): Record<string, string> {
 	const routing = input.routing;
 	const values = {
@@ -107,7 +112,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 					`  - ${profile.name}${profile.model ? ` (${quote(profile.model)})` : ""}${profile.description ? `: ${profile.description}` : ""}`,
 			)
 			.join("\n"),
-		providers: routing ? routing.providers.map(quote).join(", ") : "",
+		providers: routing ? routing.providers.map(providerCount).join(", ") : "",
 		sessionModel: routing ? quote(routing.sessionModel) : "",
 		smallRoute: routing ? quote(routing.small) : "",
 		mediumRoute: routing ? quote(routing.medium) : "",

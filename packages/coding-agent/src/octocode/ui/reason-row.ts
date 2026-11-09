@@ -2,7 +2,7 @@ import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { theme } from "../../theme/theme.ts";
 import { takesCallReason } from "../permission/native-tools.ts";
-import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
+import { itemTitle, withItemTitles } from "../render/item-titles.ts";
 import { purposeBlock } from "./purpose-block.ts";
 import { callReasonText } from "./call-reason.ts";
 

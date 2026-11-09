@@ -6,7 +6,7 @@ import {
 	referenceContext,
 	referencedContentBlock,
 	resolveReferences,
-} from "../shared/references.ts";
+} from "../child-sessions/references.ts";
 import type { ResultContract } from "./result-schema.ts";
 
 /**

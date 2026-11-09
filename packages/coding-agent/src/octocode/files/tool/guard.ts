@@ -2,7 +2,7 @@ import { isUtf8 } from "node:buffer";
 import fs from "node:fs";
 import { findAllEditOccurrences, normalizeToLF } from "../../../core/tools/edit-diff.ts";
 import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { describeRanges, firstGap, type LineRange, lineCount, mergeRanges, readView } from "../coverage.ts";
 

@@ -82,9 +82,8 @@ describe("models tool", () => {
 		expect(text.split("\n")[0]).toBe(
 			"This session: anthropic/claude-opus · thinking high · context budget 180k of 200k capacity.",
 		);
-		expect(text).toContain(
-			"Providers (credential source; last result):\n  anthropic · stored\n  opencode · --api-key, this session only (tasks cannot use it)",
-		);
+		expect(text).toContain("\n  anthropic · saved credential · 2 runnable · cheapest anthropic/claude-haiku ($1/$5)");
+		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
 	});
 
 	it("lists unconnected catalog models as not runnable only when asked for the catalog scope", async () => {
@@ -105,7 +104,7 @@ describe("models tool", () => {
 			"anthropic/claude-opus",
 			"opencode/qwen-coder",
 		]);
-		expect(text).toMatch(/^ {2}anthropic · stored ✓ credential worked \(check, /m);
+		expect(text).toMatch(/^ {2}anthropic · saved credential · .* ✓ credential worked \(check, /m);
 		expect(text).toMatch(
 			/^ {2}opencode · .* ✗ credential refused \(check, .*401 api_key_expired — fix with \/providers$/m,
 		);
@@ -113,10 +112,12 @@ describe("models tool", () => {
 		expect(text.match(/credential refused/g)).toHaveLength(1);
 	});
 
-	it("lists every model the session can use with the ids `model` accepts, the purposes and the profiles", async () => {
-		const text = await mode(new Map([["researcher", { name: "researcher", model: "small" }]])).run({});
-		for (const id of ["anthropic/claude-opus", "anthropic/claude-haiku", "opencode/qwen-coder"])
-			expect(text).toContain(id);
+	it("lists one provider's models with the ids `model` accepts, the purposes and the profiles", async () => {
+		const text = await mode(new Map([["researcher", { name: "researcher", model: "small" }]])).run({
+			provider: "anthropic",
+		});
+		for (const id of ["anthropic/claude-opus", "anthropic/claude-haiku"]) expect(text).toContain(id);
+		expect(text).not.toContain("opencode/qwen-coder");
 		expect(text).toMatch(/^● anthropic\/claude-opus/m);
 		expect(text).toContain("small: ");
 		expect(text).toContain("researcher: ");

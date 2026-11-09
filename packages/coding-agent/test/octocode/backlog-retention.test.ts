@@ -5,7 +5,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentDb, closeSharedAgentDb, commands, configAudits, archiveHistory } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";

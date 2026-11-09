@@ -1,4 +1,4 @@
-import { textResultDisplay } from "./shared/display.ts";
+import { textResultDisplay } from "./render/display.ts";
 import { renderInstruction } from "../core/prompt-template.ts";
 import { type JsonObject, StringEnum, validateToolArguments } from "@octocodeai/octocode-ai";
 import { Text } from "@octocodeai/octocode-tui";
@@ -6,7 +6,7 @@ import { type TSchema, Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { TASKS_FIELD, batchCallText, batchOf, runBatch, tasksSchema } from "./agent-batch.ts";
-import { AGENT_FIELD_RENAMES, agentCall } from "./shared/agent-call.ts";
+import { AGENT_FIELD_RENAMES, agentCall } from "./child-sessions/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 

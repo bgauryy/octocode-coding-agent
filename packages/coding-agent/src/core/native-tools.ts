@@ -1,5 +1,5 @@
 import type { Extension } from "./features/types.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../common/src/mcp-names.ts";
 import { DEFAULT_TOOL_NAMES } from "./settings-manager.ts";
 
 /**

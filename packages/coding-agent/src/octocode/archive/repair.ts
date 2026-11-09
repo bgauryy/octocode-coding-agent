@@ -3,10 +3,11 @@ import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
 import type { SessionHeader, CompactionEntry } from "../../core/session-manager.ts";
 import { type AgentDb, sessions, transcripts, workspaces } from "../../../../db/src/api.ts";
-import { canonicalPath, isWithin } from "../shared/home/repo.ts";
-import { readWorkspaceIdentity } from "../../config/workspace.ts";
-import { archiveFolder } from "../shared/archive.ts";
-import { parseRecordHeader } from "../shared/archive/record.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { readWorkspaceIdentity } from "../../storage/workspace.ts";
+import { archiveFolder } from "../history/archive.ts";
+import { parseRecordHeader } from "../history/archive/record.ts";
 import { saveCompaction } from "./summaries.ts";
 
 const READ_CHUNK = 64 * 1024;

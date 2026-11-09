@@ -41,6 +41,19 @@ With `OCTOCODE_WEB_DAEMON=1`, `/web` opens a page served by one detached, user-l
 
 The daemon exits after ten idle minutes (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
 
+### Settings page
+
+The daemon page has a Settings view. Choose a workspace at the bottom to see its trust and its own settings.
+
+| Panel                | Shows                                                                                  | Change it here                                     |
+| -------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Provider sources     | Octocode and Pi, on or off                                                             | Pi on or off ([providers](providers.md))           |
+| Provider credentials | Where each provider's key comes from, never its value                                  | Set or clear a key, sign in, turn a provider off   |
+| Settings             | Default provider and model, with the file that sets them                               | Global or workspace value                          |
+| Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions | Turn each on or off, globally or for the workspace |
+
+The Harness panel writes the same settings and MCP files as `/configuration enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a [published link](remote.md) cannot read or change it, because its rows name your files.
+
 ## Activity
 
 - The composer names the terminal session that receives your message. Start a task, guide current work or queue a follow-up; replies stream into the page and the terminal.

@@ -1,5 +1,5 @@
 import { basename, join, resolve } from "node:path";
-import { globalPaths } from "../../../config/state-paths.ts";
+import { globalPaths } from "../../../storage/state-paths.ts";
 import { repoKey } from "../../../utils/git-repository.ts";
 import { collectAutoPromptEntries, collectAutoThemeEntries } from "../../package-manager/auto-entries.ts";
 import { collectAncestorProjectSkillDirs } from "../../package-manager/discovery.ts";

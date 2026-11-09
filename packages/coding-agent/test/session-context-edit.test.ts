@@ -1,11 +1,10 @@
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
-import {
-	DEFAULT_COMPACTION_SETTINGS,
-	estimateProjectedContextTokens,
-	prepareCompaction,
-} from "../src/core/compaction/index.ts";
+import { estimateProjectedContextTokens, prepareCompaction } from "../src/core/compaction/index.ts";
+import { builtInCompactionSettings } from "../src/core/compaction/settings.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+
+const DEFAULT_COMPACTION_SETTINGS = builtInCompactionSettings();
 
 function assistant(text: string): AssistantMessage {
 	return {

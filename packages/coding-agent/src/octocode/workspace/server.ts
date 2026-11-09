@@ -11,7 +11,7 @@ import {
 	serveServiceWorker,
 	settingsWebPrefs,
 	type WebPrefsStore,
-} from "../shared/web-page-routes.ts";
+} from "../browser/page-routes.ts";
 import {
 	WorkspaceCommandSchema,
 	BacklogCommandSchema,

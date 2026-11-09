@@ -2,7 +2,7 @@ import { Container, getKeybindings, GLYPH, Spacer, Text } from "@octocodeai/octo
 import { APP_NAME } from "../../../config.ts";
 import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import { theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { HintBar } from "./hint-bar.ts";
 import { keyText } from "./keybinding-hints.ts";
 

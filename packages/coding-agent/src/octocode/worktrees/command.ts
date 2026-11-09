@@ -4,7 +4,7 @@ import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hasTmuxSession } from "@octocodeai/octocode-tui";
 import { type Subcommand, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { gitQuiet } from "../shared/git.ts";
+import { gitQuiet } from "../../utils/git-run.ts";
 import { listTmuxPanes, type TmuxPane } from "../terminal-launch/tmux.ts";
 import { worktreeTrustTitle } from "./approval.ts";
 import { describeWorktree, ensureWorktree } from "./create.ts";

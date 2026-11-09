@@ -1,11 +1,13 @@
 import fs from "node:fs";
-import { WORKSPACE_STATE } from "../../config/workspace.ts";
+import { WORKSPACE_STATE } from "../../storage/workspace.ts";
 import path from "node:path";
 import { OCTOCODE_DIR, octocodeHome, resolveToolPath } from "../shared/home.ts";
-import { ownWorktreeRoot } from "../shared/own-worktree.ts";
+import { ownWorktreeRoot } from "../worktree-paths/own-worktree.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
-import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { workspaceRoot } from "../../utils/git-repository.ts";
 import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
 
 /**

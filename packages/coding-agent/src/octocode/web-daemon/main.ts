@@ -1,7 +1,7 @@
 import path from "node:path";
 import { Value } from "typebox/value";
 import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode-contracts/daemon";
-import { ConfigSnapshotSchema } from "@octocodeai/octocode-contracts/config";
+import { ConfigSnapshotSchema, HarnessListSchema } from "@octocodeai/octocode-contracts/config";
 import { getAgentDir } from "../../config.ts";
 import { privateDir } from "../shared/home.ts";
 import { processStartTime } from "../shared/process.ts";
@@ -10,17 +10,23 @@ import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
 import { configAudits } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { buildConfigSnapshot } from "./config-status.ts";
 import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
 import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
 import { writeConfigSetting } from "./config-write.ts";
 import { writeConfigProvider } from "./provider-write.ts";
+import { listHarness, switchHarness } from "./harness-config.ts";
 import { WEB_DAEMON_IDLE_ENV, webDaemonPaths } from "./paths.ts";
 import { removeRecord, writeDaemonRecord } from "./records.ts";
 import { startDaemonServer, type DaemonServer } from "./server.ts";
 
 const DEFAULT_IDLE_MINUTES = 10;
+
+function checkedHarness<T>(list: T): T {
+	if (!Value.Check(HarnessListSchema, list)) throw new Error("The harness list is invalid.");
+	return list;
+}
 const DRAIN_LIMIT_MS = 30_000;
 const LOCK_WAIT_MS = 2000;
 
@@ -119,6 +125,16 @@ export async function startWebDaemon(
 					audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
 				}),
 			signIn: (command) => signIns.handle(command),
+			harness: async (repo) => checkedHarness(await listHarness({ agentDir: getAgentDir(), cwd: repo?.root })),
+			writeHarness: async (command, repo) =>
+				checkedHarness(
+					await switchHarness(command, {
+						agentDir: getAgentDir(),
+						cwd: repo?.root,
+						actor: `web:${nonce.slice(0, 8)}`,
+						audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
+					}),
+				),
 			auditRefused: refusalAuditor(`web:${nonce.slice(0, 8)}`, (entry) =>
 				configAudits.record(sharedAgentDb(env).db, entry),
 			),

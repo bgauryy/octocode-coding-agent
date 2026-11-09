@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import type * as Meta from "../../../db/src/queries/meta.ts";
 import { claimSweep } from "../../src/octocode/sessions/sweep.ts";
 import { tmp } from "./helpers.ts";

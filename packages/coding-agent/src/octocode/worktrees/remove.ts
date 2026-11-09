@@ -1,4 +1,4 @@
-import { git, gitQuiet } from "../shared/git.ts";
+import { git, gitQuiet } from "../../utils/git-run.ts";
 import { revokeWorktreeGrant } from "../trust/grants.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";
 import { entryAt, locateRepo, worktreePath } from "./repo.ts";

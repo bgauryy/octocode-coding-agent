@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runTrustCommand } from "../../src/cli/trust-command.ts";
 import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { trust, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { registerTrustCommand } from "../../src/octocode/trust/command.ts";

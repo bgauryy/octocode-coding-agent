@@ -1,9 +1,9 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../theme/theme.ts";
-import { resultBlock, resultText, toolHeader } from "../shared/render.ts";
-import { timingOf } from "../shared/render/rows.ts";
-import { clip, oneLine } from "../shared/render/text.ts";
-import type { RenderContext } from "../shared/render/types.ts";
+import { resultBlock, resultText, toolHeader } from "../render/tool.ts";
+import { timingOf } from "../render/rows.ts";
+import { clip, oneLine } from "../shared/text.ts";
+import type { RenderContext } from "../render/types.ts";
 
 /** What the `compact` tool's result records for its row. */
 export interface CompactDetails {

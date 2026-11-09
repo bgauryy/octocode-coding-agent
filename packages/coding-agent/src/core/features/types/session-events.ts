@@ -1,7 +1,7 @@
 /** Startup, resource and session lifecycle events. */
 
 import type { CompactionPreparation } from "../../compaction/index.ts";
-import type { RegisteredMcpServer } from "../../../../../mcp/src/servers.ts";
+import type { RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionNameSource } from "../../session-manager.ts";
 
 // ============================================================================

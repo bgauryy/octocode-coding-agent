@@ -1,6 +1,6 @@
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
-import { ensureWorkspaceStateDir } from "../../../config/workspace.ts";
+import { ensureWorkspaceStateDir } from "../../../storage/workspace.ts";
 import type { Backlog } from "../context.ts";
 import { exportMarkdown } from "../format.ts";
 import { renderBacklogHtml } from "@octocodeai/octocode-webview";

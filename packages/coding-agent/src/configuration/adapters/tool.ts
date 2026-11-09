@@ -1,4 +1,4 @@
-import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
 import { isToolModifier, resolveDefaultTools } from "../../core/settings-manager/tool-list.ts";
 import { getNativeToolNames } from "../../octocode/permission/native-tools.ts";
 import type { Settings } from "../../core/settings-schema.ts";

@@ -22,7 +22,8 @@
 			"ghGetFileContent",
 			"ghSearchHistory",
 			"ghGetHistoryItem",
-			"artifactSearch"
+			"artifactSearch",
+			"securityCheck"
 		]
 	}
 }

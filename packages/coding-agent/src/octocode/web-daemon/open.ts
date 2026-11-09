@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { createAppWindow, type WebWindowMode } from "../shared/browser-app.ts";
+import { createAppWindow, type WebWindowMode } from "../browser/app-window.ts";
 import { say } from "../shared/commands.ts";
 import type { SessionAttach } from "./attach-register.ts";
-import { openOnHost, planOpen } from "../shared/host-opener.ts";
+import { openOnHost, planOpen } from "../browser/host-opener.ts";
 import { LAUNCH_CODE_ROUTE, LAUNCH_DOOR_PREFIX } from "./launch-code.ts";
 import { daemonRequest, ensureWebDaemon, waitForSession, type LaunchedDaemon, type LaunchOptions } from "./launcher.ts";
 import { webDaemonEnabled } from "./paths.ts";

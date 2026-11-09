@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sharedAgentDb } from "../../config/database.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { agentEvents, backlog, dbStamp, timers, type TimerRow } from "../../../../db/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";

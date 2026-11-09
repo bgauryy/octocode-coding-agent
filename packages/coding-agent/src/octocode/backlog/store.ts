@@ -7,7 +7,7 @@ import {
 	deriveEpicState,
 } from "@octocodeai/octocode-contracts/snapshot";
 import { type AgentDb, type AgentRun, agentRuns, backlog, dbStamp, archivedAudits } from "../../../../db/src/api.ts";
-import { historyWindows } from "../../config/retention.ts";
+import { historyWindows } from "../../storage/retention.ts";
 import { TaskStore } from "./tasks/store.ts";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
 import type { AddInput, ListQuery, UpdateInput } from "./inputs.ts";

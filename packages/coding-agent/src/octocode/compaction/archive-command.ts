@@ -1,4 +1,4 @@
-import { archiveFolder, LIBRARY_FILE, readSegments, segmentLine, segmentPath } from "../shared/archive.ts";
+import { archiveFolder, LIBRARY_FILE, readSegments, segmentLine, segmentPath } from "../history/archive.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 
 /**

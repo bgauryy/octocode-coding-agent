@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { USER_AUTHOR, backlog, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 
 let tmp: string;

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { type AgentDb } from "../../../db/src/api.ts";
 import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";

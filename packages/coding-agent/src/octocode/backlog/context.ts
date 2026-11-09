@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
-import { historyWindows } from "../../config/retention.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { historyWindows } from "../../storage/retention.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";
 import { type Actor, BacklogStore } from "./store.ts";
 import { scheduleHistoryArchive } from "../../../../db/src/api.ts";

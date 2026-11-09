@@ -8,16 +8,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	type CompactionSettings,
 	compact,
-	DEFAULT_COMPACTION_SETTINGS,
 	estimateContextTokens,
 	estimateTokens,
-	findCutPoint,
-	getLastAssistantUsage,
+	findProjectedCutPoint,
 	prepareCompaction,
 	shouldCompact,
 } from "../src/core/compaction/index.ts";
+import { builtInCompactionSettings } from "../src/core/compaction/settings.ts";
 import {
 	buildSessionContext,
+	buildSessionProjection,
 	type CompactionEntry,
 	type CustomMessageEntry,
 	type ModelChangeEntry,
@@ -27,6 +27,10 @@ import {
 	type SessionMessageEntry,
 	type ThinkingLevelChangeEntry,
 } from "../src/core/session-manager.ts";
+
+const DEFAULT_COMPACTION_SETTINGS = builtInCompactionSettings();
+const findCutPoint = (entries: SessionEntry[], startIndex: number, endIndex: number, keepRecentTokens: number) =>
+	findProjectedCutPoint(buildSessionProjection(entries).entries, startIndex, endIndex, keepRecentTokens);
 
 // ============================================================================
 // Test fixtures
@@ -200,57 +204,6 @@ describe("Token calculation", () => {
 	it("should handle zero values", () => {
 		const usage = createMockUsage(0, 0, 0, 0);
 		expect(calculateContextTokens(usage)).toBe(0);
-	});
-});
-
-describe("getLastAssistantUsage", () => {
-	it("should find the last non-aborted assistant message usage", () => {
-		const entries: SessionEntry[] = [
-			createMessageEntry(createUserMessage("Hello")),
-			createMessageEntry(createAssistantMessage("Hi", createMockUsage(100, 50))),
-			createMessageEntry(createUserMessage("How are you?")),
-			createMessageEntry(createAssistantMessage("Good", createMockUsage(200, 100))),
-		];
-
-		const usage = getLastAssistantUsage(entries);
-		expect(usage).not.toBeNull();
-		expect(usage!.input).toBe(200);
-	});
-
-	it("should skip aborted messages", () => {
-		const abortedMsg: AssistantMessage = {
-			...createAssistantMessage("Aborted", createMockUsage(300, 150)),
-			stopReason: "aborted",
-		};
-
-		const entries: SessionEntry[] = [
-			createMessageEntry(createUserMessage("Hello")),
-			createMessageEntry(createAssistantMessage("Hi", createMockUsage(100, 50))),
-			createMessageEntry(createUserMessage("How are you?")),
-			createMessageEntry(abortedMsg),
-		];
-
-		const usage = getLastAssistantUsage(entries);
-		expect(usage).not.toBeNull();
-		expect(usage!.input).toBe(100);
-	});
-
-	it("should skip all-zero assistant usage", () => {
-		const entries: SessionEntry[] = [
-			createMessageEntry(createUserMessage("Hello")),
-			createMessageEntry(createAssistantMessage("Hi", createMockUsage(100, 50))),
-			createMessageEntry(createUserMessage("continue")),
-			createMessageEntry(createAssistantMessage("Partial", createMockUsage(0, 0))),
-		];
-
-		const usage = getLastAssistantUsage(entries);
-		expect(usage).not.toBeNull();
-		expect(usage!.input).toBe(100);
-	});
-
-	it("should return undefined if no assistant messages", () => {
-		const entries: SessionEntry[] = [createMessageEntry(createUserMessage("Hello"))];
-		expect(getLastAssistantUsage(entries)).toBeUndefined();
 	});
 });
 

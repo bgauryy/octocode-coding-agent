@@ -1,10 +1,11 @@
-import { withSessionStorage } from "../../config/runtime-paths.ts";
+import { withSessionStorage } from "../../storage/runtime-paths.ts";
 import type { Provider } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
-import { type McpServerChange, type McpServerConfig, validateMcpServerConfig } from "../../../../mcp/src/servers.ts";
+import { validateMcpServerConfig } from "../../../../mcp/src/servers.ts";
+import { type McpServerChange, type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { SessionNameSource } from "../session-manager.ts";
 import type { ModelRouteRequest, VirtualModelDefinition } from "../virtual-models.ts";
 import type {

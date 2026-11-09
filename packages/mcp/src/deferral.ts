@@ -11,7 +11,8 @@
  */
 
 import type { McpServerEntry } from "./config.ts";
-import { configuredMcpToolExposure, MCP_MANAGE_TOOL_NAME } from "./servers.ts";
+import { configuredMcpToolExposure } from "./servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../common/src/mcp-names.ts";
 
 /** What `describe` defers of one server: tools the configuration defers, and tools the auto budget may defer. */
 export interface McpDeferral {

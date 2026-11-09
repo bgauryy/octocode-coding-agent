@@ -5,7 +5,7 @@ import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocode
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import type { ExtensionFactory } from "../../src/core/features/index.ts";
-import { buildInventory } from "../../src/core/extensibility/inventory.ts";
+import { buildInventory } from "../../src/octocode/harness/inventory.ts";
 import { switchItem } from "../../src/core/extensibility/switch.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";

@@ -13,10 +13,10 @@ import { shortDuration } from "./brief.ts";
 import { listingScope, quickList } from "./catalog.ts";
 import { pickerRemoval } from "./delete.ts";
 import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { workspaces } from "../../../../db/src/api.ts";
-import { readWorkspaceIdentity } from "../../config/workspace.ts";
+import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import fs from "node:fs";
 
 /** Random tail of a session id (Octocode's UUIDv7 ids share their leading timestamp digits). */

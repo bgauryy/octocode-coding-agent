@@ -8,7 +8,7 @@ import { getApplicationPort } from "../../../src/core/application/index.ts";
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
-import { openAgentDb } from "../../../src/config/database.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
 import { sharedWorkspaceWeb } from "../../../src/octocode/backlog/shared-web.ts";
 import { WorkspaceRuntime } from "../../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../../src/octocode/workspace/server.ts";

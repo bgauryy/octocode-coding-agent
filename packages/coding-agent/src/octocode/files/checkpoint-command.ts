@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sessionFolder } from "../shared/home.ts";
 import { withDialog } from "../shared/locks.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Checkpoints, RewindResult } from "./checkpoint.ts";
 import { inheritCheckpoints, sessionIdOf } from "./checkpoint-store.ts";

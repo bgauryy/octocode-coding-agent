@@ -5,7 +5,7 @@
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
 
 interface ExtensionInputOptions {

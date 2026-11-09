@@ -28,25 +28,39 @@ describe("routing facts", () => {
 	it("names the session model, providers with a usable model, each purpose and each profile's route", () => {
 		expect(routingFacts([opus, sonnet, haiku, other], opus, [researcher], undefined, none)).toEqual({
 			sessionModel: "p/opus",
-			providers: ["p", "q"],
+			providers: [
+				{ id: "p", count: 3 },
+				{ id: "q", count: 1 },
+			],
 			small: "p/haiku",
 			medium: "p/sonnet",
 			profiles: { researcher: "p/haiku:medium" },
 		});
 		// A provider that refused its credential is not offered.
-		expect(routingFacts([opus, other], opus, [], undefined, (provider) => provider === "q")?.providers).toEqual(["p"]);
+		expect(routingFacts([opus, other], opus, [], undefined, (provider) => provider === "q")?.providers).toEqual([
+			{ id: "p", count: 1 },
+		]);
 		expect(routingFacts([], opus, [], undefined, none)).toBeUndefined();
 		expect(routingFacts([opus], undefined, [], undefined, none)).toBeUndefined();
 	});
 });
 
 describe("RoutingWatch", () => {
-	const facts = (providers: string[], small = "p/haiku") => ({
+	const facts = (providers: string[], small = "p/haiku", count = 2) => ({
 		sessionModel: "p/opus",
-		providers,
+		providers: providers.map((id) => ({ id, count })),
 		small,
 		medium: "p/sonnet",
 		profiles: { researcher: `${small}:medium` },
+	});
+
+	it("tells a change in a provider's runnable count even when the providers stay the same", () => {
+		const watch = new RoutingWatch();
+		watch.prompt(facts(["p", "q"], "p/haiku", 2));
+		const notice = watch.notice(facts(["p", "q"], "p/haiku", 5));
+		expect(notice).toContain("`p` (5), `q` (5)");
+		expect(notice).not.toContain("added");
+		expect(notice).toContain("`models` with `provider` set to an id lists that provider's models.");
 	});
 
 	it("freezes the prompt's facts per session and tells each later change once", () => {
@@ -59,7 +73,9 @@ describe("RoutingWatch", () => {
 		expect(watch.prompt(changed)).toBe(first);
 		const notice = watch.notice(changed);
 		expect(notice).toContain(`[${ROUTING_NOTICE_ID}]`);
-		expect(notice).toContain("Providers: `p`, `r` (added `r`) (no longer available: `q`).");
+		expect(notice).toContain(
+			"Providers (models that can run a task): `p` (2), `r` (2) (added `r`) (no longer available: `q`).",
+		);
 		expect(notice).toContain("`small` runs `r/tiny`; `medium` runs `p/sonnet`. Profiles: researcher `r/tiny:medium`.");
 		expect(watch.notice(changed)).toBeUndefined();
 		watch.reset();
@@ -90,7 +106,7 @@ describe("coordinator prompt routing", () => {
 
 		const first = await start();
 		expect(first.prompt).toContain(
-			"- Models: you run `p/opus`; providers: `p`, `q`; `small` runs `p/haiku`, `medium` `p/sonnet` (also the default)",
+			"- Models: you run `p/opus`; providers: `p` (3), `q` (1); `small` runs `p/haiku`, `medium` `p/sonnet` (also the default)",
 		);
 		expect(first.prompt).toContain("  - researcher (`p/haiku:medium`): Reads code");
 		expect(first.message).toBeUndefined();
@@ -116,7 +132,7 @@ describe("coordinator prompt routing", () => {
 		available = [opus, haiku];
 		turn.reset();
 		const reloaded = await start();
-		expect(reloaded.prompt).toContain("providers: `p`; `small` runs `p/haiku`");
+		expect(reloaded.prompt).toContain("providers: `p` (2); `small` runs `p/haiku`");
 		expect(reloaded.message).toBeUndefined();
 	});
 });

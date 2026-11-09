@@ -37,6 +37,8 @@ export const DAEMON_ROUTES = {
 	configProviders: "/api/admin/config/providers",
 	/** Launch capability only: POST one `SignInCommand` (start, status, answer, cancel of a host-run OAuth sign-in); the reply is a `SignInState`. */
 	configSignin: "/api/admin/config/signin",
+	/** Launch capability only: GET the `HarnessList` (`?repoId=`), POST one `HarnessSwitchCommand`; the reply is the fresh `HarnessList`. */
+	configHarness: "/api/admin/config/harness",
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",

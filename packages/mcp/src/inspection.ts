@@ -3,7 +3,7 @@ import type { Tool } from "./client/index.ts";
 import { hostIdentity, hostVendors } from "./host.ts";
 import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 import type { McpServerEntry } from "./config.ts";
-import { type McpExposure } from "./servers.ts";
+import { type McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { isEnabled, type McpServer } from "./server.ts";
 
 /** What `toolCatalog` reads of the extension state, so inspection does not depend on the state module. */

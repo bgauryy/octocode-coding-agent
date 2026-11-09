@@ -5,7 +5,7 @@ import { parseArgs } from "../../src/cli/args.ts";
 import type * as NativeConfig from "../../src/config.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { transcriptNote } from "../../src/octocode/compaction/summary.ts";
-import { archiveFolder, archiveSearch, LIBRARY_FILE } from "../../src/octocode/shared/archive.ts";
+import { archiveFolder, archiveSearch, LIBRARY_FILE } from "../../src/octocode/history/archive.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { rendered, theme } from "./fake-host.ts";

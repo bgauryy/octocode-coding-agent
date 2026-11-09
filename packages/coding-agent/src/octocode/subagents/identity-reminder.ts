@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ChildIdentity, identityBlock } from "../instructions/task.ts";
-import { existingLibrary } from "../shared/archive.ts";
+import { existingLibrary } from "../history/archive.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { AGENT_ID_ENV } from "../team/store/env.ts";
 import { IDENTITY_REMINDER_TYPE, latestReminderOnly } from "../shared/reminder-view.ts";

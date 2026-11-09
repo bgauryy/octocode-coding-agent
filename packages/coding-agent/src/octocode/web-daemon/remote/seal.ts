@@ -28,12 +28,6 @@ export function newNonce(): Buffer {
 
 export const encodeKey = (key: Buffer): string => key.toString("base64url");
 
-export function decodeKey(text: string): Buffer | undefined {
-	if (!/^[A-Za-z0-9_-]{43}$/.test(text)) return undefined;
-	const key = Buffer.from(text, "base64url");
-	return key.length === KEY_BYTES ? key : undefined;
-}
-
 export function decodeNonce(text: string): Buffer | undefined {
 	if (!/^[A-Za-z0-9_-]{22}$/.test(text)) return undefined;
 	const nonce = Buffer.from(text, "base64url");

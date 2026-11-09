@@ -147,7 +147,7 @@ Schema: `{"type":"object","properties":{"reason":{"type":"string","description":
 ### mcp
 
 ```text
-Manage this session's MCP servers; no configuration file changes. list: state, tool count and last error (one server with server). tools: the catalog; with tool, its full description and schemas, without running it. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.
+Manage this session's MCP servers; no configuration file changes. list: state, tool count, group, purpose and last error (one server with server, plus where it is defined). tools: the catalog; with tool, its full description and schemas, without running it. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.
 ```
 
 Schema: `{"type":"object","required":["intent","reason"],"properties":{"reason":{"type":"string","description":"Why this call, one sentence"},"intent":{"type":"string","enum":["list","tools","restart","stop"]},"server":{"type":"string","description":"Server name; required for every intent except list"},"tool":{"type":"string","description":"tools: the tool to inspect"}}}`

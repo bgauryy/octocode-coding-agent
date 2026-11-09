@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import { webCommand } from "../../src/octocode/workspace/command.ts";
@@ -10,13 +10,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { embeddedJson, renderBacklogHtml } from "@octocodeai/octocode-webview";
 import { type Snapshot, STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { openFile } from "../../src/octocode/shared/open.ts";
+import { openFile } from "../../src/octocode/browser/open.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 
 const SECRET = `ghp_${"a1B2c3D4e5".repeat(4)}`;

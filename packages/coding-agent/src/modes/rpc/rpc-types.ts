@@ -1,4 +1,4 @@
-import type { PlanState } from "../../octocode/plan/state.ts";
+import type { PlanState } from "../../core/plan-state.ts";
 /**
  * RPC protocol types for headless operation.
  *

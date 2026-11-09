@@ -1,7 +1,7 @@
 import path from "node:path";
-import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
-import { shortPath } from "../shared/format.ts";
-import { rebasePath } from "../shared/prompt-root.ts";
+import { archiveSearch, LIBRARY_FILE } from "../history/archive.ts";
+import { shortPath } from "../../utils/display-path.ts";
+import { rebasePath } from "../worktree-paths/prompt-root.ts";
 import { reportContract } from "./report.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 
@@ -27,7 +27,7 @@ export interface ChildIdentity {
  * The facts only this child has, and the report contract (`report.ts`), rendered from `subagent/identity.md` after the
  * optional worktree note (`subagent/worktree.md`) and why it was started (`subagent/why.md`). It is the exact text `withIdentity` appends to a task, so it can be
  * sent again on its own (after a compaction) without a second template. `archive` is the library of the parent's
- * compacted history (`shared/archive.ts`), given only when the parent has one; the child reads it with the `archive`
+ * compacted history (`history/archive.ts`), given only when the parent has one; the child reads it with the `archive`
  * tool, nothing may change it.
  */
 export function identityBlock(identity: ChildIdentity, archive?: { library: string }): string {

@@ -10,7 +10,7 @@ import {
 	TruncatedText,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { hintLine, keyText } from "./keybinding-hints.ts";
 
 export type AuthSelectorProvider = {

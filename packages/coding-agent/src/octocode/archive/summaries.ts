@@ -3,9 +3,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { type CompactionEntry } from "../../core/session-manager.ts";
 import { type AgentDb, agentEvents, compactions, transcripts } from "../../../../db/src/api.ts";
-import { archiveFolder, segmentFiles } from "../shared/archive.ts";
+import { archiveFolder, segmentFiles } from "../history/archive.ts";
 import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 
 export function saveCompaction(
 	agent: AgentDb,

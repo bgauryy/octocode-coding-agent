@@ -5,12 +5,12 @@ import type { Ask } from "../team/asks.ts";
 import type { Compactions } from "./events.ts";
 import type { ChildNotices } from "./notices.ts";
 import type { StructuredResultV1 } from "./result-schema.ts";
-import type { ReportArtifact } from "../shared/report-artifact.ts";
+import type { ReportArtifact } from "../child-sessions/report-artifact.ts";
 
 /**
  * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/sessions/<id>`),
  * the folder its transcript is written to (recorded at the start, so a run that never reports can still be found), its
- * transcript file once the run ended, and the folder of its archive of compacted history (`shared/archive.ts`) once it
+ * transcript file once the run ended, and the folder of its archive of compacted history (`history/archive.ts`) once it
  * compacted: Markdown the parent can search with the Octocode tools.
  */
 interface ChildSessionDetails {

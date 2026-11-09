@@ -1,11 +1,12 @@
-import { agentCall } from "../shared/agent-call.ts";
-import { fileChanges } from "../shared/file-input.ts";
+import { agentCall } from "../child-sessions/agent-call.ts";
+import { fileChanges } from "../tool-input/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { clipColumns, queryTarget } from "../shared/render/text.ts";
+import { clipColumns, queryTarget } from "../shared/text.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { Thought } from "../shared/thought.ts";
-import { firstLine, toolHint } from "../shared/util.ts";
+import { Thought } from "../render/thought.ts";
+import { firstLine } from "../shared/util.ts";
+import { toolHint } from "../../utils/tool-hint.ts";
 
 /** What the model is doing between tool runs. */
 type Phase = "idle" | "model" | "thinking" | "writing" | "calling";

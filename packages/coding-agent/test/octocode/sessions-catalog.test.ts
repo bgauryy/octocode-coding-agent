@@ -5,7 +5,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { buildSessionInfo } from "../../src/core/session-manager/listing.ts";
 import { getDefaultSessionDirPath } from "../../src/core/session-manager/storage.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { quickList } from "../../src/octocode/sessions/catalog.ts";
 import { registerSessions } from "../../src/octocode/sessions/register.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";

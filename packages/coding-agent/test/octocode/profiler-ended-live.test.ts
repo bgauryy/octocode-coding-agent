@@ -4,7 +4,7 @@ import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentDb, sessions } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";

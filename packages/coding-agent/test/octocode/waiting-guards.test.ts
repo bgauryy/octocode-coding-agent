@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase, timers } from "../../../db/src/api.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { INTERNAL_MESSAGE_TYPE, JOB_TYPE, TIMER_TYPE } from "../../src/octocode/shared/messages.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import { newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";

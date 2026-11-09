@@ -1,8 +1,9 @@
 import os from "node:os";
 import path from "node:path";
 import { gitMarkerDir } from "../../../utils/git-marker.ts";
-import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
-import { ownWorktreeRoot } from "../../shared/own-worktree.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../../common/src/paths.ts";
+import { ownWorktreeRoot } from "../../worktree-paths/own-worktree.ts";
 import { gitOptionsEnd } from "./program-forms.ts";
 import { base, mask, nestedScripts, REMOVERS, SEPARATOR, stdinOf, unhide, words } from "./words.ts";
 

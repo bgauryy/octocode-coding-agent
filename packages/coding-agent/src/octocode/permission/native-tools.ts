@@ -1,6 +1,6 @@
 import type { TSchema } from "typebox";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { MCP_MANAGE_TOOL_NAME } from "../../../../mcp/src/servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
 

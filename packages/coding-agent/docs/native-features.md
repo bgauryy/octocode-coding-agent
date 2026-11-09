@@ -336,17 +336,30 @@ flowchart TD
   B -->|no profile at all| M[medium purpose]
   R --> U{available?}
   U -->|call names unavailable| X[Refused with closest matches]
+  U -->|call names a model that cannot run a task| Y[Refused with runnable models of that provider]
   U -->|profile names unavailable| P
 ```
 
-| Value                    | Meaning                                                                                                 |
-| ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `provider/id` or bare id | A name `/modelsettings` lists; a bare id several providers list resolves to the parent's provider first |
-| `small`                  | The cheapest capable model the session can use                                                          |
-| `medium`                 | The dearest capable model priced between 15% and 80% of the parent's                                    |
-| any of these `:level`    | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, e.g. `small:high`                            |
+| Value                    | Meaning                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider/id` or bare id | A name `/modelsettings` lists; a bare id several providers list resolves to the parent's provider first. A model that cannot run a task (below) is refused |
+| `small`                  | The cheapest capable model the session can use                                                                                                             |
+| `medium`                 | The dearest capable model priced between 15% and 80% of the parent's                                                                                       |
+| any of these `:level`    | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, e.g. `small:high`                                                                               |
 
 `small` and `medium` prefer the parent's provider and lab. A candidate must support tool calls, have a context window of at least 100,000 tokens, take images when the parent does, not be deprecated and be its family's current generation; with none, or an unknown parent price, the child runs on the parent's model. The thinking level is the call's suffix, else the profile's (kept on whichever model is picked, and on the parent's model after a fallback), else `OCTOCODE_SUBAGENT_THINKING`, else `medium`; a child never takes the parent's level or `defaultThinkingLevel`; a level the model lacks is clamped and the route says so.
+
+What the `models` tool returns:
+
+| Call                                            | Result                                                                                                                                                                                          |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No filter                                       | This session's model, one row per provider (credential source, last result, how many models can run a task, cheapest and most capable one with price), the `small`, `medium` and profile routes |
+| `provider: openai`                              | That provider's models that can run a task, then its other models under "Cannot run a task" with the reason                                                                                     |
+| `query` or `ability` keeping 40 or fewer models | The matching models, listed as above                                                                                                                                                            |
+| `query` or `ability` keeping more               | The provider rows with how many models each has matching, so a long list never opens the call                                                                                                   |
+| `scope: catalog`                                | Also the models of providers that are not connected, marked not runnable                                                                                                                        |
+
+A model cannot run a task when it has no tool calls, is deprecated, or has a context window under 100,000 tokens. A model whose abilities are not known is allowed. Naming such a model in a call, for example `model: openai/gpt-4`, starts no child: the refusal says why and names runnable models of that provider. The credential source uses the same words as `/providers` (saved credential, environment variable name, `models.json`). The coordinator's prompt lists each provider with its number of runnable models, such as `openai` (41), and the routing notice repeats the counts when they change; `/modelsettings` always shows the full listing.
 
 | Bundled profile           | Model           |
 | ------------------------- | --------------- |

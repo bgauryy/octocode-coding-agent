@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
-import { openFile } from "../shared/open.ts";
+import { openFile } from "../browser/open.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { doItPrompt } from "./actions.ts";

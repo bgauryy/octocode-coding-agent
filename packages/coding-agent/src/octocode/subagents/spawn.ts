@@ -21,7 +21,7 @@ import type { RelayHost } from "./relay.ts";
 import { awaitSiblings, planReservation, type ReservationPlan, takeReservation, waitingText } from "./reservation.ts";
 import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import { REF_PREFIX } from "./worktree-base.ts";
-import { worktreeName } from "../shared/member-worktree.ts";
+import { worktreeName } from "../worktree-paths/member-worktree.ts";
 import type { agentToolSpec } from "./agent-tool.ts";
 import { resumableChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
@@ -77,11 +77,12 @@ export async function spawnAgent(
 	if (tooDeep) throw new Error(tooDeep);
 	if (params.workingCopy && !params.isolate) throw new Error("workingCopy requires isolate: true.");
 	const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
-	const goal = checkGoal(params.goal);
 	// A continued child is one this session recorded, on its own transcript and profile (`children.ts`).
 	const resumed = params.resume
 		? resumableChild(ctx.sessionManager.getEntries(), params.resume, new Set(runs.running.keys()))
 		: undefined;
+	// A continued child keeps its recorded goal unless the call names a new one.
+	const goal = checkGoal(params.goal ?? resumed?.child.goal);
 	if (resumed && params.isolate) throw new Error("resume continues a child in this tree; isolate does not apply.");
 	const refuseOverSpend = () => {
 		const refusal = spawnRefusal(api.getSettings().subagents, ctx.sessionManager.getEntries(), runs, resumed?.child.id);

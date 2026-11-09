@@ -1,5 +1,5 @@
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { forkLineage, sessionRecordOf } from "../../src/octocode/compaction/archive/session-record.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { RECORD_FILE, readRecordHeader, writeSessionRecord } from "../../src/octocode/shared/archive/record.ts";
+import { RECORD_FILE, readRecordHeader, writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 import {
 	archiveFolder,
 	ownArchives,
@@ -16,7 +16,7 @@ import {
 	sessionLineage,
 	setSessionLineage,
 	writeSegment,
-} from "../../src/octocode/shared/archive.ts";
+} from "../../src/octocode/history/archive.ts";
 import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";

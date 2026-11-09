@@ -2,8 +2,8 @@ import type { Component } from "@octocodeai/octocode-tui";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { textBlock } from "../shared/render.ts";
-import { clip } from "../shared/render/text.ts";
+import { textBlock } from "../render/tool.ts";
+import { clip } from "../shared/text.ts";
 import type { TimerWakeDetails } from "./model.ts";
 
 const clean = (text: string, max: number) => clip(sanitizeTerminalText(text), max);

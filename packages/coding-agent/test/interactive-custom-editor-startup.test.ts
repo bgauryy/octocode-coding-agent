@@ -2,7 +2,7 @@ import { Container, setKeybindings, TuiMainScreen } from "@octocodeai/octocode-t
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { CustomEditor } from "../src/theme/custom-editor.ts";
 import {
 	handleStartupSubmit,
 	setupEditorSubmitHandler,

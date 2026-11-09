@@ -7,7 +7,7 @@ import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/host.ts";
 import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import { type Theme } from "../../theme/theme.ts";
 import { AuthUrlComponent } from "./components/auth-url.ts";
-import { frame, renderClipped, runInView } from "./components/framed-view.ts";
+import { frame, renderClipped, runInView } from "../../theme/framed-view.ts";
 import { keyHint, keyText } from "./components/keybinding-hints.ts";
 import { ManagePageComponent } from "../../theme/manage-page.ts";
 

@@ -7,6 +7,7 @@
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import { ApplicationServiceError, getApplicationPort } from "../../../core/application/index.ts";
+import { onProviderSettingsApplied } from "../../../core/provider-sources/index.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../../core/messages.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
@@ -80,7 +81,7 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 		if (host.session !== session) return;
 		await host.handleEvent(event);
 	}, onError);
-	const closeProviders = session.onProviderSettingsApplied(() => {
+	const closeProviders = onProviderSettingsApplied(session, () => {
 		if (host.session !== session) return;
 		host.updateAvailableProviderCount();
 		host.ui.requestRender();

@@ -15,7 +15,7 @@ import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
 import { visibleControls } from "../../../common/src/sanitize.ts";
-import { toolHint } from "../../src/octocode/shared/util.ts";
+import { toolHint } from "../../src/utils/tool-hint.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";

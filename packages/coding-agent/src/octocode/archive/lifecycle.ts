@@ -1,9 +1,9 @@
 import { HistoryRepair } from "./repair.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { agentEvents } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { activate, activationId } from "../shared/activation.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { projectAgents } from "./projection.ts";

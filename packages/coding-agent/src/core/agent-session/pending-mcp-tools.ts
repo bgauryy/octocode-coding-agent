@@ -3,8 +3,7 @@
  * server state from the session's MCP status snapshot, which the MCP host publishes on the event bus.
  */
 
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
-import { mcpNamespace } from "../../../../common/src/mcp-names.ts";
+import { isMcpToolName, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "../../../../mcp/src/status.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 

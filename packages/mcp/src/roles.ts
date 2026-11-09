@@ -4,7 +4,7 @@
  * entry's roles count only when the project is trusted.
  */
 
-import type { McpServerConfig } from "./servers.ts";
+import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { createMcpToolName } from "./tool-names.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 

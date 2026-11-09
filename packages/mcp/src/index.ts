@@ -15,7 +15,7 @@ import { createMcpToolRenderers } from "./tool-definition.ts";
 export type { McpTransportFactory } from "./runtime.ts";
 export type { McpExtensionOptions } from "./state.ts";
 export { currentToolRoles, resolveToolRoles, roleOf, type ResolvedRoles, type RoleEntry } from "./roles.ts";
-export type { McpInstallConfig, McpToolRolesConfig } from "./servers.ts";
+export type { McpInstallConfig, McpToolRolesConfig } from "@octocodeai/octocode-contracts/mcp-server";
 
 export function createMcpExtension(options: McpExtensionOptions = {}): McpExtensionFactory {
 	return (api: McpExtensionApi) => {

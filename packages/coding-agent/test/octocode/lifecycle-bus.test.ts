@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, agentEvents, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { AgentLifecycleBus, type LifecycleEvent } from "../../src/octocode/team/lifecycle-bus.ts";
 import { STALLED_LISTED_MS } from "../../src/octocode/team/store/limits.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";

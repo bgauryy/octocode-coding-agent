@@ -1,15 +1,15 @@
 import { getKeybindings, setKeybindings, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { CustomEditor } from "../src/theme/custom-editor.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
 	IdleStatus,
 	RetryStatusIndicator,
-	setRunClock,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
+import { setRunClock } from "../src/utils/run-clock.ts";
 import { getEditorTheme, initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 

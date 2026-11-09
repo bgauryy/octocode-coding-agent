@@ -5,7 +5,7 @@ import { READ_ONLY_ENV, SUBAGENT_ENV, PERMISSION_ENV } from "../../../common/src
 import { toTool } from "../../../mcp/src/client/client/results.ts";
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { publishToolRoles, resolveToolRoles, currentToolRoles } from "../../../mcp/src/roles.ts";
-import type { McpServerConfig } from "../../../mcp/src/servers.ts";
+import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { McpServerStatus } from "../../../mcp/src/status.ts";
 import { createMcpToolDefinition } from "../../../mcp/src/tool-definition.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";

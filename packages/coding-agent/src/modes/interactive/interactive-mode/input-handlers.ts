@@ -1,4 +1,4 @@
-import { runtimeTempDir } from "../../../config/runtime-paths.ts";
+import { runtimeTempDir } from "../../../storage/runtime-paths.ts";
 /**
  * Editor key handlers: app keybindings, clipboard and right-click paste, and the external editor.
  */

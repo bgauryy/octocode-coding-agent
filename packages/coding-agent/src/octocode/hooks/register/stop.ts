@@ -2,7 +2,7 @@ import { animationClock, Box, MOTION, Text } from "@octocodeai/octocode-tui";
 import { redactSecrets, sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { formatDuration } from "../../shared/format.ts";
-import { resultBlock } from "../../shared/render.ts";
+import { resultBlock } from "../../render/tool.ts";
 import { STATUS } from "../../shared/status.ts";
 import { clipText, contentText, firstLine } from "../../shared/util.ts";
 import { hookLabel } from "../config.ts";

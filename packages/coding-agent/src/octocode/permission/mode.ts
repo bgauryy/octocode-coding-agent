@@ -1,6 +1,6 @@
 import { envChoice, PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "../../../../common/src/env.ts";
 import { shortcutText } from "../shared/keys.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 
 /**
  * Permission modes: which agent actions run, which ask the user first. One table decides every class in every mode;

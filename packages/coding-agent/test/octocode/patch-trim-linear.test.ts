@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { parsePatch, transformPatch } from "../../src/octocode/shared/codex-patch/patch.ts";
+import { parsePatch, transformPatch } from "../../src/octocode/tool-input/codex-patch/patch.ts";
 
 it("matches a hunk past a long run of whitespace in linear time, as Rust's trim does", () => {
 	// A line whose whitespace run is followed by text made the `\s+$` trim backtrack quadratically.

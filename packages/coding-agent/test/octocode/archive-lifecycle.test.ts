@@ -1,11 +1,11 @@
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentEvents, agents, compactions, type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
-import { archiveFolder } from "../../src/octocode/shared/archive.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { archiveFolder } from "../../src/octocode/history/archive.ts";
 import { projectAgents } from "../../src/octocode/archive/projection.ts";
 import { registerArchiveLifecycle } from "../../src/octocode/archive/lifecycle.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";

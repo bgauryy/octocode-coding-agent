@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { ATTACH_MAX_EVENT_BYTES } from "@octocodeai/octocode-contracts/daemon";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { configureHttpDispatcher } from "../../src/core/http-dispatcher.ts";
 import { AttachClient, STREAM_QUEUE_BYTES, STREAM_QUEUE_FRAMES } from "../../src/octocode/web-daemon/attach-client.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";

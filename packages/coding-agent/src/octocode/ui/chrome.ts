@@ -5,7 +5,7 @@ import { type Color, mixColors, SPINNER } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
-import { stopRowTimers } from "../shared/render/rows.ts";
+import { stopRowTimers } from "../render/rows.ts";
 import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";

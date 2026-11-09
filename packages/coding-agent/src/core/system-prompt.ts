@@ -1,6 +1,6 @@
 import { BASH_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
 import { currentToolRoles } from "../../../mcp/src/roles.ts";
-import { isMcpToolName } from "../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../common/src/mcp-names.ts";
 /**
  * System prompt construction and project context loading
  */

@@ -1,5 +1,5 @@
 import { workspaces } from "../../../db/src/api.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -11,7 +11,7 @@ import { WebSocket } from "ws";
 import { DaemonHealthSchema, DaemonStatusSchema } from "@octocodeai/octocode-contracts/daemon";
 import { Value } from "typebox/value";
 import { mermaidScript } from "@octocodeai/octocode-webview";
-import { sharedAgentDb } from "../../src/config/database.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
 import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-daemon/attach-server.ts";
 import { daemonPage } from "../../src/octocode/web-daemon/build.ts";
 import { LaunchCodes } from "../../src/octocode/web-daemon/launch-code.ts";

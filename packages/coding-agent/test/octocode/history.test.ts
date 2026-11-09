@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ import {
 	type Segment,
 	setSessionLineage,
 	writeSegment,
-} from "../../src/octocode/shared/archive.ts";
+} from "../../src/octocode/history/archive.ts";
 import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import {
 	historyFiles,
@@ -17,13 +17,12 @@ import {
 	PAGE_CHARS,
 	READ_LINES,
 	readableHistory,
-	readableSessionFolder,
 	readHistory,
 	searchHistory,
-} from "../../src/octocode/shared/history.ts";
+} from "../../src/octocode/history/transcripts.ts";
 import { sessionFolder, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { tmp } from "./helpers.ts";
-import { RECORD_FILE, type SessionRecord, writeSessionRecord } from "../../src/octocode/shared/archive/record.ts";
+import { RECORD_FILE, type SessionRecord, writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 
 function repo(): string {
 	const cwd = tmp();
@@ -128,11 +127,6 @@ describe("what reads without asking", () => {
 		expect(readableHistory(path.join(archiveFolder("far"), RECORD_FILE), cwd)).toBe(false);
 		expect(readableHistory(path.join(sessionFolder("output"), "x.txt"), cwd)).toBe(false);
 		expect(readableHistory(path.join(cwd, "a.ts"), cwd)).toBe(false);
-		// MCP research tools decide per session folder: a session's own output reads freely, another repository's does not.
-		expect(readableSessionFolder(path.join(sessionFolder("output"), "x.txt"), cwd)).toBe(true);
-		expect(readableSessionFolder(path.join(sessionFolder("output", "sib"), "x.txt"), cwd)).toBe(true);
-		expect(readableSessionFolder(path.join(sessionFolder("output", "far"), "x.txt"), cwd)).toBe(false);
-		expect(readableSessionFolder(path.dirname(path.dirname(archiveFolder())), cwd)).toBe(false);
 	});
 });
 

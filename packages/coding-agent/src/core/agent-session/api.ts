@@ -1,6 +1,6 @@
 import type { ContextReport } from "./context-report.ts";
-import type { PlanOptions, PlanState } from "../../octocode/plan/state.ts";
-import type { RepositoryDiff } from "../../octocode/files/repository-diff.ts";
+import type { PlanOptions, PlanState } from "../plan-state.ts";
+import type { RepositoryDiff } from "../../utils/repository-diff.ts";
 /**
  * Public API of `AgentSession`, documented here and implemented by the class. The themed parts live
  * in `api-state.ts` (state, tools, models) and `api-run.ts` (prompting, compaction, retry, bash).

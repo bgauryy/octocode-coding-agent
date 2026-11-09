@@ -1,146 +1,24 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../common/src/env.ts";
-import { interactive } from "../shared/interactive.ts";
+import type { ExtensionContext } from "../../core/features/index.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import type { Ask } from "./asks.ts";
-import { checkInConfig } from "./check-in.ts";
-import { Delivery } from "./delivery.ts";
 import type { EditLog } from "./edits.ts";
-import { HeldLeases } from "./held.ts";
-import { agentName, LINE_MAX, modelRoute } from "./identity.ts";
-import { Mail } from "./mail.ts";
-import { RunAudit } from "./run-audit.ts";
+import { agentName, LINE_MAX } from "./identity.ts";
 import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
-import { Relays } from "./relay.ts";
-import { Activity, HEARTBEAT_MS } from "./session/activity.ts";
-import { ChildLeases } from "./session/child-leases.ts";
-import { TeamDatabase } from "./session/database.ts";
 import { type EndReason, settleReason } from "./session/end-reason.ts";
-import { PeerHolder } from "./session/peer-holder.ts";
 import { claimName, joinAtStart } from "./session/membership.ts";
-import { SessionTeamName } from "./session/rejoin.ts";
 import { endWithParent, watchParentProcess } from "./session/parent.ts";
-import { lockPaths, type ReservationHost, reservationText, unlockPaths } from "./session/reservations.ts";
+import { lockPaths, reservationText, unlockPaths } from "./session/reservations.ts";
 import * as refs from "./session/references.ts";
-import { type MessageHook, type Resumer, type SendResult, sendMessage } from "./session/send.ts";
-import { Vouches } from "./session/vouches.ts";
-import { WaitingApprovals } from "./session/approvals.ts";
-import { TeamTicker, type TeamView } from "./ticker.ts";
-import { WakePace } from "./wake-pace.ts";
-import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
+import { type SendResult, sendMessage } from "./session/send.ts";
+import type { TeamView } from "./ticker.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { TeamState } from "./session/state.ts";
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
-export class Team {
-	private me: Member | undefined;
-	private ctx: ExtensionContext | undefined;
-	/** The team database, opened on first use (`session/database.ts`). */
-	private readonly database = new TeamDatabase({ ctx: () => this.ctx, env: () => this.env }, () => this.ticker.sync());
-	/** Every agent's join, state change and end (`lifecycle-bus.ts`): subscribe with `team.lifecycle.on`. */
-	readonly lifecycle = this.database.lifecycle;
-	/** What this agent records about the runs it starts, and where anyone finds an agent again (`run-audit.ts`). */
-	readonly audit = new RunAudit(this.database);
-	/** The one ticker: delivery and heartbeats while joined, a cached view for watchers (the panel). */
-	private readonly ticker = new TeamTicker({
-		joined: () => this.me !== undefined,
-		beat: () => this.deliverMail(),
-		dbFile: () => this.database.watchedFile(),
-		read: () => this.database.read(),
-		resumed: (since, now) => this.database.resumed(since, now),
-		following: () => this.lifecycle.following,
-		changed: () => this.lifecycle.poll(),
-		maxAgeMs: HEARTBEAT_MS,
-	});
-	private readonly held = new HeldLeases();
-	/** What this agent reserves for the children it starts (`paths` on a task). */
-	readonly childLeases = new ChildLeases(() => this.reservationHost());
-	/** The agents-communication package's path leases (read-only), opened on the first guarded write. */
-	private readonly peers = new PeerHolder({
-		self: () => this.ctx?.sessionManager.getSessionId(),
-		warn: (text) => this.mail.notice(text),
-	});
-	private readonly mail: Mail;
-	/** How often peers and the coordination graph (`subagents/graph-wake.ts`) may start this agent's turns while it is idle: one budget. */
-	readonly wakePace = new WakePace();
-	private readonly delivery: Delivery;
-	/** This agent's status, tool counts and usage, written with the heartbeat (`session/activity.ts`). */
-	private readonly activity: Activity;
-	/** Stops the check that the parent still runs (a subagent only; on from the session start, joined or not). */
-	private stopParentWatch: (() => void) | undefined;
-	/** Subagents this session started that have finished: id → where their report went, for a later message to them. */
-	private readonly finished = new Map<string, string>();
-	/** Resumes a finished subagent that still lingers; `running` holds the subagents that have yet to report, by id (set by the subagents domain). */
-	setResumer(resume: Resumer, running?: ReadonlyMap<string, unknown>): void {
-		this.resumer = resume;
-		this.running = running;
-	}
-	private resumer: Resumer | undefined;
-	private running: ReadonlyMap<string, unknown> | undefined;
-	private messageHook: MessageHook | undefined;
-	setMessageHook(hook: MessageHook): void {
-		this.messageHook = hook;
-	}
-	/** Settles children's relay requests to agents they cannot reach (B200), before mail reaches the model. */
-	private readonly relays = new Relays({
-		id: () => this.me?.id,
-		finished: this.finished,
-		started: (id) => this.finished.has(id) || this.vouches.has(id),
-		resumer: () => this.resumer,
-	});
-	/** Recent completion receipts; active-agent limits cannot bound a long session's history. */
-	rememberFinished(id: string, receipt: string): void {
-		this.finished.delete(id);
-		this.finished.set(id, receipt);
-		if (this.finished.size > 128) this.finished.delete(this.finished.keys().next().value!);
-	}
-	private readonly env: NodeJS.ProcessEnv;
-	private readonly name: SessionTeamName;
-	constructor(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env) {
-		this.env = env;
-		this.database.forwardTo(api.events);
-		this.name = new SessionTeamName(api, env);
-		this.mail = new Mail(api, () => ownNonce(this.env));
-		this.activity = new Activity({
-			me: () => this.me,
-			db: () => this.database.current,
-			held: this.held,
-			mail: this.mail,
-			route: () => modelRoute(this.ctx?.model, api.getThinkingLevel()),
-			renewChildren: (db, now) => this.childLeases.renew(db, now),
-		});
-		this.delivery = new Delivery(
-			{
-				id: () => this.me?.id,
-				parentId: () => this.parentId,
-				ctx: () => this.ctx,
-				headless: () => this.headless(),
-				heartbeat: (db) => this.activity.heartbeat(db),
-				relays: (db) => this.relays.take(db),
-				reporting: (id) => this.running?.has(id) === true,
-				checkIn: () => checkInConfig(api.getSettings().subagents, this.env, api),
-			},
-			this.mail,
-			this.wakePace,
-		);
-	}
-	private readonly vouches = new Vouches();
-	readonly approvals = new WaitingApprovals();
-	/** Registers the secret given to subagent `id` (its `PERMISSION_NONCE_FILE_ENV` file), so the user's messages to it are signed; returns what ends that. */
-	vouch(id: string, secret: string): () => void {
-		return this.vouches.vouch(id, secret);
-	}
-
+export class Team extends TeamState {
 	/** Aborted while an interrupt waits for this agent's run to stop, or a question from its coordinator for its model (`agent_before_settle` waits end early on it). */
 	get interrupted(): AbortSignal {
 		return AbortSignal.any([this.mail.interrupted, this.mail.asked]);
-	}
-
-	get id(): string | undefined {
-		return this.me?.id;
-	}
-
-	get parentId(): string | undefined {
-		return this.env[PARENT_ID_ENV];
 	}
 
 	/** Bind to the session and join the team: a subagent under the id its parent chose, a main session under the name a resumed session recorded or a new one. */
@@ -298,26 +176,6 @@ export class Team {
 	unansweredPeerAsks(agentId: string): number {
 		return refs.unansweredPeerAsks(this.sendHost(), agentId);
 	}
-	/** The team as sending and references see it (`session/send.ts`, `session/references.ts`). */
-	private sendHost(): refs.ReferenceHost {
-		return {
-			me: () => this.me,
-			ctx: () => this.ctx,
-			db: () => this.database.current,
-			store: () => this.database.store(),
-			parentId: () => this.parentId,
-			finished: this.finished,
-			reporting: (id) => this.running?.has(id) === true,
-			starting: () => [...(this.running?.keys() ?? [])],
-			resumer: () => this.resumer,
-			messageHook: () => this.messageHook,
-			signed: (id, recipient, text) => this.vouches.signed(id, recipient, text),
-			signedByParent: (message) => this.vouches.signedByParent(message),
-			started: (id) => this.finished.has(id) || this.vouches.has(id),
-			mail: this.mail,
-		};
-	}
-
 	/** Reserve paths (a trailing `/` marks a whole directory tree) for this agent. */
 	lock(
 		paths: string[],
@@ -328,22 +186,6 @@ export class Team {
 
 	unlock(paths?: string[]): number {
 		return unlockPaths(this.reservationHost(), paths);
-	}
-
-	/** The team as path reservations see it (`session/reservations.ts`). */
-	private reservationHost(): ReservationHost {
-		return {
-			me: () => this.me,
-			join: () => this.join(),
-			cwd: () => this.ctx?.cwd,
-			chosenId: () => this.env[AGENT_ID_ENV],
-			store: () => this.database.store(),
-			existing: () => this.database.existing(),
-			held: this.held,
-			// Whether this agent takes part in the team: it joined, or still tracks reservations.
-			collaborating: () => this.me !== undefined || this.held.any,
-			peerLeases: () => this.peers.get(),
-		};
 	}
 
 	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined; with no file, any reservation another agent holds. */
@@ -371,11 +213,6 @@ export class Team {
 		}
 		// The activity line was cleared by src/ui/activity.ts, which owns it.
 		this.activity.idle();
-	}
-
-	/** A subagent (no person to talk to, whatever its mode): once its run is over it gets no further turn. */
-	private headless(): boolean {
-		return Boolean(this.env[AGENT_ID_ENV] && this.ctx && !interactive(this.ctx, envFlag(this.env, SUBAGENT_ENV)));
 	}
 
 	/** Hands waiting mail to Octocode: every second from the ticker, and at the end of a turn that ran tools (`tools.ts`, `stepEnded`). */

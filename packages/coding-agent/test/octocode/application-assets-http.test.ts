@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { ApplicationAssets } from "../../src/core/application/assets.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import type { ApplicationPort, WorkspaceConnection } from "@octocodeai/octocode-contracts";
 
 const cleanup: Array<() => void | Promise<void>> = [];

@@ -3,8 +3,8 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { transcripts, workspaces } from "../../../../db/src/api.ts";
-import { isCurrentWorkspace } from "../../config/workspace.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { isCurrentWorkspace } from "../../storage/workspace.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { readSessionHeaderForDiscovery } from "./storage.ts";
 

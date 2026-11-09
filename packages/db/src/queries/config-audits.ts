@@ -12,7 +12,9 @@ export interface ConfigAuditEntry {
 	actor: string;
 	/**
 	 * `credential.set`, `credential.clear`, `credential.signin` (an OAuth sign-in that ended or a request refused),
-	 * `credential.refused`, `provider.toggle` (a provider enabled or disabled) or `source.toggle` (the Pi source on or off).
+	 * `credential.refused`, `provider.toggle` (a provider enabled or disabled), `source.toggle` (the Pi source on or off) or `harness.toggle`
+	 * (a Harness panel switch; the target is its `/configuration` id, or only the kind when
+	 * that id holds a file path).
 	 */
 	action: string;
 	target: string;

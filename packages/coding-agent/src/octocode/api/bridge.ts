@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
+import { contentText, isStaleSessionError } from "../shared/util.ts";
+import { toolHint } from "../../utils/tool-hint.ts";
 import { abortTurn } from "./bridge/abort.ts";
 import { boundedText } from "./bridge/bounded.ts";
 import type { ExternalFacts } from "./bridge/caller.ts";

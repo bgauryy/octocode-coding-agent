@@ -1,4 +1,4 @@
-import { plural } from "./render/text.ts";
+import { plural } from "./text.ts";
 
 /** What the running-work view lists, in the order it groups them. */
 export type WorkKind = "agent" | "bash" | "timer" | "external";

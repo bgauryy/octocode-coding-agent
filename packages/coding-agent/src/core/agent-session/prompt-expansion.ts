@@ -8,7 +8,7 @@ import { featureOfCommand, getBuiltinCommand, parseSlashCommand } from "../slash
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
-import { repoKey } from "../../octocode/shared/home/repo.ts";
+import { repoKey } from "../../utils/git-repository.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { expandClaudeArguments, expandClaudeVariables } from "../claude-arguments.ts";

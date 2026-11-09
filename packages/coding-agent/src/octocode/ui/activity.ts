@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { setRunClock } from "../../modes/interactive/components/status-indicator.ts";
+import { setRunClock } from "../../utils/run-clock.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { setRowsAnimate } from "./chrome.ts";
 import { isStaleSessionError } from "../shared/util.ts";

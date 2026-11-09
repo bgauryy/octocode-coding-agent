@@ -97,7 +97,7 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
       children.filter((entry) => entry.child.exitCode === null && entry.child.signalCode === null).length);
     return peer;
   }
-  // The flat agent call names external fields as in src/octocode/shared/agent-call.ts (AGENT_FIELD_RENAMES).
+  // The flat agent call names external fields as in src/octocode/child-sessions/agent-call.ts (AGENT_FIELD_RENAMES).
   const flat = { action: 'externalAction', id: 'connection', model: 'externalModel', text: 'promptText' };
   const tool = (peer, input) => peer.command('tool', { tool: 'agent', input: { type: 'external',
     ...Object.fromEntries(Object.entries(input).map(([key, value]) => [flat[key] ?? key, value])) } });

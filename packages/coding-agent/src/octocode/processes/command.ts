@@ -2,7 +2,7 @@ import type { Db } from "../../../../db/src/api.ts";
 import { processSamples } from "../../../../db/src/api.ts";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommand, say } from "../shared/commands.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import { type Orphan, type ProcessReport, classifyProcesses } from "./classify.ts";
 import { formatReport } from "./format.ts";
 import { SAMPLE_RETENTION_MS } from "./sampler.ts";

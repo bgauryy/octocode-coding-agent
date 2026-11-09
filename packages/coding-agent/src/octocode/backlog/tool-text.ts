@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Item } from "./store.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 
 export interface BacklogToolDetails {
 	item?: Item;

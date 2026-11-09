@@ -11,7 +11,7 @@
 import type { Component, Container, TUI } from "@octocodeai/octocode-tui";
 import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { TSchema } from "typebox";
-import type { McpServerConfig } from "./servers.ts";
+import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
 
 /** The host application's name, version and runtime. */

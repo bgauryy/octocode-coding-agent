@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { Subcommands } from "../shared/commands.ts";
-import { webLauncher } from "../shared/web.ts";
+import { webLauncher } from "../browser/launcher.ts";
 import { STATUS } from "../shared/status.ts";
 import { backlogCommand } from "./command.ts";
 import { registerBacklogDigest } from "./digest.ts";

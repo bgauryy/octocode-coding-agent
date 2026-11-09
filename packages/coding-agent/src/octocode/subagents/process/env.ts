@@ -1,4 +1,4 @@
-import type { McpServerConfig } from "../../../../../mcp/src/servers.ts";
+import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { SkillResourceSnapshot } from "../../../core/skill-resource-snapshot.ts";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -31,7 +31,7 @@ import {
 	TEAM_WORKSPACE_ENV,
 } from "../../../../../common/src/env.ts";
 import { outputDir } from "../../shared/home.ts";
-import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
+import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../worktree-paths/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
 import {
 	AGENT_GOAL_ENV,

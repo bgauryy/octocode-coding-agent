@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationService } from "../../src/core/application/index.ts";
 import type { AgentSession } from "../../src/core/agent-session.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { type AgentDb } from "../../../db/src/api.ts";
 import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";

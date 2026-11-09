@@ -7,7 +7,7 @@ import { octocodePromptSections, type ResearchContext } from "./instructions/pol
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
-import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
+import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";

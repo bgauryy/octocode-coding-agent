@@ -5,7 +5,6 @@
  * and after compaction the session is reloaded.
  */
 
-import { builtInCompactionSettings } from "./settings.ts";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
@@ -96,8 +95,6 @@ export interface CompactionSettings {
 	reserveTokens: number;
 	keepRecentTokens: number;
 }
-
-export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = builtInCompactionSettings();
 
 // ============================================================================
 // Token calculation

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { readRepositoryDiff, readUntrackedDiff } from "../../src/octocode/files/repository-diff.ts";
+import { readRepositoryDiff, readUntrackedDiff } from "../../src/utils/repository-diff.ts";
 import { tmp } from "./helpers.ts";
 
 function repository() {

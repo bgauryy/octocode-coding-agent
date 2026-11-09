@@ -3,8 +3,8 @@ import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { genericToolDisplay } from "../../core/application/transcript-display.ts";
 import type { ExtensionAPI, ToolDisplayFunction, ToolDisplayInput } from "../../core/features/types.ts";
 import { callReasonText } from "./call-reason.ts";
-import { displayText } from "../shared/display.ts";
-import { toolHint } from "../shared/util.ts";
+import { displayText } from "../render/display.ts";
+import { toolHint } from "../../utils/tool-hint.ts";
 
 /**
  * A tool's display with Octocode's policy added: the generic display (the argument label and the result text) for a

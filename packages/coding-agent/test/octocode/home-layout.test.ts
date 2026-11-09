@@ -1,5 +1,5 @@
 import { recordFile, reapOrphanJobs, sessionBashDirs } from "../../src/octocode/files/bash-jobs/records.ts";
-import { setCurrentSession, sessionOutputDir, withSessionStorage } from "../../src/config/runtime-paths.ts";
+import { setCurrentSession, sessionOutputDir, withSessionStorage } from "../../src/storage/runtime-paths.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

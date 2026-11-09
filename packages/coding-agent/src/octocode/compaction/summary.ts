@@ -11,7 +11,7 @@ import {
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
-import { nextSegment } from "../shared/archive.ts";
+import { nextSegment } from "../history/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";

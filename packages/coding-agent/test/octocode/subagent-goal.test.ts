@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { reportContract } from "../../src/octocode/instructions/report.ts";
 import { withIdentity } from "../../src/octocode/instructions/task.ts";
-import { archiveSearch } from "../../src/octocode/shared/archive.ts";
+import { archiveSearch } from "../../src/octocode/history/archive.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { renderAgentCall } from "../../src/octocode/subagents/render.ts";

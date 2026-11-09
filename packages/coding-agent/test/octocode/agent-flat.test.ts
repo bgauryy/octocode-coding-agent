@@ -87,6 +87,19 @@ describe("agent with flat fields in a main session", () => {
 		await expect(
 			agent.execute("c4", { type: "task", goal: "g", profile: "reviewer" }, undefined, undefined, ctx),
 		).rejects.toThrow("Invalid agent task call");
+		// A resume may omit goal (the child keeps its own): the call passes validation and reaches the child lookup.
+		await expect(
+			agent.execute(
+				"c6",
+				{ type: "task", task: "go on", resume: "general-nobody", reason: "r" },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow('No subagent "general-nobody" in this session');
+		await expect(
+			agent.execute("c7", { type: "task", task: "new work", reason: "r" }, undefined, undefined, ctx),
+		).rejects.toThrow("A goal is required");
 		await expect(
 			agent.execute("c5", { type: "coordinate", input: { action: "list" } }, undefined, undefined, ctx),
 		).rejects.toThrow("no input envelope");

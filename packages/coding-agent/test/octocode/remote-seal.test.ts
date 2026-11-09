@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	decodeKey,
 	decodeNonce,
 	directionKey,
 	encodeKey,
@@ -80,9 +79,7 @@ describe("relay sealing", () => {
 		const key = newKey();
 		const text = encodeKey(key);
 		expect(text).toMatch(/^[A-Za-z0-9_-]{43}$/);
-		expect(decodeKey(text)).toEqual(key);
-		expect(decodeKey(text.slice(1))).toBeUndefined();
-		expect(decodeKey(`${text}=`)).toBeUndefined();
+		expect(Buffer.from(text, "base64url")).toEqual(key);
 		expect(roomOf(key)).toMatch(/^[0-9a-f]{32}$/);
 		expect(roomOf(key)).toBe(roomOf(key));
 		expect(roomOf(key)).not.toBe(roomOf(newKey()));

@@ -13,7 +13,7 @@ import {
 	sessions,
 	type AgentDb,
 } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { tmp } from "./helpers.ts";
 

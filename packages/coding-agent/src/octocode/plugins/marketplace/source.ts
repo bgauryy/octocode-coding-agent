@@ -1,3 +1,4 @@
+import { redactUrlCredentials } from "../../../../../common/src/url-credentials.ts";
 import type { Settings } from "../../../core/settings-schema.ts";
 
 /** Where a marketplace is fetched from, as stored under `marketplaces.<name>.source` in user settings. */
@@ -111,9 +112,14 @@ export function checkGitUrl(url: string, options: { allowLocalPath?: boolean } =
 	);
 }
 
-/** A URL for output: any credentials removed. */
+const USERINFO = /(\/\/)[^/@\s]*@/;
+
+/** A URL for output: a user name or password shown as `***@`, the value of a key- or token-like query parameter removed. */
 export function redactUrl(url: string): string {
-	return url.replace(/(\/\/)[^/@\s]*@/, "$1***@");
+	const clean = redactUrlCredentials(url);
+	// Not a URL `new URL` parses (or nothing to strip): mask any user info in the text as it stands.
+	if (clean === url) return url.replace(USERINFO, "$1***@");
+	return USERINFO.test(url) ? clean.replace(/^([a-z][a-z0-9+.-]*:\/\/)/i, "$1***@") : clean;
 }
 
 export type ParsedMarketplaceInput =

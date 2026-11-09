@@ -1,8 +1,20 @@
 import { activeRates } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
 import { DAY_MS } from "../shared/util.ts";
+import { formatTokens } from "../shared/format.ts";
 import { type Catalog, listedCost, lookup } from "./catalog.ts";
 import { closeModels } from "./close-models.ts";
+import {
+	routeThinking,
+	SUBAGENT_DEFAULT_THINKING,
+	SUBAGENT_THINKING_ENV,
+	subagentThinking,
+	THINKING_LEVELS,
+	thinkingSuffix,
+	withThinking,
+} from "./thinking.ts";
+
+export { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking };
 
 /** A model the parent can use, as Octocode's model registry lists it (prices per million tokens). */
 export interface ModelRef {
@@ -97,6 +109,26 @@ function facts(ref: ModelRef, catalog: Catalog | undefined): Facts {
 	};
 }
 
+/**
+ * Why a model cannot run a subagent's task, or undefined when it can (or when nothing known says otherwise): a model
+ * absent from the catalog stays allowed. Purposes and explicit ids share this rule.
+ */
+export function taskBlocker(model: ModelRef, catalog: Catalog | undefined): string | undefined {
+	const known = facts(model, catalog);
+	const reasons = [
+		...(known.deprecated ? ["deprecated"] : []),
+		...(known.toolCall === false ? ["no tool calls"] : []),
+		...(known.context !== undefined && known.context < MIN_SUBAGENT_CONTEXT
+			? [`context ${formatTokens(known.context)} (needs ${formatTokens(MIN_SUBAGENT_CONTEXT)})`]
+			: []),
+	];
+	return reasons.length > 0 ? reasons.join(", ") : undefined;
+}
+
+/** Whether a task can run on `model`: not deprecated, tool calls not known to be missing, a window of `MIN_SUBAGENT_CONTEXT` when known. */
+export const canRunTask = (model: ModelRef, catalog: Catalog | undefined): boolean =>
+	taskBlocker(model, catalog) === undefined;
+
 const time = (date: string | undefined) => (date ? Date.parse(date) : NaN);
 
 /**
@@ -141,12 +173,7 @@ export function resolveTier(
 	const capable = available
 		.map((model) => facts(model, catalog))
 		.filter((model) => !(model.ref.provider === own.provider && model.ref.id === own.id))
-		.filter(
-			(model) =>
-				!model.deprecated &&
-				model.toolCall !== false &&
-				(model.context === undefined || model.context >= MIN_SUBAGENT_CONTEXT),
-		)
+		.filter((model) => canRunTask(model.ref, catalog))
 		.filter((model) => !needsImages || model.input === undefined || model.input.includes("image"));
 	const eligible = currentGeneration(
 		capable.filter((model) => model.price !== undefined && model.price < top.price!),
@@ -169,37 +196,6 @@ export function resolveTier(
 	);
 	return band.at(-1)?.ref;
 }
-
-/** The `:<level>` suffixes Octocode's `--model <pattern>` accepts. */
-const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-/** The `:<level>` suffix a model value or purpose ends with (`:low`), or "" without one. */
-function thinkingSuffix(value: string | undefined): string {
-	const colon = value ? value.lastIndexOf(":") : -1;
-	return value && colon > 0 && THINKING_LEVELS.has(value.slice(colon + 1)) ? value.slice(colon) : "";
-}
-
-/** Thinking level of a child whose call and profile name none. */
-export const SUBAGENT_THINKING_ENV = "OCTOCODE_SUBAGENT_THINKING";
-
-/**
- * A child's level when neither its call nor its profile names one. Never the parent's: the coordinator thinks hard and
- * a worker spends only what its task needs, so the user's `defaultThinkingLevel` (the coordinator's) does not reach it.
- */
-export const SUBAGENT_DEFAULT_THINKING = "medium";
-
-/** The level `OCTOCODE_SUBAGENT_THINKING` names, else `SUBAGENT_DEFAULT_THINKING` (a value that is not a level is ignored). */
-export function subagentThinking(env: NodeJS.ProcessEnv = process.env): string {
-	const value = env[SUBAGENT_THINKING_ENV]?.trim().toLowerCase();
-	return value && THINKING_LEVELS.has(value) ? value : SUBAGENT_DEFAULT_THINKING;
-}
-
-/** A route's `:thinking` level (`low` in `p/m:low`), or undefined without one. */
-const routeThinking = (model: string | undefined): string | undefined => thinkingSuffix(model).slice(1) || undefined;
-
-/** The route with its level replaced by `level`. */
-const withThinking = (model: string, level: string): string =>
-	`${model.slice(0, model.length - thinkingSuffix(model).length)}:${level}`;
 
 /**
  * The route at the level the child will run at: a registry model without that level (no reasoning, no `xhigh`) clamps it
@@ -251,6 +247,8 @@ export function modelLabel(details: { model?: string; fallback?: string; refused
 		? `${model ?? "parent model"} (${fallbackNote(details.fallback, details.refusedBy)})`
 		: (model ?? "");
 }
+
+const sameModel = (a: ModelRef, b: ModelRef | undefined) => a.provider === b?.provider && a.id === b.id;
 
 /** `ProviderHealth.refused`: the model, or unless `proven` its provider's credential, was just refused. */
 export type Refused = (provider: string, id?: string, proven?: boolean) => boolean;
@@ -363,7 +361,19 @@ function routeWithoutThinking(request: RouteInput): ModelRoute {
 		const tier = tierOf(explicit);
 		if (tier) return tierRoute(tier, input, parentModel);
 		const model = resolveModel(explicit, available, parentProvider);
-		if (model) return { model };
+		if (model) {
+			const chosen = routedModel(model, available);
+			const blocker = chosen && !sameModel(chosen, parent) ? taskBlocker(chosen, request.catalog) : undefined;
+			if (!chosen || !blocker) return { model };
+			const others = available
+				.filter((candidate) => candidate.provider === chosen.provider && canRunTask(candidate, request.catalog))
+				.map((candidate) => `${candidate.provider}/${candidate.id}`);
+			const runnable =
+				others.length > 0
+					? `Runnable ${chosen.provider} models: ${others.slice(0, 8).join(", ")}${others.length > 8 ? ", …" : ""}`
+					: `No ${chosen.provider} model can run a task`;
+			return { error: `Model "${chosen.provider}/${chosen.id}" cannot run a task: ${blocker}. ${runnable}` };
+		}
 		const close = closeModels(explicit, available);
 		const names = [...new Set(available.map((candidate) => `${candidate.provider}/${candidate.id}`))];
 		const hint =

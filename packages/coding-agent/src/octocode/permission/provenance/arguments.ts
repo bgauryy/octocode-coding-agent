@@ -1,9 +1,10 @@
 import path from "node:path";
 import { archiveMutation } from "../../shared/archive-operation.ts";
 import { browserMcpUrls } from "../../../../../common/src/browser-mcp.ts";
-import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../../common/src/mcp-names.ts";
 import { resolveToolPath } from "../../shared/home.ts";
-import { canonicalPath, isWithin } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { isWithin } from "../../../../../common/src/paths.ts";
 import { CONTEXT_FILE_CANDIDATES } from "../../../core/discovery/sources.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { runsLater } from "../file-access.ts";

@@ -2,10 +2,10 @@ import os from "node:os";
 import path from "node:path";
 import { getAgentDir, getLegacyConfigDirs, getOctocodeHome } from "../../config.ts";
 import { shellPath, homeSpelling } from "./file-access.ts";
-import { canonicalPath } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
 import { readerLocations } from "../shared/local-reads.ts";
-import { isMcpToolName } from "../../../../mcp/src/servers.ts";
+import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { optionalString } from "../shared/util.ts";
 

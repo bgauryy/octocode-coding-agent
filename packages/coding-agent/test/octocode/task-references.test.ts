@@ -4,7 +4,7 @@ import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/oc
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { fencedParts, PARENT_FENCE_NOTE } from "../../src/octocode/shared/fence.ts";
-import type { ReferencedMessage } from "../../src/octocode/shared/references.ts";
+import type { ReferencedMessage } from "../../src/octocode/child-sessions/references.ts";
 import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";

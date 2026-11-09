@@ -1,13 +1,13 @@
-import { displayText, textResultDisplay } from "../shared/display.ts";
+import { displayText, textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { type BacklogTask, TASK_STATES, type TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { type Static, Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { resultBlock, toolHeader } from "../shared/render.ts";
-import { timedTool, timingOf } from "../shared/render/rows.ts";
-import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
-import { clip, plural } from "../shared/render/text.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
+import { itemTitle, withItemTitles } from "../render/item-titles.ts";
+import { clip, plural } from "../shared/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";

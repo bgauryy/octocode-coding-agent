@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { McpServerConfig } from "./servers.ts";
+import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 
 const relativePath = /^\.\.?(\/|$)/;
 

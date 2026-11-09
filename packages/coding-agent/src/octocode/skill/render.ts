@@ -1,10 +1,10 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Skill } from "../../core/skills.ts";
 import type { SkillCategory } from "../../core/skills/category.ts";
-import { plural } from "../shared/render/text.ts";
+import { plural } from "../shared/text.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { toolHeader } from "../shared/render.ts";
-import type { RenderContext } from "../shared/render/types.ts";
+import { toolHeader } from "../render/tool.ts";
+import type { RenderContext } from "../render/types.ts";
 
 /**
  * The row of a model-initiated skill load, `Skill: <name>`: the `skill` tool and a `localFetch` read of a loaded skill's

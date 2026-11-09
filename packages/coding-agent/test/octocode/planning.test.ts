@@ -7,7 +7,7 @@ import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts"
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { setPlanStartup } from "../../src/octocode/plan/startup.ts";
-import { readPlan, PLAN_ENTRY } from "../../src/octocode/plan/state.ts";
+import { readPlan, PLAN_ENTRY } from "../../src/core/plan-state.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createHarness, getUserTexts, type Harness } from "../suite/harness.ts";
 

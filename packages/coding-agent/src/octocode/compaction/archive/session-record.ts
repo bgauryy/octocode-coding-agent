@@ -1,10 +1,10 @@
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { transcripts } from "../../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../../config/database.ts";
-import { readWorkspaceIdentity } from "../../../config/workspace.ts";
+import { sharedAgentDb } from "../../../storage/database.ts";
+import { readWorkspaceIdentity } from "../../../storage/workspace.ts";
 import type { ExtensionContext } from "../../../core/features/index.ts";
-import type { RecordMessage, SessionRecord } from "../../shared/archive/record.ts";
-import { registeredWorkspace } from "../../../config/workspace-database.ts";
+import type { RecordMessage, SessionRecord } from "../../history/archive/record.ts";
+import { registeredWorkspace } from "../../../storage/workspace-database.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PARENT_SESSION_ENV } from "../../../../../common/src/env.ts";
 
@@ -38,7 +38,7 @@ const messageText = (content: unknown): string =>
 			: "";
 
 /**
- * The current session's record (`shared/archive.ts`) from its branch: its first user message is its goal, its last user
+ * The current session's record (`history/archive.ts`) from its branch: its first user message is its goal, its last user
  * message and the replies after it its ending (their text; their tool calls are counted). Undefined when the session is
  * not saved (`--no-session`: nothing outlives it) or has no user message yet.
  */

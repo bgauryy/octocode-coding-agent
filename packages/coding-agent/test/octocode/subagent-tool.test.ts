@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { reportContract } from "../../src/octocode/instructions/report.ts";
-import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode/shared/archive.ts";
+import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode/history/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { processAlive, processStartTime } from "../../src/octocode/shared/process.ts";

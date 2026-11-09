@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { workspaces } from "../../../../db/src/api.ts";
 import { resolvePath } from "../../../../common/src/paths.ts";
 import { getSessionsDir } from "../../config.ts";
-import { sharedAgentDb } from "../../config/database.ts";
-import { isCurrentWorkspace, workspaceStateDir } from "../../config/workspace.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { isCurrentWorkspace, workspaceStateDir } from "../../storage/workspace.ts";
 
 /** Default transcript directories. Pre-workspace JSONL directories remain discoverable for import. */
 export async function knownSessionDirectories(): Promise<string[]> {

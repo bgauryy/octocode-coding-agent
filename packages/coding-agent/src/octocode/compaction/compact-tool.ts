@@ -1,11 +1,11 @@
-import { displayText } from "../shared/display.ts";
+import { displayText } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { MAX_COMPACTION_INSTRUCTIONS } from "../../core/compaction/manual-options.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
-import { timedTool } from "../shared/render/rows.ts";
+import { timedTool } from "../render/rows.ts";
 import { isStaleSessionError, textResult } from "../shared/util.ts";
 import { type CompactDetails, compactHeader, compactResult } from "./compact-render.ts";
 import { contextTokens, type ThrashBreaker, toolDefinitionChars } from "./pacing.ts";

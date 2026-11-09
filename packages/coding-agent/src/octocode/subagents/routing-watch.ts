@@ -2,6 +2,7 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { readCatalog } from "./catalog.ts";
 import { type RoutingFacts, routingFacts } from "./models-command.ts";
+import { providerCount } from "../instructions/policy.ts";
 import type { AgentProfile } from "./profiles.ts";
 
 /** The custom message type of the routing notice. */
@@ -48,12 +49,14 @@ export class RoutingWatch {
 		if (key === this.#told) return undefined;
 		const before = JSON.parse(this.#told) as RoutingFacts | null;
 		this.#told = key;
-		const off = (before?.providers ?? []).filter((provider) => !current.providers.includes(provider));
-		const on = current.providers.filter((provider) => !(before?.providers ?? []).includes(provider));
+		const was = (before?.providers ?? []).map((provider) => provider.id);
+		const now = current.providers.map((provider) => provider.id);
+		const off = was.filter((provider) => !now.includes(provider));
+		const on = now.filter((provider) => !was.includes(provider));
 		return renderInstruction("notices/routing-changed.md", {
 			id: ROUTING_NOTICE_ID,
 			sessionModel: quote(current.sessionModel),
-			providers: current.providers.map(quote).join(", "),
+			providers: current.providers.map(providerCount).join(", "),
 			on: on.map(quote).join(", "),
 			off: off.map(quote).join(", "),
 			small: quote(current.small),

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getSessionsDir } from "../../config.ts";
-import { WORKSPACE_STATE } from "../../config/workspace.ts";
+import { WORKSPACE_STATE } from "../../storage/workspace.ts";
 import { SessionManager } from "../../core/session-manager.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
 import { type Db, type SessionExtra, workspaces } from "../../../../db/src/api.ts";

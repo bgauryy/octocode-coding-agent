@@ -1,8 +1,8 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import { parsePatch } from "../shared/codex-patch/patch.ts";
-import { validatePatchPath } from "../shared/file-input.ts";
+import { parsePatch } from "../tool-input/codex-patch/patch.ts";
+import { validatePatchPath } from "../tool-input/file-input.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { canonicalPath } from "../shared/home/repo.ts";
+import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { resolveToolPath } from "../shared/home.ts";
 
 export const CODEX_PATCH_NAMES = ["apply_patch", "Write", "Edit"];

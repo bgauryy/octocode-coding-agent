@@ -1,4 +1,4 @@
-import { retentionProblems } from "../../config/retention.ts";
+import { retentionProblems } from "../../storage/retention.ts";
 import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
 import { ignoredBuiltinSwitches } from "../features/builtin-ids.ts";

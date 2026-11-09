@@ -3,9 +3,9 @@ import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { fencedBody } from "../../shared/fence.ts";
 import { formatClock } from "../../shared/format.ts";
 import { EXTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
-import { resultBlock } from "../../shared/render.ts";
+import { resultBlock } from "../../render/tool.ts";
 import { contentText } from "../../shared/util.ts";
-import { clip } from "../../shared/render/text.ts";
+import { clip } from "../../shared/text.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { ExternalFacts } from "./caller.ts";
 

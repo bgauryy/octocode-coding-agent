@@ -1,5 +1,5 @@
-import { globalPaths } from "../../config/state-paths.ts";
-export { agentDbPath, globalPaths, HOME_NAMES } from "../../config/state-paths.ts";
+import { globalPaths } from "../../storage/state-paths.ts";
+export { agentDbPath, globalPaths, HOME_NAMES } from "../../storage/state-paths.ts";
 export {
 	currentSessionId,
 	currentSessionWorkspace,
@@ -12,7 +12,7 @@ export {
 	sessionsRoot,
 	sessionTempRoot,
 	setCurrentSession,
-} from "../../config/runtime-paths.ts";
+} from "../../storage/runtime-paths.ts";
 import { privateDir } from "../../../../common/src/file-mode.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -21,8 +21,9 @@ import { claudeConfigDir } from "../../utils/host-config.ts";
 import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
-import { ensureWorkspaceStateDir, workspaceStateDir } from "../../config/workspace.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { repoKey, workspaceRoot } from "../../utils/git-repository.ts";
+import { ensureWorkspaceStateDir, workspaceStateDir } from "../../storage/workspace.ts";
 
 export { privateDir };
 

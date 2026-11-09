@@ -2,8 +2,8 @@ import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@oct
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
 import { skillInstructions } from "../../../octocode/skill/render.ts";
-import { shortPath } from "../../../octocode/shared/format.ts";
-import { plural } from "../../../octocode/shared/render/text.ts";
+import { shortPath } from "../../../utils/display-path.ts";
+import { plural } from "../../../octocode/shared/text.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";

@@ -1,8 +1,8 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { backlog } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { shownLine } from "../sessions/store.ts";
 import { describeWork, unreportedWork } from "../sessions/work.ts";
 

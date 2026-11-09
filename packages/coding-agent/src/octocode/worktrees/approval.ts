@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { worktreesDir } from "../shared/own-worktree.ts";
+import { worktreesDir } from "../worktree-paths/own-worktree.ts";
 import { grantFolder } from "../trust/grants.ts";
 import { shown } from "../trust/messages.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";

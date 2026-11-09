@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
-import { RETENTION_DEFAULTS } from "../config/retention.ts";
+import { RETENTION_DEFAULTS } from "../storage/retention.ts";
 import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
 
 /** Tokens kept free for the reply when compacting or summarizing a branch. */

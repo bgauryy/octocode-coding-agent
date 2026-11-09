@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../config/workspace-database.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import {
 	type AgentDb,
 	type agentEvents,
@@ -9,7 +9,7 @@ import {
 	history,
 	leases,
 } from "../../../../db/src/api.ts";
-import { openAgentDb, sharedAgentDb } from "../../config/database.ts";
+import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";

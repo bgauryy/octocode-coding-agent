@@ -8,7 +8,7 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createSessionManager } from "../src/main/session-manager.ts";
 import { closeSharedAgentDb } from "../../db/src/api.ts";
-import { sharedAgentDb } from "../src/config/database.ts";
+import { sharedAgentDb } from "../src/storage/database.ts";
 import { SessionIndex } from "../src/octocode/sessions/store.ts";
 
 const { confirm } = vi.hoisted(() => ({ confirm: vi.fn() }));

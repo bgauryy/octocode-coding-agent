@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import type { Backlog, BacklogWeb } from "../../src/octocode/backlog/context.ts";
 import { sharedWorkspaceWeb } from "../../src/octocode/backlog/shared-web.ts";
 import { readRecord, registryPaths } from "../../src/octocode/backlog/shared-web-registry.ts";

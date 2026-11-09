@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { repoKey } from "../../src/octocode/shared/home/repo.ts";
+import { repoKey } from "../../src/utils/git-repository.ts";
 import { createWorktree, finishWorktree, worktreesDir } from "../../src/octocode/subagents/worktree.ts";
 import { GIT_TEST_ENV } from "./worktree-fixture.ts";
 import { tmp } from "./helpers.ts";

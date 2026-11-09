@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACP_MCP_MANIFEST_ENV, ACP_WORKER_ENV } from "../../../common/src/env.ts";
 import { DefaultResourceLoader } from "../../../coding-agent/src/core/resource-loader.ts";
 import { createHarness } from "../../../coding-agent/test/suite/harness.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../common/src/mcp-names.ts";
 import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 import { prepareAcpMcpServers } from "../../src/server/mcp.ts";
 

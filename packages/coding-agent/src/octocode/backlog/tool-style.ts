@@ -1,7 +1,7 @@
 import type { TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
-import { itemTitle, withItemTitles } from "../shared/render/item-titles.ts";
-import { linkItem } from "../shared/render/text.ts";
+import { itemTitle, withItemTitles } from "../render/item-titles.ts";
+import { linkItem } from "../shared/text.ts";
 import { PRIORITY_COLOR, STATE_COLOR, TASK_COLOR, type BoardTheme } from "./board-style.ts";
 
 const ITEM = /^(\s*(?:- )?)(B\d+) \[(backlog|todo|ongoing|done) (p[0-3])([^\]]*)\] (.*)$/;

@@ -32,7 +32,7 @@ import { discoveryInput } from "../../core/discovery/service.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { readProviderOrigins, type ProviderOriginsView } from "./provider-origins.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
-import { repoKey } from "../shared/home/repo.ts";
+import { repoKey } from "../../utils/git-repository.ts";
 
 export interface ConfigStatusOptions {
 	agentDir: string;

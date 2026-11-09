@@ -1,6 +1,6 @@
 import { getKeybindings, type Keybinding, type KeybindingsManager } from "@octocodeai/octocode-tui";
 import { KEYBINDINGS } from "../../core/keybindings.ts";
-import { formatKeyText } from "../../modes/interactive/components/keybinding-hints.ts";
+import { formatKeyText } from "../../theme/theme-tui-helpers.ts";
 
 /** Display the effective binding; a disabled action must not advertise its default key. */
 export function shortcutText(action: Keybinding, manager: KeybindingsManager = getKeybindings()): string {

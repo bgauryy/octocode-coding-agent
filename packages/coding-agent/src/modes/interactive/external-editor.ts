@@ -1,4 +1,4 @@
-import { runtimeTempDir } from "../../config/runtime-paths.ts";
+import { runtimeTempDir } from "../../storage/runtime-paths.ts";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 

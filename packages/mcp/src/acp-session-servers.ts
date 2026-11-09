@@ -10,7 +10,8 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { ACP_MCP_MANIFEST_ENV, ACP_WORKER_ENV, envFlag } from "../../common/src/env.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import type { McpExtensionApi } from "./host/types.ts";
-import { type McpServerConfig, validateMcpServerConfig } from "./servers.ts";
+import { validateMcpServerConfig } from "./servers.ts";
+import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 
 export const ACP_MCP_MANIFEST_FILE = "manifest.json";
 export const ACP_MCP_LAUNCHER_FILE = "launcher.mjs";

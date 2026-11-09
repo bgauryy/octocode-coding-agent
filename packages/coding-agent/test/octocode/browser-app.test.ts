@@ -13,17 +13,17 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { openFile } from "../../src/octocode/shared/open.ts";
+import { openFile } from "../../src/octocode/browser/open.ts";
 import { daemonOpener } from "../../src/octocode/web-daemon/open.ts";
 import {
 	APP_PROFILE_PREFIX,
 	appWindowArgs,
 	createAppWindow,
 	findChromium,
-} from "../../src/octocode/shared/browser-app.ts";
+} from "../../src/octocode/browser/app-window.ts";
 
 // The daemon and the system opener are external boundaries of the daemon-path test below.
-vi.mock("../../src/octocode/shared/open.ts", () => ({ openFile: vi.fn(async () => undefined) }));
+vi.mock("../../src/octocode/browser/open.ts", () => ({ openFile: vi.fn(async () => undefined) }));
 vi.mock("../../src/octocode/web-daemon/launcher.ts", () => ({
 	ensureWebDaemon: async () => ({ origin: "http://127.0.0.1:7", token: "tok", record: {} }),
 	waitForSession: async () => true,

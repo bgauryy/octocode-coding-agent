@@ -1,5 +1,5 @@
-import { registeredWorkspace } from "../../config/workspace-database.ts";
-import { repoKey } from "../shared/home/repo.ts";
+import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { repoKey } from "../../utils/git-repository.ts";
 import {
 	type AgentDb,
 	type MemoryFilter,
@@ -9,7 +9,7 @@ import {
 	type Row,
 	type ScopeFilter,
 } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../config/database.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 export type { MemoryFilter, ScopeFilter };
 import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { clipText, DAY_MS, stringOrEmpty } from "../shared/util.ts";

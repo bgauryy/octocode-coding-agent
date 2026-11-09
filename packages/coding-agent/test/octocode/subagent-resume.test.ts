@@ -3,7 +3,7 @@ import path from "node:path";
 import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
+import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { scratchRoot } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -136,6 +136,10 @@ describe("resuming a subagent of this session by id", () => {
 			const [report] = resumed.reports();
 			expect(report).toContain(`--session-dir ${dir} --session-id ${sessionId}`);
 			expect(report).toContain("Follow-up from your coordinator:\nlinger again");
+			// Without a goal the continued child keeps the one it was started with.
+			const kept = await resumed.call({ task: "linger kept", resume: id, background: true });
+			expect(kept.details).toMatchObject({ id, goal: "linger first" });
+			await resumed.control.settle();
 			const failed = await resumed.call({ goal: "Recover", task: "error please", resume: id, background: true });
 			await resumed.control.settle();
 			const failure = resumed.f.sent.find((entry) => entry.message.details?.runId === failed.details.runId);

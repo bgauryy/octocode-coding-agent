@@ -7,7 +7,7 @@ import {
 	git,
 	gitQuiet,
 	NO_HOOKS,
-} from "../shared/git.ts";
+} from "../../utils/git-run.ts";
 import { revokeWorktreeGrant } from "../trust/grants.ts";
 import { REF_PREFIX, type Worktree, type WorktreeResult } from "./worktree-base.ts";
 import {

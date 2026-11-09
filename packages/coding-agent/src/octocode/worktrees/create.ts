@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { rejectTrackedWorkspaceState, git, gitQuiet } from "../shared/git.ts";
+import { rejectTrackedWorkspaceState, git, gitQuiet } from "../../utils/git-run.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "./approval.ts";
 import { copyIncluded, type IncludeResult } from "./include.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";

@@ -10,7 +10,7 @@ import { vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import type { AgentSession, AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { ApplicationService } from "../../src/core/application/index.ts";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

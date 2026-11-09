@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test, vi } from "vitest";
 import { Container, type TUI } from "../../tui/src/tui.ts";
 import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { CustomEditor } from "../src/theme/custom-editor.ts";
 import * as extensionDialogs from "../src/modes/interactive/interactive-mode/extension-dialogs.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { isWithin } from "../shared/home/repo.ts";
-import { EXCLUDE_WORKSPACE_STATE, git } from "../shared/git.ts";
+import { isWithin } from "../../../../common/src/paths.ts";
+import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
 import { canonical, locateRepo, worktreesFolder, type WorktreeEntry } from "./repo.ts";
 
 export interface WorktreeStatus {

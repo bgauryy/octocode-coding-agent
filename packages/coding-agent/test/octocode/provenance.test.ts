@@ -6,7 +6,7 @@ import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 import { CHILD_EXPOSURE_EVENT } from "../../src/octocode/permission/provenance/exposure.ts";
 import { recordChildReports } from "../../src/octocode/permission/provenance/reports.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
-import type { MessageReader } from "../../src/octocode/shared/references.ts";
+import type { MessageReader } from "../../src/octocode/child-sessions/references.ts";
 
 const ROOT = "/work/repo";
 const ctx = { cwd: ROOT };

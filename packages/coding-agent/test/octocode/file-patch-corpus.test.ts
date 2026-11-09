@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { expect, it } from "vitest";
-import { parsePatch, transformPatch } from "../../src/octocode/shared/codex-patch/patch.ts";
+import { parsePatch, transformPatch } from "../../src/octocode/tool-input/codex-patch/patch.ts";
 const corpus: {
 	cases: Array<{ name: string; patch: string; source?: string; expected: any }>;
 } = JSON.parse(fs.readFileSync(new URL("./fixtures/codex-patch/corpus.json", import.meta.url), "utf8"));

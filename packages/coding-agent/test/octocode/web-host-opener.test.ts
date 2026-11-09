@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { openOnHost, planOpen } from "../../src/octocode/shared/host-opener.ts";
+import { openOnHost, planOpen } from "../../src/octocode/browser/host-opener.ts";
 
 const DISPLAY = { DISPLAY: ":0" };
 

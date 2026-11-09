@@ -1,6 +1,6 @@
 import { type Subcommands, say, wordCompletions } from "../../shared/commands.ts";
-import { shortPath } from "../../shared/format.ts";
-import { plural } from "../../shared/render/text.ts";
+import { shortPath } from "../../../utils/display-path.ts";
+import { plural } from "../../shared/text.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { BashJobs } from "../bash-jobs.ts";
 import { jobWhyLine } from "./message.ts";

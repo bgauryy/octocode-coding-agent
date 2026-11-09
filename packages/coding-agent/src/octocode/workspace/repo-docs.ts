@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Value } from "typebox/value";
 import { DocFileSchema, REPO_DOC_PREFIX, type DocFile, type DocSummary } from "@octocodeai/octocode-contracts/docs";
-import { git } from "../shared/git.ts";
+import { git } from "../../utils/git-run.ts";
 import { MAX_DOC_BYTES, summarize } from "./doc-summary.ts";
 import { isSymlink } from "./reports.ts";
 

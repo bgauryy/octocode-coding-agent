@@ -5,7 +5,7 @@ import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
 import { getMcpSwitch, requestMcpReload } from "../../../../mcp/src/switch.ts";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { createConfiguration } from "../../configuration/index.ts";
-import { buildInventory, type InventoryItem, renderInventory } from "../../core/extensibility/inventory.ts";
+import { buildInventory, type InventoryItem, renderInventory } from "./inventory.ts";
 import { type SwitchScope, switchItem } from "../../core/extensibility/switch.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";

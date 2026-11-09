@@ -11,8 +11,8 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
-import { rowMark, uiStateOf } from "../../../octocode/shared/render/motion.ts";
-import { phaseOf } from "../../../octocode/shared/render/rows.ts";
+import { rowMark, uiStateOf } from "../../../octocode/render/motion.ts";
+import { phaseOf } from "../../../octocode/render/rows.ts";
 import { theme } from "../../../theme/theme.ts";
 import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
 import { GenericToolContent } from "./tool-execution/content.ts";

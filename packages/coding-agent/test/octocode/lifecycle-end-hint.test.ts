@@ -7,8 +7,8 @@ import { type AgentDb, agentEvents, agents, closeSharedAgentDb } from "../../../
 import { openDatabase } from "../../../db/src/db.ts";
 import { SCHEMA_PLAN } from "../../../db/src/migrations.ts";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
-import { openAgentDb } from "../../src/config/database.ts";
-import { registeredWorkspace } from "../../src/config/workspace-database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { sameProcess } from "../../src/octocode/shared/process.ts";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { emptyUsage } from "../../src/octocode/shared/util.ts";

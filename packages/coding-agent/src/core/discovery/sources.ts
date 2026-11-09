@@ -1,6 +1,8 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, EXTRA_SKILLS_ENV, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { parseConfigDocument } from "../../utils/config-document.ts";
 import { collectSkillEntries } from "../package-manager/discovery.ts";
 import { discoverExtensionsInDir } from "../package-manager/extension-discovery.ts";
 import { type ConfigRoot, configRoots, makeItem, skillName } from "./roots.ts";
@@ -107,6 +109,21 @@ export function hookFileItems(
 	return files.map((file) =>
 		makeItem("hook", basename(file), { product: "octocode", vendor: dialect, scope, origin: dialect }, file, input),
 	);
+}
+
+/**
+ * Whether a listed hook file defines at least one hook. Claude's `settings.json` and Codex's `config.toml` exist for other
+ * settings and are not hook sources then; a file that cannot be read or parsed still counts, so its failure shows.
+ */
+export function definesHooks(file: string): boolean {
+	if (!existsSync(file)) return false;
+	try {
+		const document = parseConfigDocument(readFileSync(file, "utf8"), file);
+		const hooks = isRecord(document) ? document.hooks : undefined;
+		return isRecord(hooks) && Object.values(hooks).some((groups) => !Array.isArray(groups) || groups.length > 0);
+	} catch {
+		return true;
+	}
 }
 
 export const promptName = (file: string): string => basename(file).replace(/\.md$/, "");

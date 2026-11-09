@@ -4,7 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openAgentDb } from "../../src/config/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import type { RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";

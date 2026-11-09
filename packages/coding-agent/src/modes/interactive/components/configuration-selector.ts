@@ -2,7 +2,7 @@ import { Container, type SettingItem, SettingsList, Text } from "@octocodeai/oct
 import { appliesText, formatResult } from "../../../configuration/command.ts";
 import type { ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "../../../configuration/index.ts";
 import { getSettingsListTheme, theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { ExtensionInputComponent } from "./extension-input.ts";
 
 export type SelectorScope = Exclude<ConfigScope, "run">;

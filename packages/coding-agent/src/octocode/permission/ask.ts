@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import type { FileInputReplacement } from "../shared/claude-file.ts";
+import type { FileInputReplacement } from "../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../core/features/types.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";

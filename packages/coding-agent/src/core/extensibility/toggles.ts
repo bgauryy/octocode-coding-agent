@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import path from "node:path";
-import { repoKey } from "../../octocode/shared/home/repo.ts";
+import { repoKey } from "../../utils/git-repository.ts";
 import type { Settings } from "../settings-schema.ts";
 
 /**

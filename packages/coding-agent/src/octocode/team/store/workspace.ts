@@ -1,5 +1,6 @@
 import path from "node:path";
-import { canonicalPath, repoKey } from "../../shared/home/repo.ts";
+import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { repoKey } from "../../../utils/git-repository.ts";
 import { sessionWorkspace } from "../../shared/home/workspace.ts";
 import { leaseKey } from "../lease-key.ts";
 

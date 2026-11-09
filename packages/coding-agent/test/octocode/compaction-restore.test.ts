@@ -17,7 +17,7 @@ import {
 import { windowBudget } from "../../src/octocode/compaction/summary.ts";
 import { RESTORED_FILES_TYPE, seenFiles } from "../../src/octocode/files/reads.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
+import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { tmp } from "./helpers.ts";
 

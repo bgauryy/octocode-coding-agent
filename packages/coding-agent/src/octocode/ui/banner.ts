@@ -19,8 +19,6 @@ const BANNER_ART = [
 	"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄",
 ] as const;
 export const ISSUES_URL = "https://github.com/bgauryy/octocodecode/issues";
-/** Art rows and the beta notice; the header container adds the blank rows around it. */
-export const BANNER_HEIGHT = BANNER_ART.length + 1;
 /** Every art character is one cell wide and one UTF-16 unit long. */
 const ART_WIDTH = BANNER_ART[0].length;
 /** Column where "CODE" starts, for the per-word fallback colours. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initTheme, theme } from "../../src/theme/theme.ts";
-import { resultBlock } from "../../src/octocode/shared/render.ts";
+import { resultBlock } from "../../src/octocode/render/tool.ts";
 
 describe("result state colors", () => {
 	it("applies a semantic summary color after sanitizing text", () => {
