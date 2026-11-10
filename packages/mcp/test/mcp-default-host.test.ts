@@ -144,7 +144,7 @@ describe("default MCP in the shared host", () => {
 				status,
 			),
 		).toContain("blocks");
-		// D2 (`config.ts`, `inheritFromReplaced`): a user entry named like a default entry, without its own `roles`, keeps
+		// A user entry named like a default entry, without its own `roles`, keeps
 		// the default's roles; `"roles": {}` clears them, and its tools are no longer read-only.
 		for (const roles of [undefined, {}]) {
 			const agentDir = tmp(),

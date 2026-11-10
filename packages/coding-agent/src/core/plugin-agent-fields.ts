@@ -5,8 +5,8 @@ import type { Settings } from "./settings-schema.ts";
  * instruction content: only fields that mean the same thing in both products are carried over, and nothing here can
  * widen what the child may do (a tool allowlist without a file-writing tool makes the profile read-only; `permissions:`
  * still asks the user when the agent is spawned). Everything else is reported as unsupported and ignored.
- * Checked 2026-11-01 against https://code.claude.com/docs/en/sub-agents ("Frontmatter reference") and
- * https://code.claude.com/docs/en/plugins/components ("Frontmatter fields in plugin agents").
+ * Field meanings follow https://code.claude.com/docs/en/sub-agents and
+ * https://code.claude.com/docs/en/plugins/components.
  */
 
 type ToolEffect = "bash" | "web" | "write" | "inherent";

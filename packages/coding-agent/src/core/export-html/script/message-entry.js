@@ -102,7 +102,6 @@ function renderEntry(entry) {
 			const skillBlock = parseSkillBlock(text);
 
 			if (skillBlock) {
-				// Collect images from content array
 				const images = Array.isArray(content) ? content.filter((c) => c.type === "image") : [];
 				const hasUserContent = skillBlock.userMessage || images.length > 0;
 				let html = `<div class="skill-user-entry" id="${entryDomId}">${copyBtnHtml}${tsHtml}`;

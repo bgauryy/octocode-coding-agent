@@ -32,7 +32,7 @@ describe("communication prompt contracts", () => {
 
 	it("gives one cross-tree rule per tier and keeps peer messages below coordinator authority", () => {
 		// The top-level session reaches other trees and names their owning parent; a child reaches only its own session
-		// tree and asks its parent to relay (the routing B103 enforces in `team/`).
+		// tree and asks its parent to relay (the routing enforced in `team/`).
 		const rules = {
 			true: "For agents another session started, share evidence and send scope or interface changes to their coordinator.",
 			false: "Your coordinator relays beyond your tree.",

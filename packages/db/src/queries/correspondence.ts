@@ -9,8 +9,8 @@ export interface Correspondence {
 
 /**
  * Whether `other` is someone `me` corresponded with (mail sent to it or received from it, relay requests aside) and whether
- * a `replyRequired` question `me` put to it has no reply: those are the peers whose ending `me` should hear of (design
- * B36 §7). Messages older than `since` (an earlier run of the same name) do not count.
+ * a `replyRequired` question `me` put to it has no reply: those are the peers whose ending `me` should hear of.
+ * Messages older than `since` (an earlier run of the same name) do not count.
  */
 export function between(db: DatabaseSync, team: string, me: string, other: string, since: number): Correspondence {
 	const exchanged = db

@@ -195,7 +195,6 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			return;
 		}
 
-		// Find first and last changed lines
 		let range = findChangedLineRange(this.previousLines, newLines);
 		// Scrollback cannot be edited: rows that changed in place above the viewport are left as the terminal has them.
 		const deferred =
@@ -242,7 +241,6 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				if (lineDiff > 0) output.append(`\x1b[${lineDiff}B`);
 				else if (lineDiff < 0) output.append(`\x1b[${-lineDiff}A`);
 				output.append("\r");
-				// Clear extra lines without scrolling
 				const extraLines = this.previousLines.length - newLines.length;
 				if (extraLines > height) {
 					logRedraw(`extraLines > height (${extraLines} > ${height})`);
@@ -371,7 +369,6 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
 		this.previousViewportTop = Math.max(prevViewportTop, finalCursorRow - height + 1);
 
-		// Position hardware cursor for IME
 		this.positionHardwareCursor(cursorPos, newLines.length);
 
 		this.previousLines = newLines;

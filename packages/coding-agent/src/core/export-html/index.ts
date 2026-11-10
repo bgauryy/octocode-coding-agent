@@ -41,7 +41,6 @@ interface RenderedToolHtml {
 interface ExportOptions {
 	outputPath?: string;
 	themeName?: string;
-	/** Optional tool renderer for custom tools */
 	toolRenderer?: ToolHtmlRenderer;
 }
 
@@ -218,7 +217,6 @@ function preRenderCustomTools(
 			}
 		}
 
-		// Find tool results
 		if (msg.role === "toolResult" && msg.toolCallId) {
 			const toolName = msg.toolName || "";
 			const existing = renderedTools[msg.toolCallId];

@@ -76,6 +76,18 @@ function createWorker(launch: AcpWorkerLaunch): AcpWorkerClient {
 			}),
 		respondToExtensionUIRequest: (response) => client.respondToExtensionUIRequest(response),
 		getCommands: () => client.getCommands(),
+		async getModels() {
+			const [models, state] = await Promise.all([client.getAvailableModels(), client.getState()]);
+			return {
+				current: state.model ? `${state.model.provider}/${state.model.id}` : undefined,
+				available: models.map((model) => `${model.provider}/${model.id}`),
+			};
+		},
+		async setModel(model) {
+			const found = (await client.getAvailableModels()).find((entry) => `${entry.provider}/${entry.id}` === model);
+			if (!found) throw new Error(`Model not found: ${model}`);
+			await client.setModel(found.provider, found.id);
+		},
 	};
 }
 

@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
-import { notify } from "../../shared/commands.ts";
+import { say } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
 import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
 import { loadHooks } from "../config.ts";
@@ -86,8 +86,8 @@ export function registerSessionStartHooks(
 		session.switchedOff = loaded.switchedOff;
 		session.root = undefined;
 		pending = [];
-		if (loaded.errors.length > 0 && ctx.hasUI)
-			notify(ctx.ui, `Hook configuration diagnostics: ${loaded.errors.join("; ")}`, "warning");
+		// Without a UI (print, JSON, RPC) the warning goes to stderr: a malformed file can drop a `failClosed` gate.
+		if (loaded.errors.length > 0) say(ctx, `Hook configuration diagnostics: ${loaded.errors.join("; ")}`, "warning");
 		startHooks(ctx, START_SOURCE[event.reason] ?? "startup", true);
 	});
 	// Claude Code runs SessionStart again (source `compact`) after a compaction: its context comes with the next prompt.

@@ -20,7 +20,6 @@ export interface ProfilerState {
 	/** When the session's first agent started (epoch ms), as the host reported it. */
 	startedAt?: number;
 	agentId?: string;
-	/** `index` of the selected request. */
 	requestIndex?: number;
 }
 

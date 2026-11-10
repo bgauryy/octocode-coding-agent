@@ -7,10 +7,8 @@ import type { EditorModel } from "./model.ts";
 export function addToHistory(editor: EditorModel, text: string): void {
 	const trimmed = text.trim();
 	if (!trimmed) return;
-	// Don't add consecutive duplicates
 	if (editor.history.length > 0 && editor.history[0] === trimmed) return;
 	editor.history.unshift(trimmed);
-	// Limit history size
 	if (editor.history.length > 100) {
 		editor.history.pop();
 	}

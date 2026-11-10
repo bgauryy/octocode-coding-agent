@@ -44,9 +44,7 @@ export class InteractiveMode {
 		return this.host.getUserInput();
 	}
 
-	// =========================================================================
 	// UI helpers
-	// =========================================================================
 
 	clearEditor(): void {
 		this.host.clearEditor();

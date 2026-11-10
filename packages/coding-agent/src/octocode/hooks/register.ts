@@ -4,9 +4,10 @@ import { registerBackgroundHooks } from "./background.ts";
 import { parsePatch } from "../tool-input/codex-patch/patch.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { say } from "../shared/commands.ts";
-import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
+import { envFlag, PARENT_SESSION_ENV, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "./config/calls.ts";
+import { ifFilter } from "./config/if-filter.ts";
 import { emptyHooks } from "./config/parse.ts";
 import type { HookVerdict } from "./contracts.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch } from "./patch.ts";
@@ -30,6 +31,7 @@ import { hooksPromptSection } from "./prompt-section.ts";
 import { hookCount, hooksReport } from "./register/report.ts";
 import { registerSessionStartHooks } from "./register/session-start.ts";
 import { registerStopHook, registerStopRenderer } from "./register/stop.ts";
+import { testRunHooks } from "./register/test-run.ts";
 import { registerSubagentHooks } from "./register/subagent.ts";
 import type { HookFailureSink, HookHostMetadata, HookSession, HookTiming, HooksView } from "./register/types.ts";
 
@@ -70,9 +72,11 @@ export function registerHooks(
 				: "off in this subagent (its profile does not set hooks: true)",
 		promptSection: () => (enabled && !paused?.() ? hooksPromptSection(session.config) : ""),
 		report: (cwd) => hooksReport(enabled, session.config, session.errors, cwd, home, timings, session.switchedOff),
+		testRun: async () => "Hooks are off in this subagent (its profile does not set hooks: true).",
 		preToolUse: async () => undefined,
 		permissionRequest: async () => undefined,
 		hasFilePermissionRequest: () => false,
+		hasPreToolUse: () => false,
 		fileInputCommitted: () => {},
 		notification: () => undefined,
 		messageSend: async () => undefined,
@@ -83,7 +87,9 @@ export function registerHooks(
 	if (!enabled) return view;
 	const background = registerBackgroundHooks(api);
 	const child = envFlag(env, SUBAGENT_ENV);
-	const runner = createDispatcher(api, session, timings, onFailure, background, child, metadata, paused);
+	const parentSession = child ? env[PARENT_SESSION_ENV] : undefined;
+	const runner = createDispatcher(api, session, timings, onFailure, background, child, metadata, paused, parentSession);
+	view.testRun = (ctx, words) => testRunHooks(runner.dispatch, session, ctx, words);
 	view.suspend = async () => {
 		await Promise.all([runner.stop(), background.reset(false)]);
 	};
@@ -102,6 +108,13 @@ export function registerHooks(
 	api.on("turn_end", async () => {
 		patches.clear();
 	});
+	view.hasPreToolUse = (toolName, input, cwd) =>
+		!paused?.() &&
+		hookCalls(toolName, input, cwd).some((call, index) =>
+			commandsFor(session.config, "PreToolUse", call.names).some(
+				ifFilter(toolName, input, cwd, toolName === "file" ? index : undefined),
+			),
+		);
 	view.hasFilePermissionRequest = (input, cwd) =>
 		hookCalls("file", input, cwd).some((call) =>
 			commandsFor(session.config, "PermissionRequest", call.names).some((hook) => hook.protocol === "claude"),
@@ -133,7 +146,11 @@ export function registerHooks(
 			return { decision: "deny", message };
 		}
 		const calls = hookCalls(invocation.toolName, input, ctx.cwd);
-		const run = (call: { names: string[]; tool_name: string; tool_input: unknown }, protocol: HookProtocol) =>
+		const run = (
+			call: { names: string[]; tool_name: string; tool_input: unknown },
+			protocol: HookProtocol,
+			index?: number,
+		) =>
 			runner.dispatch(
 				ctx,
 				"PermissionRequest",
@@ -145,6 +162,8 @@ export function registerHooks(
 				}),
 				signal,
 				protocol,
+				// A Claude handler's `if` rule; a `file` call is judged per query.
+				ifFilter(invocation.toolName, input, ctx.cwd, invocation.toolName === "file" ? index : undefined),
 			);
 		const verdicts: HookVerdict[] = [];
 		const fileReplacements: FileInputReplacement[] = [];
@@ -177,7 +196,7 @@ export function registerHooks(
 					verdicts.push({ permissionDecision: "deny", block: message });
 				}
 			} else {
-				const results = await Promise.all(calls.map((call) => run(call, protocol)));
+				const results = await Promise.all(calls.map((call, index) => run(call, protocol, index)));
 				const deny = decidingDenial(results);
 				if (deny) verdicts.push(deny);
 				else if (results.length && results.every((verdict) => verdict.permissionDecision === "allow")) {

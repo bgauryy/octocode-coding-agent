@@ -125,12 +125,10 @@ export class CustomEditor extends Editor {
 			super.handleInput(pasted);
 			return;
 		}
-		// Check extension-registered shortcuts first
 		if (this.onExtensionShortcut?.(data)) {
 			return;
 		}
 
-		// Check for clipboard paste keybinding
 		if (this.keybindings.matches(data, "app.clipboard.pasteImage")) {
 			this.onPasteImage?.();
 			return;
@@ -189,7 +187,6 @@ export class CustomEditor extends Editor {
 			return;
 		}
 
-		// Check all other app actions
 		for (const [action, handler] of this.actionHandlers) {
 			if (action !== "app.interrupt" && action !== "app.exit" && this.keybindings.matches(data, action)) {
 				handler();
@@ -197,7 +194,6 @@ export class CustomEditor extends Editor {
 			}
 		}
 
-		// Pass to parent for editor handling
 		super.handleInput(data);
 	}
 }

@@ -142,22 +142,18 @@ export class FooterComponent implements Component {
 		// Unknown (no usage yet, or just compacted) reads `?`, never `0.0%`.
 		const contextPercent = contextUsage?.percent != null ? contextPercentValue.toFixed(1) : "?";
 
-		// Replace home directory with ~
 		let pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
 
-		// Add git branch if available
 		const branch = this.footerData.getGitBranch();
 		if (branch) {
 			pwd = `${pwd} (${branch})`;
 		}
 
-		// Add session name if set
 		const sessionName = this.session.sessionManager.getSessionName();
 		if (sessionName) {
 			pwd = `${pwd}${SEPARATOR}${sessionName}`;
 		}
 
-		// Build stats line
 		const statsParts = [];
 		if (usageTotals.input) statsParts.push(`↑${formatTokens(usageTotals.input)}`);
 		if (usageTotals.output) statsParts.push(`↓${formatTokens(usageTotals.output)}`);

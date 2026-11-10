@@ -27,6 +27,20 @@ const MID_CONVERSATION_OUTPUT_CONFIG_BETA = "mid-conversation-output-config-2026
 const THINKING_BINDING_CONTROLS_BETA = "thinking-binding-controls-2026-08-01";
 const INLINE_TOOLS_BETA = "inline-tools-2026-09-15";
 
+/** API versions from this date reject temperature, top_p and top_k. */
+const SAMPLING_REMOVED_API_VERSION = "2026-10-21";
+
+function acceptsSamplingParameters(model: Model<"anthropic-messages">, options?: AnthropicOptions): boolean {
+	let version: string | null | undefined;
+	for (const headers of [model.headers, options?.headers]) {
+		for (const [name, value] of Object.entries(headers ?? {})) {
+			if (name.toLowerCase() === "anthropic-version") version = value;
+		}
+	}
+	// Versions are ISO dates, so string order is date order.
+	return !version || version < SAMPLING_REMOVED_API_VERSION;
+}
+
 function getBetaFeatures(
 	model: Model<"anthropic-messages">,
 	context: TranscriptContext,
@@ -176,7 +190,8 @@ export function buildParams(
 		options?.temperature !== undefined &&
 		!thinks &&
 		model.compat?.supportsMidConvoEffort !== true &&
-		compat.supportsTemperature
+		compat.supportsTemperature &&
+		acceptsSamplingParameters(model, options)
 	) {
 		// oxlint-disable-next-line typescript/no-deprecated -- the SDK deprecates temperature for newer models; the compat checks above send it only where the model still accepts it
 		params.temperature = options.temperature;

@@ -17,14 +17,12 @@ import { bashBudget } from "./tools/bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./tools/bash/header.ts";
 import { OutputAccumulator } from "./tools/output-accumulator.ts";
 
-// ============================================================================
 // Types
 // ============================================================================
 
 interface BashExecutorOptions {
 	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => void;
-	/** AbortSignal for cancellation */
 	signal?: AbortSignal;
 	/** Most bytes of the result that reach the model (the `bashOutputMaxBytes` setting). Default: 20 KB */
 	maxOutputBytes?: number;
@@ -36,7 +34,6 @@ interface BashExecutorOptions {
 
 export type { BashResult } from "./tools/bash/types.ts";
 
-// ============================================================================
 // Implementation
 // ============================================================================
 

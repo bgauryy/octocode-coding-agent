@@ -23,14 +23,12 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const fs = require("node:fs") as typeof Fs;
 
-// Re-export types from the main package
 export type { PhotonImage as PhotonImageType } from "@silvia-odwyer/photon-node";
 
 type ReadFileSync = typeof fs.readFileSync;
 
 const WASM_FILENAME = "photon_rs_bg.wasm";
 
-// Lazy-loaded photon module
 let photonModule: typeof PhotonModule | null = null;
 let loadPromise: Promise<typeof PhotonModule | null> | null = null;
 

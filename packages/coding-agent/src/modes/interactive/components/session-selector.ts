@@ -169,7 +169,6 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			this.enterRenameMode(sessionPath, session?.name);
 		};
 
-		// Sync list events to header
 		this.sessionList.onTogglePath = (showPath) => {
 			this.header.setShowPath(showPath);
 			this.requestRender();
@@ -186,7 +185,6 @@ export class SessionSelectorComponent extends Container implements Focusable {
 
 		this.sessionList.onDeleteSessions = (sessionPaths) => this.deleteSessions(sessionPaths);
 
-		// Start loading immediately
 		void this.loads.load(this.scope);
 	}
 

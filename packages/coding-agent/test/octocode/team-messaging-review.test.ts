@@ -1,4 +1,4 @@
-// B112: messaging review findings, each pinned by a test on real teams sharing one database.
+// Messaging review findings, each pinned by a test on real teams sharing one database.
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";

@@ -133,7 +133,6 @@ export async function getLatestVersion(repo: string): Promise<string> {
 	return decodeURIComponent(tag).replace(/^v/, "");
 }
 
-// Download a file from URL
 async function downloadFile(url: string, dest: string): Promise<void> {
 	const response = await fetchWithRetry(url, undefined, { timeoutMs: DOWNLOAD_TIMEOUT_MS });
 
@@ -251,7 +250,6 @@ function extractZipArchive(archivePath: string, extractDir: string, assetName: s
 	throw new Error(`Failed to extract ${assetName}: ${failures.join("; ")}`);
 }
 
-// Download and install a tool
 async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 	const config = TOOLS[tool];
 	if (!config) throw new Error(`Unknown tool: ${tool}`);
@@ -263,13 +261,11 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 	const version =
 		tool === "fd" && plat === "darwin" && architecture === "x64" ? "10.3.0" : await getLatestVersion(config.repo);
 
-	// Get asset name for this platform
 	const assetName = config.getAssetName(version, plat, architecture);
 	if (!assetName) {
 		throw new Error(`Unsupported platform: ${plat}/${architecture}`);
 	}
 
-	// Create tools directory
 	mkdirSync(TOOLS_DIR, { recursive: true });
 
 	const downloadUrl = `https://github.com/${config.repo}/releases/download/${config.tagPrefix}${version}/${assetName}`;
@@ -277,7 +273,6 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 	const binaryExt = plat === "win32" ? ".exe" : "";
 	const binaryPath = join(TOOLS_DIR, config.binaryName + binaryExt);
 
-	// Download
 	await downloadFile(downloadUrl, archivePath);
 
 	// Extract into a unique temp directory. fd and rg downloads can run concurrently
@@ -319,7 +314,6 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 			chmodSync(binaryPath, 0o755);
 		}
 	} finally {
-		// Cleanup
 		rmSync(archivePath, { force: true });
 		rmSync(extractDir, { recursive: true, force: true });
 	}
@@ -368,7 +362,6 @@ export async function ensureTool(
 		return undefined;
 	}
 
-	// Tool not found - download it
 	onStatus?.({ type: "info", message: `${config.name} not found. Downloading...` });
 
 	try {

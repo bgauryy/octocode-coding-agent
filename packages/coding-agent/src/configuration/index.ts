@@ -11,7 +11,6 @@ import type { ConfigAdapter, ConfigContext } from "./types.ts";
 export type { ConfigCatalog } from "./catalog.ts";
 export * from "./types.ts";
 
-/** Every adapter, one per owner. */
 const CONFIG_ADAPTERS: readonly ConfigAdapter[] = [
 	settingsAdapter,
 	toolAdapter,

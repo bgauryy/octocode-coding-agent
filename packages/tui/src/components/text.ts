@@ -13,7 +13,6 @@ export class Text implements Component {
 	private customBgFn?: (text: string) => string;
 	private hangingIndent = false;
 
-	// Cache for rendered output
 	private cachedText?: string;
 	private cachedWidth?: number;
 	private cachedLines?: string[];
@@ -57,7 +56,6 @@ export class Text implements Component {
 	}
 
 	render(width: number): string[] {
-		// Check cache
 		if (this.cachedLines && this.cachedText === this.text && this.cachedWidth === width) {
 			return this.cachedLines;
 		}
@@ -85,7 +83,6 @@ export class Text implements Component {
 
 		const result = frameContentLines(wrappedLines, width, paddingX, this.paddingY, this.customBgFn);
 
-		// Update cache
 		this.cachedText = this.text;
 		this.cachedWidth = width;
 		this.cachedLines = result;

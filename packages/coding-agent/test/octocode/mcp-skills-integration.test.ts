@@ -183,7 +183,7 @@ describe("installed MCP and skills through the native SDK", () => {
 							reader!.endsWith("localFetch")
 								? { path: file, ranges: [{ startLine: 1, endLine: end }] }
 								: { path: file, startLine: 1, endLine: end, minify: "none" };
-						expect(getCurrentSystemPrompt(context.messages)).toContain("<name>integration-skill</name>");
+						expect(getCurrentSystemPrompt(context.messages)).toContain('<skill name="integration-skill"');
 						expect(getCurrentSystemPrompt(context.messages)).toContain(
 							"Use the skill tool, one call per name, to load every skill",
 						);

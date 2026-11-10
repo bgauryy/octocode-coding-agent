@@ -137,7 +137,7 @@ function dropOldestMessages(messages: AgentMessage[], share: number): AgentMessa
 
 /**
  * Run a summary request over `messages`. When the provider rejects it as a context overflow, drop the oldest
- * messages and retry, up to {@link OVERFLOW_TRIM_SHARES} times (Codex compacts the same way); then return the failed
+ * messages and retry, up to {@link OVERFLOW_TRIM_SHARES} times; then return the failed
  * response for the caller to report. `buildPrompt` receives the messages that remain.
  */
 async function completeWithOverflowTrim(

@@ -22,7 +22,6 @@ const FAKE_CURSOR_END = `\x1b_octo:/fc${ST}`;
 // CURSOR_MARKER + FAKE_CURSOR_START + text + FAKE_CURSOR_END. Truncating the line right after the cursor cell drops the end.
 const FOCUSED_FAKE_CURSOR = /(\x1b_octo:c\x1b\\)\x1b_octo:fc\x1b\\(.*?)(?:\x1b_octo:\/fc\x1b\\|$)/s;
 
-/** Wrap text in fake cursor markers. */
 export function renderFakeCursor(text: string): string {
 	return `${FAKE_CURSOR_START}${text}${FAKE_CURSOR_END}`;
 }

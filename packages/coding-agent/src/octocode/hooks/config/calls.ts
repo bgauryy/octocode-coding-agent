@@ -102,6 +102,7 @@ export function hookIdentity(hook: HookHandler): string {
 						hook.async ?? false,
 						hook.asyncRewake ?? false,
 						hook.protocol === "codex" ? (hook.additionalContextLimit ?? 2500) : null,
+						hook.if ?? null,
 					]),
 	]);
 }

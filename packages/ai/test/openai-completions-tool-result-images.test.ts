@@ -15,7 +15,7 @@ const emptyUsage: Usage = {
 
 const compat: Omit<
 	Required<OpenAICompletionsCompat>,
-	"thinkingTokenBudgetField" | "vllmPriority" | "toolSchemaFlavor"
+	"thinkingTokenBudgetField" | "vllmPriority" | "toolSchemaFlavor" | "supportsTemperature"
 > & {
 	thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];
 	toolSchemaFlavor?: OpenAICompletionsCompat["toolSchemaFlavor"];

@@ -27,6 +27,7 @@ export function getCompat(model: Model<"openai-responses">): Required<OpenAIResp
 		supportsLongCacheRetention:
 			model.compat?.supportsLongCacheRetention ??
 			(model.provider === "openai" || new URL(model.baseUrl).hostname === "api.openai.com"),
+		supportsTemperature: model.compat?.supportsTemperature ?? true,
 		supportsStrictMode: model.compat?.supportsStrictMode ?? false,
 		supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,
 		supportsAdditionalTools: model.compat?.supportsAdditionalTools ?? false,

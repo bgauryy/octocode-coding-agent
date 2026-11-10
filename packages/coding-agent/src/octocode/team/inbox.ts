@@ -24,6 +24,8 @@ export class Inbox {
 	/** The recipient, hand-off point and database stamp at which a read found nothing waiting. */
 	private idleAt: string | undefined;
 	private generation = 0;
+	/** Seen by a model whose agent left before they could be recorded (the database was busy), and the id it left under. */
+	private unrecorded: { id: string; ids: number[] } | undefined;
 
 	/** Only newly handed mail needs a context scan; earlier conversation mail is already accounted for. */
 	get awaitingContext(): boolean {
@@ -33,10 +35,12 @@ export class Inbox {
 	/** Forgets everything (the agent left); with the database, first records what the model saw, if it can. */
 	reset(db?: TeamStore, id?: string): void {
 		this.generation++;
+		const left = this.seenIds.size > 0 && id ? { id, ids: [...this.seenIds] } : undefined;
 		try {
 			if (db && id) this.record(db, id);
 		} catch {
-			// Busy database: unrecorded mail becomes a dead letter.
+			// Busy database: the next `deliver` records them under the id the agent left with.
+			if (left) this.unrecorded = left;
 		}
 		this.handed = 0;
 		this.unseen.clear();
@@ -48,6 +52,10 @@ export class Inbox {
 
 	/** Records what the model saw, then hands the next batch to `send`; a refused batch is offered again next tick. */
 	deliver(db: TeamStore, id: string, send: (batch: Message[], onRejected: () => void) => boolean, idle = false): void {
+		if (this.unrecorded) {
+			db.ack(this.unrecorded.id, this.unrecorded.ids);
+			this.unrecorded = undefined;
+		}
 		this.record(db, id);
 		// Taken before the reads: a write that lands after it moves the stamp, so the next tick reads.
 		const stamp = db.stamp();

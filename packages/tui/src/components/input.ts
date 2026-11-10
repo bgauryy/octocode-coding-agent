@@ -40,7 +40,6 @@ export class Input implements Component, Focusable {
 	/** Focusable interface - set by TUI when focus changes */
 	focused: boolean = false;
 
-	// Bracketed paste mode buffering
 	private paste = new BracketedPasteBuffer();
 
 	private killRing = new KillRing();
@@ -69,7 +68,6 @@ export class Input implements Component, Focusable {
 		const paste = this.paste.take(data);
 		if (paste) {
 			if (paste.content !== undefined) {
-				// Process the complete paste
 				this.handlePaste(paste.content);
 
 				// Handle any remaining input after the paste marker
@@ -82,25 +80,21 @@ export class Input implements Component, Focusable {
 
 		const kb = getKeybindings();
 
-		// Escape/Cancel
 		if (kb.matches(data, "tui.select.cancel")) {
 			if (this.onEscape) this.onEscape();
 			return;
 		}
 
-		// Undo
 		if (kb.matches(data, "tui.editor.undo")) {
 			this.undo();
 			return;
 		}
 
-		// Submit
 		if (kb.matches(data, "tui.input.submit") || data === "\n") {
 			if (this.onSubmit) this.onSubmit(this.value);
 			return;
 		}
 
-		// Deletion
 		if (kb.matches(data, "tui.editor.deleteCharBackward")) {
 			this.handleBackspace();
 			return;
@@ -131,7 +125,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Kill ring actions
 		if (kb.matches(data, "tui.editor.yank")) {
 			this.yank();
 			return;
@@ -141,7 +134,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Cursor movement
 		if (kb.matches(data, "tui.editor.cursorLeft")) {
 			this.lastAction = null;
 			if (this.cursor > 0) {
@@ -329,7 +321,6 @@ export class Input implements Component, Focusable {
 		this.value = this.value.slice(0, this.cursor - prevText.length) + this.value.slice(this.cursor);
 		this.cursor -= prevText.length;
 
-		// Rotate and insert new entry
 		this.killRing.rotate();
 		const text = this.killRing.peek() || "";
 		this.value = this.value.slice(0, this.cursor) + text + this.value.slice(this.cursor);
@@ -368,7 +359,6 @@ export class Input implements Component, Focusable {
 		// Clean the pasted text - remove newlines and carriage returns
 		const cleanText = singleLinePaste(pastedText);
 
-		// Insert at cursor position
 		this.value = this.value.slice(0, this.cursor) + cleanText + this.value.slice(this.cursor);
 		this.cursor += cleanText.length;
 	}

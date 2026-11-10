@@ -94,13 +94,13 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		// Shown after a failed validation, for every tool: a failure at the top level (a native `reason`, `type` or
 		// `timeout` sent to a server that does not declare it) names the accepted call shape; any other names the working
 		// next step for an over-long `queries` batch, and a compact tool adds its typed signature.
-		validationHint: ({ envelope }) => {
+		validationHint: ({ envelope, properties }) => {
 			const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
 			if (shape) return shape;
 			const block = compact?.signature();
 			const cap = queriesCap(tool.inputSchema);
 			const hints = [
-				cap === undefined
+				cap === undefined || !properties.includes("queries")
 					? ""
 					: `queries holds at most ${cap}; split into calls of ${cap} or fewer, run them in the same turn.`,
 				block ? `Expected signature (TypeScript):\n${block}` : "",

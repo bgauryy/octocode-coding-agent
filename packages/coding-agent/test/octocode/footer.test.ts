@@ -1,6 +1,6 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
-import { chipText } from "../../src/octocode/permission/mode.ts";
+import { chipParts, chipText } from "../../src/octocode/permission/mode.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
 import * as importedModule2 from "../../src/octocode/ui/footer.ts";
 import { contextBar, type FooterState, footerLines as paintFooter } from "../../src/octocode/ui/footer.ts";
@@ -26,12 +26,12 @@ const state: FooterState = {
 	cwd: "/Users/me/code/app",
 	home: "/Users/me",
 	sessionName: "fix login",
+	chip: chipParts("manual"),
 };
 const statuses = new Map([
 	["mcp", "mcp 3/3"],
 	["octocode-team", "agents 1/2 ↑1k ↓2k"],
 	["octocode-running", "1 bash"],
-	["octocode-permission", "⏸ permission: manual · shift+tab"],
 	["octocode-speed", "58 tok/s"],
 	["other-ext", "lint ok"],
 ]);
@@ -157,6 +157,7 @@ describe("footer", () => {
 				context: { percent: null, limit: 200_000 },
 				usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },
 				sessionName: undefined,
+				chip: undefined,
 			},
 			null,
 			new Map(),
@@ -184,20 +185,14 @@ describe("footer", () => {
 		expect(bottom).not.toContain("lint ok");
 		// At 40 columns the mode chip is still there, in its short form (just the mode).
 		const [narrow] = footerLines(
-			{ ...state, context: undefined },
+			{ ...state, context: undefined, chip: chipParts("full") },
 			"main",
-			new Map([["octocode-permission", "⏵⏵ permission: full · shift+tab"]]),
+			new Map(),
 			theme,
 			40,
 		);
 		expect(narrow).toMatch(/^claude-opus-5-5 · ⏵⏵ full/);
-		const [squeezed] = footerLines(
-			{ ...state, context: undefined, thinking: undefined },
-			"main",
-			new Map([["octocode-permission", "⏸ permission: manual · shift+tab"]]),
-			theme,
-			26,
-		);
+		const [squeezed] = footerLines({ ...state, context: undefined, thinking: undefined }, "main", new Map(), theme, 26);
 		expect(squeezed).toBe("claude-opus-5-5 · ⏸ manual");
 		const tiny = footerLines(state, "main", statuses, theme, 20);
 		expect(tiny.every((line) => visibleWidth(line) <= 20)).toBe(true);
@@ -257,7 +252,6 @@ describe("footer line 1 work statuses", () => {
 
 describe("footer under a busy status row", () => {
 	const busy = new Map([
-		["octocode-permission", "⏸ permission: manual · shift+tab"],
 		["octocode-team", "agents 3/6 ↑12k ↓34k"],
 		["octocode-running", "3 agents · 2 bash · 1 timer"],
 		["octocode-queued", "✉ 2 queued"],
@@ -538,8 +532,8 @@ describe("footer wiring", () => {
 		expect(chipText("full", { actions: 1, warnings: 0 })).toBe("⏵⏵ permission: full · 1 action · shift+tab");
 		expect(chipText("full", { actions: 12, warnings: 2 })).toBe("⏵⏵ permission: full · 12 actions · 2 ⚠ · shift+tab");
 		expect(chipText("workspace", { actions: 12, warnings: 2 })).toBe("permission: workspace · shift+tab");
-		const counted = new Map([["octocode-permission", chipText("full", { actions: 12, warnings: 2 })]]);
-		const [narrow] = footerLines({ ...state, context: undefined }, "main", counted, theme, 44);
+		const chip = chipParts("full", { actions: 12, warnings: 2 });
+		const [narrow] = footerLines({ ...state, context: undefined, chip }, "main", new Map(), theme, 44);
 		expect(narrow).toContain("⏵⏵ full · 12 actions · 2 ⚠");
 		expect(narrow).not.toContain("permission:");
 	});
@@ -611,8 +605,14 @@ describe("run metrics", () => {
 			expect(vi.getTimerCount()).toBe(0);
 			entries = [];
 			await fake.emit("session_start", {}, ctx);
-			expect(rendered()).not.toContain("compaction");
-			expect(rendered()).not.toContain("last run");
+			const fresh = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
+				getGitBranch: () => null,
+				getExtensionStatuses: () => new Map(),
+				onBranchChange: () => () => {},
+			});
+			expect(fresh.render(160).join("\n")).not.toContain("compaction");
+			expect(fresh.render(160).join("\n")).not.toContain("last run");
+			fresh.dispose();
 		} finally {
 			vi.useRealTimers();
 		}
@@ -627,5 +627,42 @@ describe("run metrics", () => {
 				expect(lines.join("\n")).toContain("3 compactions");
 			}
 		}
+	});
+});
+
+describe("permission chip in the footer", () => {
+	it("paints the mode in its tone and the shortcut dim, and drops the shortcut when narrow", () => {
+		painted.length = 0;
+		const chip = chipParts("full", { actions: 12, warnings: 2 });
+		const [top] = footerLines({ ...state, context: undefined, chip }, "main", new Map(), recording, 200);
+		expect(top).toContain("⏵⏵ permission: full · 12 actions · 2 ⚠ · shift+tab");
+		expect(painted).toContainEqual(["warning", "⏵⏵ permission: full · 12 actions · 2 ⚠"]);
+		expect(painted).toContainEqual(["dim", " · shift+tab"]);
+		const [narrow] = footerLines({ ...state, context: undefined, chip }, "main", new Map(), recording, 44);
+		expect(narrow).toContain("⏵⏵ full · 12 actions · 2 ⚠");
+		expect(narrow).not.toContain("shift+tab");
+	});
+
+	it("repaints when the published chip changes, and not when it repeats", async () => {
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
+		const { publishChip } = await import("../../src/octocode/permission/chip-store.ts");
+		const fake = fakeHost();
+		importedModule2.registerFooter(fake.api);
+		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
+		await fake.emit("session_start", {}, ctx);
+		const requestRender = vi.fn();
+		const component = ctx.ui.footer({ requestRender }, theme, {
+			getGitBranch: () => null,
+			getExtensionStatuses: () => new Map(),
+			onBranchChange: () => () => undefined,
+		});
+		publishChip(chipParts("manual"));
+		requestRender.mockClear();
+		publishChip(chipParts("full"));
+		expect(requestRender).toHaveBeenCalledTimes(1);
+		expect(component.render(120).join("\n")).toContain("⏵⏵ permission: full");
+		publishChip(chipParts("full"));
+		expect(requestRender).toHaveBeenCalledTimes(1);
+		component.dispose();
 	});
 });

@@ -250,7 +250,6 @@ export async function releaseHeldInput(host: PromptingHost): Promise<void> {
 	);
 }
 
-/** Split message content into the prompt text and its images. */
 export function splitUserContent(content: string | (TextContent | ImageContent)[]): {
 	text: string;
 	images: ImageContent[] | undefined;

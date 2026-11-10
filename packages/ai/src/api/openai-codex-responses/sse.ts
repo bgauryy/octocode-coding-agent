@@ -5,10 +5,6 @@ import { formatThrownValue } from "../../utils/diagnostics.ts";
 import { CodexProtocolError } from "./errors.ts";
 import { REQUEST_COMPRESSION_ZSTD_LEVEL } from "./types.ts";
 
-// ============================================================================
-// Request Compression
-// ============================================================================
-
 type ProcessWithBuiltinModule = typeof process & {
 	getBuiltinModule?: (id: "node:zlib") => typeof NodeZlib;
 };
@@ -39,10 +35,6 @@ export function compressRequestBodyZstd(bodyJson: string): Uint8Array<ArrayBuffe
 	}
 }
 
-// ============================================================================
-// SSE Parsing
-// ============================================================================
-
 /**
  * Codex SSE frames carry `{"type": ...}` payloads, including `type: "error"` and `response.failed`, which
  * `mapCodexEvents` raises as `CodexApiError` with the payload's `code`. A frame named `error` is therefore parsed like
@@ -65,10 +57,6 @@ export async function* parseSSE(response: Response, signal?: AbortSignal): Async
 		throw error;
 	}
 }
-
-// ============================================================================
-// Error Handling
-// ============================================================================
 
 export async function parseErrorResponse(response: Response): Promise<{ message: string; friendlyMessage?: string }> {
 	const raw = await response.text();

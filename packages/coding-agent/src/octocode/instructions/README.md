@@ -25,7 +25,7 @@ A file is plain Markdown plus a small template syntax (renderer: [`../../core/pr
 - `{{name}}` inserts a value the TypeScript passes in; an unknown name is an error.
 - `{{> shared/rule.md}}` inserts another instruction file with the same values. A rule two prompts share lives once in `shared/`, not copied.
 - `{{#if flag}}…{{else}}…{{/if}}` and `{{#unless flag}}…{{/unless}}` work inline and on lines of their own; a block that is off on its own lines leaves no blank line.
-- A branching rule may be a fenced `mermaid` diagram when that is shorter than the prose it replaces (`shared/ask-parent.md`, `policy/delegation.md`). Keep labels free of `;`, `(`, `)` and `{{`, and keep a diagram alone on its lines: the renderer does not parse it, and the agent still never writes Mermaid to the user.
+- Show branching logic or a lookup visually when that is no longer than the prose it replaces: a fenced `text` arrow list or tree (`condition → action`, `├─`/`└─`), a table, or a compact `mermaid` diagram, whichever is shortest and clear (`shared/ask-parent.md`, `policy/delegation.md`, `policy/readonly.md`). Linear lists stay prose. Keep a block alone on its lines; in a Mermaid diagram keep labels free of `;`, `(`, `)` and `{{`, since the renderer does not parse it. The agent still never writes Mermaid to the user.
 - Write no comments, size notes or other metadata in these files: only text the model reads (and a role's front matter). The reason for a rule belongs in the commit or backlog item that added it.
 - Every file ends with a newline; the renderer drops the last one.
 

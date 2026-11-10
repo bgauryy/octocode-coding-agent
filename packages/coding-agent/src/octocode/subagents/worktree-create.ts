@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { octocodeHome } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 import { EXCLUDE_WORKSPACE_STATE, rejectTrackedWorkspaceState, git, gitQuiet, NO_HOOKS } from "../../utils/git-run.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";
 import { ID_PATTERN, owner, repoRoot, type Worktree, worktreesDir } from "./worktree-base.ts";
@@ -15,7 +15,7 @@ import { snapshotWorkingCopy } from "./worktree-snapshot.ts";
 export async function createWorktree(
 	cwd: string,
 	agentId: string,
-	home = octocodeHome(),
+	home = getOctocodeHome(),
 	workingCopy = false,
 	item?: string,
 	ask?: WorktreeTrustAsk,

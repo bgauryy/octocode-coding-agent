@@ -74,10 +74,8 @@ export class OverlayCompositor {
 			// (width and maxHeight don't depend on overlay height)
 			const { width, maxHeight } = resolveOverlayLayout(options, 0, termWidth, termHeight);
 
-			// Render component at calculated width
 			let overlayLines = resolveFakeCursors(renderIsolated(component, width));
 
-			// Apply maxHeight if specified
 			if (maxHeight !== undefined && overlayLines.length > maxHeight) {
 				overlayLines = overlayLines.slice(0, maxHeight);
 			}
@@ -109,7 +107,6 @@ export class OverlayCompositor {
 
 		const viewportStart = Math.max(0, workingHeight - termHeight);
 
-		// Composite each overlay
 		for (const { overlayLines, row, col, w } of rendered) {
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = viewportStart + row + i;

@@ -119,6 +119,9 @@ describe("file tool guidance and result text", () => {
 		const result = (await call(tool, { reason: "r", type: "write", path: "a.txt", content: "x" }, cwd)) as unknown as {
 			content: { text: string }[];
 		};
-		expect(result.content[0].text).toBe("1. OK write a.txt: wrote");
+		// A written file is known whole, so the line ends with the digest a following anchored edit names.
+		expect(result.content[0].text).toBe(
+			"1. OK write a.txt: wrote sourceSha256=2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+		);
 	});
 });

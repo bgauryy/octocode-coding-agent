@@ -1,4 +1,4 @@
-// B347 P2-1: a process started from the bundle starts its children (subagents, forks) from the bundle too, so a peer's
+// A process started from the bundle starts its children (subagents, forks) from the bundle too, so a peer's
 // half-saved edit under src/ cannot crash them at startup; a source process keeps starting source children.
 import { existsSync } from "node:fs";
 import { join } from "node:path";

@@ -7,8 +7,6 @@ import { num, type Row } from "../rows.ts";
 const DELIVERED_COLUMNS =
 	"m.id, m.sender, m.body, m.created_at, m.reply_required, m.reply_to, d.wake, d.proof, d.forwarded_by, d.note, s.role AS sender_role, s.task AS sender_goal";
 
-// ── messages ──────────────────────────────────────────────────────────────
-
 /** Stores a message; its id. */
 export function insertMessage(
 	db: DatabaseSync,
@@ -40,7 +38,6 @@ export function replyTarget(
 	return row ? { from: String(row.sender), replyRequired: row.reply_required === 1 } : undefined;
 }
 
-/** Whether message `id` exists in `team`. */
 export function messageExists(db: DatabaseSync, team: string, id: number): boolean {
 	return db.prepare("SELECT 1 FROM messages WHERE id = ? AND team = ?").get(id, team) !== undefined;
 }
@@ -62,7 +59,6 @@ export function setReplyTo(db: DatabaseSync, id: number, replyTo: number): void 
 	db.prepare("UPDATE messages SET reply_to = ? WHERE id = ?").run(replyTo, id);
 }
 
-/** Deletes message `id` of `team` with its deliveries. */
 export function deleteMessage(db: DatabaseSync, team: string, id: number): void {
 	db.prepare("DELETE FROM messages WHERE id = ? AND team = ?").run(id, team);
 }
@@ -141,8 +137,6 @@ export function unansweredAsks(db: DatabaseSync, team: string, sender: string, e
 	);
 }
 
-// ── deliveries ────────────────────────────────────────────────────────────
-
 export interface NewDelivery {
 	message: number;
 	recipient: string;
@@ -166,7 +160,6 @@ export function insertDelivery(db: DatabaseSync, delivery: NewDelivery, ignoreEx
 	);
 }
 
-/** Whether `recipient` holds a delivery of `message`. */
 export function holds(db: DatabaseSync, message: number, recipient: string): boolean {
 	return (
 		db.prepare("SELECT 1 FROM deliveries WHERE message = ? AND recipient = ?").get(message, recipient) !== undefined
@@ -187,7 +180,6 @@ export function recipientsOf(db: DatabaseSync, id: number): Row[] {
 	return db.prepare("SELECT recipient, forwarded_by FROM deliveries WHERE message = ? ORDER BY recipient").all(id);
 }
 
-/** Removes `recipient`'s delivery of `message`. */
 export function deleteDelivery(db: DatabaseSync, message: number, recipient: string): void {
 	db.prepare("DELETE FROM deliveries WHERE message = ? AND recipient = ?").run(message, recipient);
 }
@@ -303,8 +295,6 @@ export function markNotified(
 	for (const letter of letters) for (const recipient of letter.recipients) mark.run(now, letter.id, recipient);
 }
 
-// ── inbox ─────────────────────────────────────────────────────────────────
-
 /** How many messages after `after` wait undelivered for `id` (relay requests are for the parent process, not counted). */
 export function countWaiting(db: DatabaseSync, id: string, after: number): number {
 	return num(
@@ -352,6 +342,9 @@ export function urgent(db: DatabaseSync, id: string, after: number, minWake: num
 
 // ── relay (`team/relay.ts`) ───────────────────────────────────────────────
 
+/** How long a claimed relay request may stay unsettled before another claim may take it over. */
+export const RELAY_LEASE_MS = 60_000;
+
 /** Turns `parent`'s delivery of `message` into a relay request for `target`. */
 export function markRelay(db: DatabaseSync, message: number, parent: string, target: string, wake: number): void {
 	db.prepare("UPDATE deliveries SET relay_to = ?, wake = ? WHERE message = ? AND recipient = ?").run(
@@ -363,25 +356,29 @@ export function markRelay(db: DatabaseSync, message: number, parent: string, tar
 }
 
 /** The relay requests waiting for `parent`, oldest first; `relay_to` names the agent each is for. */
-export function relayRequests(db: DatabaseSync, team: string, parent: string, limit: number): Row[] {
+export function relayRequests(db: DatabaseSync, team: string, parent: string, limit: number, now: number): Row[] {
 	return db
 		.prepare(
 			`SELECT ${DELIVERED_COLUMNS}, d.relay_to
          FROM deliveries d JOIN messages m ON m.id = d.message LEFT JOIN agents s ON s.id = m.sender
-         WHERE d.recipient = ? AND m.team = ? AND d.relay_to IS NOT NULL AND d.delivered_at IS NULL AND d.dead_at IS NULL
+         WHERE d.recipient = ? AND m.team = ? AND d.relay_to IS NOT NULL AND d.dead_at IS NULL AND
+         (d.delivered_at IS NULL OR (d.completed_at IS NULL AND d.delivered_at < ?))
          ORDER BY m.id LIMIT ?`,
 		)
-		.all(parent, team, limit);
+		.all(parent, team, now - RELAY_LEASE_MS, limit);
 }
 
-/** Takes the relay request `message` for `parent`; false when it was already taken (or is gone). */
+/**
+ * Takes the relay request `message` for `parent`; false when it was already taken (or is gone). A claim that stays
+ * unsettled for `RELAY_LEASE_MS` has lapsed and can be taken again.
+ */
 export function claimRelay(db: DatabaseSync, message: number, parent: string, now: number): boolean {
 	return (
 		db
 			.prepare(
-				"UPDATE deliveries SET delivered_at = ? WHERE message = ? AND recipient = ? AND relay_to IS NOT NULL AND delivered_at IS NULL AND dead_at IS NULL",
+				"UPDATE deliveries SET delivered_at = ? WHERE message = ? AND recipient = ? AND relay_to IS NOT NULL AND dead_at IS NULL AND (delivered_at IS NULL OR (completed_at IS NULL AND delivered_at < ?))",
 			)
-			.run(now, message, parent).changes > 0
+			.run(now, message, parent, now - RELAY_LEASE_MS).changes > 0
 	);
 }
 

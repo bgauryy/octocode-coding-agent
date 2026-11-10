@@ -7,13 +7,15 @@ import {
 	type AgentConnection,
 	type AgentContext,
 	type McpServer,
+	type SessionConfigOption,
 	type Stream,
 } from "@agentclientprotocol/sdk";
-import { redactSecrets } from "../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { AcpBrokerHost } from "../host.ts";
 import { AcpSession, type AcpWorker } from "./session.ts";
+import { MODEL_CONFIG_ID } from "./config-options.ts";
 import { canonicalDirectory, findHistory, listHistory, prepareHistoryReplay } from "./history.ts";
-import { reportToStderr } from "../../../common/src/stderr.ts";
+import { reportToStderr } from "@octocodeai/octocode-common/stderr";
 
 export type { AcpWorker } from "./session.ts";
 /**
@@ -95,6 +97,14 @@ export class AcpBroker {
 				void work.finally(() => this.pending.delete(work)).catch(() => {});
 				return work;
 			})
+			.onRequest(methods.agent.session.setConfigOption, async ({ params }) => {
+				const session = this.get(params.sessionId);
+				if (params.configId !== MODEL_CONFIG_ID)
+					throw RequestError.invalidParams(undefined, `Unknown config option "${params.configId}".`);
+				if (typeof params.value !== "string")
+					throw RequestError.invalidParams(undefined, "The model option takes a model name.");
+				return { configOptions: await session.setModel(params.value) };
+			})
 			.onRequest(methods.agent.session.list, ({ params }) => {
 				this.ready();
 				return listHistory(
@@ -157,7 +167,7 @@ export class AcpBroker {
 		servers: McpServer[],
 		client: AgentContext,
 		replay: boolean,
-	): Promise<Record<string, never>> {
+	): Promise<{ configOptions: SessionConfigOption[] }> {
 		if (this.restoring.has(id)) throw RequestError.invalidRequest(undefined, "Session is already restoring.");
 		this.restoring.add(id);
 		try {
@@ -170,8 +180,8 @@ export class AcpBroker {
 				if (this.sessions.get(id) === active) this.sessions.delete(id);
 			}
 			this.ready();
-			await this.createSession(cwd, servers, client, info.path, id, replay);
-			return {};
+			const { configOptions } = await this.createSession(cwd, servers, client, info.path, id, replay);
+			return { configOptions };
 		} finally {
 			this.restoring.delete(id);
 		}
@@ -184,7 +194,7 @@ export class AcpBroker {
 		path?: string,
 		expectedId?: string,
 		replay = false,
-	): Promise<{ sessionId: string }> {
+	): Promise<{ sessionId: string; configOptions: SessionConfigOption[] }> {
 		if (this.sessions.size + this.creating >= (this.options.maxSessions ?? 8))
 			throw RequestError.invalidRequest(
 				undefined,
@@ -230,7 +240,7 @@ export class AcpBroker {
 				await replaySaved?.();
 			});
 			if (this.stopped || owned.isClosed()) throw new Error("Session closed during startup.");
-			return { sessionId: session.id };
+			return { sessionId: session.id, configOptions: await session.configOptions() };
 		} catch (error) {
 			if (session) {
 				if (this.sessions.get(session.id) === session) this.sessions.delete(session.id);

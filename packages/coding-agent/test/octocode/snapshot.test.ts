@@ -104,12 +104,14 @@ describe("a destructive shell call", () => {
 		cwd: string,
 		options: { snapshotMs?: number } = { snapshotMs: SNAPSHOT_WORK_MS },
 	) {
+		// The card's per-line budget is a product timing; a loaded machine must not decide what these cases assert.
 		const fake = fakeHost();
 		const permission = new Permission({
 			api: fake.api,
 			env: { OCTOCODE_PERMISSION: mode },
 			isSubagent: false,
 			stderr: () => undefined,
+			cardBudgetMs: 30_000,
 			...options,
 		});
 		const ctx = fakeCtx({ cwd });

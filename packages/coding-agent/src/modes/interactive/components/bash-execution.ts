@@ -54,14 +54,11 @@ export class BashExecutionComponent extends Container {
 		this.outputPad = outputPad;
 		const borderColor = (str: string) => theme.fg(this.frameKey(), str);
 
-		// Add spacer
 		this.addChild(new Spacer(1));
 
-		// Top border
 		this.topBorder = new DynamicBorder(borderColor);
 		this.addChild(this.topBorder);
 
-		// Content container (holds dynamic content between borders)
 		this.contentContainer = new Container();
 		this.addChild(this.contentContainer);
 
@@ -72,7 +69,6 @@ export class BashExecutionComponent extends Container {
 			`Running… · ${hintText([[keyText("tui.select.cancel"), "cancel"]])}`, // Plain text for loader
 		);
 
-		// Bottom border
 		this.bottomBorder = new DynamicBorder(borderColor);
 		this.addChild(this.bottomBorder);
 
@@ -181,7 +177,6 @@ export class BashExecutionComponent extends Container {
 		this.fullOutputPath = fullOutputPath;
 		this.header = header;
 
-		// Stop loader
 		this.loader.stop();
 
 		this.updateDisplay();
@@ -227,11 +222,9 @@ export class BashExecutionComponent extends Container {
 		// Get the lines to potentially display (after context truncation)
 		const availableLines = contextTruncation.content ? contextTruncation.content.split("\n") : [];
 
-		// Apply preview truncation based on expanded state
 		const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
 		const hiddenLineCount = this.droppedLines + availableLines.length - previewLogicalLines.length;
 
-		// Rebuild content container
 		this.contentContainer.clear();
 
 		// Command header
@@ -258,7 +251,6 @@ export class BashExecutionComponent extends Container {
 		const outputColor = state === "failed" ? "text" : "muted";
 		if (availableLines.length > 0) {
 			if (this.expanded) {
-				// Show all lines
 				const displayText = availableLines.map((line) => theme.fg(outputColor, line)).join("\n");
 				this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
 			} else {
@@ -284,13 +276,11 @@ export class BashExecutionComponent extends Container {
 			}
 		}
 
-		// Loader or status
 		if (this.status === "running") {
 			this.contentContainer.addChild(this.loader);
 		} else {
 			const statusParts: string[] = [];
 
-			// Show how many lines are hidden (collapsed preview)
 			if (hiddenLineCount > 0) {
 				if (this.expanded) {
 					statusParts.push(

@@ -8,13 +8,13 @@ import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../../../../common/src/env.ts";
 import { promptTitle } from "../shared/locks.ts";
+import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
 import { terminalTitle, type TitleState, TitleTracker } from "./terminal-title.ts";
 import { registerPresentWarming } from "./present-warming.ts";
 
 /**
- * "Answer ready" and "waiting for you" signals for a terminal in the background, after Codex's
- * `tui.notification_method` / `notification_condition`: a desktop notification (OSC 9, OSC 777 or Kitty's OSC 99, else
+ * "Answer ready" and "waiting for you" signals for a terminal in the background: a desktop notification (OSC 9, OSC 777 or Kitty's OSC 99, else
  * the bell). The terminal title carries the session state: `✻` thinking, `◐` running a tool, `◇` waiting for the user,
  * then `✓` finished or `✗` failed until the user is back (focus returns or a key is pressed).
  *
@@ -30,7 +30,7 @@ type NotifyCondition = "off" | "unfocused" | "always";
 type NotifyMethod = "osc9" | "osc777" | "osc99" | "bel";
 type Focus = "unknown" | "focused" | "unfocused";
 
-/** What fired a notice, in Claude Code's Notification vocabulary. */
+/** What fired a notice, in the vocabulary of the Notification hook. */
 type NoticeType = "idle_prompt" | "permission_prompt" | "elicitation_dialog";
 
 export interface Notice {
@@ -50,7 +50,7 @@ const TITLE_COALESCE_MS = 250;
 const AWAY_MS = 30_000;
 /** No two notifications within this window (a prompt right after an answer, back-to-back dialogs). */
 const DEBOUNCE_MS = 3_000;
-/** An answer still unread after this long fires the `idle_prompt` Notification hook, as in Claude Code. */
+/** An answer still unread after this long fires the `idle_prompt` Notification hook. */
 const IDLE_PROMPT_MS = 60_000;
 const BODY_MAX = 120;
 
@@ -132,7 +132,7 @@ export function notificationSequence(
 interface NotifyOptions {
 	/**
 	 * Notices for the Notification hooks, whether or not the terminal was signalled: a dialog when it opens, an unread
-	 * answer after a minute without input (Claude Code's `idle_prompt`).
+	 * answer after a minute without input (the `idle_prompt` notice).
 	 */
 	onNotice?: (notice: Notice, ctx: ExtensionContext) => void;
 	env?: NodeJS.ProcessEnv;
@@ -152,7 +152,6 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 	let ctx: ExtensionContext | undefined;
 	let focus: Focus = "unknown";
 	let lastInputAt = Date.now();
-	let runStartedAt: number | undefined;
 	let lastNoticeAt = 0;
 	const title = new TitleTracker();
 	let shown: { state: TitleState; text: string } | undefined;
@@ -208,6 +207,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 	const away = (now: number): boolean => {
 		if (condition === "always") return true;
 		if (focus !== "unknown") return focus === "unfocused";
+		const runStartedAt = lastRunStart();
 		return runStartedAt !== undefined && now - runStartedAt >= AWAY_MS && now - lastInputAt >= AWAY_MS;
 	};
 	const fire = (notice: Notice, hook: boolean) => {
@@ -262,7 +262,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		ctx = undefined;
 	});
 	api.on("agent_start", async () => {
-		runStartedAt ??= Date.now();
+		beginRun(Date.now());
 		lastAnswer = "";
 		outcome = "idle";
 		clearIdle();
@@ -291,7 +291,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 				? `Failed: ${last.errorMessage ?? "the run stopped with an error"}`
 				: contentText(last.content) || "Ready for input";
 	});
-	api.on("agent_settled", async (event) => {
+	api.on("agent_settled", async (event, next) => {
 		const answer = lastAnswer;
 		lastAnswer = "";
 		title.settle(event.aborted ? "idle" : outcome);
@@ -313,7 +313,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 			);
 			idleTimer.unref?.();
 		}
-		runStartedAt = undefined;
+		settleRun(Date.now(), next.hasPendingMessages() && !event.aborted);
 	});
 	api.on("ui_prompt_end", async (event) => {
 		if (event.nested) return;
@@ -326,7 +326,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		title.promptStart();
 		paintTitle();
 		// Only the agent's dialogs: one the user opened (such as a `/permissions` picker) needs no call back.
-		if (runStartedAt === undefined) return;
+		if (getRunClock() === undefined) return;
 		const type: NoticeType = event.approval === true ? "permission_prompt" : "elicitation_dialog";
 		fire(
 			{ type, title: "Octocode: waiting for you", message: promptTitle(event) ?? "A question needs your answer" },

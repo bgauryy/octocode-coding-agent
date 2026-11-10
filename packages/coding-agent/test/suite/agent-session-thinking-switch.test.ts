@@ -1,4 +1,4 @@
-// B123: a model switch carries the thinking level the user last asked for in the session, clamped to the new model;
+// A model switch carries the thinking level the user last asked for in the session, clamped to the new model;
 // an explicit (scoped) level and a per-model setting still win, and the global default applies only before any request.
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai";

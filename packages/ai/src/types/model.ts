@@ -1,6 +1,7 @@
 import type {
 	AnthropicMessagesCompat,
 	BedrockCompat,
+	GoogleCompat,
 	MistralConversationsCompat,
 	OpenAICompletionsCompat,
 	OpenAIResponsesCompat,
@@ -65,7 +66,9 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
 					? BedrockCompat
 					: TApi extends "mistral-conversations"
 						? MistralConversationsCompat
-						: never;
+						: TApi extends "google-generative-ai" | "google-vertex"
+							? GoogleCompat
+							: never;
 }
 
 /** Image-generation model: usable with `generateImages()` only. */
@@ -81,7 +84,6 @@ export interface ClassifierModel<TApi extends ClassifierApi> extends BaseModel<T
 	contextWindow: number;
 }
 
-/** Model shape for each model type. */
 export interface ModelTypeMap {
 	chat: Model<Api>;
 	image: ImageModel<ImageApi>;

@@ -3,7 +3,7 @@
  *
  * Results map onto Octocode's model-facing content (text and images). Text over the shared 20 KB result default (`spillOutput`), or for a
  * tool an entry gives a role (`roles.ts`: those tools page their own output) over the host's text cap, keeps its start and
- * end with the middle cut out, like Codex does, and the full text is saved to a temp file the model
+ * end with the middle cut out, and the full text is saved to a temp file the model
  * can read. Programmatic callers receive the supported `CallToolResult` without `_meta`
  * (supported `content` blocks, `structuredContent`, `isError`), never truncated: it is
  * the tool's `structuredContent`, and every MCP tool declares a `CallToolResult` output schema. MCP

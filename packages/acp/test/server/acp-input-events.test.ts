@@ -212,6 +212,7 @@ describe("ACP event projection", () => {
 				name: "bash",
 				kind: "execute",
 				status: "in_progress",
+				rawInput: { command: "test" },
 			},
 		]);
 		const updates = projector.update({
@@ -273,6 +274,24 @@ describe("ACP event projection", () => {
 		]);
 	});
 
+	it("sends a call's arguments as rawInput with credentials redacted, and leaves out oversized ones", () => {
+		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
+		const [call] = projector.update({
+			type: "tool_execution_start",
+			toolCallId: "r",
+			toolName: "bash",
+			args: { command: "curl -H 'Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz0123456789'" },
+		});
+		expect(JSON.stringify((call as { rawInput?: unknown }).rawInput)).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
+		const [big] = projector.update({
+			type: "tool_execution_start",
+			toolCallId: "big",
+			toolName: "file",
+			args: { content: "x".repeat(20_000) },
+		});
+		expect(big).not.toHaveProperty("rawInput");
+	});
+
 	it("titles a tool call with its reason on one line, as the terminal's reason row does", () => {
 		const projector = new AcpEventProjector(acpServerHost.compactionSummaryText);
 		const args = { command: "npm test", reason: "Run the focused\ntests\u0007 now" };
@@ -284,6 +303,7 @@ describe("ACP event projection", () => {
 				name: "bash",
 				kind: "execute",
 				status: "in_progress",
+				rawInput: args,
 			},
 		]);
 		// A one-word reason says no more than the name; a missing or non-text one is left out.
@@ -334,6 +354,7 @@ describe("ACP tool calls from the host's display", () => {
 				name: "file",
 				kind: "edit",
 				status: "in_progress",
+				rawInput: {},
 				locations: [{ path: "src/a.ts" }],
 			},
 		]);

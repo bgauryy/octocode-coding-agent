@@ -94,7 +94,6 @@ export class ResourceSettings {
 			packages[pkgIndex] = pkg;
 		}
 
-		// Get the resource array for this type
 		const arrayKey = item.resourceType;
 		const current = pkg[arrayKey] ?? [];
 

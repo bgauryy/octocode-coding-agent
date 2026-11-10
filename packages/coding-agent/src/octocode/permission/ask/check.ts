@@ -12,7 +12,7 @@ import type { PermissionRequest } from "../request.ts";
 import { grantableSource, sourceGrantKey } from "../provenance/grant.ts";
 import { type Snapshot, takeSnapshot } from "../snapshot.ts";
 import { deniedMessage, DISMISSED, forcingReasons, headlessMessage, withPurpose } from "./text.ts";
-import type { Asker, Dialog, PermissionResolver, PrepareUpdates, ReplacementCheck, Verdict } from "./types.ts";
+import type { Asker, Dialog, PermissionResolver, PrepareUpdates, ReplacementCheck, Verdict, Decided } from "./types.ts";
 
 /** What the check pipeline needs of its `Permission`: live reads of its state, its grants and its audit step. */
 export interface CheckHost {
@@ -28,11 +28,13 @@ export interface CheckHost {
 	/** The user's "Deny <label> for this session" answers, by grant key: given in place of the dialog they would answer. */
 	readonly denials: Map<string, string>;
 	readonly snapshotMs: number | undefined;
+	/** How long a card line may take to compute; omitted: the product default. */
+	readonly cardBudgetMs?: number;
 	readonly relay: boolean;
 	readonly isSubagent: boolean;
 	readonly select: Dialog;
 	replacementSourceDecision(invocation: ToolInvocation, cwd: string, indices?: number[]): SourceDecision | undefined;
-	decided(request: PermissionRequest, verdict: Verdict, note?: string, snapshot?: Snapshot): Verdict;
+	decided(request: PermissionRequest, verdict: Decided, note?: string, snapshot?: Snapshot): Decided;
 }
 
 /** A `file` call reduced to the queries at `indices`; undefined when the call is not one or no indices apply. */
@@ -44,12 +46,23 @@ export function selectedFileQueries(invocation: ToolInvocation, indices?: number
 
 /** The check behind `Permission.check` and its replacement variants: mode table, session grants, then the dialog. */
 export async function checkPermission(
-	host: CheckHost,
+	base: CheckHost,
 	ctx: Asker,
 	call: PermissionRequest,
 	dialog?: Dialog,
 	transaction?: ReplacementCheck,
 ): Promise<Verdict> {
+	// An early call's audit entries wait until the call is committed (`PermissionRequest.early`).
+	const early = call.early;
+	const host: CheckHost = early
+		? {
+				...base,
+				decided: (request, verdict, note, snapshot) => {
+					early.park(() => void base.decided(request, verdict, note, snapshot));
+					return verdict;
+				},
+			}
+		: base;
 	let request = withPurpose(ctx, call);
 	if (request.signal?.aborted)
 		return host.decided(request, {
@@ -135,7 +148,7 @@ export async function checkPermission(
 	};
 	/** Set when the dialog is about to be shown: the audit entry records how long the user took. */
 	const shown: { at?: number } = {};
-	const decided = (verdict: Verdict, note?: string): Verdict => {
+	const decided = (verdict: Decided, note?: string): Decided => {
 		if (verdict.allowed && source?.decision === "ask" && invocation?.active) host.answeredSourceAsks().add(invocation);
 		const answered = shown.at === undefined ? request : { ...request, askedAt: shown.at };
 		return host.decided(answered, verdict, note ?? transaction?.auditNote ?? grantNote, snapshot);
@@ -229,6 +242,13 @@ export async function checkPermission(
 	};
 	const ready = automatic();
 	if (ready) return ready.allowed ? completeAllowed(ready) : ready;
+	// Anything past this point can open a dialog; an early call waits for its message to end instead.
+	if (early)
+		return {
+			allowed: false,
+			via: "deferred",
+			message: "An early call that needs an answer waits for its message to end",
+		};
 	// The user's remembered "Deny <label> for this session": the answer a dialog would get, so only where one would be shown.
 	const remembered = (): Verdict | undefined => {
 		const denied = grantKey === undefined ? undefined : host.denials.get(grantKey);
@@ -312,7 +332,7 @@ export async function checkPermission(
 	await snap();
 	const asked: PermissionRequest = {
 		...request,
-		...(await computeCard(request, snapshot)),
+		...(await computeCard(request, snapshot, host.cardBudgetMs)),
 		signal,
 		...(grant ? { grant } : {}),
 	};

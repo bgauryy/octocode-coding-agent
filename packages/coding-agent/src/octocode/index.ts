@@ -32,6 +32,7 @@ import { registerBashTool } from "./files/bash.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
+import { registerNestedContext } from "./files/nested-context.ts";
 import { contextReads } from "./files/reads.ts";
 import { projectEditHunk, registerFileTool } from "./files/tool.ts";
 import { registerHooksPromptSection } from "./hooks/prompt-section.ts";
@@ -118,6 +119,8 @@ export default function octocode(host: ExtensionAPI): void {
 		applyBashEnvironmentSetting();
 	});
 	const localReads = registerReadReceipts(api);
+	// After the receipts: it reads the files they credit.
+	registerNestedContext(api);
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	api.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 	recordChildReports(api, provenance, permission, isSubagent);
@@ -218,7 +221,11 @@ export default function octocode(host: ExtensionAPI): void {
 		// A user's narrowing mode change names the running subagents it would stop and asks first.
 		permission.setConfirmStop(stopConfirmation(() => agents?.running() ?? [], isSubagent));
 		registerModels(commands, () => profiles);
-		registerModelsTool(api, () => profiles);
+		registerModelsTool(
+			api,
+			() => profiles,
+			() => (externalAgentsEnabled() ? external : undefined),
+		);
 	}
 	registerSkills(api);
 	registerPromptOptimization(commands, api);
@@ -319,6 +326,8 @@ export default function octocode(host: ExtensionAPI): void {
 		activity,
 		localReads,
 		planning,
+		peerSessions: () =>
+			team.members().some((member) => member.role === "main" && member.id !== team.id && !member.worktree),
 	});
 	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
 	api.on("session_shutdown", async () => closeArchive());

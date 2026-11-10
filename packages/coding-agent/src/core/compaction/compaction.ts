@@ -29,7 +29,6 @@ import {
 	formatFileOperations,
 } from "./utils.ts";
 
-// ============================================================================
 // File Operation Tracking
 // ============================================================================
 
@@ -72,7 +71,6 @@ function extractFileOperations(
 	return fileOps;
 }
 
-// ============================================================================
 // Message Extraction
 // ============================================================================
 
@@ -86,7 +84,6 @@ function getMessagesFromProjectedEntryForCompaction(entry: ProjectedSessionEntry
 	return entry.messages.filter((message) => message.role !== "system");
 }
 
-// ============================================================================
 // Types
 // ============================================================================
 
@@ -96,7 +93,6 @@ export interface CompactionSettings {
 	keepRecentTokens: number;
 }
 
-// ============================================================================
 // Token calculation
 // ============================================================================
 
@@ -108,7 +104,6 @@ export function shouldCompact(contextTokens: number, contextWindow: number, sett
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
 
-// ============================================================================
 // Compaction Preparation (for extensions)
 // ============================================================================
 
@@ -198,7 +193,6 @@ export function prepareCompaction(
 	};
 }
 
-// ============================================================================
 // Main compaction function
 // ============================================================================
 
@@ -306,7 +300,6 @@ export async function compact(
 		summaryUsage = result.usage;
 	}
 
-	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary += formatFileOperations(readFiles, modifiedFiles);
 

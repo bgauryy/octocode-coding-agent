@@ -67,7 +67,6 @@ export class SelectSubmenu extends Container {
 			this.addChild(new Text(theme.fg("muted", plainText(description)), 0, 0));
 		}
 
-		// Search input
 		if (submenuOptions?.searchable) {
 			this.addChild(new Spacer(1));
 			this.searchInput = new Input();
@@ -77,15 +76,12 @@ export class SelectSubmenu extends Container {
 			this.addChild(this.searchInput);
 		}
 
-		// Spacer
 		this.addChild(new Spacer(1));
 
-		// Select list
 		this.selectList = this.buildSelectList(options, currentValue);
 		this.listChildIndex = this.children.length;
 		this.addChild(this.selectList);
 
-		// Hint
 		this.addChild(new Spacer(1));
 		const keys: RankedHint[] = [
 			[keyText("tui.select.confirm"), "select", 1],
@@ -141,11 +137,8 @@ export class SelectSubmenu extends Container {
 	}
 }
 
-// ============================================================================
 // SteppedSubmenu — reusable multi-step selector
-// ============================================================================
 
-/** One step in a {@link SteppedSubmenu}. */
 export interface SteppedSubmenuStep {
 	/** Unique key \u2014 the selected value is stored in the result context under this key. */
 	key: string;
@@ -221,7 +214,6 @@ export class SteppedSubmenu extends Container {
 				this.context[step.key] = value;
 
 				if (stepIndex < total - 1) {
-					// Advance to next step
 					this.activeComponent = this.buildStep(stepIndex + 1);
 				} else {
 					// Final step \u2014 deliver result

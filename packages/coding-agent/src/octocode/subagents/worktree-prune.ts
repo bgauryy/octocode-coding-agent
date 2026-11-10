@@ -3,7 +3,7 @@ import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
 import { gitQuiet } from "../../utils/git-run.ts";
-import { octocodeHome } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 import { sameProcess } from "../shared/process.ts";
 import { ID_PATTERN, legacyWorktreesDir, ownersOf, repoRoot, worktreesDir } from "./worktree-base.ts";
@@ -40,7 +40,7 @@ interface OwnerRecord {
  * so a crash never loses an isolated subagent's work. A call while a prune of the same repository runs in this process
  * joins it: two would only contend for git's index lock (other processes are kept apart by the rename claim).
  */
-export function pruneWorktrees(cwd: string, home = octocodeHome()): Promise<PruneReport> {
+export function pruneWorktrees(cwd: string, home = getOctocodeHome()): Promise<PruneReport> {
 	let repo: string;
 	try {
 		repo = repoRoot(cwd);

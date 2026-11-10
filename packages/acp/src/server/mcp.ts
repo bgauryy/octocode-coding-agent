@@ -3,8 +3,8 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { type McpServer, RequestError } from "@agentclientprotocol/sdk";
-import { ACP_MCP_MANIFEST_ENV } from "../../../common/src/env.ts";
-import { mcpNamespace } from "../../../common/src/mcp-names.ts";
+import { ACP_MCP_MANIFEST_ENV } from "@octocodeai/octocode-common/env";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import {
 	ACP_MCP_LAUNCHER_FILE,
 	ACP_MCP_MANIFEST_FILE,
@@ -12,8 +12,9 @@ import {
 	ACP_MCP_READY_FILE,
 	type AcpMcpManifest,
 	type AcpMcpServerDefinition,
-} from "../../../mcp/src/acp-session-servers.ts";
-import { loadMcpConfig } from "../../../mcp/src/config.ts";
+} from "@octocodeai/octocode-mcp/acp-session-servers";
+import { loadMcpConfig } from "@octocodeai/octocode-mcp/config";
+import { getDefaultEnvironment } from "@octocodeai/octocode-mcp";
 import type { AcpServerHost } from "../host.ts";
 
 export interface AcpMcpServers {
@@ -33,7 +34,7 @@ const manifest = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const server = manifest.servers[Number(process.argv[3])];
 const child = spawn(server.command, server.args, {
   cwd: manifest.cwd,
-  env: { ...process.env, ...Object.fromEntries(server.env.map(({ name, value }) => [name, value])) },
+  env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])),
   stdio: ["pipe", "pipe", "inherit"],
   windowsHide: true,
 });
@@ -111,7 +112,13 @@ function definitions(servers: McpServer[]): AcpMcpServerDefinition[] {
 			if (envNames.has(key)) invalid(`Duplicate MCP environment variable: ${name}`);
 			envNames.add(key);
 		}
-		return { name: server.name, namespace, command: server.command, args: [...server.args], env: [...server.env] };
+		// The launcher passes exactly this environment on: the same reduced set native MCP servers get, then the client's entries.
+		const merged = {
+			...getDefaultEnvironment(),
+			...Object.fromEntries(server.env.map(({ name, value }) => [name, value])),
+		};
+		const env = Object.entries(merged).map(([name, value]) => ({ name, value }));
+		return { name: server.name, namespace, command: server.command, args: [...server.args], env };
 	});
 }
 

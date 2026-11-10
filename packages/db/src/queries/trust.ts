@@ -108,7 +108,6 @@ export function liveFoldersFor(db: DatabaseSync, identities: readonly FolderLook
 	).map(grant);
 }
 
-/** The live row for exactly this folder, if any. */
 export function liveAt(db: DatabaseSync, dev: string, ino: string): FolderGrantRow | undefined {
 	return liveFoldersFor(db, [{ dev, ino }])[0];
 }

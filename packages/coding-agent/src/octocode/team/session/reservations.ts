@@ -124,6 +124,17 @@ export function reservationText(
 		: describeReservation(checkReservation(host, absolute), display);
 }
 
+/** Whether anyone, this agent included, holds a live reservation covering `absolute`: its work is taken, not free. */
+export function isReserved(host: ReservationHost, absolute: string): boolean {
+	try {
+		const db = host.existing();
+		if (db?.conflict(absolute, "")) return true;
+	} catch {
+		// An unreadable team database says nothing about this path; the peer database below may still.
+	}
+	return host.peerLeases().conflict(absolute) !== undefined;
+}
+
 function anyReservationText(host: ReservationHost): string | undefined {
 	try {
 		const db = host.existing();

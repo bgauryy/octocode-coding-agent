@@ -239,7 +239,7 @@ export function addAzureModels(allModels: Model<any>[]): void {
 	}
 	allModels.push(...azureOpenAiModels);
 
-	// Azure resells DeepSeek at its own rates. US data zone, checked 2026-09-16.
+	// Azure resells DeepSeek at its own rates. US data zone.
 	// https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/deepseek/
 	const AZURE_DEEPSEEK_V4_PRO_COST: ModelCost = { input: 1.925, output: 3.828, cacheRead: 0.165, cacheWrite: 0 };
 	// Azure 400s on DeepSeek's `thinking` field and on every prompt cache parameter, discards a

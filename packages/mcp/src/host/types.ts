@@ -100,7 +100,7 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 	promptGuidelines?: string[];
 	parameters: TParams;
 	validationParameters?: TSchema;
-	validationHint?: (failure: { envelope: boolean }) => string | undefined;
+	validationHint?: (failure: { envelope: boolean; properties: string[] }) => string | undefined;
 	coerceArguments?: false;
 	renderShell?: "default" | "self";
 	prepareArguments?: (args: unknown) => Static<TParams>;
@@ -182,6 +182,8 @@ export interface McpExtensionApi {
 	registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
 	unregisterMcpServer(name: string): void;
 	getMcpServers(): RegisteredMcpServer[];
+	/** Sends text as the user's next message (`/mcp prompt`). */
+	sendUserMessage?(content: string): void;
 	events: EventBus;
 }
 

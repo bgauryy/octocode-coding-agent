@@ -193,5 +193,8 @@ export function envInt(
 
 export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";
 
+/** Comma-separated MCP tool roles (`readOnly`) whose open tools a child defers instead of declaring (`mcpDefer` in a profile; `mcp/src/deferral.ts`). */
+export const MCP_DEFER_ROLES_ENV = "OCTOCODE_MCP_DEFER_ROLES";
+
 /** Owner-only handoff of enabled, non-stopped extension MCP registrations; a child registers them at start (`mcp/session-servers.ts`). */
 export const MCP_SESSION_SERVERS_FILE_ENV = "OCTOCODE_MCP_SESSION_SERVERS_FILE";

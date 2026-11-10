@@ -1,4 +1,3 @@
-// ============================================================
 // FILTERING (pure data)
 // ============================================================
 
@@ -158,7 +157,6 @@ function recalculateVisualStructure(filteredNodes, allFlatNodes) {
 		entryMap.set(flatNode.node.entry.id, flatNode);
 	}
 
-	// Find nearest visible ancestor for a node
 	function findVisibleAncestor(nodeId) {
 		// A damaged file can loop its parent links; the entry that closes the loop counts as a root.
 		const seen = new Set([nodeId]);
@@ -223,7 +221,6 @@ function recalculateVisualStructure(filteredNodes, allFlatNodes) {
 		flatNode.isVirtualRootChild = isVirtualRootChild;
 		flatNode.multipleRoots = multipleRoots;
 
-		// Get visible children of this node
 		const children = visibleChildren.get(nodeId) || [];
 		const multipleChildren = children.length > 1;
 

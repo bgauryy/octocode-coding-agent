@@ -65,7 +65,6 @@ export interface ItemFilter {
 	fromItem?: number;
 	/** Item numbers. */
 	seqs?: readonly number[];
-	/** Words that all appear in the title. */
 	titleWords?: readonly string[];
 	/** Row id of an item: the items under it, at any depth. */
 	underItem?: number;
@@ -182,7 +181,6 @@ export function openDescendants(db: DatabaseSync, repo: string, rowIds: readonly
 	return below;
 }
 
-/** One item row by its number in the repository. */
 export function itemBySeq(db: DatabaseSync, repo: string, seq: number): ItemRow<string> | undefined {
 	return db.prepare(`${SELECT} WHERE b.workspace_id = ? AND b.seq = ?`).get(repo, seq) as ItemRow<string> | undefined;
 }

@@ -74,7 +74,7 @@ describe("issue #7150: RPC prompt during manual compaction", () => {
 			await compactPromise;
 		}
 
-		// Contract change (B220): the RPC prompt is accepted as queued while the compaction runs, writes nothing and starts
+		// The RPC prompt is accepted as queued while the compaction runs, writes nothing and starts
 		// no turn then, and runs once when the compaction has ended.
 		expect(promptError).toBeUndefined();
 		expect(preflightResult).toBe("queued");

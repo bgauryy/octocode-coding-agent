@@ -53,7 +53,6 @@ export function nextTaskSeq(db: DatabaseSync, repo: string): number {
 	return seq;
 }
 
-/** One task by its number in the repository. */
 export function taskBySeq(db: DatabaseSync, repo: string, seq: number): TaskRow | undefined {
 	return db.prepare(`${SELECT} WHERE t.workspace_id = ? AND t.seq = ?`).get(repo, seq) as TaskRow | undefined;
 }

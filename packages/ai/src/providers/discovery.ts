@@ -122,7 +122,6 @@ function isChatGPTLogin(providerId: string, credentialSource: string | undefined
 	return providerId === "openai" && credentialSource === "OAuth";
 }
 
-/** A credential check answered by the provider's model list. */
 export type ListCredentialCheck = { ok: true; models: DiscoveredVendorModel[] } | { ok: false; detail: string };
 
 /**

@@ -12,7 +12,7 @@ import {
 } from "./e2e-real-process-harness.ts";
 
 /**
- * B189: an isolated (worktree) child is a teammate. Its team database comes from the Octocode home, not from its
+ * An isolated (worktree) child is a teammate. Its team database comes from the Octocode home, not from its
  * working directory, so it sees its coordinator and its sibling, messages both, and reads their replies, on real
  * processes and the scripted model.
  */
@@ -25,9 +25,9 @@ beforeAll(async () => {
 afterAll(async () => {
 	await endpoint.close();
 });
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 

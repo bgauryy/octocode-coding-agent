@@ -27,7 +27,7 @@ const QuerySchema = Type.Object({
 				line: Type.Optional(Type.Integer({ description: "1-based line anchor; needs sourceSha256" })),
 				sourceSha256: Type.Optional(
 					Type.String({
-						description: "SHA-256 of the whole file as read; needs line",
+						description: "SHA-256 of the whole file as read or from the last OK line; needs line",
 					}),
 				),
 				replaceAll: Type.Optional(
@@ -151,7 +151,7 @@ export function formatOutcomes(outcomes: QueryOutcome[]): string {
 	return outcomes
 		.map(
 			(outcome, index) =>
-				`${index + 1}. ${outcome.ok ? "OK" : "FAILED"} ${outcome.type} ${outcome.path}: ${outcome.ok ? withoutPath(outcome.message, outcome.path) : outcome.message}`,
+				`${index + 1}. ${outcome.ok ? "OK" : "FAILED"} ${outcome.type} ${outcome.path}: ${outcome.ok ? withoutPath(outcome.message, outcome.path) : outcome.message}${outcome.ok && outcome.sourceSha256 ? ` sourceSha256=${outcome.sourceSha256}` : ""}`,
 		)
 		.join("\n");
 }

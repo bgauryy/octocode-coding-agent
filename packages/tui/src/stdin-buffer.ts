@@ -89,7 +89,6 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	}
 
 	public process(data: string | Buffer): void {
-		// Clear any pending timeout
 		if (this.timeout) {
 			clearTimeout(this.timeout);
 			this.timeout = null;

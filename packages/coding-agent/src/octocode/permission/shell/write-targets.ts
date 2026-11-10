@@ -3,7 +3,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RELATIVE_AFTER_CD } from "../bash-cwd.ts";
 import type { BashFileTarget } from "../bash-types.ts";
 import { DYNAMIC_TARGET, homeSpelling, shellPath, shellTargetPath, stateFolderRefusal } from "../file-access.ts";
-import { octocodeHome } from "../../shared/home.ts";
+import { getOctocodeHome } from "../../../config.ts";
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../../common/src/paths.ts";
 import { shellMutation } from "./mutation.ts";
@@ -17,7 +17,7 @@ type ShellTarget = BashFileTarget & { allowed: boolean };
 function stateFolderWord(command: string, cwd: string): string | undefined {
 	// By its text, not the parse: a variable set on its own (`H=…; …`) belongs to no command.
 	const words = command.split(/[\s;&|()<>=`'"]+/).map((word) => homeSpelling(word) ?? word);
-	const state = canonicalPath(octocodeHome());
+	const state = canonicalPath(getOctocodeHome());
 	const home = canonicalPath(os.homedir());
 	for (const word of words) {
 		if (!/[\\/]/.test(word)) continue;

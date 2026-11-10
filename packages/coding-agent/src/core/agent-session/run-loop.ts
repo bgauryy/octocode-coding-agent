@@ -23,6 +23,7 @@ import type { SessionModelControl } from "./model-control.ts";
 import { normalizePromptImages } from "./prompt-expansion.ts";
 import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { SessionRetry } from "./retry.ts";
+import { SessionFallback } from "./retry-fallback.ts";
 import { createRunOutcome, recordRunFailure, recordRunWarning, settledRunOutcome } from "./run-outcome.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
 import type { PendingUserInput } from "./types.ts";
@@ -61,9 +62,16 @@ export class SessionRunLoop {
 	private readonly _interruptionCallback = new AsyncLocalStorage<{ active: boolean }>();
 
 	private readonly host: RunLoopHost;
+	private readonly fallback: SessionFallback;
 
 	constructor(host: RunLoopHost) {
 		this.host = host;
+		this.fallback = new SessionFallback({
+			session: host.session,
+			run: host.run,
+			models: host.models,
+			omitRecoveryAttempt: (message) => host.boundaries.omitRecoveryAttempt(message),
+		});
 	}
 
 	/**
@@ -264,10 +272,11 @@ export class SessionRunLoop {
 			retry.finishCancelled();
 			return false;
 		}
-
+		// A backoff series that ends here failed, also when a fallback model takes over: it starts its own series.
 		if (message.stopReason === "error" && retry.attempt > 0) {
 			retry.finishFailed(message);
 		}
+		if (await this.fallback.prepare(message)) return true;
 
 		if (await this.host.checkCompaction(message, true)) {
 			return !run.agentRunAbortRequested;

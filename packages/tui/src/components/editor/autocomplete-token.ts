@@ -1,3 +1,4 @@
+import { animationClock } from "../../tokens/clock.ts";
 import type { AutocompleteItem } from "../../autocomplete/types.ts";
 import { isWhitespaceChar } from "../../utils/chars.ts";
 import { DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS } from "./autocomplete-patterns.ts";
@@ -75,13 +76,15 @@ export function isInsideToken(token: DismissedToken, state: EditorState): boolea
 
 /** Calls `onText` with fresh status text every tick until `read` returns nothing; returns a stop function. */
 export function startProgressTicker(read: () => string | null | undefined, onText: (text: string) => void): () => void {
-	const timer = setInterval(() => {
-		const text = read();
-		if (text) onText(text);
-		else clearInterval(timer);
-	}, INDEXING_REFRESH_MS);
-	timer.unref?.();
-	return () => clearInterval(timer);
+	const stop = animationClock.subscribe(
+		() => {
+			const text = read();
+			if (text) onText(text);
+			else stop();
+		},
+		{ everyMs: INDEXING_REFRESH_MS, kind: "info" },
+	);
+	return stop;
 }
 
 /** Select-list options by prefix: `@` lists get the key hint and a "no files" row, others only a custom empty row. */

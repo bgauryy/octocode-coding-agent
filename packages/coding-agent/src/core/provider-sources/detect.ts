@@ -36,7 +36,7 @@ const fromEnv = ({ env, home }: Locations, name: string, fallback: string) => {
 const configHome = (at: Locations) => fromEnv(at, "XDG_CONFIG_HOME", join(at.home, ".config"));
 const dataHome = (at: Locations) => fromEnv(at, "XDG_DATA_HOME", join(at.home, ".local", "share"));
 
-/** Detected tools, from the documented paths in `.octocode/providers/local-sources.md`. */
+/** Detected tools, each with the paths where it keeps its credentials or config. */
 const TOOLS: readonly ToolDefinition[] = [
 	{
 		id: "claude-code",

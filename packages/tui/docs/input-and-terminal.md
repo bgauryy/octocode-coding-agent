@@ -42,7 +42,7 @@ editor.setAutocompleteProvider(
 );
 ```
 
-`/` lists slash commands. `Tab` completes file paths for `~/`, `./`, `../` and `@` prefixes; `@` offers only attachable files. File names containing control characters are never suggested.
+`/` at the start of the input lists slash commands. A `/` at the start of a later word or line lists only skills (the app marks them): it names a skill to use and never runs a command; a `/` inside a path or URL opens nothing. `@` at the start of any word, not only the first, offers attachable files; a file created after the last index build is found because a query that matches nothing rebuilds the index. `Tab` completes file paths for `~/`, `./`, `../` and `@` prefixes. File names containing control characters are never suggested.
 
 ## Rendering
 

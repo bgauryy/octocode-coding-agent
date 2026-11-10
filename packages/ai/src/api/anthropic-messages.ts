@@ -6,7 +6,7 @@ import type { MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/b
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
-import { redactProviderText } from "../utils/error-body.ts";
+import { redactProviderText, withNetworkCauseCode } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
@@ -28,7 +28,11 @@ import { buildParams } from "./anthropic-messages/params.ts";
 import { hasStrictToolDowngrade, rememberStrictToolDowngrade } from "./anthropic-messages/strict-tool-downgrades.ts";
 import { iterateAnthropicEvents } from "./anthropic-messages/sse.ts";
 import { fitClaudeThinkingBudget } from "./anthropic-messages/thinking-budget.ts";
-import { type AnthropicStreamState, handleAnthropicStreamEvent } from "./anthropic-messages/stream-events.ts";
+import {
+	type AnthropicStreamState,
+	handleAnthropicStreamEvent,
+	requestsLongCache,
+} from "./anthropic-messages/stream-events.ts";
 import type { AnthropicEffort, AnthropicOptions } from "./anthropic-messages/types.ts";
 
 export type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from "./anthropic-messages/types.ts";
@@ -82,6 +86,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			};
 			let disablePreferredStrictTools = hasStrictToolDowngrade(model, currentTools);
 			let response: Response;
+			let sentParams: MessageCreateParamsStreaming;
 			for (;;) {
 				options?.signal?.throwIfAborted();
 				const built = buildParams(model, normalizedContext, isOAuth, options, disablePreferredStrictTools);
@@ -92,6 +97,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 					params = { ...(nextParams as MessageCreateParamsStreaming), stream: true };
 				}
 				assertImageRequestPayload(model, params);
+				sentParams = params;
 				try {
 					response = await retryProviderRequest(
 						() => client.beta.messages.create(params, requestOptions).asResponse(),
@@ -139,6 +145,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				isOAuth,
 				currentTools,
 				usageModel: model,
+				longCacheRequested: requestsLongCache(sentParams),
 				inputTransformations: undefined,
 			};
 			for await (const event of iterateAnthropicEvents(response, options?.signal)) {
@@ -180,7 +187,9 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				delete (block as { partialJson?: string }).partialJson;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = redactProviderText(error instanceof Error ? error.message : JSON.stringify(error));
+			output.errorMessage = redactProviderText(
+				error instanceof Error ? withNetworkCauseCode(error) : JSON.stringify(error),
+			);
 			const retryAfterMs = retryAfterMsFromError(error);
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });

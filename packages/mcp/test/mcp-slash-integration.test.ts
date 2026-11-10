@@ -80,6 +80,9 @@ describe("unified MCP slash management", () => {
 			"login",
 			"logout",
 			"reconnect",
+			"resources",
+			"prompts",
+			"prompt",
 		]);
 		expect((await command.getArgumentCompletions?.("reconnect "))?.map((item) => item.label)).toEqual(["octocode"]);
 	});

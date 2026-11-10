@@ -379,8 +379,8 @@ describe("registerTurnSetup routing and child trim", () => {
 			skills: event.systemPromptOptions.skills,
 		});
 		expect(prompt).not.toContain("<docs>");
-		expect(prompt).toContain("<name>research</name>");
-		expect(prompt).toContain("<description>");
+		// An indirect reader loads the file, so the entry carries its path beside the description.
+		expect(prompt).toMatch(/<skill name="research" location="[^"]+">[^<]+<\/skill>/);
 		expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
 		expect(prompt).not.toContain("Use Octocode localFetch");
 	});
@@ -392,7 +392,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			contextFiles: [],
 			skills: [skill("research")],
 		});
-		expect(prompt).toContain("<description>Instructions for research");
+		expect(prompt).toMatch(/<skill name="research"[^>]*>Instructions for research/);
 		expect(prompt).toContain("whose description matches the task");
 		expect(childSkills([skill("x")])[0].description).toBe(skill("x").description);
 	});

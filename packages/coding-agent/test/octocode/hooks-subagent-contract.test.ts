@@ -30,7 +30,10 @@ it.each(["codex", "claude"] as const)("%s child start can only add context", (pr
 			protocol,
 		),
 	).toEqual({ context: "guide" });
-	expect(interpret("SubagentStart", run({}, 2), protocol)).toEqual({});
+	// Claude hooks reference: SubagentStart exit 2 "shows stderr to user only"; Codex has no such rule.
+	expect(interpret("SubagentStart", run({}, 2), protocol)).toEqual(
+		protocol === "claude" ? { systemMessage: "SubagentStart hook: reason" } : {},
+	);
 });
 it("Codex child stop validates its own output schema and explicit termination", () => {
 	expect(interpret("SubagentStop", run({ decision: "block" }), "codex").error).toContain("reason");

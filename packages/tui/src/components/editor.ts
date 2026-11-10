@@ -142,18 +142,15 @@ export class Editor implements Component, Focusable {
 		// Store for cursor navigation (must match wrapping width)
 		this.model.lastWidth = layoutWidth;
 
-		// Layout the text
 		const layoutLines = this.model.layoutText(layoutWidth);
 
 		// Calculate max visible lines: 30% of terminal height, minimum 5 lines
 		const terminalRows = this.tui.terminal.rows;
 		const maxVisibleLines = Math.max(5, Math.floor(terminalRows * 0.3));
 
-		// Find the cursor line index in layoutLines
 		let cursorLineIndex = layoutLines.findIndex((line) => line.hasCursor);
 		if (cursorLineIndex === -1) cursorLineIndex = 0;
 
-		// Adjust scroll offset to keep cursor visible
 		if (cursorLineIndex < this.model.scrollOffset) {
 			this.model.scrollOffset = cursorLineIndex;
 		} else if (cursorLineIndex >= this.model.scrollOffset + maxVisibleLines) {
@@ -164,7 +161,6 @@ export class Editor implements Component, Focusable {
 		const maxScrollOffset = Math.max(0, layoutLines.length - maxVisibleLines);
 		this.model.scrollOffset = Math.max(0, Math.min(this.model.scrollOffset, maxScrollOffset));
 
-		// Get visible lines slice
 		const visibleLines = layoutLines.slice(this.model.scrollOffset, this.model.scrollOffset + maxVisibleLines);
 		this.model.renderedVisibleLineCount = visibleLines.length;
 
@@ -186,7 +182,6 @@ export class Editor implements Component, Focusable {
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
 
-			// Add cursor if this line has it
 			if (layoutLine.hasCursor && layoutLine.cursorPos !== undefined) {
 				const before = displayText.slice(0, layoutLine.cursorPos);
 				const after = displayText.slice(layoutLine.cursorPos);
@@ -215,7 +210,6 @@ export class Editor implements Component, Focusable {
 				}
 			}
 
-			// Calculate padding based on actual visible width
 			const padding = " ".repeat(Math.max(0, contentWidth - lineVisibleWidth));
 			const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
 

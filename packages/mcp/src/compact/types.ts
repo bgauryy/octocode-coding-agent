@@ -59,7 +59,6 @@ export interface PresetToolOverrides {
  * the upstream text it replaces, so it applies exactly while that text is unchanged (`presetOverridesFor`).
  */
 export interface PresetOverrides {
-	/** The server text, for the instructions with this `instructionsHash`. */
 	server?: { instructionsHash: string; text: string };
 	tools?: Record<string, PresetToolOverrides>;
 }

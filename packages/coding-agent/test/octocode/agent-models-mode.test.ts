@@ -28,7 +28,11 @@ function mode(profiles = new Map()) {
 				: { stopReason: "stop" },
 	}));
 	const catalog = [opus, haiku, zen, m("google", "gemini-3.1-pro", 2, 12)];
-	const run = async (input: Record<string, unknown>, available = [opus, haiku, zen]) => {
+	const run = async (
+		input: Record<string, unknown>,
+		available = [opus, haiku, zen],
+		kinds?: Record<string, string>,
+	) => {
 		const result = await tool!.execute("call-1", input, undefined, undefined, {
 			model: { ...opus, contextWindow: 180_000 },
 			thinkingLevel: "high",
@@ -37,6 +41,7 @@ function mode(profiles = new Map()) {
 				streamSimple,
 				getAll: () => catalog,
 				find: (provider: string, id: string) => catalog.find((e) => e.provider === provider && e.id === id),
+				...(kinds ? { getCredentialKind: async (provider: string) => kinds[provider] ?? "key" } : {}),
 				getProviderAuthStatus: (provider: string) => ({
 					configured: true,
 					source: provider === "opencode" ? "runtime" : "stored",
@@ -84,6 +89,14 @@ describe("models tool", () => {
 		);
 		expect(text).toContain("\n  anthropic · saved credential · 2 runnable · cheapest anthropic/claude-haiku ($1/$5)");
 		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
+	});
+
+	it("names a subscription credential on the provider row and leaves a plain key unmarked", async () => {
+		const { run } = mode();
+		const text = await run({}, undefined, { anthropic: "subscription" });
+		expect(text).toContain("\n  anthropic · subscription · saved credential · 2 runnable");
+		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
+		expect(await run({}, undefined, { anthropic: "key" })).toContain("\n  anthropic · saved credential · 2 runnable");
 	});
 
 	it("lists unconnected catalog models as not runnable only when asked for the catalog scope", async () => {

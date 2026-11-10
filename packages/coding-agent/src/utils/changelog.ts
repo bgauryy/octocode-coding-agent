@@ -125,9 +125,7 @@ export function parseChangelog(changelogPath: string): ChangelogEntry[] {
 		let currentVersion: { major: number; minor: number; patch: number } | null = null;
 
 		for (const line of lines) {
-			// Check if this is a version header (## [x.y.z] ...)
 			if (line.startsWith("## ")) {
-				// Save previous entry if exists
 				if (currentVersion && currentLines.length > 0) {
 					entries.push({
 						...currentVersion,
@@ -155,7 +153,6 @@ export function parseChangelog(changelogPath: string): ChangelogEntry[] {
 			}
 		}
 
-		// Save last entry
 		if (currentVersion && currentLines.length > 0) {
 			entries.push({
 				...currentVersion,
@@ -183,7 +180,6 @@ function compareVersions(v1: ChangelogEntry, v2: ChangelogEntry): number {
  * Get entries newer than lastVersion
  */
 export function getNewEntries(entries: ChangelogEntry[], lastVersion: string): ChangelogEntry[] {
-	// Parse lastVersion
 	const parts = lastVersion.split(".").map(Number);
 	const last: ChangelogEntry = {
 		major: parts[0] || 0,
@@ -195,5 +191,4 @@ export function getNewEntries(entries: ChangelogEntry[], lastVersion: string): C
 	return entries.filter((entry) => compareVersions(entry, last) > 0);
 }
 
-// Re-export getChangelogPath from paths.ts for convenience
 export { getChangelogPath } from "../config.ts";

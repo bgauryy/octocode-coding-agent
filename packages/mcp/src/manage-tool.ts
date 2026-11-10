@@ -4,7 +4,7 @@ import { MCP_MANAGE_TOOL_NAME, mcpNamespace } from "../../common/src/mcp-names.t
 import { mcpGroupLabel, type McpServerGroup } from "./group.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 
-const INTENTS = ["list", "tools", "restart", "stop"] as const;
+const INTENTS = ["list", "tools", "resources", "read", "restart", "stop"] as const;
 type Intent = (typeof INTENTS)[number];
 
 /** Intents earlier versions accepted; a call or replayed session that still names one learns what replaces it. */
@@ -46,6 +46,16 @@ export interface McpManageOperations {
 	restart(name: string, ctx: McpContext): Promise<string | undefined>;
 	/** Stop a server for this session. Resolves with an error message when it cannot be stopped. */
 	stop(name: string): Promise<string | undefined>;
+	/** The server's resources and templates, one per line. */
+	resources?(name: string, signal?: AbortSignal): Promise<string>;
+	/** One resource's contents as the tool's result content. */
+	read?(name: string, uri: string, signal?: AbortSignal): Promise<ResourceReply>;
+}
+
+/** A resource's contents as tool result content (text capped and saved like a tool's). */
+interface ResourceReply {
+	content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[];
+	isError?: boolean;
 }
 
 /** A restart this soon after the previous one of the same running server is refused, so a confused loop cannot thrash it. */
@@ -55,6 +65,7 @@ const ManageSchema = Type.Object({
 	intent: Type.Unsafe<Intent>({ type: "string", enum: [...INTENTS] }),
 	server: Type.Optional(Type.String({ description: "Server name; required for every intent except list" })),
 	tool: Type.Optional(Type.String({ description: "tools: the tool to inspect" })),
+	uri: Type.Optional(Type.String({ description: "read: the resource URI, as resources lists it" })),
 });
 
 /**
@@ -91,7 +102,7 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 		label: "MCP",
 		promptSnippet: "When an MCP server's tools fail, time out or disappear, or to check its state",
 		description:
-			"Manage this session's MCP servers; no configuration file changes. list: state, tool count, group, purpose and last error (one server with server, plus where it is defined). tools: the catalog; with tool, its full description and schemas, without running it. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.",
+			"Manage this session's MCP servers; no configuration file changes. list: state, tool count, group, purpose and last error (one server with server, plus where it is defined). tools: the catalog; with tool, its full description and schemas, without running it. resources: the server's resources and URI templates. read: one resource's contents by uri. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.",
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {
@@ -141,6 +152,22 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 						server: server.name,
 						tools: tools.map(({ name, exposure }) => ({ name, exposure })),
 					});
+				}
+				case "resources": {
+					const server = find(params.server);
+					if (!operations.resources) throw new Error("Resources are not available in this session.");
+					return reply(await operations.resources(server.name, signal), { server: server.name });
+				}
+				case "read": {
+					const server = find(params.server);
+					if (!params.uri) throw new Error("Name the resource in the uri field; list them with intent resources.");
+					if (!operations.read) throw new Error("Resources are not available in this session.");
+					const read = await operations.read(server.name, params.uri, signal);
+					return {
+						content: read.content,
+						details: { intent: params.intent, server: server.name, uri: params.uri },
+						...(read.isError ? { isError: true } : {}),
+					};
 				}
 				case "restart": {
 					const server = find(params.server);

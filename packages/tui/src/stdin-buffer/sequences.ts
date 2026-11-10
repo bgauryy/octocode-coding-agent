@@ -101,7 +101,6 @@ function isCompleteCsiSequence(data: string): "complete" | "incomplete" {
 			}
 			// If it ends with M or m but doesn't match the pattern, still incomplete
 			if (lastChar === "M" || lastChar === "m") {
-				// Check if we have the right structure
 				const parts = payload.slice(1, -1).split(";");
 				if (parts.length === 3 && parts.every((p) => /^\d+$/.test(p))) {
 					return "complete";
@@ -191,7 +190,6 @@ export function extractCompleteSequences(buffer: string): { sequences: string[];
 		// Try to extract a sequence starting at this position
 		if (remaining.startsWith(ESC)) {
 			const terminalReply = isControlString(remaining) && TERMINAL_REPLY_HEADER_PATTERN.test(remaining);
-			// Find the end of this escape sequence
 			let seqEnd = 1;
 			while (seqEnd <= remaining.length) {
 				if (terminalReply && seqEnd > 2) {

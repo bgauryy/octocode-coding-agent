@@ -24,7 +24,7 @@ import { saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
 
 /**
- * Clearing old tool results after the prompt cache went cold (the practice of Claude Code's time-based clearing).
+ * Clearing old tool results after the prompt cache went cold.
  *
  * Clearing a result while the cache is warm makes the next request rewrite the whole cache entry. After an idle gap
  * longer than the entry's lifetime the next request rewrites it anyway, so clearing then costs nothing and shrinks every

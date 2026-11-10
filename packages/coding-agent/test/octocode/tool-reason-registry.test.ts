@@ -15,6 +15,9 @@ type Schema = {
 	anyOf?: Schema[];
 };
 
+/** Tools that declare their own `reason` with a tool-specific description (`archive/history-tool.ts`). */
+const ownReason = new Set(["archive"]);
+
 /** The tools whose model-facing schema lacks a required string `reason`. */
 const missingReason = (tools: Array<{ name: string; parameters: unknown }>): string[] =>
 	tools
@@ -75,7 +78,11 @@ describe("the required reason on every core tool", () => {
 		// Only the top-level slot is the model's; a nested one is declared where the tool reads it per item (`file` queries).
 		expect(nestedReasonSlots(reasoned)).toEqual(["file"]);
 		for (const { name, parameters } of reasoned) {
-			expect((parameters as Schema).properties?.reason?.description, `${name} top-level reason`).toBeTruthy();
+			// The shared schema carries no description (the policy says once what to write); only a tool that declares
+			// its own `reason` (to read it in `execute`) adds one.
+			const reason = (parameters as Schema).properties?.reason;
+			expect(reason?.type, `${name} top-level reason`).toBe("string");
+			if (!ownReason.has(name)) expect(reason, `${name} top-level reason`).toEqual({ type: "string" });
 		}
 	});
 

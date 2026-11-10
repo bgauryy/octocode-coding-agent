@@ -1,3 +1,4 @@
+import { configuredSubagentModels } from "./configured-models.ts";
 import type { AgentEnd } from "../team/panel-state.ts";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
@@ -15,6 +16,7 @@ import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
 import {
+	clampNote,
 	type ModelRoute,
 	routedModel,
 	routeModel,
@@ -248,8 +250,9 @@ export function planRun(
 		available,
 		parent: ctx.model,
 		catalog: currentCatalog(),
-		refused: (provider, id, proven) => providerHealth.refused(provider, id, proven),
+		refused: (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
 		thinking: subagentThinking(),
+		configured: configuredSubagentModels(),
 	});
 	if ("error" in routed) throw new Error(routed.error);
 	const route = routed.model ? { ...routed, model: supportedThinking(routed.model, available) } : routed;
@@ -261,17 +264,17 @@ export function planRun(
 	const onParent = !route.model || route.model === parent || route.model.startsWith(`${parent}:`);
 	const defaulted = !params.model && !profile && !onParent;
 	// A model that cannot run at the asked level (glm-5.3-flash has no `off`) runs at the nearest one it supports.
-	const clamped =
-		routed.model && route.model && routed.model !== route.model
-			? route.model.slice(routed.model.lastIndexOf(":") + 1)
-			: "";
-	const via = params.model
-		? `model argument: ${params.model}${clamped ? `; the model does not support ${routed.model?.slice(routed.model.lastIndexOf(":") + 1)}, so it runs at ${clamped}` : ""}`
+	const clamped = route.model ? clampNote(routed.model, route.model) : "";
+	const asked = params.model
+		? `model argument: ${params.model}`
 		: profile?.model && !route.fallback
 			? `profile ${profile.name}: ${profile.model}`
 			: defaulted
 				? `default: ${SUBAGENT_DEFAULT_TIER}`
 				: undefined;
+	// A purpose says whether the user's setting chose its model or the automatic choice did, and why a set one was skipped.
+	const source = route.setting ? `setting ${route.setting}` : route.skipped ? `automatic; ${route.skipped}` : "";
+	const via = [asked, source, clamped].filter(Boolean).join("; ") || undefined;
 	return { profile, route: { ...route, ...(via ? { via } : {}), ...(parent ? { parent } : {}) } };
 }
 

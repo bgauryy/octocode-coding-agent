@@ -70,6 +70,8 @@ interface PermissionGateOptions {
 	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
 	replacement?: ReplacementOwner;
+	/** Where an early call's audit entries wait until the call is committed or discarded (`PermissionRequest.early`). */
+	early?: { park(toolCallId: string, record: () => void): void };
 }
 
 /** What the steps of one call share: the call, and what the earlier steps worked out. */
@@ -201,6 +203,14 @@ export function permissionGate(options: PermissionGateOptions) {
 				}),
 				invocation,
 				...(ctx.signal ? { signal: ctx.signal } : {}),
+				...(originalEvent.early
+					? {
+							early: {
+								park: (record: () => void) =>
+									options.early ? options.early.park(originalEvent.toolCallId, record) : record(),
+							},
+						}
+					: {}),
 			};
 			const owner = options.replacement;
 			const verdict =
@@ -221,6 +231,7 @@ export function permissionGate(options: PermissionGateOptions) {
 							}),
 						)
 					: await permission.check(ctx, checkedRequest);
+			if (!verdict.allowed && verdict.via === "deferred") return { result: { defer: true } };
 			return { result: verdict.allowed ? undefined : { block: true, reason: verdict.message } };
 		},
 	};

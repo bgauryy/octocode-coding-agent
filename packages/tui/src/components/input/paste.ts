@@ -23,7 +23,6 @@ export class BracketedPasteBuffer {
 		// Start of paste: \x1b[200~
 		// End of paste: \x1b[201~
 
-		// Check if we're starting a bracketed paste
 		if (data.includes(PASTE_START)) {
 			this.isInPaste = true;
 			this.pasteBuffer = "";
@@ -39,10 +38,8 @@ export class BracketedPasteBuffer {
 		const endIndex = this.pasteBuffer.indexOf(PASTE_END);
 		if (endIndex === -1) return { remaining: "" };
 
-		// Extract the pasted content
 		const content = this.pasteBuffer.substring(0, endIndex);
 
-		// Reset paste state
 		this.isInPaste = false;
 
 		// Keep any remaining input after the paste marker

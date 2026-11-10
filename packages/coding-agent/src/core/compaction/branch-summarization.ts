@@ -28,7 +28,6 @@ import {
 	serializeMessages,
 } from "./utils.ts";
 
-// ============================================================================
 // Types
 // ============================================================================
 
@@ -66,13 +65,11 @@ export interface CollectEntriesResult {
 export interface GenerateBranchSummaryOptions {
 	/** Model to use for summarization */
 	model: Model<any>;
-	/** API key for the model */
 	apiKey?: string;
 	/** Request headers for the model */
 	headers?: Record<string, string>;
 	/** Provider-scoped environment values for the model */
 	env?: Record<string, string>;
-	/** Abort signal for cancellation */
 	signal: AbortSignal;
 	/** Optional custom instructions for summarization */
 	customInstructions?: string;
@@ -88,7 +85,6 @@ export interface GenerateBranchSummaryOptions {
 	callbacks?: RetryCallbacks;
 }
 
-// ============================================================================
 // Entry Collection
 // ============================================================================
 
@@ -140,7 +136,6 @@ export function collectEntriesForBranchSummary(
 	return { entries, commonAncestorId };
 }
 
-// ============================================================================
 // Entry to Message Conversion
 // ============================================================================
 
@@ -254,7 +249,6 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 	return { messages, fileOps, totalTokens };
 }
 
-// ============================================================================
 // Summary Generation
 // ============================================================================
 
@@ -340,7 +334,6 @@ export async function generateBranchSummary(
 
 	let summary = contentText(response.content);
 
-	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary += formatFileOperations(readFiles, modifiedFiles);
 

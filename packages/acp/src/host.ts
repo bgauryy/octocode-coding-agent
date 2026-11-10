@@ -28,10 +28,6 @@ export interface AcpClientHost {
 	readonly processTree: AcpProcessTree;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Inbound broker
-// ---------------------------------------------------------------------------------------------------------------------
-
 /** A displayed message an extension, hook or subagent injected into the transcript. */
 interface AcpCustomMessage {
 	role: "custom";
@@ -137,6 +133,10 @@ export interface AcpWorkerClient {
 	onClose(listener: (error: Error) => void): () => void;
 	onExtensionUIRequest(listener: (request: AcpUiRequest) => void): () => void;
 	respondToExtensionUIRequest(response: AcpUiResponse): Promise<void>;
+	/** The models this session can use and the current one, each as `provider/id`. */
+	getModels(): Promise<{ current?: string; available: string[] }>;
+	/** Switches the session to one of `getModels().available`; rejects when the worker refuses it. */
+	setModel(model: string): Promise<void>;
 	/** The slash commands a prompt can run in this session. */
 	getCommands(): Promise<Array<{ name: string; description?: string; argumentHint?: string }>>;
 }

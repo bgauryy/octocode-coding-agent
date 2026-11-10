@@ -41,7 +41,7 @@ for (const block of response.content) {
 }
 ```
 
-Use `getSupportedThinkingLevels(model)` to build selectors from the concrete provider/model's capabilities, including whether thinking can be turned `off`. Some models reject disabled thinking or omit `minimal`. For an Anthropic model that cannot turn thinking off (`thinkingLevelMap.off: null`), `off` through `streamSimple()`/`completeSimple()` requests its least effort instead of the default `high`: adaptive-thinking models receive `thinking.type: "adaptive"` with that effort in `output_config.effort` (for example `low`); `xhigh` and `max` require explicit catalog support. `clampThinkingLevel(model, level)` returns a supported level when restoring a saved choice or switching models. Both helpers are exported from `@octocodeai/octocode-ai`.
+Use `getSupportedThinkingLevels(model)` to build selectors from the concrete provider/model's capabilities, including whether thinking can be turned `off`. Some models reject disabled thinking or omit `minimal`. For an Anthropic model that cannot turn thinking off (`thinkingLevelMap.off: null`), `off` through `streamSimple()`/`completeSimple()` requests its least effort instead of the default `high`: adaptive-thinking models receive `thinking.type: "adaptive"` with that effort in `output_config.effort` (for example `low`); `xhigh` and `max` need a `thinkingLevelMap` entry for the model; without one, an adaptive Claude model falls back to `high`. `clampThinkingLevel(model, level)` returns a supported level when restoring a saved choice or switching models. Both helpers are exported from `@octocodeai/octocode-ai`.
 
 ### Provider-Specific Options (stream/complete)
 

@@ -155,9 +155,7 @@ export function parseKey(data: string): string | undefined {
 	return undefined;
 }
 
-// =============================================================================
 // Kitty CSI-u Printable Decoding
-// =============================================================================
 
 const KITTY_CSI_U_REGEX = /^\x1b\[(\d+)(?::(\d*))?(?::(\d+))?(?:;(\d+))?(?::(\d+))?u$/;
 const KITTY_PRINTABLE_ALLOWED_MODIFIERS = MODIFIERS.shift | LOCK_MASK;

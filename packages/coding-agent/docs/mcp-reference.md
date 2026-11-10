@@ -148,7 +148,7 @@ flowchart LR
 - `mcpExposure` applies to tools with no `exposure` or matching `toolExposure`; `"auto:<bytes>"` describes servers in name order and defers a server once the direct blocks so far plus its own would pass the budget (bytes, not a context share, so a model change never rewrites the prompt). Nothing is deferred for an agent without the `mcp` tool.
 - `toolExposure` keys are exact names or `*` patterns (exact first, then first matching pattern) and beat the server default. An invalid value is reported and the entry skipped (an earlier definition stays). `/mcp exposure <server> <direct|deferred|hidden>` saves one.
 
-Results keep text, images, structured data and errors in history. An embedded resource becomes its text after a `[resource <uri> (<mimeType>)]` line; an image blob an image; another blob a line with URI, type and size; a resource link its URI, name, title, description, type and size (the host never reads resources itself). Oversized text is saved under the session's `output/` folder with an excerpt and path. Generic server text keeps 20 KB; the built-in `octocode` server's parts stay whole up to 60,000 characters; all results share a 100,000-character per-message budget ([compaction and recovery](native-features.md#compaction-and-recovery)).
+Results keep text, images, structured data and errors in history. An embedded resource becomes its text after a `[resource <uri> (<mimeType>)]` line; an image blob an image; another blob a line with URI, type and size; a resource link its URI, name, title, description, type and size. The host never follows a link on its own; the agent reads one with `mcp` `read` ([resources and prompts](#resources-and-prompts)). Oversized text is saved under the session's `output/` folder with an excerpt and path. Generic server text keeps 20 KB; the built-in `octocode` server's parts stay whole up to 60,000 characters; all results share a 100,000-character per-message budget ([compaction and recovery](native-features.md#compaction-and-recovery)).
 
 To check that a model uses a server, run `octocode --mode json --print --no-session "<task>"` against a disposable or read-only server and look for a call to one of its tools; a connection alone proves nothing.
 
@@ -177,9 +177,25 @@ A server is assigned as a unit, its generated file and tools, with the pattern `
 
 The list narrows the inherited set and never lowers the profile's requirements (a read-only profile keeps its limits). A name that is not an enabled server refuses the task with a line naming the configured ones; lean profiles (no MCP) and `resume` refuse `mcp` too. The list is passed privately to the child, never written to `mcp.json`, and a lingering child resumed by a message keeps it.
 
+## Resources and prompts
+
+A server that declares the `resources` or `prompts` capability offers reference text and ready-made prompts beside its tools. Nothing of them enters the prompt: they are read on request, from the server's current connection, each time.
+
+| Who   | How                                           | Result                                                                                                                                                                    |
+| ----- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent | `mcp` tool, `intent: "resources"`, `server`   | One line per resource (URI, name, description, type) and per URI template                                                                                                 |
+| Agent | `mcp` tool, `intent: "read"`, `server`, `uri` | The resource's text after a `[resource <uri> (<type>)]` line; an image blob as an image; another blob as a line with its size. Text is capped and saved like tool results |
+| You   | `/mcp resources <server>`                     | The same list                                                                                                                                                             |
+| You   | `/mcp prompts <server>`                       | Each prompt with its arguments: `<required>`, `[optional]`                                                                                                                |
+| You   | `/mcp prompt <server> <name> [args]`          | The prompt's messages, sent as your next message                                                                                                                          |
+
+Prompt arguments: `key=value` sets that argument; other words fill the prompt's declared arguments in order, skipping ones already set. Quote a value with spaces (`"src/my app.ts"`). Extra words or a missing required argument are reported and nothing is sent.
+
+Reading and listing count as reads: they never ask and are allowed in plan mode. A server without the capability gets no request. Resource subscriptions are not supported.
+
 ## Model management and permissions
 
-The model's `mcp` tool takes `list` (state, tool count, last error of every server or one), `tools` (descriptions and schemas without running anything), `restart` (also starts a stopped or failed server at once; a second restart of a connected server within 10 s is refused) and `stop` (withdraws tools until restart; a dropped connection does not). The older `status`, `connect`, `add` and `remove` intents return an error naming their replacement (`list`, `restart`, or your `/mcp` and `octocode mcp add|remove`). None edit configuration; children use their own connections and inherit eligible session registrations.
+The model's `mcp` tool takes `list` (state, tool count, last error of every server or one), `tools` (descriptions and schemas without running anything), `resources` and `read` ([resources and prompts](#resources-and-prompts)), `restart` (also starts a stopped or failed server at once; a second restart of a connected server within 10 s is refused) and `stop` (withdraws tools until restart; a dropped connection does not). The older `status`, `connect`, `add` and `remove` intents return an error naming their replacement (`list`, `restart`, or your `/mcp` and `octocode mcp add|remove`). None edit configuration; children use their own connections and inherit eligible session registrations.
 
 Model MCP calls use the normal tool pipeline and permission gates; hook-initiated `mcp_tool` calls skip repeated extension handlers but still check availability and permissions. Only an explicit `destructiveHint: true` affects permission, by adding an ask (`mcp.destructive`). Role-declared reads are `mcp.read` and never ask; other calls are `mcp.write` ([MCP permissions](permissions.md#mcp-tools), [hook calls](permissions.md#hook-initiated-mcp-calls)).
 

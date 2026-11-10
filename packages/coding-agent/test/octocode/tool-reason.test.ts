@@ -49,7 +49,7 @@ describe("the required reason on native tools", () => {
 		withNativePermissionOwners(fake.api).registerTool(tool("bash", execute));
 		const registered = fake.tools.get("bash");
 		expect(registered.parameters.required).toEqual(["command", "reason"]);
-		expect(registered.parameters.properties.reason.description).toMatch(/^Why this call/);
+		expect(JSON.parse(JSON.stringify(registered.parameters.properties.reason))).toEqual({ type: "string" });
 		expect(validate(registered, { command: "ls", reason: "list the folder" })).toEqual({
 			command: "ls",
 			reason: "list the folder",

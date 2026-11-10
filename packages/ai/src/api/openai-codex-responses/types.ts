@@ -6,10 +6,6 @@ import type {
 import type { StreamOptions } from "../../types.ts";
 import { RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 export const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 export const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
 export const DEFAULT_MAX_RETRIES = 0;
@@ -31,10 +27,6 @@ export const CODEX_RESPONSE_STATUSES = new Set<CodexResponseStatus>([
 	"queued",
 	"in_progress",
 ]);
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";

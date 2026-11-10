@@ -197,7 +197,7 @@ export type HookEvent = keyof typeof HOOK_CATALOG;
 export const HOOK_EVENTS = Object.keys(HOOK_CATALOG) as HookEvent[];
 
 /**
- * Events the upstream hosts document that Octocode does not implement yet, checked 2026-10-29 against the Claude Code
+ * Events the upstream hosts document that Octocode does not implement yet, checked 2026-11-10 against the Claude Code
  * hooks reference (changelog 2.1.312) and Codex `main` 3535c22b. They are reported as not implemented rather than unknown.
  */
 export const UPSTREAM_ONLY_EVENTS: Record<Exclude<HookProtocol, "octocode">, readonly string[]> = {

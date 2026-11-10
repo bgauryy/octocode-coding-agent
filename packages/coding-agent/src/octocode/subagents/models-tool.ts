@@ -16,7 +16,9 @@ import {
 	modelAbilities,
 	modelCatalog,
 } from "./models-command.ts";
-import { providerRows, providerSummary } from "./models-summary.ts";
+import { credentialKinds, providerRows, providerSummary } from "./models-summary.ts";
+import type { ExternalAgents } from "../external/manager.ts";
+import { externalRows } from "../external/describe.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { checkCandidates, checkProviders, providerHealth } from "./provider-health.ts";
 
@@ -28,7 +30,11 @@ type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRe
  * text: it changes with configuration and credentials, and the cached prompt must not. The prompt states only the short
  * routing facts, frozen per session (`routing-watch.ts`).
  */
-export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<string, AgentProfile>): void {
+export function registerModelsTool(
+	api: ExtensionAPI,
+	getProfiles: () => Map<string, AgentProfile>,
+	getExternal: () => ExternalAgents | undefined = () => undefined,
+): void {
 	api.registerTool({
 		name: "models",
 		label: "Models",
@@ -62,19 +68,21 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 				named(model) && (!params.ability || modelAbilities(model, catalog).includes(params.ability));
 			const all = ctx.modelRegistry.getAvailable();
 			const shown = all.filter(matches);
+			const kinds = await credentialKinds(ctx.modelRegistry, all, signal);
 			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
 			const filtered = query || provider || params.ability;
 			if (filtered && shown.length === 0 && unconnected.length === 0)
 				return textResult(
 					[
 						sessionHeader(ctx),
-						providerRows(ctx.modelRegistry, all),
+						providerRows(ctx.modelRegistry, all, kinds),
 						`No model matches the filters; ${all.length} without them.`,
 					].join("\n\n"),
 				);
 			if (params.check)
 				await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
 			const footer = `Pass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
+			const outside = await externalSection(getExternal(), ctx);
 			const credentials = `${source}\n${CREDENTIAL_MARKS}`;
 			// An unfiltered call, or a query or ability that keeps too many rows, gets one row per provider; a provider
 			// (or a short filter) gets the models themselves.
@@ -83,11 +91,12 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 				return textResult(
 					[
 						sessionHeader(ctx),
-						providerSummary(ctx.modelRegistry, all, catalog, kept),
+						providerSummary(ctx.modelRegistry, all, catalog, kept, kinds),
 						...(kept
 							? [`${kept.length} models match; too many to list. Set \`provider\` to list one provider's models.`]
 							: []),
 						describeRoutes(all, ctx.model, getProfiles(), catalog),
+						...outside,
 						...(kept ? [] : ["Set `provider` to list one provider's models."]),
 						credentials,
 						...catalogRows(unconnected),
@@ -108,8 +117,9 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 			return textResult(
 				[
 					sessionHeader(ctx),
-					providerRows(ctx.modelRegistry, all),
+					providerRows(ctx.modelRegistry, all, kinds),
 					listing,
+					...outside,
 					...(unrunnable ? [unrunnable] : []),
 					credentials,
 					...catalogRows(unconnected),
@@ -118,6 +128,17 @@ export function registerModelsTool(api: ExtensionAPI, getProfiles: () => Map<str
 			);
 		},
 	});
+}
+
+/** Connected and installed external agents, when the setting enables them; discovery that fails adds nothing. */
+async function externalSection(external: ExternalAgents | undefined, ctx: ModelsContext): Promise<string[]> {
+	if (!external) return [];
+	try {
+		const rows = externalRows(await external.call({ action: "list" }, ctx as ExtensionContext));
+		return rows.length ? [rows.join("\n")] : [];
+	} catch {
+		return [];
+	}
 }
 
 /** A filtered call lists models up to this many rows; beyond it the per-provider summary comes first. */

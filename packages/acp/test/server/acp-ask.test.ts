@@ -64,11 +64,20 @@ describe("ACP ask", () => {
 		expect(calls[0].params.options.map((o: any) => [o.optionId, o.kind])).toEqual([
 			["o", "allow_once"],
 			["s", "allow_always"],
-			["k", "allow_always"],
 			["d", "reject_once"],
 			["ds", "reject_always"],
 		]);
 		expect(replies).toEqual([{ id: "a", picks: ["s"] }]);
+	});
+
+	it("answers allow_always as the session grant and reject_always as the session denial, never the persistent kind grant", async () => {
+		for (const optionId of ["s", "ds", "k"]) {
+			const { env } = fake(() => ({ outcome: { outcome: "selected", optionId } }));
+			const replies = await askClient(env(false), [approval]);
+			expect(replies).toEqual(
+				optionId === "k" ? [{ id: "a", cancelled: "declined" }] : [{ id: "a", picks: [optionId] }],
+			);
+		}
 	});
 
 	it("asks the other types as one form and maps accept to replies", async () => {

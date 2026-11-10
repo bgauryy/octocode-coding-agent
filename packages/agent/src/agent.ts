@@ -4,6 +4,7 @@ import {
 	type Message,
 	type SimpleStreamOptions,
 	type ThinkingBudgets,
+	type ToolChoice,
 	type Transport,
 } from "@octocodeai/octocode-ai";
 import { createAgentLoopConfig } from "./agent/loop-config.ts";
@@ -70,10 +71,13 @@ export class Agent {
 	public afterToolCall?: AgentOptions["afterToolCall"];
 	/** Error text for a call to an undeclared tool; see `AgentLoopConfig.unknownToolMessage`. */
 	public unknownToolMessage?: (toolName: string) => string | undefined;
+	public earlyStart?: AgentLoopConfig["earlyStart"];
 	/** Declared tools that are not executable yet; see `AgentContext.pendingToolNames`. */
 	public pendingToolNames?: () => ReadonlySet<string>;
 	public finishTurn?: FinishTurn;
 	public prepareRequest?: PrepareRequest;
+	/** Tool choice for the next provider request only; taken (and cleared) by the request that uses it. */
+	public nextToolChoice?: ToolChoice;
 	public prepareInput?: PrepareInput;
 	public onInputSelected?: (batch: InputBatch) => void;
 	public prepareNextTurn?: (

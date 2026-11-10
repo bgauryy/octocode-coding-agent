@@ -41,7 +41,11 @@ export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]
 			try {
 				const visibleMessages = currentMessages.filter((message) => message.role !== "system");
 				const visibleSnapshot = visibleMessages.slice();
-				const event: ContextEvent = { type: "context", messages: visibleMessages };
+				const event: ContextEvent = {
+					type: "context",
+					messages: visibleMessages,
+					transcript: currentMessages.slice(),
+				};
 				const handlerResult = (await handler(event, ctx)) as ContextEventResult | undefined;
 
 				// Handlers may return a new list or edit event.messages in place.

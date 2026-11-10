@@ -74,6 +74,26 @@ export async function checkProviderAuth(
 	return resolution ? { source: resolution.source, type: "api_key" } : undefined;
 }
 
+/** Refuses a key its provider rejects; a check that could not be made saves the key and says so. */
+async function verifyLoginKey(
+	providerName: string,
+	method: Provider["auth"]["apiKey"],
+	key: string,
+	interaction: AuthInteraction,
+	signal: AbortSignal,
+): Promise<void> {
+	const verdict = (await method?.verify?.({ key, signal })) ?? "unchecked";
+	if (verdict === "rejected") {
+		throw new ModelsError("auth", `${providerName} rejected this key (HTTP 401 or 403). Nothing was saved.`);
+	}
+	if (verdict === "unreachable") {
+		interaction.notify({
+			type: "info",
+			message: `Could not check the ${providerName} key (network or service problem); it was saved anyway.`,
+		});
+	}
+}
+
 /** Runs a provider-owned login flow and persists its returned credential. */
 export async function loginProvider(
 	providers: ReadonlyMap<string, Provider>,
@@ -97,6 +117,9 @@ export async function loginProvider(
 		{ ...options, previousCredential },
 	);
 	const credential = await raceWithAbortSignal(loginOperation, signal);
+	if (type === "api_key" && credential.type === "api_key" && credential.key) {
+		await verifyLoginKey(provider.name, provider.auth.apiKey, credential.key, interaction, signal);
+	}
 	let mutationStarted = false;
 	let markMutationStarted: (() => void) | undefined;
 	const started = new Promise<void>((resolve) => {

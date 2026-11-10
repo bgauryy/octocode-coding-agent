@@ -1,4 +1,4 @@
-// B347 P2-2 and P2-3 (promoted from the plucky-nautilus review tests): a stalled but live member stays addressable by
+// A stalled but live member stays addressable by
 // name, and a question whose asker left stops counting as awaiting a reply and is listed with its id and sender.
 import fs from "node:fs";
 import path from "node:path";

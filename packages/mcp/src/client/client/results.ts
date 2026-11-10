@@ -6,7 +6,7 @@ import type { McpRequestOptions } from "./types.ts";
 const MAX_LIST_PAGES = 1_000;
 
 /** A list item check, applied to each entry of a paginated result. */
-type ListItemCheck = (item: Record<string, unknown>) => boolean;
+export type ListItemCheck = (item: Record<string, unknown>) => boolean;
 
 /** One page of a paginated list, already validated. */
 type ListPage = { items: Record<string, unknown>[]; nextCursor?: string };
@@ -77,7 +77,6 @@ export function validateCallToolResult(value: unknown): CallToolResult {
 const optionalString = (value: unknown): value is string | undefined =>
 	value === undefined || typeof value === "string";
 
-/** Bytes a base64 string decodes to. */
 const decodedBytes = (base64: string): number => {
 	const data = base64.replace(/\s/g, "");
 	return Math.floor((data.length * 3) / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
@@ -87,7 +86,7 @@ const decodedBytes = (base64: string): number => {
  * An embedded resource as content: its text after a line naming its URI and type, an image blob as an image, any
  * other blob as a line naming its URI, type and size (base64 is not readable text).
  */
-function embeddedResource(resource: unknown): ContentBlock {
+export function embeddedResource(resource: unknown): ContentBlock {
 	if (!isObject(resource) || typeof resource.uri !== "string" || !optionalString(resource.mimeType))
 		throw invalid("Invalid MCP tool content");
 	const { uri, mimeType } = resource;
@@ -128,7 +127,7 @@ function resourceLink(value: Record<string, unknown>): ContentBlock {
  * Project supported content fields so server annotations cannot affect rendering or trust. Embedded resources and
  * resource links become text or image blocks (see {@link embeddedResource}, {@link resourceLink}).
  */
-function contentBlock(value: unknown): ContentBlock {
+export function contentBlock(value: unknown): ContentBlock {
 	if (!isObject(value) || typeof value.type !== "string") throw invalid("Invalid MCP tool content");
 	if (value.type === "text" && typeof value.text === "string") return { type: "text", text: value.text };
 	if (

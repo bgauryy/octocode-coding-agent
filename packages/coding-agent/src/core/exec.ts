@@ -91,7 +91,6 @@ export async function execCommand(
 			}
 		}
 
-		// Handle timeout
 		if (options?.timeout && options.timeout > 0) {
 			timeoutId = setTimeout(() => {
 				killProcess();

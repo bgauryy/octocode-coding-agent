@@ -69,7 +69,6 @@ export class EditorAutocomplete {
 		this.setAutocompleteTriggerCharacters(provider.triggerCharacters ?? []);
 	}
 
-	// Autocomplete methods
 	private createAutocompleteList(prefix: string, items: AutocompleteItem[], emptyText?: string): SelectList {
 		const layout = prefix.startsWith("/") ? SLASH_COMMAND_SELECT_LIST_LAYOUT : undefined;
 		const list = new SelectList(

@@ -1,9 +1,7 @@
-import { activeRates } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
-import { DAY_MS } from "../shared/util.ts";
-import { formatTokens } from "../shared/format.ts";
-import { type Catalog, listedCost, lookup } from "./catalog.ts";
+import type { Catalog } from "./catalog.ts";
 import { closeModels } from "./close-models.ts";
+import { type ConfiguredModels, settingKey } from "./configured-models.ts";
 import {
 	routeThinking,
 	SUBAGENT_DEFAULT_THINKING,
@@ -13,189 +11,19 @@ import {
 	thinkingSuffix,
 	withThinking,
 } from "./thinking.ts";
+import { canRunTask, isModelTier, type ModelRef, type ModelTier, resolveTier, taskBlocker } from "./tier.ts";
 
+export {
+	currentPrice,
+	isModelTier,
+	MODEL_TIERS,
+	type ModelRef,
+	resolveTier,
+	SUBAGENT_DEFAULT_TIER,
+	canRunTask,
+	taskBlocker,
+} from "./tier.ts";
 export { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking };
-
-/** A model the parent can use, as Octocode's model registry lists it (prices per million tokens). */
-export interface ModelRef {
-	provider: string;
-	id: string;
-	/** A time-limited price also carries its last day (`until`) and the rates that follow it (`after`). */
-	cost?: { input: number; output: number; until?: string; after?: { input: number; output: number } };
-	contextWindow?: number;
-	input?: readonly string[];
-}
-
-/** The input and output rates in effect at `now` (`activeRates`): a time-limited price gives way to its `after` rates. */
-export function currentPrice(
-	cost: ModelRef["cost"],
-	now: Date | number = Date.now(),
-): { input: number; output: number } | undefined {
-	if (!cost) return undefined;
-	const rates = ({ input, output }: { input: number; output: number }) => ({
-		input,
-		output,
-		cacheRead: 0,
-		cacheWrite: 0,
-	});
-	return activeRates(
-		{
-			...rates(cost),
-			...(cost.until !== undefined ? { until: cost.until } : {}),
-			...(cost.after ? { after: rates(cost.after) } : {}),
-		},
-		now,
-	);
-}
-
-/**
- * Purposes a profile can name instead of a model id: `small` is the cheapest capable model the parent can use (search,
- * reading, documentation checks, browsing), `medium` the next tier below the parent's (coding and review when the
- * parent runs a frontier model). Each resolves among the user's own models, so no profile hard-codes a vendor.
- */
-export const MODEL_TIERS = ["small", "medium"] as const;
-type ModelTier = (typeof MODEL_TIERS)[number];
-export const isModelTier = (value: string): value is ModelTier => (MODEL_TIERS as readonly string[]).includes(value);
-
-/**
- * The purpose of a child whose call names no model and no profile. Not the parent's: the coordinator's model is usually
- * the dearest, and a worker needs only the tier its task needs (user request, 2026-11-03: an Opus coordinator sends work
- * to Sonnet). With no capable model in the band, the purpose falls back to the parent's model. A profile without a
- * model keeps the parent's (a plugin agent's `model: inherit`).
- */
-export const SUBAGENT_DEFAULT_TIER: ModelTier = "medium";
-
-/** A subagent starts fresh but reads files and tool output: a model with a smaller window is not a candidate. */
-const MIN_SUBAGENT_CONTEXT = 100_000;
-
-interface Facts {
-	ref: ModelRef;
-	price: number | undefined;
-	context: number | undefined;
-	input: readonly string[] | undefined;
-	toolCall: boolean | undefined;
-	family: string | undefined;
-	released: string | undefined;
-	deprecated: boolean;
-	lab: string | undefined;
-}
-
-/**
- * `medium` is the next tier down: between these shares of the parent's price (Sonnet is half of Opus; Haiku, a
- * twentieth, is the small tier, not a coder for an Opus or Sonnet parent).
- */
-const MEDIUM_MAX_SHARE = 0.8;
-const MEDIUM_MIN_SHARE = 0.15;
-/** Candidates released this long before the parent are an older generation, used only when nothing newer qualifies. */
-const STALE_AFTER_MS = 548 * DAY_MS;
-
-/** Octocode's metadata, with what it lacks from models.dev. Price: three input tokens to one output, as agent turns spend. */
-function facts(ref: ModelRef, catalog: Catalog | undefined): Facts {
-	const known = lookup(catalog, ref.provider, ref.id);
-	const own = currentPrice(ref.cost);
-	const cost = own && own.input + own.output > 0 ? own : listedCost(catalog, ref.provider, ref.id);
-	// An id like `anthropic/claude-x` (a router's) names its lab when models.dev does not.
-	const slash = ref.id.indexOf("/");
-	return {
-		ref,
-		price: cost && cost.input + cost.output > 0 ? (3 * cost.input + cost.output) / 4 : undefined,
-		context: ref.contextWindow !== undefined && ref.contextWindow !== 0 ? ref.contextWindow : known?.context,
-		input: ref.input ?? known?.input,
-		toolCall: known?.toolCall,
-		family: known?.family,
-		released: known?.released,
-		deprecated: known?.status === "deprecated",
-		lab: known?.lab ?? (slash > 0 ? ref.id.slice(0, slash) : undefined),
-	};
-}
-
-/**
- * Why a model cannot run a subagent's task, or undefined when it can (or when nothing known says otherwise): a model
- * absent from the catalog stays allowed. Purposes and explicit ids share this rule.
- */
-export function taskBlocker(model: ModelRef, catalog: Catalog | undefined): string | undefined {
-	const known = facts(model, catalog);
-	const reasons = [
-		...(known.deprecated ? ["deprecated"] : []),
-		...(known.toolCall === false ? ["no tool calls"] : []),
-		...(known.context !== undefined && known.context < MIN_SUBAGENT_CONTEXT
-			? [`context ${formatTokens(known.context)} (needs ${formatTokens(MIN_SUBAGENT_CONTEXT)})`]
-			: []),
-	];
-	return reasons.length > 0 ? reasons.join(", ") : undefined;
-}
-
-/** Whether a task can run on `model`: not deprecated, tool calls not known to be missing, a window of `MIN_SUBAGENT_CONTEXT` when known. */
-export const canRunTask = (model: ModelRef, catalog: Catalog | undefined): boolean =>
-	taskBlocker(model, catalog) === undefined;
-
-const time = (date: string | undefined) => (date ? Date.parse(date) : NaN);
-
-/**
- * Only each family's newest release among `all` (the parent included: an older sibling of the parent's own family is
- * an older generation); a router lists every generation and alias. Models without a family or date stay.
- */
-function currentGeneration(models: Facts[], all: Facts[]): Facts[] {
-	const newest = new Map<string, number>();
-	for (const model of all)
-		if (model.family && !Number.isNaN(time(model.released)))
-			newest.set(model.family, Math.max(newest.get(model.family) ?? -Infinity, time(model.released)));
-	return models.filter(
-		(model) => !model.family || !newest.has(model.family) || time(model.released) === newest.get(model.family),
-	);
-}
-
-/** The first non-empty group: candidates nearest the parent come first. */
-const firstNonEmpty = (...groups: Facts[][]): Facts[] => groups.find((group) => group.length > 0) ?? [];
-
-/**
- * The model a tier resolves to among `available`, or undefined to stay on the parent's. Works for any list: one model,
- * a few, or a router's hundreds. Candidates call tools, hold `MIN_SUBAGENT_CONTEXT`, take images when the parent does,
- * are not deprecated, cost less than the parent, and are their family's current generation; ones not much older than
- * the parent come first. The parent's provider ranks before its lab: only that provider's auth and endpoint are proven
- * (another provider counts as available once a key is configured, even an expired one). So the order is the parent's
- * provider and lab, its provider, its lab elsewhere, then anything. `small` is the cheapest; `medium` the dearest
- * between `MEDIUM_MIN_SHARE` and `MEDIUM_MAX_SHARE` of the parent's price.
- */
-export function resolveTier(
-	tier: ModelTier,
-	available: readonly ModelRef[],
-	parent: ModelRef | undefined,
-	catalog?: Catalog,
-): ModelRef | undefined {
-	if (!parent) return undefined;
-	const own = available.find((model) => model.provider === parent.provider && model.id === parent.id) ?? parent;
-	const top = facts(own, catalog);
-	if (top.price === undefined) return undefined;
-	const needsImages = top.input?.includes("image") === true;
-	// A family's newest release is judged among the models able to do the work (and the parent): an unusable newer
-	// sibling (no tool calls, a small window) does not push the usable ones out.
-	const capable = available
-		.map((model) => facts(model, catalog))
-		.filter((model) => !(model.ref.provider === own.provider && model.ref.id === own.id))
-		.filter((model) => canRunTask(model.ref, catalog))
-		.filter((model) => !needsImages || model.input === undefined || model.input.includes("image"));
-	const eligible = currentGeneration(
-		capable.filter((model) => model.price !== undefined && model.price < top.price!),
-		[...capable, top],
-	);
-	const parentReleased = time(top.released);
-	const recent = Number.isNaN(parentReleased)
-		? eligible
-		: eligible.filter(
-				(model) => Number.isNaN(time(model.released)) || time(model.released) >= parentReleased - STALE_AFTER_MS,
-			);
-	const fresh = recent.length > 0 ? recent : eligible;
-	const sameLab = top.lab ? fresh.filter((model) => model.lab === top.lab) : [];
-	const sameProvider = fresh.filter((model) => model.ref.provider === own.provider);
-	const ownLab = sameProvider.filter((model) => sameLab.includes(model));
-	const pool = firstNonEmpty(ownLab, sameProvider, sameLab, fresh).sort((a, b) => a.price! - b.price!);
-	if (tier === "small") return pool[0]?.ref;
-	const band = pool.filter(
-		(model) => model.price! <= top.price! * MEDIUM_MAX_SHARE && model.price! >= top.price! * MEDIUM_MIN_SHARE,
-	);
-	return band.at(-1)?.ref;
-}
 
 /**
  * The route at the level the child will run at: a registry model without that level (no reasoning, no `xhigh`) clamps it
@@ -207,6 +35,15 @@ export function supportedThinking(model: string, available: readonly ModelRef[])
 	if (!level || !target) return model;
 	const clamped = clampThinkingLevel(target, level as Parameters<typeof clampThinkingLevel>[1]);
 	return clamped === level ? model : withThinking(model, clamped);
+}
+
+/**
+ * Why a route runs at another level than asked, from the route before and after `supportedThinking`'s clamp: `asked off;
+ * this model does not support off`. Empty when the levels agree or either has none.
+ */
+export function clampNote(requested: string | undefined, applied: string | undefined): string {
+	const asked = routeThinking(requested);
+	return asked && routeThinking(applied) !== asked ? `asked ${asked}; this model does not support ${asked}` : "";
 }
 
 /** A route as the coordinator reads it: `provider/id, low thinking`. */
@@ -229,7 +66,7 @@ export function routeSummary(route: { model?: string; via?: string; fallback?: s
  * model to suffix (this session has none): the child starts with `--thinking`.
  */
 export type ModelRoute =
-	| { model?: string; thinking?: string; fallback?: string; refusedBy?: string }
+	| { model?: string; thinking?: string; fallback?: string; refusedBy?: string; setting?: string; skipped?: string }
 	| { error: string };
 
 /** Why a profile's preferred model was not used: `p/m unavailable`, or `p/m: p refused its credential`. */
@@ -250,8 +87,8 @@ export function modelLabel(details: { model?: string; fallback?: string; refused
 
 const sameModel = (a: ModelRef, b: ModelRef | undefined) => a.provider === b?.provider && a.id === b.id;
 
-/** `ProviderHealth.refused`: the model, or unless `proven` its provider's credential, was just refused. */
-export type Refused = (provider: string, id?: string, proven?: boolean) => boolean;
+/** `ProviderHealth.refused`: the model, or unless `proven` its provider's credential (funds: only if `cost` is not free). */
+export type Refused = (provider: string, id?: string, proven?: boolean, cost?: ModelRef["cost"]) => boolean;
 /** The models a purpose or a preferred model may route to: refused ones are skipped, the parent's own never (it runs). */
 export const usableModels = <T extends ModelRef>(
 	available: readonly T[],
@@ -262,7 +99,7 @@ export const usableModels = <T extends ModelRef>(
 		? available.filter(
 				(model) =>
 					(model.provider === parent?.provider && model.id === parent.id) ||
-					!refused(model.provider, model.id, model.provider === parent?.provider),
+					!refused(model.provider, model.id, model.provider === parent?.provider, model.cost),
 			)
 		: available;
 
@@ -296,6 +133,8 @@ interface RouteInput {
 	catalog?: Catalog | undefined;
 	/** Just refused (`usableModels`): a purpose or preferred model skips it; an explicit model is kept. */
 	refused?: Refused | undefined;
+	/** The `subagents.models` setting (`configured-models.ts`): a purpose uses its model before the automatic choice. */
+	configured?: ConfiguredModels | undefined;
 	/** Level for a route whose call and profile carry no `:thinking` suffix (`subagentThinking()`). */
 	thinking?: string | undefined;
 }
@@ -319,15 +158,55 @@ function tierOf(value: string): { tier: ModelTier; thinking: string } | undefine
 	return isModelTier(name) ? { tier: name, thinking: value.slice(name.length) } : undefined;
 }
 
-/** A purpose's route: its model with the suffix kept, else the parent's (with no cheaper candidate it is the right one). */
+/**
+ * The model the user set for a purpose (`subagents.models`), with its own `:level`, or why it is not used: not available,
+ * its provider refused its credential (`usable` leaves it out), or it cannot run a task.
+ */
+function configuredRoute(
+	tier: ModelTier,
+	input: RouteInput,
+	usable: readonly ModelRef[],
+): { model: string } | { skipped: string } | undefined {
+	const value = input.configured?.[tier];
+	if (!value) return undefined;
+	const provider = input.parent?.provider;
+	const found = resolveModel(value, usable, provider);
+	const chosen = routedModel(found, usable);
+	const blocker = chosen && !sameModel(chosen, input.parent) ? taskBlocker(chosen, input.catalog) : undefined;
+	if (found && !blocker) return { model: found };
+	const named = resolveModel(value, input.available, provider);
+	const listed = routedModel(named, input.available);
+	const base = listed ? `${listed.provider}/${listed.id}` : value;
+	const why = blocker
+		? ` cannot run a task: ${blocker}`
+		: listed
+			? `: ${listed.provider} refused its credential`
+			: " unavailable";
+	return { skipped: `${settingKey(tier)} ${base}${why}` };
+}
+
+/**
+ * A purpose's route: the user's setting when usable, else the automatic choice, else the parent's (with no cheaper
+ * candidate it is the right one). The purpose's own suffix (`small:high`) outranks the setting's level.
+ */
 function tierRoute(
 	{ tier, thinking }: { tier: ModelTier; thinking: string },
 	input: RouteInput,
+	usable: readonly ModelRef[],
 	parentModel: { model?: string },
 ): ModelRoute {
-	const chosen = resolveTier(tier, input.available, input.parent, input.catalog);
-	if (chosen) return { model: `${chosen.provider}/${chosen.id}${thinking}` };
-	return parentModel.model ? { model: `${parentModel.model}${thinking}` } : {};
+	const set = configuredRoute(tier, input, usable);
+	if (set && "model" in set) {
+		const level = thinking || thinkingSuffix(set.model);
+		return {
+			model: `${set.model.slice(0, set.model.length - thinkingSuffix(set.model).length)}${level}`,
+			setting: settingKey(tier),
+		};
+	}
+	const note = set ? { skipped: set.skipped } : {};
+	const chosen = resolveTier(tier, usable, input.parent, input.catalog);
+	if (chosen) return { model: `${chosen.provider}/${chosen.id}${thinking}`, ...note };
+	return parentModel.model ? { model: `${parentModel.model}${thinking}`, ...note } : note;
 }
 
 /**
@@ -353,13 +232,12 @@ function routeWithoutThinking(request: RouteInput): ModelRoute {
 	const all = request.available;
 	// Only an explicit model id is strict: it may name a refused provider on purpose.
 	const available = explicit && !tierOf(explicit) ? request.available : usable;
-	const input = { ...request, available };
 	const parentProvider = parent?.provider;
 	// Pinned explicitly: without --model the child would start on Octocode's default, not the model the parent runs on now.
 	const parentModel = parent ? { model: `${parent.provider}/${parent.id}` } : {};
 	if (explicit) {
 		const tier = tierOf(explicit);
-		if (tier) return tierRoute(tier, input, parentModel);
+		if (tier) return tierRoute(tier, request, usable, parentModel);
 		const model = resolveModel(explicit, available, parentProvider);
 		if (model) {
 			const chosen = routedModel(model, available);
@@ -387,7 +265,7 @@ function routeWithoutThinking(request: RouteInput): ModelRoute {
 	if (!preferred) return parentModel;
 	// A purpose resolves among the user's models; with no cheaper candidate the parent's model is the right one.
 	const tier = tierOf(preferred);
-	if (tier) return tierRoute(tier, input, parentModel);
+	if (tier) return tierRoute(tier, request, usable, parentModel);
 	const model = resolveModel(preferred, available, parentProvider);
 	if (model) return { model };
 	const skipped = refused ? resolveModel(preferred, all, parentProvider) : undefined;

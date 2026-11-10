@@ -41,7 +41,7 @@ afterEach(async (context) => {
 	for (const socket of sockets.splice(0)) socket.terminate();
 	// The daemon outlives its session by design: stop it so no process is left behind.
 	for (const daemon of daemons.splice(0)) await daemonRequest(daemon, "/api/admin/drain", { method: "POST" });
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 

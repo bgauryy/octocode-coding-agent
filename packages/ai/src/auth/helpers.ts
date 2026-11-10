@@ -11,9 +11,15 @@ export function isActiveCredential(credential: Credential | undefined): credenti
  * Providers with non-standard resolution (provider env, ambient files, IAM)
  * write their own `ApiKeyAuth`.
  */
-export function envApiKeyAuth(name: string, envVars: readonly string[], keyPage?: string): ApiKeyAuth {
+export function envApiKeyAuth(
+	name: string,
+	envVars: readonly string[],
+	keyPage?: string,
+	verify?: ApiKeyAuth["verify"],
+): ApiKeyAuth {
 	return {
 		name,
+		...(verify ? { verify } : {}),
 		...(keyPage ? { keyPage } : {}),
 		login: async (interaction) => {
 			interaction.signal.throwIfAborted();

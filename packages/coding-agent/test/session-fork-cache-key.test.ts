@@ -1,4 +1,4 @@
-// B123 L1: a fork's requests carry the cache key of the session it was forked from, so an OpenAI model that routes by
+// A fork's requests carry the cache key of the session it was forked from, so an OpenAI model that routes by
 // prompt_cache_key (before GPT-5.6) can reuse the parent's cached prefix. Unrelated sessions keep separate keys.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

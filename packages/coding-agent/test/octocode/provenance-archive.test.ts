@@ -3,7 +3,7 @@ import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/ind
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 
 /**
- * B118: an archive read of sessions or compactions returns another session's transcript text, which may hold web pages
+ * An archive read of sessions or compactions returns another session's transcript text, which may hold web pages
  * or tool output that session read: it is untrusted like any such source. Memories, agents and events are the agent's own.
  */
 const ctx = { cwd: "/work/repo" };

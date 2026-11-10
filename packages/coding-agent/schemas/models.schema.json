@@ -1220,6 +1220,10 @@
           "description": "Whether system messages can introduce additional tools mid-conversation. Requires supportsMidConvoSystemMessages. The generated catalog enables this for capable models.",
           "default": false
         },
+        "supportsTemperature": {
+          "type": "boolean",
+          "description": "Whether the model accepts the temperature request field. Default: true."
+        },
         "supportsStrictMode": {
           "type": "boolean",
           "description": "Whether the provider supports strict tool schemas. Defaults are API-specific."
@@ -1304,11 +1308,6 @@
         "supportsCacheControlOnTools": {
           "type": "boolean",
           "description": "Whether the provider supports Anthropic-style cache_control markers on tool definitions. When false, cache_control is omitted from tool parameters. Some Anthropic-compatible providers, such as Fireworks, do not support this field on tools and may reject or ignore it.",
-          "default": true
-        },
-        "supportsTemperature": {
-          "type": "boolean",
-          "description": "Whether the model accepts the Anthropic temperature request field. Claude Opus 4.7+ rejects non-default values.",
           "default": true
         },
         "forceAdaptiveThinking": {

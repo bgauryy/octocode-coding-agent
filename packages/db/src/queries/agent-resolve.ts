@@ -127,7 +127,7 @@ function pastName(db: DatabaseSync, ref: string, item: ReturnType<typeof parseIt
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 /**
- * Finds an agent by any name it goes by (design B36 §5): its name, session id, registration or run id, process title, pid,
+ * Finds an agent by any name it goes by: its name, session id, registration or run id, process title, pid,
  * or a backlog item it works or worked for (`B36`, `<workspace name>:B36`). A live agent answers first, then the latest
  * run of a past one; a name reused since answers with its newest run. `workspaceId` is the caller's, for unqualified items.
  */
@@ -163,7 +163,7 @@ export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string
 	};
 }
 
-/** A main session's item: the ongoing one its session holds (`backlog.assignee` is the session id), as design B36 §5 derives it. */
+/** A main session's item: the ongoing one its session holds (`backlog.assignee` is the session id). */
 function mainItem(
 	db: DatabaseSync,
 	run: AgentRun | undefined,

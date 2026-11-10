@@ -96,9 +96,7 @@ export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, e
 	if (candidates.some(isClaude5Candidate)) return true;
 	// Claude 4.x models (opus-4, sonnet-4, haiku-4); a profile name such as "Claude Sonnet 4" ends in "-4".
 	if (candidates.some((s) => s.includes("-4-") || s.endsWith("-4"))) return true;
-	// Claude 3.7 Sonnet
 	if (candidates.some((s) => s.includes("claude-3-7-sonnet"))) return true;
-	// Claude 3.5 Haiku
 	if (candidates.some((s) => s.includes("claude-3-5-haiku"))) return true;
 	return false;
 }

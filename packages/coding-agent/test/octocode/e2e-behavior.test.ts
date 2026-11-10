@@ -199,7 +199,7 @@ describe("bash: where a command writes", () => {
 		expect(exists(cwd, "marker")).toBe(false);
 	}, 60_000);
 
-	// D1 (.octocode/review/2026-10-31/E-behavioral-tests.md): command operands are write targets too
+	// Command operands are write targets too
 	// (`permission/shell/write-targets.ts` from `shell/mutation.ts`), not only redirects and `tee`.
 	it("workspace mode refuses cp, touch and mv that write outside the repository or install a git hook", async () => {
 		const { cwd, outside, run } = await start("workspace");

@@ -86,7 +86,7 @@ describe("pending reports", () => {
 		}
 	});
 
-	// B397 (user decision 2026-11-01): a malformed report is moved aside to `.invalid` instead of being renamed back,
+	// A malformed report is moved aside to `.invalid` instead of being renamed back,
 	// so the takes at every start, every second after it and after every turn stop re-reading it.
 	it.each([
 		{ content: "broken report", wake: true, reportId: "broken" },

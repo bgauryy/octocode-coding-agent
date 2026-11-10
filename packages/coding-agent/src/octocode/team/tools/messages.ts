@@ -132,7 +132,6 @@ async function sendToPeer(
 	return textResult(`${text} replyTo was ignored: it reaches teammates only.`, { ...details, replyToIgnored: true });
 }
 
-/** The `sendMessage` tool. */
 export function registerSendMessageTool(
 	api: ExtensionAPI,
 	team: Team,

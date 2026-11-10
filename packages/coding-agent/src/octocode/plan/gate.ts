@@ -8,7 +8,7 @@ import { untilCommand } from "../shared/until-command.ts";
 
 const reads = new Set(["askUser", "skill", "web"]);
 /** The `mcp` tool's intents that report on this session's servers or bring a dead one back; its tools stay gated. Unknown intents, and `stop`, are not reads. */
-const mcpReads = new Set<unknown>(["list", "tools", "restart"]);
+const mcpReads = new Set<unknown>(["list", "tools", "resources", "read", "restart"]);
 const mcpRead = (input: Record<string, unknown>): boolean => mcpReads.has(input.intent);
 
 /**

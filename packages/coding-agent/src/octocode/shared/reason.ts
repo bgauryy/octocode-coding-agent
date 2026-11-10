@@ -8,12 +8,12 @@ import { toolHint } from "../../utils/tool-hint.ts";
  * (`withReason`), but the call never fails for it: before validation `settleReason` fills a missing or empty one, from
  * a nested value the model wrote, else from the call's arguments (`derivedReason`). The registry wrapper removes it
  * before a tool that does not declare it runs (`withoutReason`); permission requests and tool rows read it from the
- * call's input (`callReason`).
+ * call's input (`callReason`). The schema carries no description: the policy says once what to write
+ * (`instructions/shared/mcp-fields.md`, `instructions/lean/lean.md`), instead of every tool repeating it.
  */
-const REASON_DESCRIPTION = "Why this call, one sentence";
 
 /** The shared `reason` definition; a tool that declares `reason` itself (to read it in `execute`) uses this one. */
-export const reasonSchema = () => Type.String({ description: REASON_DESCRIPTION });
+export const reasonSchema = () => Type.String();
 
 type SchemaShape = {
 	type?: string;

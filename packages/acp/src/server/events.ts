@@ -1,6 +1,7 @@
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { SessionNotification, StopReason, ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
 import { toolDisplayText, type ToolDisplay } from "@octocodeai/octocode-contracts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 import type { AcpWorkerEvent } from "../host.ts";
 
 /** A compaction summary as the Markdown a person reads (the host owns the summary format). */
@@ -146,6 +147,13 @@ function locations(display: ToolDisplay | undefined): { locations?: { path: stri
 				})),
 			}
 		: {};
+}
+
+/** The call's arguments for clients that show them, with credentials redacted; omitted when they are not an object or too large to send on every call. */
+function rawInput(args: unknown): { rawInput?: unknown } {
+	if (!args || typeof args !== "object") return {};
+	const safe = redactData(args);
+	return JSON.stringify(safe).length <= MAX_TOOL_TEXT ? { rawInput: safe } : {};
 }
 
 /** What a client's icon says about a native tool; anything else, MCP tools included, is ACP's default `other`. */
@@ -306,6 +314,7 @@ export class AcpEventProjector {
 				name,
 				kind: toolKind(name, display),
 				status: "in_progress",
+				...rawInput(args),
 				...locations(display),
 			},
 		];

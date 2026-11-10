@@ -22,6 +22,8 @@ export interface RuntimeSettingsApi {
 	getRetryEnabled(): boolean;
 	setRetryEnabled(enabled: boolean): void;
 	getRetrySettings(): { enabled: boolean; maxRetries: number; baseDelayMs: number; maxAgentDelayMs: number };
+	getRetryFallbackModels(): string[];
+	getToolExecutionEarlyStart(): boolean;
 	getHttpIdleTimeoutMs(): number;
 	setHttpIdleTimeoutMs(timeoutMs: number): void;
 

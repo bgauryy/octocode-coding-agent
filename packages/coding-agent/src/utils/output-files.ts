@@ -123,7 +123,6 @@ function openPrivateStream(path: string): {
 	return { stream, completion, identity: () => identity };
 }
 
-/** Open a new output file for streamed output. */
 export function createOutputFileStream(
 	prefix: string,
 	extension: string,

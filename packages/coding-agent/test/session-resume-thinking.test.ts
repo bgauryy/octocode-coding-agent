@@ -1,4 +1,4 @@
-// B123 L4: a session reopened with a thinking level (`--thinking`) records it, so the next reopen keeps it.
+// A session reopened with a thinking level (`--thinking`) records it, so the next reopen keeps it.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

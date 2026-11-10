@@ -13,6 +13,8 @@ import {
 	finalizeExecutedToolCall,
 	prepareToolCall,
 } from "./tool-call.ts";
+import type { EarlyRun } from "./early-start.ts";
+import { resolveToolConcurrency, ToolSchedule } from "./tool-schedule.ts";
 
 /**
  * Fail all tool calls from an assistant message that was truncated by the
@@ -60,7 +62,9 @@ function describeTruncatedToolCall(toolCall: AgentToolCall, assistantMessage: As
 }
 
 /**
- * Execute tool calls from an assistant message.
+ * Execute tool calls from an assistant message. Sequential when the loop says so; else each call starts as soon as its own
+ * preparation ends, shared or exclusive by its tool (`resolveToolConcurrency`), so a slow approval of one call no longer
+ * holds back the calls approved before it.
  */
 export async function executeToolCalls(
 	currentContext: AgentContext,
@@ -68,15 +72,13 @@ export async function executeToolCalls(
 	config: AgentLoopConfig,
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
+	early: readonly EarlyRun[] = [],
 ): Promise<ExecutedToolCallBatch> {
 	const toolCalls = assistantMessage.content.filter((c) => c.type === "toolCall");
-	const hasSequentialToolCall = toolCalls.some(
-		(tc) => currentContext.tools?.find((t) => t.name === tc.name)?.executionMode === "sequential",
-	);
-	if (config.toolExecution === "sequential" || hasSequentialToolCall) {
+	if (config.toolExecution === "sequential") {
 		return executeToolCallsSequential(currentContext, assistantMessage, toolCalls, config, signal, emit);
 	}
-	return executeToolCallsParallel(currentContext, assistantMessage, toolCalls, config, signal, emit);
+	return executeToolCallsParallel(currentContext, assistantMessage, toolCalls, config, signal, emit, early);
 }
 
 type ExecutedToolCallBatch = {
@@ -153,8 +155,10 @@ async function executeToolCallsParallel(
 	config: AgentLoopConfig,
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
+	early: readonly EarlyRun[],
 ): Promise<ExecutedToolCallBatch> {
-	const finalizedCalls: FinalizedToolCallEntry[] = [];
+	const finalizedCalls: Array<AgentToolCallOutcome | Promise<AgentToolCallOutcome>> = [];
+	const schedule = new ToolSchedule();
 
 	for (const [index, toolCall] of toolCalls.entries()) {
 		await emit({
@@ -164,7 +168,13 @@ async function executeToolCallsParallel(
 			args: toolCall.arguments,
 		});
 
-		const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
+		const earlyPreparation = await early[index]?.preparation;
+		// A deferred early attempt left no trace: the call is prepared now, as any call that was not started early.
+		const earlyRun = earlyPreparation?.kind === "deferred" ? undefined : early[index];
+		const preparation =
+			earlyPreparation && earlyPreparation.kind !== "deferred"
+				? earlyPreparation
+				: await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
 		if (preparation.kind === "immediate") {
 			const finalized = {
 				toolCall,
@@ -180,37 +190,40 @@ async function executeToolCallsParallel(
 			continue;
 		}
 
-		finalizedCalls.push(async () => {
-			if (signal?.aborted) {
-				const finalized = {
-					toolCall,
-					result: createErrorToolResult("Operation aborted"),
-					isError: true,
-				} satisfies AgentToolCallOutcome;
-				await emitToolExecutionEnd(finalized, emit);
-				return finalized;
-			}
-			const executed = await executePreparedToolCall(preparation, signal, emitToolExecutionUpdate(toolCall, emit));
-			const finalized = await finalizeExecutedToolCall(
-				currentContext,
-				assistantMessage,
-				preparation,
-				executed,
-				config,
-				signal,
+		if (earlyRun) {
+			// Already running, shared: it joins the schedule so a later exclusive call still waits for it.
+			finalizedCalls.push(
+				schedule.add("shared", async () => {
+					const delivered = earlyRun.attach(emitToolExecutionUpdate(toolCall, emit));
+					const executed = (await earlyRun.executed)!;
+					await delivered;
+					const finalized = await finalizeExecutedToolCall(
+						currentContext,
+						assistantMessage,
+						preparation,
+						executed,
+						config,
+						signal,
+					);
+					await emitToolExecutionEnd(finalized, emit);
+					return finalized;
+				}),
 			);
-			await emitToolExecutionEnd(finalized, emit);
-			return finalized;
-		});
+			continue;
+		}
+		const concurrency = resolveToolConcurrency(preparation.tool, preparation.args);
+		finalizedCalls.push(
+			schedule.add(concurrency, () =>
+				runPreparedToolCall(currentContext, assistantMessage, preparation, config, signal, emit),
+			),
+		);
 		if (signal?.aborted) {
 			finalizedCalls.push(...(await skipRemainingToolCalls(toolCalls.slice(index + 1), emit)));
 			break;
 		}
 	}
 
-	const orderedFinalizedCalls = await Promise.all(
-		finalizedCalls.map((entry) => (typeof entry === "function" ? entry() : Promise.resolve(entry))),
-	);
+	const orderedFinalizedCalls = await Promise.all(finalizedCalls.map(async (entry) => entry));
 	const messages: ToolResultMessage[] = [];
 	for (const finalized of orderedFinalizedCalls) {
 		const toolResultMessage = createToolResultMessage(finalized);
@@ -222,6 +235,38 @@ async function executeToolCallsParallel(
 		messages,
 		terminate: shouldTerminateToolBatch(orderedFinalizedCalls),
 	};
+}
+
+/** Execute and finalize one prepared call, emitting its end; a call reached after an abort reports "Operation aborted". */
+async function runPreparedToolCall(
+	currentContext: AgentContext,
+	assistantMessage: AssistantMessage,
+	preparation: Extract<Awaited<ReturnType<typeof prepareToolCall>>, { kind: "prepared" }>,
+	config: AgentLoopConfig,
+	signal: AbortSignal | undefined,
+	emit: AgentEventSink,
+): Promise<AgentToolCallOutcome> {
+	const { toolCall } = preparation;
+	if (signal?.aborted) {
+		const finalized = {
+			toolCall,
+			result: createErrorToolResult("Operation aborted"),
+			isError: true,
+		} satisfies AgentToolCallOutcome;
+		await emitToolExecutionEnd(finalized, emit);
+		return finalized;
+	}
+	const executed = await executePreparedToolCall(preparation, signal, emitToolExecutionUpdate(toolCall, emit));
+	const finalized = await finalizeExecutedToolCall(
+		currentContext,
+		assistantMessage,
+		preparation,
+		executed,
+		config,
+		signal,
+	);
+	await emitToolExecutionEnd(finalized, emit);
+	return finalized;
 }
 
 /**
@@ -251,8 +296,6 @@ async function skipRemainingToolCalls(
 	}
 	return skipped;
 }
-
-type FinalizedToolCallEntry = AgentToolCallOutcome | (() => Promise<AgentToolCallOutcome>);
 
 function shouldTerminateToolBatch(finalizedCalls: AgentToolCallOutcome[]): boolean {
 	return finalizedCalls.length > 0 && finalizedCalls.every((finalized) => finalized.result.terminate === true);

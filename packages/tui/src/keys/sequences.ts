@@ -46,9 +46,7 @@ export const matchesLegacyModifierSequence = (data: string, key: LegacyModifierK
 	return false;
 };
 
-// =============================================================================
 // Kitty Protocol Parsing
-// =============================================================================
 
 /**
  * Event types from Kitty keyboard protocol (flag 2)

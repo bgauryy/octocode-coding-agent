@@ -101,13 +101,15 @@ export async function confineNode(
 
 const CONFINED_NOTE = `[Another agent holds a reservation, so node ran with \`${CONFINE_FLAGS}\` added: it may read files, and a file write or child process fails with ERR_ACCESS_DENIED. Use the file tool for edits.]`;
 
-/** Adds the note to the result of each call the gate rewrote; returns how the gate marks one. */
-export function registerConfinedNote(api: ExtensionAPI): (toolCallId: string | undefined) => void {
-	const rewritten = new Set<string>();
+/** Adds the gate's note to the result of each call it marked (by default the node note); returns how the gate marks one. */
+export function registerConfinedNote(api: ExtensionAPI): (toolCallId: string | undefined, note?: string) => void {
+	const rewritten = new Map<string, string>();
 	api.on("tool_result", async (event) => {
-		if (!rewritten.delete(event.toolCallId)) return undefined;
+		const note = rewritten.get(event.toolCallId);
+		if (note === undefined) return undefined;
+		rewritten.delete(event.toolCallId);
 		return {
-			content: [...event.content, { type: "text", text: CONFINED_NOTE }],
+			content: [...event.content, { type: "text", text: note }],
 			...(event.structuredContent === undefined ? {} : { structuredContent: event.structuredContent }),
 		};
 	});
@@ -115,7 +117,7 @@ export function registerConfinedNote(api: ExtensionAPI): (toolCallId: string | u
 	api.on("message_end", async (event) => {
 		if (event.message.role === "toolResult") rewritten.delete(event.message.toolCallId);
 	});
-	return (toolCallId) => {
-		if (toolCallId) rewritten.add(toolCallId);
+	return (toolCallId, note = CONFINED_NOTE) => {
+		if (toolCallId) rewritten.set(toolCallId, note);
 	};
 }

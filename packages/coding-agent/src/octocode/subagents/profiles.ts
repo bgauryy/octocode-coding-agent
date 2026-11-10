@@ -23,6 +23,7 @@ import {
 	toolList,
 	withCoreTools,
 } from "./profile-tools.ts";
+import { MCP_DEFER_ROLES, type McpDeferRole } from "../../../../mcp/src/deferral.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 
 export interface AgentProfile {
@@ -40,6 +41,8 @@ export interface AgentProfile {
 	maxRequests?: number;
 	/** Seconds a finished background run of this profile stays reachable for a follow-up message (`linger.ts`); replaces `OCTOCODE_SUBAGENT_LINGER_SECONDS` for it, and 0 turns it off. A `blocked` report still gets at least `BLOCKED_LINGER_SECONDS`. */
 	linger?: number;
+	/** MCP tool roles (`readOnly`) whose tools the child defers instead of declaring: still callable, loaded through the `mcp` tool (`mcpDefer` front matter; the roles come from each server's `roles`). */
+	mcpDefer?: McpDeferRole[];
 	/** Legacy opt-out, rejected because specialists require local research. */
 	mcp?: false;
 	/** True: the child runs the user's command hooks (`OCTOCODE_SUBAGENT_HOOKS`); by default subagents do not. */
@@ -149,6 +152,7 @@ export function parseProfile(
 	const tools = field("tools");
 	const excludeTools = field("excludeTools");
 	const model = field("model");
+	const mcpDefer = deferRoleNames(frontmatter.mcpDefer);
 	const { declared, ignored } = declaredPermissions(frontmatter.permissions);
 	const name = field("name") ?? fallbackName;
 	// Switches take YAML booleans only: a quoted "false" is a string, and a string never flips a switch.
@@ -180,6 +184,7 @@ export function parseProfile(
 		...(tools && !lean ? { tools: withCoreTools(tools, selected) } : {}),
 		...(skills ? { skills } : {}),
 		...(excludeTools ? { excludeTools } : {}),
+		...(mcpDefer ? { mcpDefer } : {}),
 		...(model ? { model } : {}),
 		...(headless === undefined ? {} : { headless }),
 		...(requests === undefined ? {} : { maxRequests: requests }),
@@ -190,6 +195,19 @@ export function parseProfile(
 		...(ignored.length > 0 ? { ignoredPermissions: ignored } : {}),
 		hash: shortHash(text),
 	};
+}
+
+/** `mcpDefer:` front matter: a role name or a list of them (`none` or empty: nothing deferred); an unknown role fails the profile. */
+function deferRoleNames(value: unknown): McpDeferRole[] | undefined {
+	if (value === undefined || value === null) return undefined;
+	const names = typeof value === "string" ? toolList(value) : value;
+	if (!Array.isArray(names) || !names.every((name) => typeof name === "string"))
+		throw new Error(`mcpDefer must be a role name or a list of them, not ${JSON.stringify(value)}`);
+	const roles = names.map((name) => name.trim()).filter((name) => name && name !== "none");
+	const unknown = roles.filter((name) => !MCP_DEFER_ROLES.some((role) => role === name));
+	if (unknown.length > 0)
+		throw new Error(`mcpDefer names unknown role ${unknown.join(", ")} (use ${MCP_DEFER_ROLES.join(", ")} or none)`);
+	return roles.length > 0 ? MCP_DEFER_ROLES.filter((role) => roles.includes(role)) : undefined;
 }
 
 /** `skills:` front matter: a comma-separated string or a YAML list of skill names. */
@@ -222,7 +240,6 @@ export function profileTools(profile?: AgentProfile): string {
 		: withCoreTools(profile!.tools!, selected);
 }
 
-/** The tools a profile excludes, as a list. */
 export function profileExcludes(excludeTools: string | undefined): string[] {
 	return toolList(excludeTools);
 }
@@ -241,7 +258,6 @@ export function profileSelectsTool(
 	);
 }
 
-/** The prefix of the browser MCP server's tools. */
 const BROWSER_MCP_PREFIX = `${mcpNamespace(BROWSER_SERVER)}__`;
 
 /** Whether the profile selects the browser MCP server's tools: the capability `headless` applies to. */

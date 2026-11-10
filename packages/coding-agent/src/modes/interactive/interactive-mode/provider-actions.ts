@@ -5,13 +5,15 @@ import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { confirmAction, successNotice } from "./provider-ui.ts";
 
 /** Describe configuration without resolving secrets or claiming a successful network login. */
-export function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): string {
+export async function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): Promise<string> {
 	const runtime = host.session.modelRuntime;
 	const status = runtime.getProviderAuthStatus(id);
 	if (!status.configured) return "Not configured";
-	const method = runtime.isUsingOAuth(id) ? "Account" : "API key";
-	return `${method} configured · ${credentialSource(host, id)}`;
+	return `${KIND_LABELS[await runtime.getCredentialKind(id, AbortSignal.timeout(15_000))]} configured · ${credentialSource(host, id)}`;
 }
+
+/** The credential kind in a provider's words, for its page. */
+const KIND_LABELS = { account: "Account", subscription: "Subscription", key: "API key" } as const;
 
 /** Where the credential comes from, for a row: a label or variable name, never a value. */
 export function credentialSource(host: Pick<ProviderManagerHost, "session">, id: string): string {
@@ -63,7 +65,7 @@ export async function removeProviderCredential(host: ProviderManagerHost, id: st
 			successNotice(
 				`Removed ${what} for`,
 				name,
-				`${remains ? `Still configured: ${providerStatus(host, id)}. ` : ""}Environment and models.json are unchanged.`,
+				`${remains ? `Still configured: ${await providerStatus(host, id)}. ` : ""}Environment and models.json are unchanged.`,
 			),
 		);
 		return true;

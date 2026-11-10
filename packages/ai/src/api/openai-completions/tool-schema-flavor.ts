@@ -89,7 +89,7 @@ function inferType(node: Record<string, unknown>): string {
 
 /**
  * MFJS cannot express boolean subschemas, including an exact `false`; both use its permissive object form.
- * The original schema remains authoritative for local argument validation (can1357/oh-my-pi#5955).
+ * The original schema remains authoritative for local argument validation.
  */
 function booleanSchemaObject(): Record<string, unknown> {
 	return {};

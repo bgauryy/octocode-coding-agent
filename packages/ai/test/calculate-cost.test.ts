@@ -61,3 +61,12 @@ describe("calculateCost cache writes", () => {
 		expect(cost.cacheWrite).toBe(0);
 	});
 });
+
+describe("calculateCost short-write clamp", () => {
+	it("never prices a negative short write when split tokens exceed the aggregate", () => {
+		const u = usage({ cacheWrite: 100, cacheWrite1h: 150 });
+		const cost = calculateCost(model({ input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 }), u);
+		// Only the 150 long tokens at 2x input (8/Mtok); the short part is clamped at 0, not -50 at 5/Mtok.
+		expect(cost.cacheWrite).toBeCloseTo((8 * 150) / 1_000_000, 12);
+	});
+});

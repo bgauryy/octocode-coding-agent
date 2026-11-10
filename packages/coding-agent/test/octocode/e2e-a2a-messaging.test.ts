@@ -23,7 +23,7 @@ import {
 } from "./e2e-real-process-harness.ts";
 
 /**
- * B112: team mail between a session and its subagents, through real processes on the scripted model: a parent and its
+ * Team mail between a session and its subagents, through real processes on the scripted model: a parent and its
  * children talk both ways, a busy child reads mail at its next step, an idle parent is woken, a child's message to
  * another session tree is refused, and a stand-up broadcast collects every child's answer.
  */
@@ -36,9 +36,9 @@ beforeAll(async () => {
 afterAll(async () => {
 	await endpoint.close();
 });
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 

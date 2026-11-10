@@ -5,6 +5,8 @@ import type { HookEvent, HookProtocol } from "./catalog.ts";
 
 /** Most bytes Octocode reads back from any hook: a command's stdout, an HTTP response, an MCP or prompt result. */
 export const HOOK_OUTPUT_MAX_BYTES = 64 * 1024;
+/** Most bytes read from a command hook's stdout or stderr: a valid JSON decision must not be cut into invalid JSON. */
+export const HOOK_COMMAND_OUTPUT_MAX_BYTES = 1024 * 1024;
 /** The longest timeout, in seconds, a hook may configure. */
 export const HOOK_MAX_TIMEOUT_S = 600;
 
@@ -27,6 +29,8 @@ export interface HookBase {
 	origins?: HookSource[];
 	/** Opt-in (`"failClosed": true`): a pre-tool or pre-message failure denies the operation. */
 	failClosed?: true;
+	/** Claude `if`: a permission rule (e.g. "Bash(rm *)"); the hook runs only for calls it matches. */
+	if?: string;
 	/** A required gate with unsupported configuration denies calls without starting a process. */
 	configurationError?: string;
 }

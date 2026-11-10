@@ -21,7 +21,6 @@ export interface ExtensionRuntimeHost extends Pick<SessionInternals, "session" |
 	readonly extensionRunnerRef: { current?: ExtensionRunner } | undefined;
 	readonly usesDefaultTools: boolean;
 	readonly defaultToolModifiers: string[];
-	/** Make `runner` the session's extension runner. */
 	setExtensionRunner(runner: ExtensionRunner): void;
 	syncQueueModesFromSettings(): void;
 }

@@ -40,7 +40,7 @@ export function buildGoogleParams<T extends GoogleApiType>(
 	const currentTools = getCurrentTools(context.messages);
 
 	const generationConfig: GenerateContentConfig = {};
-	if (options.temperature !== undefined) {
+	if (options.temperature !== undefined && model.compat?.supportsTemperature !== false) {
 		generationConfig.temperature = options.temperature;
 	}
 	if (options.maxTokens !== undefined) {

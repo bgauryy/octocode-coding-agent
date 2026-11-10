@@ -35,7 +35,6 @@ import type {
 import type { McpServersChangeEvent, ResourcesDiscoverEvent, SessionEvent } from "./session-events.ts";
 import type { ToolCallEvent, ToolResultEvent } from "./tool-events.ts";
 
-/** Union of all event types */
 export type ExtensionEvent =
 	| ResourcesDiscoverEvent
 	| McpServersChangeEvent
@@ -67,7 +66,6 @@ export type ExtensionEvent =
 	| ToolCallEvent
 	| ToolResultEvent;
 
-// ============================================================================
 // Event Results
 // ============================================================================
 
@@ -86,6 +84,8 @@ export interface ToolCallEventResult {
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.
 	 */
 	terminate?: boolean;
+	/** Only for an `early` call that would need a dialog: withdraw it from the early set; it is judged again, normally, after its message ended. */
+	defer?: boolean;
 	/**
 	 * Run again right before the tool executes, with the same `event.input` the handler saw (a hook may have rewritten it).
 	 * A parallel batch approves every call before it runs any, and an approval can wait on a user, so state it relied on
@@ -94,7 +94,6 @@ export interface ToolCallEventResult {
 	revalidate?: (signal?: AbortSignal) => Promise<{ block?: boolean; reason?: string } | undefined>;
 }
 
-/** Result from user_bash event handler */
 export type UserBashEventResult =
 	| {
 			/** Custom operations to use for execution */

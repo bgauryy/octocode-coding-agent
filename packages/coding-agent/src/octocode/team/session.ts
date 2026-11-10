@@ -7,7 +7,7 @@ import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
 import { type EndReason, settleReason } from "./session/end-reason.ts";
 import { claimName, joinAtStart } from "./session/membership.ts";
 import { endWithParent, watchParentProcess } from "./session/parent.ts";
-import { lockPaths, reservationText, unlockPaths } from "./session/reservations.ts";
+import { isReserved, lockPaths, reservationText, unlockPaths } from "./session/reservations.ts";
 import * as refs from "./session/references.ts";
 import { type SendResult, sendMessage } from "./session/send.ts";
 import type { TeamView } from "./ticker.ts";
@@ -186,6 +186,11 @@ export class Team extends TeamState {
 
 	unlock(paths?: string[]): number {
 		return unlockPaths(this.reservationHost(), paths);
+	}
+
+	/** Whether any agent in the team or agents-communication, this one included, holds a live reservation covering the file. */
+	reserved(absolute: string): boolean {
+		return isReserved(this.reservationHost(), absolute);
 	}
 
 	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined; with no file, any reservation another agent holds. */

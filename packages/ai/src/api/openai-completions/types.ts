@@ -26,7 +26,9 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	| "supportsMidConvoToolAdditions"
 	| "vllmPriority"
 	| "toolSchemaFlavor"
+	| "supportsTemperature"
 > & {
+	supportsTemperature?: OpenAICompletionsCompat["supportsTemperature"];
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 	supportsThinkingTokenBudget?: OpenAICompletionsCompat["supportsThinkingTokenBudget"];
 	thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];

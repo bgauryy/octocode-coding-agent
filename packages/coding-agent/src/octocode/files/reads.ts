@@ -106,7 +106,6 @@ export function toolCallArguments(messages: readonly MessageRef[]): Map<string, 
 /** The latest result that put a file in the model's view. */
 interface SeenFile {
 	file: string;
-	/** The entry of that result. */
 	id: string;
 	/** When the result was made (ms); the file is unchanged since if it was not modified after this. */
 	at: number | undefined;

@@ -35,9 +35,9 @@ beforeAll(async () => {
 afterAll(async () => {
 	await endpoint.close();
 });
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 

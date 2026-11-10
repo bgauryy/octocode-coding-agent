@@ -1,9 +1,10 @@
 import { accessSync, constants } from "node:fs";
-import { delimiter, win32 } from "node:path";
+import { delimiter, join, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { getBinDir } from "../config.ts";
+import { getAgentDir, getBinDir } from "../config.ts";
+import { modelsEnvKeyNames } from "../core/models-json-keys.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
 
 export interface ShellConfig {
@@ -241,7 +242,7 @@ export function setShellKeepsProviderKeys(keep: boolean): void {
 /**
  * The environment every shell command starts from: this process's, with the `setShellPathEntries` folders and then
  * Octocode's `bin` first on the path, and without the
- * provider API keys it found (`bash.inheritProviderKeys` keeps them). A command's output reaches the model and a build
+ * provider API keys it found, including those custom providers in `models.json` name (`bash.inheritProviderKeys` keeps them). A command's output reaches the model and a build
  * script reads its environment, while the session itself already holds what it needs. Same-user `auth.json` reads remain
  * possible, so this is defence in depth, as `web-daemon/spawn-env.ts` is for the daemon and the MCP transport's filter for
  * servers. A tool's own token (`GH_TOKEN`) is the user's tool working, and stays.
@@ -254,9 +255,12 @@ export function getShellEnv(): NodeJS.ProcessEnv {
 	const updatedPath = [...missing, currentPath].filter(Boolean).join(delimiter);
 
 	const env: NodeJS.ProcessEnv = { ...process.env, [pathKey]: updatedPath };
-	if (!keepProviderKeys)
+	if (!keepProviderKeys) {
 		for (const provider of builtinProviders())
 			for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) delete env[name];
+		// A custom provider's key comes from the variable its `apiKey` names (`$NAME`).
+		for (const name of modelsEnvKeyNames(join(getAgentDir(), "models.json"))) delete env[name];
+	}
 	return env;
 }
 
@@ -295,6 +299,11 @@ export function trackDetachedChildPid(pid: number, options?: { graceful?: boolea
 export function untrackDetachedChildPid(pid: number): void {
 	trackedDetachedChildPids.delete(pid);
 	gracefulDetachedChildPids.delete(pid);
+}
+
+/** Stops (`SIGSTOP`) or continues (`SIGCONT`) the process group of every tracked child, as this process is suspended or resumed. */
+export function signalTrackedDetachedChildren(signal: "SIGSTOP" | "SIGCONT"): void {
+	for (const pid of trackedDetachedChildPids) signalTree(pid, signal);
 }
 
 export function killTrackedDetachedChildren(options?: { sparingGraceful?: boolean }): void {

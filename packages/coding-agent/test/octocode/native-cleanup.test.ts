@@ -6,7 +6,7 @@ import { getKeybindings, setKeybindings, visibleWidth } from "@octocodeai/octoco
 import { describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
-import { CHIPS, chipText, shortChip } from "../../src/octocode/permission/mode.ts";
+import { CHIPS, chipParts, chipShortLabel, chipText } from "../../src/octocode/permission/mode.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { appKey, expandKey } from "../../src/octocode/shared/text.ts";
 import { hintText } from "../../src/octocode/ui/editor.ts";
@@ -34,8 +34,8 @@ describe("native cleanup regressions", () => {
 			// The chip, not the editor hint, is the one place that names the permission key.
 			expect(hintText(200)).not.toContain("permission");
 			expect(chipText("workspace")).toBe("permission: workspace · ctrl+y");
-			expect(shortChip(chipText("full", { actions: 2, warnings: 1 }))).toBe("⏵⏵ full · 2 actions · 1 ⚠");
-			expect(shortChip(chipText("manual"))).toBe("⏸ manual");
+			expect(chipShortLabel(chipParts("full", { actions: 2, warnings: 1 }))).toBe("⏵⏵ full · 2 actions · 1 ⚠");
+			expect(chipShortLabel(chipParts("manual"))).toBe("⏸ manual");
 			expect(expandKey()).toBe("ctrl+e");
 			expect(appKey("app.thinking.toggle")).toBe("unbound");
 			bindings.setUserBindings({ "app.permission.cycle": [] });

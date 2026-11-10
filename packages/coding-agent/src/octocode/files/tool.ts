@@ -75,8 +75,11 @@ export function registerFileTool(
 				promptGuidelines: renderInstruction("tools/file/guidelines.md").split("\n"),
 				parameters: Params,
 				prepareArguments: renameReasoning,
-				// `file` calls run one at a time (the guard, review dialog and checkpoints are shared); other tools batched beside
-				// them still run in parallel. Each path's writes also queue behind Octocode's edit/write through withFileMutationQueue.
+				// Exclusive in its batch: a `file` call starts after every earlier call of the message ended and every later one
+				// waits for it, so a read or a check batched after an edit sees the edit. Calls on either side still overlap.
+				executionMode: "sequential",
+				// `file` calls also run one at a time across batches (the guard, review dialog and checkpoints are shared). Each
+				// path's writes also queue behind Octocode's edit/write through withFileMutationQueue.
 				execute: async (
 					id: string,
 					params: Static<typeof Params>,

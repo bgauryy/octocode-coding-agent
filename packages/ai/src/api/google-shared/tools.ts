@@ -100,7 +100,6 @@ export function supportsGoogleStrictToolSampling(modelId: string): boolean {
 	return majorVersion !== undefined && majorVersion >= 3;
 }
 
-/** Map tool choice string to Gemini FunctionCallingConfigMode. */
 function mapToolChoice(choice: string): FunctionCallingConfigMode {
 	switch (choice) {
 		case "auto":

@@ -1,4 +1,3 @@
-/** Options for {@link pagePolicy}. */
 export interface PagePolicyOptions {
 	/**
 	 * The `script-src` sources. The meta tag allows the page's own inline script with `'unsafe-inline'`; a header names

@@ -2,11 +2,6 @@ import type { RpcCommand, RpcExtensionErrorEvent } from "../rpc-types.ts";
 import type { JsonAgentSessionEvent } from "../../json-event.ts";
 import type { RpcReady } from "../session-identity.ts";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/** Distributive Omit that works with union types */
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
 /** RpcCommand without the id field (for internal send) */
@@ -25,15 +20,10 @@ export interface RpcClientOptions {
 	onExtensionUIDismiss?: (id: string) => void;
 	/** Path to the CLI entry point, run with `node` (default: `dist/bundle/cli.js`, relative to `cwd`) */
 	cliPath?: string;
-	/** Working directory for the agent */
 	cwd?: string;
-	/** Environment variables */
 	env?: Record<string, string>;
-	/** Provider to use */
 	provider?: string;
-	/** Model ID to use */
 	model?: string;
-	/** Additional CLI arguments */
 	args?: string[];
 	/** Own the worker's whole process tree; stop gives native cleanup 10 seconds before killing survivors. */
 	ownProcessTree?: boolean;

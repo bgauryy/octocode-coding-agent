@@ -95,6 +95,7 @@ describe("launch env of a replaced default entry", () => {
 			WORKSPACE_ROOT: "/w",
 			ALLOWED_PATHS: "${researchRoots}",
 			OCTOCODE_TRUST_PROJECT_LSP_CONFIG: "${untrusted:false}",
+			OCTOCODE_ENABLE_CLONE: "true",
 			EXTRA: "1",
 		});
 		// An explicit ALLOWED_PATHS is the one policy that replaces the roots.

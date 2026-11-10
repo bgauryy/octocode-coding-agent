@@ -29,9 +29,9 @@ beforeAll(async () => {
 afterAll(async () => {
 	await endpoint.close();
 });
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 
@@ -104,15 +104,15 @@ describe("harness context in the first model request", () => {
 		expect(system).not.toContain("CLAUDE-MD-MARKER");
 	});
 
-	it("2: a .agents skill is listed with its path; a .claude skill only once harness:claude is on (global toggle)", async () => {
+	it("2: a .agents skill is listed by name (the skill tool loads it); a .claude skill only once harness:claude is on (global toggle)", async () => {
 		const box = sandbox(endpoint);
 		const agentsSkill = skillFile(box.project, ".agents", "agents-demo");
 		skillFile(box.project, ".claude", "claude-demo");
 
 		const off = await firstRequest(box);
 		const offSkills = section(off.system, "skills");
-		expect(offSkills).toContain("agents-demo");
-		expect(offSkills, "the skills list gives the SKILL.md path").toContain(agentsSkill);
+		expect(offSkills).toContain('<skill name="agents-demo">');
+		expect(offSkills, "the skill tool loads skills, so the list carries no SKILL.md path").not.toContain(agentsSkill);
 		expect(off.system, "Claude skill is absent while its harness is off").not.toContain("claude-demo");
 		expect(off.system, "a skill body loads on demand").not.toContain("BODY-agents-demo");
 

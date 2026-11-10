@@ -8,7 +8,8 @@
 	"env": {
 		"WORKSPACE_ROOT": "${workspace}",
 		"ALLOWED_PATHS": "${researchRoots}",
-		"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}"
+		"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}",
+		"OCTOCODE_ENABLE_CLONE": "true"
 	},
 	"install": { "npm": "octocode-mcp", "version": "20.2.0", "bin": "octocode-mcp", "hostDependency": true },
 	"roles": {
@@ -22,6 +23,7 @@
 			"ghGetFileContent",
 			"ghSearchHistory",
 			"ghGetHistoryItem",
+			"ghCloneRepo",
 			"artifactSearch",
 			"securityCheck"
 		]

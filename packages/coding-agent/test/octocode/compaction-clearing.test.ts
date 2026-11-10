@@ -87,6 +87,12 @@ const reply = (timestamp: number): Reply => ({
 });
 
 /** A registered extension over a session holding `messages`; `appendEntry` writes land in the branch, as in Octocode. */
+/** The event as the runner emits it: handlers see the messages without system ones, and the whole transcript beside them. */
+function contextEvent(list: unknown[]) {
+	const transcript = structuredClone(list) as Array<{ role: string }>;
+	return { type: "context", messages: transcript.filter((message) => message.role !== "system"), transcript };
+}
+
 function setup(
 	messages: unknown[],
 	options: {
@@ -137,14 +143,10 @@ function setup(
 		/** A model request made at `at`: the `context` handler decides the clearing before every request, in a run or at its start. */
 		start: (at: number) => {
 			vi.spyOn(Date, "now").mockReturnValue(at);
-			return fake.fire("context", { type: "context", messages: structuredClone(messages) }, ctx);
+			return fake.fire("context", contextEvent(messages), ctx);
 		},
 		context: async (list: unknown[] = messages) =>
-			(
-				(await fake.fire("context", { type: "context", messages: structuredClone(list) }, ctx)) as
-					| { messages?: any[] }
-					| undefined
-			)?.messages ?? list,
+			((await fake.fire("context", contextEvent(list), ctx)) as { messages?: any[] } | undefined)?.messages ?? list,
 	};
 }
 
@@ -222,6 +224,12 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 			const kept = setup([head, ...idleMessages(reads(40)), sectionUpdate]);
 			await kept.start(warmAt);
 			expect(kept.entries).toEqual([]);
+		});
+
+		it("clears when a trailing system update folds into the leading prompt, though handlers never see system messages", async () => {
+			const s = setup([head, ...idleMessages(reads(40)), toolUpdate]);
+			await s.start(warmAt);
+			expect(s.entries).toHaveLength(1);
 		});
 
 		it("clears for a model switch", async () => {

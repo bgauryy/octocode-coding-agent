@@ -21,6 +21,9 @@ import {
 import type { ModelAvailability } from "./availability.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 
+/** How a provider is signed in: a stored account login, a subscription (login or token), or a key. */
+export type CredentialKind = "account" | "subscription" | "key";
+
 /** The read-only catalog and availability queries of a model runtime, over the collections it owns. */
 export abstract class ModelCatalog {
 	protected abstract readonly models: MutableModels;
@@ -120,6 +123,28 @@ export abstract class ModelCatalog {
 
 	isUsingSubscription(providerId: string): boolean {
 		return this.isUsingOAuth(providerId) && this.models.getProvider(providerId)?.auth.oauth?.isSubscription === true;
+	}
+
+	/**
+	 * Which kind of credential a provider uses. A stored login is `account`, or `subscription` when the provider
+	 * says its logins are. A key the provider recognizes as a subscription token (its own `isSubscriptionKey`) is
+	 * `subscription` too. The key is resolved the way a request resolves it, inspected here and not kept; a key that
+	 * cannot be resolved reads as `key`, since it was stored as one.
+	 */
+	async getCredentialKind(providerId: string, signal?: AbortSignal): Promise<CredentialKind> {
+		if (this.isUsingOAuth(providerId)) return this.isUsingSubscription(providerId) ? "subscription" : "account";
+		const recognizes = this.models.getProvider(providerId)?.auth.apiKey?.isSubscriptionKey;
+		if (!recognizes || !this.hasConfiguredAuth(providerId)) return "key";
+		try {
+			const apiKey = (await this.models.getAuth(providerId, { signal }))?.auth.apiKey;
+			return apiKey && recognizes(apiKey) ? "subscription" : "key";
+		} catch {
+			return "key";
+		}
+	}
+
+	isProviderDisabled(providerId: string): boolean {
+		return this.availability.isProviderDisabled(providerId);
 	}
 
 	hasConfiguredAuth(providerId: string): boolean {

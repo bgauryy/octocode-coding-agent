@@ -32,7 +32,6 @@ export function serverGeneratedDir(agentDir: string, cwd: string, scope: string 
 	return project ? join(project.dir, "mcp") : generatedDir(agentDir);
 }
 
-/** File-safe stem for a server name. */
 function fileStem(server: string): string {
 	return server.replace(/[^\w.-]/g, "_");
 }

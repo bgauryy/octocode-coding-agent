@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 
-/** A timer row as stored (`TIMERS_SCHEMA`). */
 export interface TimerRow {
 	id: number;
 	workspace_id: string;
@@ -54,7 +53,6 @@ export interface NewTimer {
 
 const row = (value: unknown) => value as TimerRow | undefined;
 
-/** Inserts an active timer and returns it. */
 export function insert(db: DatabaseSync, timer: NewTimer): TimerRow {
 	return row(
 		db

@@ -1,12 +1,14 @@
 import type { AssistantMessage } from "../types.ts";
 import { createAbortError, sleepUnlessAborted } from "./abort.ts";
-import { clearsWithWaiting, isRetryableAssistantError } from "./retry-classes.ts";
+import { clearsWithWaiting, isOfflineText, isRetryableAssistantError } from "./retry-classes.ts";
 
 export {
+	isOfflineText,
 	isRateLimitedText,
 	isRetryableAssistantError,
 	isRetryableErrorText,
 	isTerminalProviderLimitError,
+	isUsageLimitError,
 } from "./retry-classes.ts";
 
 /** A failure that clears by waiting gets at least this many retries, because a token bucket refills meanwhile and an outage ends. */
@@ -15,9 +17,16 @@ export const RATE_LIMIT_MIN_RETRIES = 6;
 export const RATE_LIMIT_WINDOW_MS = 180_000;
 /** Spread added on top of a provider-requested delay, so sessions given the same `retry-after` do not return together. */
 const RETRY_AFTER_SPREAD_MS = 1000;
+/** Wall-clock time from the first failure during which a no-route network failure keeps retrying: the connection may return. */
+export const OFFLINE_WINDOW_MS = 600_000;
+/** Longest wait between two retries of a no-route network failure, so a returning connection is noticed soon. */
+export const OFFLINE_MAX_GAP_MS = 30_000;
+/** Upper bound on retries of a no-route network failure; the window ends them first unless each attempt fails at once. */
+const OFFLINE_MAX_RETRIES = 40;
 
 /** Retries allowed for this failure: the configured budget, raised for a failure that clears by waiting unless retries are off. */
 export function retryBudget(maxRetries: number, errorText: string): number {
+	if (maxRetries > 0 && isOfflineText(errorText)) return Math.max(maxRetries, OFFLINE_MAX_RETRIES);
 	if (maxRetries <= 0 || !clearsWithWaiting(errorText)) return maxRetries;
 	return Math.max(maxRetries, RATE_LIMIT_MIN_RETRIES);
 }
@@ -29,7 +38,8 @@ export function retryBudget(maxRetries: number, errorText: string): number {
  */
 export function mayRetry(attempt: number, maxRetries: number, errorText: string, elapsedMs: number): boolean {
 	if (attempt > retryBudget(maxRetries, errorText)) return false;
-	return attempt <= maxRetries || elapsedMs < RATE_LIMIT_WINDOW_MS;
+	const windowMs = isOfflineText(errorText) ? OFFLINE_WINDOW_MS : RATE_LIMIT_WINDOW_MS;
+	return attempt <= maxRetries || elapsedMs < windowMs;
 }
 
 /**
@@ -46,6 +56,11 @@ export function retryDelayFor(
 	random: () => number = Math.random,
 ): number {
 	const backoffMs = retryDelayMs(policy, attempt);
+	if (isOfflineText(failure.errorMessage ?? "")) {
+		// Retrying sooner than the gap costs nothing while offline: no request reaches a provider.
+		const spread = Math.round(backoffMs + (backoffMs / 2) * random());
+		return Math.min(spread, OFFLINE_MAX_GAP_MS, Math.max(0, OFFLINE_WINDOW_MS - elapsedMs));
+	}
 	if (!clearsWithWaiting(failure.errorMessage ?? "")) return backoffMs;
 	const cap =
 		policy.maxAgentDelayMs === undefined ? Number.POSITIVE_INFINITY : Math.max(backoffMs, policy.maxAgentDelayMs);

@@ -115,7 +115,6 @@ export interface SessionManagerApi {
 	/** Append a branch-local edit to an earlier model-visible entry. */
 	appendContextEdit(targetId: string, replacement: ContextEditEntry["replacement"]): string;
 
-	// =========================================================================
 	// Tree Traversal
 	// =========================================================================
 
@@ -185,7 +184,6 @@ export interface SessionManagerApi {
 	 */
 	getTree(): SessionTreeNode[];
 
-	// =========================================================================
 	// Branching
 	// =========================================================================
 

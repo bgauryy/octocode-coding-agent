@@ -534,7 +534,7 @@ describe("AgentSession prompt characterization", () => {
 		await compactionStarted;
 
 		try {
-			// Contract change (B220): a prompt during manual compaction waits and runs once the compaction ends.
+			// A prompt during manual compaction waits and runs once the compaction ends.
 			harness.appendResponses([fauxAssistantMessage("three")]);
 			await expect(harness.session.prompt("third")).resolves.toBeUndefined();
 			expect(getUserTexts(harness)).not.toContain("third");

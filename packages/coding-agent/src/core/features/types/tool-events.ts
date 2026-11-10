@@ -4,7 +4,6 @@ import type { ImageContent, JsonValue, TextContent, Usage } from "@octocodeai/oc
 import type { BashToolDetails } from "../../tools/bash/outcome.ts";
 import type { BashToolInput } from "../../tools/bash/schema.ts";
 
-// ============================================================================
 // Tool Events
 // ============================================================================
 
@@ -20,6 +19,8 @@ interface ToolCallEventBase {
 	origin?: "model" | "tool" | "user" | "hook";
 	/** Set when another tool (for example another tool) issued this call. */
 	parentToolCallId?: string;
+	/** Set while the call starts before its assistant message ended (`toolExecution.earlyStart`): no dialog may open; answer `defer` instead. */
+	early?: true;
 }
 
 interface BashToolCallEvent extends ToolCallEventBase {
@@ -71,7 +72,6 @@ export interface CustomToolResultEvent extends ToolResultEventBase {
 /** Fired after a tool executes. Can modify result. */
 export type ToolResultEvent = BashToolResultEvent | CustomToolResultEvent;
 
-// Type guards for ToolResultEvent
 export function isBashToolResult(e: ToolResultEvent): e is BashToolResultEvent {
 	return e.toolName === "bash";
 }

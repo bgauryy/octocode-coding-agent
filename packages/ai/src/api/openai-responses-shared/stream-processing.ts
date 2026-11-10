@@ -14,10 +14,6 @@ import { responseAnnotation, responseAnnotations } from "./rich-content.ts";
 import { ResponsesArtifacts } from "./stream-artifacts.ts";
 import type { OpenAIResponsesStreamOptions } from "./types.ts";
 
-// =============================================================================
-// Stream processing
-// =============================================================================
-
 type StreamingToolCall = ToolCall & {
 	partialJson?: string;
 	customInput?: {

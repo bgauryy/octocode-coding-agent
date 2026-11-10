@@ -14,6 +14,7 @@ import {
 } from "./compaction/index.ts";
 import type { ExtensionRunner } from "./features/index.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type CompactionReason = "manual" | "threshold" | "overflow";
 
@@ -64,6 +65,7 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
  */
 export async function runCompaction(host: CompactionHost, run: CompactionRun): Promise<CompactionResult> {
 	const { reason, willRetry, preparation, signal } = run;
+	const startedAt = new Date().toISOString();
 	let extensionCompaction: CompactionResult | undefined;
 
 	if (host.extensionRunner.hasHandlers("session_before_compact")) {
@@ -113,7 +115,12 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 			sessionFile: host.sessionManager.getSessionFile(),
 		},
 	);
-	const { summary, details } = finalized;
+	const { summary } = finalized;
+	// The entry's own timestamp is its save time; `startedAt` makes the run's wall time measurable.
+	const details =
+		finalized.details === undefined || isRecord(finalized.details)
+			? { ...(finalized.details as Record<string, unknown> | undefined), startedAt }
+			: finalized.details;
 
 	const compactionId = host.sessionManager.appendCompaction(
 		summary,
@@ -126,7 +133,6 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 	host.refreshContext();
 	const estimatedTokensAfter = estimateMessagesTokens(host.sessionManager.buildSessionProjection().messages);
 
-	// Get the saved compaction entry for the extension event
 	const savedCompactionEntry = host.sessionManager.getEntry(compactionId);
 	if (host.extensionRunner && savedCompactionEntry?.type === "compaction") {
 		await host.extensionRunner.emit({

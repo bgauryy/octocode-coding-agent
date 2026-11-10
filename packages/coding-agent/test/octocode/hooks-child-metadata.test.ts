@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hookPayload } from "../../src/octocode/hooks/profiles.ts";
 import { HOOK_SETTINGS } from "./helpers.ts";
+
+afterEach(() => vi.unstubAllEnvs());
 
 const metadata = {
 	model: "model",
@@ -93,7 +95,7 @@ it.each([false, true])("requires actual child marker (child=%s)", async (child) 
 	ctx.sessionManager.getSessionId = () => "actual-child";
 	const view = registerHooks(
 		fake.api,
-		child ? { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" } : {},
+		child ? { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" } : {},
 		home,
 		undefined,
 		() => ({ agentName: "stale-worker", agentType: "reviewer" }),
@@ -150,6 +152,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 			},
 		}),
 	);
+	// Codex hooks reference, common input fields: "Subagent hooks use the parent session id."
 	const fake = fakeHost(HOOK_SETTINGS);
 	let sessionId = "original-child",
 		agentType = "reviewer",
@@ -160,7 +163,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 	ctx.getTurnId = () => "original-turn";
 	const view = registerHooks(
 		fake.api,
-		{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" },
+		{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" },
 		home,
 		undefined,
 		() => {
@@ -200,7 +203,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 		expect(captured).toMatchObject({
 			agent_id: "original-child",
 			agent_type: "reviewer",
-			session_id: "original-child",
+			session_id: "parent-session",
 			model: "original-model",
 			turn_id: "original-turn",
 			permission_mode: "default",
@@ -241,6 +244,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 			),
 		}),
 	);
+	// Codex: "Subagent hooks use the parent session id" (hooks reference, common input fields); Claude keeps the child's.
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd, model: { id: "current-model" } });
 	ctx.sessionManager.getSessionId = () => "child-session";
@@ -251,6 +255,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 		{
 			OCTOCODE_SUBAGENT: "1",
 			OCTOCODE_SUBAGENT_HOOKS: "1",
+			OCTOCODE_PARENT_SESSION: "parent-session",
 		},
 		home,
 		undefined,
@@ -266,7 +271,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 				hook_event_name: event,
 				agent_id: protocol === "codex" ? "child-session" : "native-child",
 				agent_type: "reviewer",
-				session_id: "child-session",
+				session_id: protocol === "codex" ? "parent-session" : "child-session",
 				transcript_path: "/child-transcript.jsonl",
 				trigger: "manual",
 			});

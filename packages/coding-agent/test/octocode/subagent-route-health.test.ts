@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { planRun } from "../../src/octocode/subagents/claim.ts";
-import { describeModels } from "../../src/octocode/subagents/models-command.ts";
+import { describeModels, routingFacts } from "../../src/octocode/subagents/models-command.ts";
 import { failedNext } from "../../src/octocode/subagents/report-text.ts";
-import { type ModelRef, routeModel } from "../../src/octocode/subagents/model.ts";
+import { type ModelRef, type Refused, routeModel } from "../../src/octocode/subagents/model.ts";
 import { ProviderHealth, providerHealth } from "../../src/octocode/subagents/provider-health.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 
@@ -56,6 +56,33 @@ describe("routing and provider health (B347 P2-5)", () => {
 		health.noteRun("cheap/tiny", "403 forbidden");
 		health.noteRun("cheap/tiny");
 		expect(health.refused("cheap")).toBe(false);
+	});
+
+	it("a provider out of funds still routes its free models, not its priced ones", () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const health = new ProviderHealth();
+		health.noteCheck("go", 'paid: 402 {"error":{"message":"Insufficient account funds"}}');
+		const paid = { provider: "go", id: "paid", cost: { input: 1, output: 4 } } as ModelRef;
+		const free = { provider: "go", id: "free", cost: { input: 0, output: 0 }, reasoning: true } as ModelRef;
+		expect(health.refused("go", "paid", false, paid.cost)).toBe(true);
+		expect(health.refused("go", "free", false, free.cost)).toBe(false);
+		// An unknown price is not free.
+		expect(health.refused("go")).toBe(true);
+		const refused: Refused = (provider, id, proven, cost) => health.refused(provider, id, proven, cost);
+		const models = [parent, paid, free];
+		expect(routingFacts(models, parent, [], undefined, refused)?.providers.map((row) => row.id)).toEqual([
+			"go",
+			"home",
+		]);
+		expect(routeModel({ preferred: "go/free", available: models, parent, refused })).toEqual({ model: "go/free" });
+		expect(routeModel({ preferred: "go/paid", available: models, parent, refused })).toMatchObject({
+			model: "home/big",
+			refusedBy: "go",
+		});
+		// A refused key blocks the free model too.
+		health.noteCheck("go", "401 Unauthorized");
+		expect(health.refused("go", "free", false, free.cost)).toBe(true);
+		expect(routingFacts(models, parent, [], undefined, refused)?.providers.map((row) => row.id)).toEqual(["home"]);
 	});
 
 	it("a model that refused a run before any token is skipped, even on the parent's provider; the parent's model never", () => {

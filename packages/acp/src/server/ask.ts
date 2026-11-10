@@ -18,11 +18,14 @@ import {
 
 type PermissionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The protocol's option kind for a role. `deny_note` has none: a client cannot take a typed note there, so it is not offered. */
+/**
+ * The protocol's option kind for a role. `allow_always` means the native session grant only: the persistent `allow_kind`
+ * grant is never offered through it, so an ACP client cannot make a grant outlive the session. `deny_note` has no kind
+ * either: a client cannot take a typed note there.
+ */
 const KIND_OF_ROLE: Partial<Record<OptionRole, PermissionKind>> = {
 	allow_once: "allow_once",
 	allow_session: "allow_always",
-	allow_kind: "allow_always",
 	deny: "reject_once",
 	deny_session: "reject_always",
 };

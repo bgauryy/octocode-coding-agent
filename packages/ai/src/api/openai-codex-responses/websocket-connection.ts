@@ -6,10 +6,6 @@ import { resolveHttpProxyUrlForTarget } from "../../utils/node-http-proxy.ts";
 import { CodexProtocolError } from "./errors.ts";
 import { DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS, WEBSOCKET_MESSAGE_TOO_BIG_CLOSE_CODE } from "./types.ts";
 
-// ============================================================================
-// WebSocket Parsing
-// ============================================================================
-
 type WebSocketEventType = "open" | "message" | "error" | "close";
 type WebSocketListener = (event: unknown) => void;
 

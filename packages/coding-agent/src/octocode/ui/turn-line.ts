@@ -4,6 +4,7 @@ import { setToolInterruptShown } from "../../core/application/interrupted-tools.
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { formatCost, formatDuration } from "../shared/format.ts";
 import { modelLookup } from "../shared/util.ts";
+import { beginRun, resetRun, settleRun } from "../../utils/run-clock.ts";
 import { TurnRun } from "./turn-run.ts";
 
 /** The session entry (`api.appendEntry`, never sent to the model) that carries one turn's summary line. */
@@ -43,7 +44,7 @@ export function turnLineText(data: unknown): string | undefined {
  * reads so the interrupt is said once.
  */
 export function registerTurnLine(api: ExtensionAPI): void {
-	let startedAt = 0;
+	let counting = false;
 	const run = new TurnRun();
 	api.registerEntryRenderer(TURN_LINE_TYPE, (entry, _options, theme) => {
 		const text = turnLineText(entry.data);
@@ -52,8 +53,11 @@ export function registerTurnLine(api: ExtensionAPI): void {
 	// A run is every segment from the first start to `agent_settled`: retries, auto-continues, compaction resumes and
 	// queued follow-ups start more segments inside it.
 	api.on("agent_start", async (_event, ctx) => {
-		if (startedAt === 0) {
-			startedAt = Date.now();
+		if (!counting) {
+			counting = true;
+			// A run this module did not see settle (a replaced session) leaves no start behind.
+			resetRun();
+			beginRun(Date.now());
 			run.begin(ctx.sessionManager.getEntries());
 		}
 		setToolInterruptShown(false);
@@ -65,24 +69,25 @@ export function registerTurnLine(api: ExtensionAPI): void {
 		if (!event.parentToolCallId && event.isError && ctx.signal?.aborted) setToolInterruptShown(true);
 	});
 	api.on("message_end", async (event, ctx) => {
-		if (startedAt !== 0) run.message(event.message, modelLookup(ctx));
+		if (counting) run.message(event.message, modelLookup(ctx));
 	});
 	api.on("session_compact", async (event, ctx) => {
-		if (startedAt === 0) return;
+		if (!counting) return;
 		run.entry(event.compactionEntry, modelLookup(ctx));
 		run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
 	});
 	api.on("session_tree", async (event, ctx) => {
-		if (startedAt !== 0) run.entry(event.summaryEntry, modelLookup(ctx));
+		if (counting) run.entry(event.summaryEntry, modelLookup(ctx));
 	});
 	api.on("agent_end", async (_event, ctx) => {
-		if (startedAt !== 0) run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
+		if (counting) run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
 	});
 	api.on("agent_settled", async (event, ctx) => {
 		// A queued steer or follow-up starts the next segment of this run; an abort drops the queue's turn to the user.
-		if (startedAt === 0 || (ctx.hasPendingMessages() && !event.aborted)) return;
-		const ms = Date.now() - startedAt;
-		startedAt = 0;
+		if (!counting) return;
+		const ms = settleRun(Date.now(), ctx.hasPendingMessages() && !event.aborted);
+		if (ms === undefined) return;
+		counting = false;
 		const { tools, agents, cost, unpriced, cache } = run.totals();
 		if (!ctx.hasUI || (ms < MIN_TURN_MS && tools === 0)) return;
 		api.appendEntry(TURN_LINE_TYPE, {

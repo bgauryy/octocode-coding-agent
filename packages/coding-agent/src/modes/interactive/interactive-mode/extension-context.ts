@@ -61,7 +61,6 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 	const shortcuts = extensionRunner.getShortcuts(host.keybindings.getEffectiveConfig());
 	if (shortcuts.size === 0) return;
 
-	// Create a context for shortcut handlers
 	const createContext = (): ExtensionContext => ({
 		ui: host.createExtensionUIContext(),
 		mode: "tui",
@@ -102,7 +101,6 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 		getSystemPrompt: () => host.session.systemPrompt,
 	});
 
-	// Set up the extension shortcut handler on the default editor
 	host.defaultEditor.onExtensionShortcut = (data: string) => {
 		for (const [shortcutStr, shortcut] of shortcuts) {
 			// Cast to KeyId - extension shortcuts use the same format
@@ -200,7 +198,6 @@ export function showExtensionError(
 	const errorText = new ThemedText(() => theme.fg("error", errorMsg), 1, 0);
 	host.chatContainer.addChild(errorText);
 	if (stack) {
-		// Show stack trace in dim color, indented
 		const stackLines = stack.split("\n").slice(1); // Skip first line (duplicates error message)
 		if (stackLines.length > 0) {
 			const renderStack = () => stackLines.map((line) => theme.fg("dim", `  ${line.trim()}`)).join("\n");

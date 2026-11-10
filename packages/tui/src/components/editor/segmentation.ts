@@ -31,7 +31,6 @@ export function segmentWithMarkers(
 		return baseSegmenter.segment(text);
 	}
 
-	// Find all marker spans with valid IDs.
 	const markers: Array<{ start: number; end: number }> = [];
 	for (const m of text.matchAll(PASTE_MARKER_REGEX)) {
 		const id = Number.parseInt(m[1], 10);
@@ -42,7 +41,6 @@ export function segmentWithMarkers(
 		return baseSegmenter.segment(text);
 	}
 
-	// Build merged segment list.
 	const baseSegments = baseSegmenter.segment(text);
 	const result: Intl.SegmentData[] = [];
 	let markerIdx = 0;

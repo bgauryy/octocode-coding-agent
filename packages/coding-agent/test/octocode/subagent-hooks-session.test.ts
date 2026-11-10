@@ -401,7 +401,8 @@ it.each(["codex", "claude"] as const)(
 					const input = matches.at(-1)!;
 					expect(input.agent_id, event).toBe(protocol === "codex" ? f.childSession.id : f.identity.id);
 					expect(input.agent_type, event).toBe("reviewer");
-					expect(input.session_id, event).toBe(f.childSession.id);
+					// Codex: "Subagent hooks use the parent session id" (hooks reference, common input fields).
+					expect(input.session_id, event).toBe(protocol === "codex" ? f.parent.getSessionId() : f.childSession.id);
 					expect(input.transcript_path, event).toBe(childFile);
 				}
 				const starts = records.filter((r) => r.hook_event_name === "SubagentStart");

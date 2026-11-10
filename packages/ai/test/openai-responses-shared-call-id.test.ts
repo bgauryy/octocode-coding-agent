@@ -1,4 +1,4 @@
-// B123 L5: GitHub Copilot Responses gives parallel tool calls one call_id and tells them apart by item id. Replayed to
+// GitHub Copilot Responses gives parallel tool calls one call_id and tells them apart by item id. Replayed to
 // another OpenAI Responses provider, the item ids are dropped, so every call must still get its own call_id and each
 // output must pair with the call it answers.
 import { describe, expect, it } from "vitest";

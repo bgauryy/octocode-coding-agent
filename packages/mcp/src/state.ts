@@ -24,6 +24,8 @@ import { isEnabled, type McpServer } from "./server.ts";
 import { setMcpSessionStatus } from "./status.ts";
 import type { McpToolDetails } from "./tools.ts";
 
+import { deferRolesFromEnv, type McpDeferRole } from "./deferral.ts";
+import { envFlag, SUBAGENT_ENV } from "../../common/src/env.ts";
 import { isParentStopped } from "./session-servers.ts";
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
 import { expandLaunchTemplates } from "./launch-templates.ts";
@@ -59,6 +61,8 @@ export interface McpExtensionOptions {
 	presentation?: McpPresentationMode;
 	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `direct`. */
 	exposure?: string;
+	/** Tool roles (`roles` in a server's config) whose open tools are deferred in this instance. Default: `OCTOCODE_MCP_DEFER_ROLES` in a subagent, which a profile's `mcpDefer` sets. */
+	deferRoles?: readonly McpDeferRole[];
 }
 
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
@@ -217,6 +221,11 @@ export class McpExtensionState {
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure {
 		const configured = getMcpToolExposure(entry.config, tool);
 		return configured === "direct" && this.presentation.isDeferred(entry.name, tool) ? "deferred" : configured;
+	}
+
+	/** The roles whose open tools are deferred: the option, else the child's profile (`mcpDefer`) through the environment. */
+	deferRoles(): readonly McpDeferRole[] {
+		return this.options.deferRoles ?? (envFlag(process.env, SUBAGENT_ENV) ? deferRolesFromEnv(process.env) : []);
 	}
 
 	/** The `mcpExposure` setting: the option, else the session's settings. */

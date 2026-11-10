@@ -138,26 +138,34 @@ describe("the real assembled prefix of a main session", () => {
 	// description and compact parameter JSON (what the provider receives, not the pretty-printed Markdown of the prompt
 	// files), plus this repository's AGENTS.md, for which the capture uses a stand-in. The tools and `mcps` block are
 	// declared up front by decision, so this does not ask for a cut: it makes growth a decision too.
-	// Measured 111,408 bytes on 2026-11-04 from the baseline capture (.octocode/tmp/agent-prompts-baseline/main: system
+	// Measured 111,408 bytes from the baseline capture (system
 	// 70,237, tools 27,092, AGENTS.md 14,079), plus 7.3% for what lands with it. The earlier metric (renderSystem + renderTools
 	// + AGENTS.md, with schemas pretty-printed inside fences) read 121,193 for that same capture, so this count is stricter
 	// by construction: it drops about 9.7 KB of formatting nobody receives and the ceiling is set from the new reading.
-	// 122,191 (2026-11-05, B55): plus 2,650 for the bash description's CLI guide with the probed host (2,569 measured),
+	// 122,191: plus 2,650 for the bash description's CLI guide with the probed host (2,569 measured),
 	// requested by the user.
-	// 122,601 (2026-11-05, B59, requested by the user): plus 410 measured in main's capture for the `octocode` CLI: the
+	// 122,601 (requested by the user): plus 410 measured in main's capture for the `octocode` CLI: the
 	// research line (318), its place in the fallback (25) and the CLI guide's Scope clause (67).
-	// 125_500 (2026-11-05, measured 124,028: system 24,462, tools 85,079, AGENTS.md 14,487; MCP declared mode, requested by the
+	// 125_500 (measured 124,028: system 24,462, tools 85,079, AGENTS.md 14,487; MCP declared mode, requested by the
 	// user): every MCP tool is declared with the server's own description and full JSON Schema, as Claude Code and Codex send
 	// them, and the system prompt keeps only each server's instructions. The same server text moves from system (68,532 before)
 	// to tools (39,517 before), and the schema as sent is longer than the typed notation it replaced. Server text is not
 	// ours to trim (M14); our own text keeps its cap in `e2e.test.ts` and `prompt-size.test.ts`.
-	// 131_500 (2026-11-06, measured 131,414: system 24,915, tools 91,918, AGENTS.md 14,581): the sibling server added its
-	// `securityCheck` tool (3,497 declared bytes, server text), our itemized B150/B156/B157/B29 growth (+2,726, capped in
+	// 131_500 (measured 131,414: system 24,915, tools 91,918, AGENTS.md 14,581): the sibling server added its
+	// `securityCheck` tool (3,497 declared bytes, server text), our itemized growth (+2,726, capped in
 	// `e2e.test.ts`), and about 1,160 from other server and AGENTS.md text.
-	// 132_624 (2026-11-06, measured 132,538: system 24,970, tools 92,987, AGENTS.md 14,581; B170): the timer tool's closed
+	// 132_624 (measured 132,538: system 24,970, tools 92,987, AGENTS.md 14,581): the timer tool's closed
 	// `until` list, +953 in tools (`prompt-size.test.ts` itemizes it); the other +171 since 131,414 came from concurrent
 	// edits. Slack over the measurement is 86, as before.
-	const REAL_PREFIX_CEILING = 132_624;
+	// 118_033 (measured 117,947: system 30,157, tools 80,117, AGENTS.md 7,673): the
+	// shorter AGENTS.md, `reason` described once in policy, the policy tables and the other wave-1 prompt changes (skill
+	// listing, edit digest, MCP exposure). Slack stays 86.
+	// 118_443 (measured 118,357: system 30,567, tools 80,117, AGENTS.md 7,673): the user-requested rules for output form
+	// by data shape, brevity, established solutions, comments and docs (+410 in system, net of offsetting cuts).
+	// Slack stays 86.
+	// 119_282 (measured 119,196: system 30,808, tools 80,715, AGENTS.md 7,673): the user-requested challenge and
+	// numbers rules (+241 in system) and the rebuilt sibling server's tool text (+598 in tools). Slack stays 86.
+	const REAL_PREFIX_CEILING = 119_282;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");

@@ -39,7 +39,6 @@ class UserMessageList implements Component {
 			return lines;
 		}
 
-		// Calculate visible range with scrolling
 		const startIndex = Math.max(
 			0,
 			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.messages.length - this.maxVisible),
@@ -51,7 +50,6 @@ class UserMessageList implements Component {
 			const message = this.messages[i];
 			const isSelected = i === this.selectedIndex;
 
-			// Normalize message to single line
 			const normalizedMessage = plainText(message.text);
 
 			// First line: cursor + message
@@ -70,7 +68,6 @@ class UserMessageList implements Component {
 			lines.push(""); // Blank line between messages
 		}
 
-		// Add scroll indicator if needed
 		if (startIndex > 0 || endIndex < this.messages.length) {
 			const scrollInfo = theme.fg("muted", `  (${this.selectedIndex + 1}/${this.messages.length})`);
 			lines.push(scrollInfo);
@@ -88,16 +85,12 @@ class UserMessageList implements Component {
 		// Down arrow - go to next (newer) message, wrap to top when at bottom
 		else if (kb.matches(keyData, "tui.select.down")) {
 			this.selectedIndex = this.selectedIndex === this.messages.length - 1 ? 0 : this.selectedIndex + 1;
-		}
-		// Enter - select message and branch
-		else if (kb.matches(keyData, "tui.select.confirm")) {
+		} else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selected = this.messages[this.selectedIndex];
 			if (selected && this.onSelect) {
 				this.onSelect(selected.id);
 			}
-		}
-		// Escape - cancel
-		else if (kb.matches(keyData, "tui.select.cancel")) {
+		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			if (this.onCancel) {
 				this.onCancel();
 			}
@@ -119,7 +112,6 @@ export class UserMessageSelectorComponent extends Container {
 	) {
 		super();
 
-		// Add header
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.bold("Fork from Message"), 1, 0));
 		this.addChild(
@@ -133,18 +125,15 @@ export class UserMessageSelectorComponent extends Container {
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
-		// Create message list
 		this.messageList = new UserMessageList(messages, initialSelectedId);
 		this.messageList.onSelect = onSelect;
 		this.messageList.onCancel = onCancel;
 
 		this.addChild(this.messageList);
 
-		// Add bottom border
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());
 
-		// Auto-cancel if no messages
 		if (messages.length === 0) {
 			setTimeout(() => onCancel(), 100);
 		}

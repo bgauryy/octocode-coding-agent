@@ -24,22 +24,18 @@ function publicModel<T extends { baseUrl: string }>(model: T): T {
 	return { ...model, baseUrl: redactUrlCredentials(model.baseUrl) };
 }
 
-// Handle a single command
 export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): Promise<RpcResponse | undefined> => {
 	const { runtimeHost, output } = host;
 	const id = command.id;
 
 	switch (command.type) {
-		// =================================================================
-		// Prompting
-		// =================================================================
-
 		case "prompt": {
 			handlePrompt(host.session, command, output);
 			return undefined;
 		}
 
 		case "steer": {
+			if (command.toolChoice) host.session.agent.nextToolChoice = command.toolChoice;
 			const disposition = await host.session.steer(command.message, command.images, { source: "rpc" });
 			return success(id, "steer", { disposition });
 		}
@@ -80,10 +76,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "new_session", result);
 		}
 
-		// =================================================================
-		// State
-		// =================================================================
-
 		case "plan":
 			return success(id, "plan", await host.session.controlPlan(command));
 		case "get_state": {
@@ -105,10 +97,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			};
 			return success(id, "get_state", state);
 		}
-
-		// =================================================================
-		// Model
-		// =================================================================
 
 		case "set_model": {
 			const models = host.session.modelRuntime.getAvailableSnapshot();
@@ -133,10 +121,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "get_available_models", { models: models.map(publicModel) });
 		}
 
-		// =================================================================
-		// Thinking
-		// =================================================================
-
 		case "set_thinking_level": {
 			host.session.setThinkingLevel(command.level);
 			return success(id, "set_thinking_level");
@@ -155,10 +139,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "get_available_thinking_levels", { levels });
 		}
 
-		// =================================================================
-		// Queue Modes
-		// =================================================================
-
 		case "set_steering_mode": {
 			host.session.setSteeringMode(command.mode);
 			return success(id, "set_steering_mode");
@@ -169,18 +149,10 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "set_follow_up_mode");
 		}
 
-		// =================================================================
-		// Compaction
-		// =================================================================
-
 		case "compact": {
 			const result = await host.session.compact({ customInstructions: command.customInstructions });
 			return success(id, "compact", result);
 		}
-
-		// =================================================================
-		// Retry
-		// =================================================================
 
 		case "set_auto_retry": {
 			// A session's choice: `setAutoRetryEnabled` writes global settings, which would change every later session of the
@@ -193,10 +165,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			host.session.abortRetry();
 			return success(id, "abort_retry");
 		}
-
-		// =================================================================
-		// Bash
-		// =================================================================
 
 		case "bash": {
 			const eventResult = await host.session.extensionRunner.emitUserBash({
@@ -225,10 +193,6 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			host.session.abortBash();
 			return success(id, "abort_bash");
 		}
-
-		// =================================================================
-		// Session
-		// =================================================================
 
 		case "get_session_stats": {
 			const stats = host.session.getSessionStats();
@@ -315,17 +279,9 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "set_session_name");
 		}
 
-		// =================================================================
-		// Messages
-		// =================================================================
-
 		case "get_messages": {
 			return success(id, "get_messages", { messages: host.session.messages });
 		}
-
-		// =================================================================
-		// Commands (available for invocation via prompt)
-		// =================================================================
 
 		case "get_commands": {
 			const commands: RpcSlashCommand[] = [];

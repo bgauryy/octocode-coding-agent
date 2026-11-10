@@ -19,7 +19,6 @@ export class Box implements Component {
 	private paddingY: number;
 	private bgFn?: (text: string) => string;
 
-	// Cache for rendered output
 	private cache?: RenderCache;
 	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
 
@@ -139,30 +138,24 @@ export class Box implements Component {
 		// Check if bgFn output changed by sampling
 		const bgSample = this.bgFn ? this.bgFn("test") : undefined;
 
-		// Check cache validity
 		if (this.matchCache(width, childLines, bgSample)) {
 			return this.cache!.lines;
 		}
 
-		// Apply background and padding
 		const result: string[] = [];
 
-		// Top padding
 		for (let i = 0; i < this.paddingY; i++) {
 			result.push(this.applyBg("", width));
 		}
 
-		// Content
 		for (const line of childLines) {
 			result.push(this.applyBg(leftPad + line, width));
 		}
 
-		// Bottom padding
 		for (let i = 0; i < this.paddingY; i++) {
 			result.push(this.applyBg("", width));
 		}
 
-		// Update cache
 		flattenLines(result);
 		this.cache = { childLines, width, bgSample, lines: result };
 

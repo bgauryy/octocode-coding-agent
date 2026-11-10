@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import type { PromptResponse, SessionNotification } from "@agentclientprotocol/sdk";
-import { redactData, redactSecrets } from "../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { AcpSaveOutput } from "../host.ts";
 import {
 	ACP_TEXT_BYTES,
@@ -14,7 +14,7 @@ import {
 	textUpdate,
 } from "./redaction.ts";
 import type { ExternalReply } from "@octocodeai/octocode-contracts/external";
-import { PRIVATE_FILE_MODE } from "../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 const MAX_UPDATES_BYTES = 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;

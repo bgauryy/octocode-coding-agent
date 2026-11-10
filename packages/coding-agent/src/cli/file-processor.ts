@@ -30,7 +30,6 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 		// Expand and resolve path (handles ~ expansion and macOS screenshot Unicode spaces)
 		const absolutePath = resolveUserFilePath(fileArg, process.cwd());
 
-		// Check if file exists
 		try {
 			await access(absolutePath);
 		} catch {
@@ -38,17 +37,14 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 			process.exit(1);
 		}
 
-		// Check if file is empty
 		const stats = await stat(absolutePath);
 		if (stats.size === 0) {
-			// Skip empty files
 			continue;
 		}
 
 		const image = await openImageFile(absolutePath);
 
 		if (image) {
-			// Handle image file
 			const processed = await processImage(await image.read(), image.mimeType, { autoResizeImages });
 
 			if (!processed.ok) {
@@ -63,14 +59,12 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 			};
 			images.push(attachment);
 
-			// Add text reference to image with optional processing hints
 			if (processed.hints.length > 0) {
 				text += `<file name="${absolutePath}">${processed.hints.join("\n")}</file>\n`;
 			} else {
 				text += `<file name="${absolutePath}"></file>\n`;
 			}
 		} else {
-			// Handle text file
 			try {
 				const content = stripBom(await readFile(absolutePath, "utf-8"));
 				text += `<file name="${absolutePath}">\n${content}\n</file>\n`;

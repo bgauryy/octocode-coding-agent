@@ -260,7 +260,11 @@ function Shell({
 				</header>
 				<main id="main" tabIndex={-1}>
 					{!loaded && BASE_VIEWS.includes(current) ? (
-						<BoardSkeleton />
+						live?.Unavailable ? (
+							<live.Unavailable label="Loading board" hint="The board appears once the session connects." />
+						) : (
+							<BoardSkeleton />
+						)
 					) : (
 						<View
 							key={current.name}

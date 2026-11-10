@@ -4,7 +4,7 @@
 
 import chalk from "chalk";
 import { foregroundChildActive } from "../../../utils/foreground-child.ts";
-import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
+import { killTrackedDetachedChildren, signalTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { disposeLoadedResources } from "./loaded-resources.ts";
@@ -191,11 +191,11 @@ export function handleCtrlZ(host: LifecycleHost): void {
 	const ignoreSigint = () => {};
 	process.on("SIGINT", ignoreSigint);
 
-	// Set up handler to restore TUI when resumed
 	const onResume = () => {
 		suspended = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
+		signalTrackedDetachedChildren("SIGCONT");
 		host.ui.start();
 		host.ui.requestRender(true);
 	};
@@ -207,9 +207,12 @@ export function handleCtrlZ(host: LifecycleHost): void {
 		suspended = true;
 		host.ui.stop({ preserveScreen: host.ui.mode === "fullscreen" });
 
+		// Children lead their own process groups, so the group stop below misses them: stop them too, and continue them on resume.
+		signalTrackedDetachedChildren("SIGSTOP");
 		// Send SIGTSTP to process group (pid=0 means all processes in group)
 		process.kill(0, "SIGTSTP");
 	} catch (error) {
+		signalTrackedDetachedChildren("SIGCONT");
 		suspended = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);

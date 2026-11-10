@@ -123,7 +123,7 @@ describe("parseStreamingJsonThrottled", () => {
 	});
 });
 
-// B288: long nested `agent` calls failed with "Unexpected non-whitespace character after JSON" one character before the end.
+// Long nested `agent` calls failed with "Unexpected non-whitespace character after JSON" one character before the end.
 describe("parseToolCallArguments text after the object", () => {
 	const nested = (task: string) => JSON.stringify({ type: "task", input: { goal: "g", task, background: true } });
 

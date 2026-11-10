@@ -119,7 +119,6 @@ export function createSessionHeader(
 	return { type: "session", version: CURRENT_SESSION_VERSION, id, timestamp, cwd, parentSession };
 }
 
-/** Session file path for a session created at an ISO timestamp. */
 export function getSessionFilePath(dir: string, timestamp: string, id: string): string {
 	const fileTimestamp = timestamp.replace(/[:.]/g, "-");
 	return join(dir, `${fileTimestamp}_${id}.jsonl`);

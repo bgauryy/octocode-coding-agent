@@ -23,7 +23,6 @@ interface InputRenderResult {
 
 /** Render the prompt and the horizontally scrolled value with the fake cursor. */
 export function renderInputLine(state: InputRenderState, width: number): InputRenderResult {
-	// Calculate visible window
 	const availableWidth = width - visibleWidth(state.prompt);
 
 	if (availableWidth <= 0) {
@@ -61,13 +60,10 @@ export function renderInputLine(state: InputRenderState, width: number): InputRe
 			let startCol = 0;
 
 			if (cursorCol < halfWidth) {
-				// Cursor near start
 				startCol = 0;
 			} else if (cursorCol > totalWidth - halfWidth) {
-				// Cursor near end
 				startCol = Math.max(0, totalWidth - scrollWidth);
 			} else {
-				// Cursor in middle
 				startCol = Math.max(0, cursorCol - halfWidth);
 			}
 
@@ -97,7 +93,6 @@ export function renderInputLine(state: InputRenderState, width: number): InputRe
 	const cursorChar = renderFakeCursor(atCursor);
 	const textWithCursor = beforeCursor + marker + cursorChar + afterCursor;
 
-	// Calculate visual width
 	const visualLength = visibleWidth(textWithCursor);
 	const padding = " ".repeat(Math.max(0, availableWidth - visualLength));
 	const line = state.prompt + textWithCursor + padding;

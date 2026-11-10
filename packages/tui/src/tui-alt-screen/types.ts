@@ -92,11 +92,8 @@ export interface TuiAltScreenOptions {
 	wheelScrollLines?: WheelScrollLines;
 	/** Capture mouse events for viewport scrolling and application-owned text selection. */
 	mouse?: boolean;
-	/** Style a non-current transcript search match. */
 	searchMatchStyle?: (text: string) => string;
-	/** Style the current transcript search match. */
 	searchCurrentMatchStyle?: (text: string) => string;
-	/** Style a transcript search navigation button. */
 	searchNavigationButtonStyle?: (text: string, hovered: boolean) => string;
 	/**
 	 * Render a clickable jump-to-end label. It is centered on the last row of a follow-end

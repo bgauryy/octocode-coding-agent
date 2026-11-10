@@ -14,7 +14,7 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
 }
 
 /**
- * The header's "more" popover: the settings (theme, notifications) and the board statistics that used to take two rows.
+ * The header's "more" popover: the settings (theme, notifications) and the board statistics.
  * Its children stay mounted while it is closed.
  */
 export function HeaderMenu({

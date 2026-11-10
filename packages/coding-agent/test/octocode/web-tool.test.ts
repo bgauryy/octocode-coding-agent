@@ -248,6 +248,19 @@ describe("fetchUrl against a local server", () => {
 		);
 	});
 
+	it("does not retry a refused connection, and says nothing listens there instead of blaming a bot block", async () => {
+		const listener = http.createServer();
+		await new Promise<void>((done) => listener.listen(0, "127.0.0.1", done));
+		const free = (listener.address() as AddressInfo).port;
+		await new Promise<void>((done) => listener.close(() => done()));
+		const error = await fetchUrl(`http://127.0.0.1:${free}/`, undefined, privateOk).then(
+			() => undefined,
+			(thrown: Error) => thrown,
+		);
+		expect(error?.message).toMatch(/ECONNREFUSED.*\. Nothing accepts connections at that address and port/);
+		expect(error?.message).not.toMatch(/tried|may block/);
+	});
+
 	it("caches a page for a while and sends the system language as Accept-Language", async () => {
 		const languages: string[] = [];
 		const base = await serve((req, res) => {

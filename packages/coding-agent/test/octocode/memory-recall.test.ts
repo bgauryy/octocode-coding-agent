@@ -12,7 +12,7 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 
-// Memory recall and hygiene (B339): tool guidance, age labels, notices, keyword dedup, related memories, the body
+// Memory recall and hygiene: tool guidance, age labels, notices, keyword dedup, related memories, the body
 // warning, subagent recall by goal, `/memory review` and the `reference` kind, each through the tool, hooks or command.
 
 let root: string;

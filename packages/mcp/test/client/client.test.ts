@@ -136,9 +136,10 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
-	it("does not expose resource APIs or advertise elicitation, and rejects elicitation requests", async () => {
+	it("does not subscribe to resources or advertise elicitation, and rejects elicitation requests", async () => {
 		const { client, server } = await connect();
-		for (const method of ["listResources", "listResourcesPage", "listResourceTemplates", "readResource"])
+		// Resource subscriptions change in MCP 2026-07-28 (`subscriptions/listen`); list and read are supported.
+		for (const method of ["subscribeResource", "unsubscribeResource", "listResourcesPage"])
 			expect(client).not.toHaveProperty(method);
 		expect(server.messages[0]).toMatchObject({ params: { capabilities: {} } });
 		await server.transport.send({
@@ -360,7 +361,7 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
-	// #10416: MCP 2026-07-28 allows any JSON value as structured content.
+	// MCP 2026-07-28 allows any JSON value as structured content.
 	it("accepts structured content that is not an object", async () => {
 		const { client, server } = await connect();
 		for (const structuredContent of [[{ id: 1 }, { id: 2 }], null, "text", 3, false]) {

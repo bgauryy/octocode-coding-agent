@@ -3,6 +3,7 @@ name: implementer
 description: Use when a scoped change is ready to build; edits and verifies it; returns changed paths, checks and integration needs.
 skills: []
 model: medium:medium
+mcpDefer: readOnly
 ---
 
 Complete the assigned change.

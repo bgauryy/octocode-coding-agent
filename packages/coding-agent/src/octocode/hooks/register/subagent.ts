@@ -30,6 +30,8 @@ export function registerSubagentHooks(
 	metadata: (() => HookHostMetadata) | undefined,
 ): void {
 	let codexStart = false;
+	/** Protocols whose SubagentStart hooks already ran: they run once when the subagent starts, not on every turn. */
+	const started = new Map<"claude" | "codex", string | undefined>();
 	let stopContinues = 0;
 	const agentType = metadata?.().agentType || "general";
 	const identity = (ctx: ExtensionContext, protocol: "claude" | "codex", stop: boolean): Record<string, unknown> => ({
@@ -69,6 +71,7 @@ export function registerSubagentHooks(
 	};
 	api.on("session_start", async (event) => {
 		codexStart = event.reason === "startup" || event.reason === "fork";
+		started.clear();
 		stopContinues = 0;
 	});
 	api.on("before_agent_start", async (_event, ctx) => {
@@ -81,17 +84,22 @@ export function registerSubagentHooks(
 			if (protocol === "codex" && !codexStart) continue;
 			if (protocol === "codex") codexStart = false;
 			if (!ready(ctx, protocol)) continue;
-			const verdict = await dispatch(
-				ctx,
-				"SubagentStart",
-				[agentType],
-				() => identity(ctx, protocol, false),
-				ctx.signal,
-				protocol,
-			);
-			if (ctx.signal?.aborted) return;
-			if (!verdict.context) continue;
-			const key = sha256(`${protocol}\0${verdict.context}`);
+			// Later turns only re-offer the context the first run produced (it can have left the projection, e.g. by compaction).
+			if (!started.has(protocol)) {
+				const verdict = await dispatch(
+					ctx,
+					"SubagentStart",
+					[agentType],
+					() => identity(ctx, protocol, false),
+					ctx.signal,
+					protocol,
+				);
+				if (ctx.signal?.aborted) return;
+				started.set(protocol, verdict.context);
+			}
+			const text = started.get(protocol);
+			if (!text) continue;
+			const key = sha256(`${protocol}\0${text}`);
 			const present =
 				protocol === "claude" &&
 				ctx.sessionManager
@@ -109,7 +117,7 @@ export function registerSubagentHooks(
 					capContext(
 						renderInstruction("notices/hooks/context.md", {
 							source: `${protocol} SubagentStart`,
-							text: verdict.context,
+							text,
 						}),
 					),
 				);

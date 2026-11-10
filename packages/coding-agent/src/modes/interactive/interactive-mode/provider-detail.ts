@@ -9,6 +9,7 @@ import {
 	setProviderEnabled,
 } from "./provider-actions.ts";
 import { providerDefinitionFile } from "./provider-custom.ts";
+import { testProviderCredential } from "./provider-test.ts";
 import { type PageContext, signInActions } from "./provider-signin.ts";
 import { successNotice, showPage } from "./provider-ui.ts";
 
@@ -34,7 +35,7 @@ export async function showProviderDetail(
 			run: async () => {
 				await runtime.removeRuntimeApiKey(id, { signal: AbortSignal.timeout(15_000) });
 				host.updateAvailableProviderCount();
-				host.showStatus(successNotice("Cleared session override for", name, `${providerStatus(host, id)}.`));
+				host.showStatus(successNotice("Cleared session override for", name, `${await providerStatus(host, id)}.`));
 			},
 		});
 	}
@@ -76,12 +77,19 @@ export async function showProviderDetail(
 		run: () => setProviderEnabled(host, id, name, disabled),
 	});
 
+	const status = await providerStatus(host, id);
+	if (runtime.getProviderAuthStatus(id).configured && available > 0) {
+		actions.set("Test credential — send one small request to this provider", {
+			run: () => testProviderCredential(host, id, name),
+		});
+	}
+
 	const rows: PageRow[] = [...actions.keys()].map((label) => ({ id: label, name: label }));
 	const catalog = runtime.getModels(id).length;
 	const choice = await showPage(host, {
 		title: `${name} — ${disabled ? "disabled" : runtime.getProviderAuthStatus(id).configured ? "configured" : "not configured"}`,
 		facts: [
-			{ label: "Status", value: disabled ? `disabled · ${providerStatus(host, id)}` : providerStatus(host, id) },
+			{ label: "Status", value: disabled ? `disabled · ${status}` : status },
 			{ label: "Provider", value: disabled ? "disabled (hidden from /model)" : "enabled" },
 			{ label: "Models", value: `${available} available · ${catalog} in catalog` },
 			{

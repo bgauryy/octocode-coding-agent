@@ -48,7 +48,7 @@ const ADD_END_HINT: Migration = {
 };
 
 /**
- * 3: the agent audit (design B36 §4-§5): `agent_runs`, one row per run of an agent (the parent writes its start and
+ * 3: the agent audit: `agent_runs`, one row per run of an agent (the parent writes its start and
  * outcome, whoever retires the agent row its end), and where an agent works (`agents.cwd`, `branch`, `process_title`).
  * A new table and nullable columns, so an Octocode that knows only version 2 keeps using the file (it never reads them).
  * The statements are the ones `schema-sql.ts` runs for a new file.

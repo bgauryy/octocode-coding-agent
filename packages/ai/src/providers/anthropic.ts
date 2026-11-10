@@ -1,5 +1,7 @@
+import { isOAuthToken } from "../api/anthropic-messages/token.ts";
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import type { ApiKeyAuth } from "../auth/types.ts";
+import { verifyByRequest } from "../auth/verify.ts";
 import {
 	ANTHROPIC_API_KEY_ENV,
 	ANTHROPIC_AUTH_TOKEN_ENV,
@@ -19,6 +21,16 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
 		name: "Anthropic API key",
 		// Linked, not opened: the same dialog also takes the subscription token `claude setup-token` prints.
 		keyPage: "https://platform.claude.com/settings/keys",
+		isSubscriptionKey: isOAuthToken,
+		// A subscription token is not accepted by the model list the way a metered key is, so it is not checked.
+		verify: async ({ key, signal }) =>
+			isOAuthToken(key)
+				? "unchecked"
+				: verifyByRequest(
+						"https://api.anthropic.com/v1/models",
+						{ "x-api-key": key, "anthropic-version": "2023-06-01" },
+						signal,
+					),
 		login: async (interaction) => {
 			interaction.signal.throwIfAborted();
 			const key = await interaction.prompt({

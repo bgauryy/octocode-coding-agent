@@ -1,4 +1,3 @@
-// Search input
 const searchInput = document.getElementById("tree-search");
 searchInput.addEventListener("input", (e) => {
 	searchQuery = e.target.value;

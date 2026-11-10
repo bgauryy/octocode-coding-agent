@@ -12,7 +12,7 @@ export const stopReason = (by: string | undefined): EndReason =>
  * it instead of `crashed`. Advisory: it never fails the run it describes.
  */
 export function hintEnd(runs: Pick<AgentRuns, "team">, id: string, reason: EndReason): void {
-	// Never throws: without the hint the row is retired as `left` or `crashed`, as before it existed.
+	// Never throws: without the hint the row is retired as `left` or `crashed`.
 	runs.team.audit.hint(id, reason);
 }
 

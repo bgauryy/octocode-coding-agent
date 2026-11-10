@@ -69,7 +69,6 @@ export type InlineExtension =
 			hidden?: boolean;
 	  };
 
-// ============================================================================
 // Loaded Extension Types
 // ============================================================================
 
@@ -85,7 +84,7 @@ export interface ExtensionShortcut {
 	extensionPath: string;
 }
 
-type HandlerFn = (...args: unknown[]) => Promise<unknown>;
+type HandlerFn = (...args: unknown[]) => unknown;
 
 type SendMessageHandler = <T = unknown>(
 	message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
@@ -297,7 +296,6 @@ export interface LoadExtensionsResult {
 	runtime: ExtensionRuntime;
 }
 
-// ============================================================================
 // Extension Error
 // ============================================================================
 

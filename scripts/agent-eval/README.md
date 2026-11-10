@@ -130,7 +130,7 @@ The agent is not sandboxed: it runs in `full` permission mode as your user and c
                                status.txt, final.diff, transcripts/main/, transcripts/children/<name>/
 ```
 
-Each row has the pass or fail with grader evidence, cost, turns (assistant messages that called a tool), requests, tool calls by class (`octocode`, `bashRead`, `bashOther`, `file`, `delegate`, `skill`, `other`), the multi-call turn share, skill loads and the same for each child. Bash code reads use the rule from `.octocode/efficiency/2026-11-04/usage*.py`. Cost includes the side requests a transcript records, such as compaction summaries and cache warming.
+Each row has the pass or fail with grader evidence, cost, turns (assistant messages that called a tool), requests, tool calls by class (`octocode`, `bashRead`, `bashOther`, `file`, `delegate`, `skill`, `other`), the multi-call turn share, skill loads and the same for each child. Cost includes the side requests a transcript records, such as compaction summaries and cache warming.
 
 ## What only a live run can prove
 

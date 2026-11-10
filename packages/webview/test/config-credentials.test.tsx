@@ -157,7 +157,9 @@ describe("ConfigView sign-in", () => {
 		render(<ConfigView load={async () => withAuth} saveCredential={save} signIn={vi.fn()} />);
 		await openEditor("Use Claude subscription token");
 		await userEvent.type(screen.getByLabelText("Claude subscription token"), "sk-ant-oat01-abc");
-		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		expect(screen.getByRole("form", { name: "Edit token for Anthropic" })).toBeInTheDocument();
+		expect(screen.getByText(/The token goes to the OS keychain/)).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: /^(Save|Replace) token$/ }));
 		await waitFor(() =>
 			expect(save).toHaveBeenCalledWith({ action: "set", provider: "anthropic", key: "sk-ant-oat01-abc" }, undefined),
 		);

@@ -8,7 +8,9 @@ import {
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
+import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import { askClient } from "./ask.ts";
+import { modelConfigOptions } from "./config-options.ts";
 import { advertiseCommands } from "./commands.ts";
 import { AcpEventProjector, type CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
@@ -135,6 +137,29 @@ export class AcpSession {
 
 	isBusy(): boolean {
 		return this.starting || this.active !== undefined || this.observed !== undefined || this.workerBusy;
+	}
+
+	/** The config options a client can change (the model); empty when the worker cannot list its models, which is reported. */
+	async configOptions(): Promise<SessionConfigOption[]> {
+		try {
+			return modelConfigOptions(await this.worker.getModels());
+		} catch (error) {
+			reportFailure("ACP could not list the session's models")(error);
+			return [];
+		}
+	}
+
+	/** Switches the worker's model between turns; a value the worker does not offer is an invalid parameter. */
+	async setModel(value: string): Promise<SessionConfigOption[]> {
+		if (this.isBusy()) throw RequestError.invalidRequest(undefined, "Session is busy; the model was not changed.");
+		const models = await this.worker.getModels();
+		if (!models.available.includes(value)) throw RequestError.invalidParams(undefined, `Unknown model "${value}".`);
+		try {
+			await this.worker.setModel(value);
+		} catch (error) {
+			throw RequestError.internalError(undefined, error instanceof Error ? error.message : String(error));
+		}
+		return modelConfigOptions({ ...models, current: value });
 	}
 
 	prompt(content: ContentBlock[]): Promise<PromptResponse> {

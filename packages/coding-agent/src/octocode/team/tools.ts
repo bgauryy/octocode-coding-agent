@@ -23,7 +23,13 @@ import { describeMembers } from "./member-list.ts";
 import { describeChanges, describeConflicts, memberGoals, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
 import { type ChildBudgets, grantRequests } from "./tools/grant.ts";
-import { INTERPRETER_HELD, NOT_CHECKED_HELD, POWERSHELL_HELD } from "./tools/held-text.ts";
+import {
+	INTERPRETER_HELD,
+	NOT_CHECKED_HELD,
+	PACKAGE_SCRIPT,
+	PACKAGE_SCRIPT_NOTE,
+	POWERSHELL_HELD,
+} from "./tools/held-text.ts";
 import { namedReservation } from "./tools/named-reservation.ts";
 import { registerTeamEvents } from "./tools/events.ts";
 import { type PeerRoute, registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
@@ -134,6 +140,8 @@ export function registerCollab(
 				markConfined(event.toolCallId);
 			}
 		}
+		if (command !== undefined && held && PACKAGE_SCRIPT.test(command) && !options.shellReadOnly?.(command))
+			markConfined(event.toolCallId, PACKAGE_SCRIPT_NOTE);
 		const files =
 			command !== undefined
 				? ((await options.shellWrites?.(command)) ?? [])

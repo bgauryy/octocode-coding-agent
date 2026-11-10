@@ -15,7 +15,6 @@ function encodePng(photon: Photon, bytes: Uint8Array): Uint8Array | null {
 			image.free();
 		}
 	} catch {
-		// Conversion failed
 		return null;
 	}
 }
@@ -37,7 +36,6 @@ export async function convertToPng(
 	base64Data: string,
 	mimeType: string,
 ): Promise<{ data: string; mimeType: string } | null> {
-	// Already PNG, no conversion needed
 	if (mimeType === "image/png") {
 		return { data: base64Data, mimeType };
 	}

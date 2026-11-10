@@ -10,9 +10,7 @@ import { getBuiltinThemes, loadTheme, loadThemeFromPath, loadThemeJson, register
 import type { ThemeColorValue } from "./theme-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
-// ============================================================================
 // Types & Schema
-// ============================================================================
 
 export type { ThemeAppearance, ThemeToken } from "./theme-types.ts";
 export { Theme } from "./theme-class.ts";
@@ -44,9 +42,7 @@ export {
 	highlightCode,
 } from "./theme-tui-helpers.ts";
 
-// ============================================================================
 // Global Theme Instance
-// ============================================================================
 
 let currentThemeName: string | undefined;
 let themeWatcher: fs.FSWatcher | undefined;
@@ -145,11 +141,9 @@ function startThemeWatcher(): void {
 			}
 
 			try {
-				// Reload the theme from disk and refresh the registry cache
 				const reloadedTheme = loadThemeFromPath(themeFile);
 				registeredThemes.set(watchedThemeName, reloadedTheme);
 				setGlobalTheme(reloadedTheme);
-				// Notify callback (to invalidate UI)
 				if (onThemeChangeCallback) {
 					onThemeChangeCallback();
 				}
@@ -191,9 +185,7 @@ export function stopThemeWatcher(): void {
 	themeWatcher = undefined;
 }
 
-// ============================================================================
 // HTML Export Helpers
-// ============================================================================
 
 /**
  * Get resolved theme colors as CSS-compatible hex strings.

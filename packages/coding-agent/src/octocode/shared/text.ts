@@ -9,7 +9,6 @@ export { clip, plural, queryTarget };
 export const GUTTER = "  ⎿  ";
 export const INDENT = "     ";
 
-/** The configured tool-output expansion key. */
 export function expandKey(): string {
 	return appKey("app.tools.expand");
 }

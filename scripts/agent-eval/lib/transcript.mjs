@@ -4,7 +4,7 @@
  * plus side-request usage on `type:"usage"`, `compaction` and `branch_summary` entries.
  */
 
-/** A plain code read run through bash; the same rule as `.octocode/efficiency/2026-11-04/usage*.py`. */
+/** A plain code read run through bash. */
 const BASH_READ = /^\s*(cd \S+ *(&&|;) *)?(set -o pipefail; *)?(rg|grep|find|fd|ls|cat|head|tail|sed|wc)\b/;
 
 const CHILD_ROLE = /Your name is `([^`]+)`(?: \(([a-z][\w-]*)\))?/;

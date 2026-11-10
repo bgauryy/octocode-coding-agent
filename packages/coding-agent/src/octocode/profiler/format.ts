@@ -96,10 +96,13 @@ function layersOf(request: ProfileRequest): string {
 		layer.state,
 		layer.kind,
 		layer.label,
-		tokens(layer.tokens),
+		`${request.estimated ? "~" : ""}${tokens(layer.tokens)}`,
 		layer.changed ? "changed" : "",
 	]);
-	return table(["", "STATE", "KIND", "LAYER", "TOKENS", ""], rows, [4]);
+	const grid = table(["", "STATE", "KIND", "LAYER", "TOKENS", ""], rows, [4]);
+	return request.estimated
+		? `${grid}\n  ~ estimated: no recorded request trace, layers are inferred from the entries`
+		: grid;
 }
 
 function requestHeader(request: ProfileRequest): string {

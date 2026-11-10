@@ -26,7 +26,6 @@ const zero = (): Record<State, number> =>
 
 const noCounts = (): BacklogCounts => ({ items: zero(), epics: zero(), closed: 0 });
 
-/** The number of epics open (not done) in `counts`. */
 export const openEpics = (counts: BacklogCounts): number =>
 	counts.epics.backlog + counts.epics.todo + counts.epics.ongoing;
 

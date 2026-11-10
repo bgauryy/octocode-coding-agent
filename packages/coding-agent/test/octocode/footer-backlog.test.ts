@@ -2,6 +2,7 @@ import { itemCounts } from "./counts-fixture.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { countsText } from "../../src/octocode/backlog/format.ts";
+import { chipParts } from "../../src/octocode/permission/mode.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
 import { type FooterState, footerLines } from "../../src/octocode/ui/footer.ts";
 
@@ -41,10 +42,9 @@ describe("backlog discovery in the native footer", () => {
 	it("shortens the hint to /web while preserving location and usage at common terminal widths", () => {
 		const statuses = new Map([
 			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],
-			["octocode-permission", { text: "permission: manual" }],
 		]);
 		for (const width of [80, 100, 120]) {
-			const [top, bottom] = footerLines(state, "main", statuses, theme, width);
+			const [top, bottom] = footerLines({ ...state, chip: chipParts("manual") }, "main", statuses, theme, width);
 			expect(top).toContain("manual");
 			expect(bottom).toContain("/web");
 			expect(bottom).toContain("project");

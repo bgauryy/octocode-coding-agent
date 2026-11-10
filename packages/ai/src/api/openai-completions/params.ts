@@ -14,6 +14,7 @@ import {
 	resolvePromptCacheKey,
 } from "../../utils/cache-policy.ts";
 import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
+import { promptCacheKeyRule } from "../../models/capabilities.ts";
 import { matchesHost } from "../../utils/provider-host.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import {
@@ -46,6 +47,12 @@ import type {
  * This is needed because Anthropic (via proxy) requires the tools param
  * to be present when messages include tool_calls or tool role messages.
  */
+/** Whether the request carries `prompt_cache_key`, by the model's `cache.key` capability. */
+function sendsPromptCacheKey(model: Model<"openai-completions">, retention: CacheRetention): boolean {
+	const rule = promptCacheKeyRule(model);
+	return retention !== "none" && (rule === "cached" || (rule === "long" && retention === "long"));
+}
+
 /**
  * `prompt_cache_retention` is an OpenAI field: send it to api.openai.com, or to an endpoint whose model compat
  * declares `supportsLongCacheRetention: true`. Other endpoints may reject the unknown field.
@@ -102,11 +109,9 @@ export function buildParams(
 		model: model.id,
 		messages,
 		stream: true,
-		prompt_cache_key:
-			(matchesHost(model.baseUrl, "api.openai.com") && cacheRetention !== "none") ||
-			(cacheRetention === "long" && compat.supportsLongCacheRetention)
-				? clampOpenAIPromptCacheKey(resolvePromptCacheKey(options))
-				: undefined,
+		prompt_cache_key: sendsPromptCacheKey(model, cacheRetention)
+			? clampOpenAIPromptCacheKey(resolvePromptCacheKey(options))
+			: undefined,
 		// oxlint-disable-next-line typescript/no-deprecated -- sent only to hosts that accept it (`acceptsPromptCacheRetention`); `prompt_cache_options.ttl` is not accepted by them
 		prompt_cache_retention:
 			cacheRetention === "long" && compat.supportsLongCacheRetention && acceptsPromptCacheRetention(model)
@@ -131,7 +136,7 @@ export function buildParams(
 		}
 	}
 
-	if (options?.temperature !== undefined) {
+	if (options?.temperature !== undefined && model.compat?.supportsTemperature !== false) {
 		params.temperature = options.temperature;
 	}
 
@@ -209,8 +214,9 @@ export function buildParams(
 		}
 		if (compat.supportsReasoningEffort) {
 			const requestedEffort = options?.reasoningEffort;
-			const mappedEffort = requestedEffort ? model.thinkingLevelMap?.[requestedEffort] : model.thinkingLevelMap?.off;
-			const effort = mappedEffort === undefined ? requestedEffort : mappedEffort;
+			const effort = requestedEffort
+				? (model.thinkingLevelMap?.[requestedEffort] ?? requestedEffort)
+				: resolveReasoningOffEffort(model);
 			if (typeof effort === "string") {
 				params.reasoning_effort = effort;
 			}
@@ -253,10 +259,8 @@ export function buildParams(
 		// OpenAI-style reasoning_effort
 		params.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 	} else if (!options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
-		const offValue = model.thinkingLevelMap?.off;
-		if (typeof offValue === "string") {
-			params.reasoning_effort = offValue;
-		}
+		const offEffort = resolveReasoningOffEffort(model);
+		if (offEffort) params.reasoning_effort = offEffort;
 	}
 
 	// Cap reasoning with a top-level budget field. Independent of thinkingFormat: the
@@ -293,6 +297,16 @@ export function buildParams(
 	// The SDK serializes every field it is given, so the vendor fields above reach the wire; its static type only
 	// lacks them (and types `reasoning_effort` as OpenAI's own levels).
 	return params as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+}
+
+/**
+ * The `reasoning_effort` that turns thinking off: the model's mapping, else "none" where it is documented (the OpenAI
+ * API). Other endpoints may reject an effort their model data does not list, so they get nothing.
+ */
+function resolveReasoningOffEffort(model: Model<"openai-completions">): string | undefined {
+	const mapped = model.thinkingLevelMap?.off;
+	if (typeof mapped === "string") return mapped;
+	return mapped === undefined && matchesHost(model.baseUrl, "api.openai.com") ? "none" : undefined;
 }
 
 function resolveThinkingTokenBudgetField(

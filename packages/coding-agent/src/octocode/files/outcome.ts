@@ -133,6 +133,8 @@ export interface QueryOutcome {
 	diff?: string;
 	/** An applied edit: the change in the file's line count. */
 	lineDelta?: number;
+	/** The new content's digest, when the agent knows the whole file: a following anchored edit names it. */
+	sourceSha256?: string;
 	/** A filesystem commit, even if a later step made this query fail. */
 	receipt?: MutationReceipt;
 }

@@ -117,7 +117,6 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		});
 	};
 
-	// Handle a single command
 	const commandHost: RpcCommandHost = {
 		get session() {
 			return session;
@@ -180,7 +179,6 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			return;
 		}
 
-		// Handle extension UI responses
 		if (typeof parsed === "object" && parsed !== null && "type" in parsed && parsed.type === "extension_ui_response") {
 			const response = parsed as RpcExtensionUIResponse;
 			const pending = pendingExtensionRequests.get(response.id);
@@ -254,6 +252,5 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		throw error;
 	}
 
-	// Keep process alive forever
 	return new Promise(() => {});
 }

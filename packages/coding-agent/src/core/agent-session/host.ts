@@ -120,7 +120,6 @@ export interface SessionInternals {
 	readonly session: SessionPublic;
 	readonly run: SessionRunState;
 	readonly cwd: string;
-	/** Emit an event to the session's listeners. */
 	emit(event: AgentSessionEvent): void;
 	/** Refresh agent state from the canonical session projection. */
 	refreshContext(): void;

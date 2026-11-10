@@ -5,7 +5,6 @@ import { hasControlCharacter } from "../utils/chars.ts";
 import { buildCompletionValue, parsePathPrefix, toDisplayPath } from "./path-prefix.ts";
 import type { AutocompleteItem } from "./types.ts";
 
-// Expand home directory (~/) to actual home path
 function expandHomePath(path: string): string {
 	if (path.startsWith("~/")) {
 		const expandedPath = join(homedir(), path.slice(2));
@@ -97,7 +96,6 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 			}
 			searchPrefix = "";
 		} else {
-			// Split into directory and file prefix
 			const dir = dirname(expandedPrefix);
 			const file = basename(expandedPrefix);
 			if (rawPrefix.startsWith("~") || expandedPrefix.startsWith("/")) {
@@ -181,7 +179,6 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 			});
 		}
 
-		// Sort directories first, then alphabetically
 		suggestions.sort((a, b) => {
 			const aIsDir = a.label.endsWith("/");
 			const bIsDir = b.label.endsWith("/");

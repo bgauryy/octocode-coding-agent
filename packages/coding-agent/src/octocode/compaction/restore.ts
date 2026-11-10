@@ -18,8 +18,7 @@ import { isStaleSessionError } from "../shared/util.ts";
 import { cutText } from "../../../../common/src/text.ts";
 
 /**
- * After a compaction, the files the agent was working on are read again from disk and put back in its context, as
- * Claude Code does: the summary names them, but editing one would otherwise need a fresh `read` first (the file guard
+ * After a compaction, the files the agent was working on are read again from disk and put back in its context: the summary names them, but editing one would otherwise need a fresh `read` first (the file guard
  * refuses a change to a file whose read left the context). The few most recently read or changed in the summarized
  * part come back, each within a per-file budget (a file over it shows its outline, the declarations with their line
  * numbers, not its text; one with no declaration shows the lines from where the agent last read or changed it, with a

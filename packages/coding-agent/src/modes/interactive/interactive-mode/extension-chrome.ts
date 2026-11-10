@@ -232,18 +232,15 @@ export function setExtensionFooter(
 		| ((tui: TUI, thm: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
 		| undefined,
 ): void {
-	// Dispose existing custom footer
 	if (host.customFooter?.dispose) {
 		host.customFooter.dispose();
 	}
 
 	host.footerContainer.clear();
 	if (factory) {
-		// Create and add custom footer, passing the data provider
 		host.customFooter = factory(host.ui, theme, host.footerDataProvider);
 		host.footerContainer.addChild(host.customFooter);
 	} else {
-		// Restore built-in footer
 		host.customFooter = undefined;
 		host.footerContainer.addChild(host.footer);
 	}
@@ -263,7 +260,6 @@ export function setExtensionHeader(
 		return;
 	}
 
-	// Dispose existing custom header
 	if (host.customHeader?.dispose) {
 		host.customHeader.dispose();
 	}
@@ -273,7 +269,6 @@ export function setExtensionHeader(
 	const index = host.headerContainer.children.indexOf(currentHeader);
 
 	if (factory) {
-		// Create and add custom header
 		host.customHeader = factory(host.ui, theme);
 		if (isExpandable(host.customHeader)) {
 			host.customHeader.setExpanded(host.uiStore.getState().view.toolsExpanded);
@@ -285,7 +280,6 @@ export function setExtensionHeader(
 			host.headerContainer.children.unshift(host.customHeader);
 		}
 	} else {
-		// Restore built-in header
 		host.customHeader = undefined;
 		if (isExpandable(host.builtInHeader)) {
 			host.builtInHeader.setExpanded(host.uiStore.getState().view.toolsExpanded);
@@ -329,18 +323,15 @@ export function clearExtensionTerminalInputListeners(host: ExtensionChromeHost):
 export function setCustomEditorComponent(host: ExtensionChromeHost, factory: EditorFactory | undefined): void {
 	host.editorComponentFactory = factory;
 
-	// Save text from current editor before switching
 	const currentText = host.editor.getText();
 
 	host.disposeActiveSelector();
 	host.editorContainer.clear();
 
 	if (factory) {
-		// Create the custom editor with tui, theme, and keybindings
 		const newEditor = factory(host.ui, getEditorTheme(), host.keybindings);
 		bindEditorHandlers({ defaultEditor: host.defaultEditor, editor: newEditor });
 
-		// Copy text from previous editor
 		newEditor.setText(currentText);
 
 		// Copy appearance settings if supported
@@ -354,14 +345,12 @@ export function setCustomEditorComponent(host: ExtensionChromeHost, factory: Edi
 			newEditor.setAutocompleteMaxVisible(host.defaultEditor.getAutocompleteMaxVisible());
 		}
 
-		// Set autocomplete if supported
 		if (newEditor.setAutocompleteProvider && host.autocompleteProvider) {
 			newEditor.setAutocompleteProvider(host.autocompleteProvider);
 		}
 
 		host.editor = newEditor;
 	} else {
-		// Restore default editor with text from custom editor
 		host.defaultEditor.setText(currentText);
 		host.editor = host.defaultEditor;
 	}

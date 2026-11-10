@@ -5,6 +5,7 @@ import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { describeRanges, firstGap, type LineRange, lineCount, mergeRanges, readView } from "../coverage.ts";
+import { type OwnEdit, OwnEdits } from "./own-edits.ts";
 
 interface Snapshot {
 	mtimeMs: number;
@@ -103,7 +104,7 @@ export function staleRefusal(display: string, reader: Reader, by = ""): string {
 
 const BASH_PRINT = (file: string): string => `\`sed -n '1,200p' ${file}\``;
 const PIPE_NOTE =
-	"A read piped or redirected, or after `||`, does not count, and neither does one made by a parallel call of this message until that call finishes: read first, then call `file` again in a later message.";
+	"A read piped or redirected, after `||`, or on a line with any command other than `cd`, `echo`, `printf`, `pwd`, `ls`, `true` and `wc` does not count, and neither does one made by a parallel call of this message until that call finishes: read first, then call `file` again in a later message.";
 
 /** The exact call that counts, path filled in, for the declared reader; a plain print in `bash` counts with either reader (`bashReads`). */
 function unreadRefusal(display: string, reader: Reader): string {
@@ -164,6 +165,8 @@ export class FileGuard {
 	readonly #reread = new Set<string>();
 	/** Files whose read is in the context but that were modified after it (known only by time, not by a snapshot). */
 	readonly #changed = new Set<string>();
+	/** Per whole-read file, this tool's own edits since that read, oldest first (anchors on the read's digest stay valid). */
+	readonly #chains = new OwnEdits();
 	/** Set by the team layer: why another agent's reservation forbids changing `file`, if it does. */
 	reservedBy: ((file: string) => string | undefined) | undefined;
 	/** The reader refusals name: the session switches it to `mcpReader(...)` while the research server's reader is connected. */
@@ -189,6 +192,11 @@ export class FileGuard {
 		return seen?.partial ? undefined : seen?.sha256;
 	}
 
+	/** Where `line` of the version `digest` is now, through this tool's own edits since; undefined when not in the chain or replaced. */
+	ownLine(file: string, digest: string, line: number): number | undefined {
+		return this.#chains.line(canonicalPath(file), digest, line);
+	}
+
 	/**
 	 * Remember the file as read now (stat only). `known`: its content digest when the caller has it (kept if the size
 	 * agrees). `partial`: the read showed a range or a cut view, so a write needs the reads to cover every line (`lines`
@@ -199,6 +207,7 @@ export class FileGuard {
 		const real = canonicalPath(file);
 		const stat = statOf(real);
 		this.#reread.delete(real);
+		this.#chains.delete(real);
 		// A read lifts the stale flag, but a range of a file that changed after its recorded read shows only that range of
 		// the current file: the earlier ranges describe other bytes, so they are not carried over.
 		const wasStale = this.#changed.delete(real);
@@ -229,11 +238,15 @@ export class FileGuard {
 	 * (`lineDelta` 0); a different count moved the lines below the edit, so they are dropped and the reads start over.
 	 * A file with no recorded read is not known to be seen at all.
 	 */
-	edited(file: string, known: KnownContent | undefined, lineDelta: number | undefined): void {
+	edited(file: string, known: KnownContent | undefined, lineDelta: number | undefined, link?: OwnEdit): void {
 		const real = canonicalPath(file);
 		const before = this.#seen.get(real);
+		const chain = this.#chains.take(real);
 		this.record(real, known);
 		const now = this.#seen.get(real);
+		// The chain continues only over this tool's own edit of the version the guard knows whole.
+		if (link && before && !before.partial && before.sha256 === link.from && now?.sha256 === link.to)
+			this.#chains.extend(real, chain, link);
 		if (!now || (before && !before.partial)) return;
 		this.#seen.set(real, {
 			...now,
@@ -245,6 +258,7 @@ export class FileGuard {
 	/** The file's bytes changed after its read that the guard records (an edit applied over outside changes): a write or delete needs a fresh read. */
 	stale(file: string): void {
 		this.#changed.add(canonicalPath(file));
+		this.#chains.delete(canonicalPath(file));
 	}
 
 	/** Forget one file, e.g. after /rewind replaced it: the model must read it again before writing it. */
@@ -252,6 +266,7 @@ export class FileGuard {
 		const real = canonicalPath(file);
 		this.#seen.delete(real);
 		this.#changed.delete(real);
+		this.#chains.delete(real);
 		this.#reread.add(real);
 	}
 
@@ -271,6 +286,7 @@ export class FileGuard {
 		for (const real of this.#seen.keys()) this.#reread.add(real);
 		this.#seen.clear();
 		this.#changed.clear();
+		this.#chains.clear();
 		for (const { file, at, partial, lines } of inContext) {
 			const real = canonicalPath(file);
 			const stat = statOf(real);

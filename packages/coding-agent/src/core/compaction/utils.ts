@@ -7,7 +7,6 @@ import { contentText, type Message } from "@octocodeai/octocode-ai";
 import { convertToLlm } from "../messages.ts";
 import { renderInstruction } from "../prompt-template.ts";
 
-// ============================================================================
 // File Operation Tracking
 // ============================================================================
 
@@ -88,7 +87,6 @@ export function formatFileOperations(readFiles: string[], modifiedFiles: string[
 	return `\n\n${sections.join("\n\n")}`;
 }
 
-// ============================================================================
 // Message Serialization
 // ============================================================================
 
@@ -164,7 +162,6 @@ export function serializeMessages(messages: AgentMessage[]): string {
 		.join("\n\n");
 }
 
-// ============================================================================
 // Summarization System Prompt
 // ============================================================================
 

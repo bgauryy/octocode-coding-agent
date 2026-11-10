@@ -3,7 +3,6 @@ import { captureToolInvocation } from "./tool-invocation.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import type { ExtensionToolContext, ToolDefinition } from "../features/types.ts";
 
-/** Creates the context for one tool call. */
 type ToolContextFactory = (toolCallId: string, signal: AbortSignal | undefined) => ExtensionToolContext;
 
 /** Wrap a ToolDefinition into an AgentTool for the core runtime. */
@@ -23,6 +22,7 @@ export function wrapToolDefinition<TDetails = unknown>(
 		coerceArguments: definition.coerceArguments,
 		prepareArguments: definition.prepareArguments,
 		executionMode: definition.executionMode,
+		concurrency: definition.concurrency,
 		abortGraceMs: definition.abortGraceMs,
 		execute: async (toolCallId, params, signal, onUpdate, ctx?: ExtensionToolContext) => {
 			const base = ctx ?? ctxFactory?.(toolCallId, signal);
@@ -67,6 +67,7 @@ export function createToolDefinitionFromAgentTool(tool: AgentTool<any>): ToolDef
 		coerceArguments: tool.coerceArguments,
 		prepareArguments: tool.prepareArguments,
 		executionMode: tool.executionMode,
+		concurrency: tool.concurrency,
 		abortGraceMs: tool.abortGraceMs,
 		execute: async (toolCallId, params, signal, onUpdate) => tool.execute(toolCallId, params, signal, onUpdate),
 	};

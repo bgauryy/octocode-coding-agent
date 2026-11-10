@@ -14,8 +14,8 @@ import type { ConvertResponsesToolsOptions } from "./types.ts";
  *
  * `additional_tools` items accumulate: a later item adds tools and replaces same-name
  * definitions from earlier items, but it cannot replace a top-level tool and cannot remove any
- * tool (verified with strict schemas on the OpenAI, Codex, and Copilot backends, October 2026).
- * Like Codex, every tool is therefore declared in `additional_tools` items, starting with one
+ * tool (verified with strict schemas on the OpenAI, Codex, and Copilot backends).
+ * Every tool is therefore declared in `additional_tools` items, starting with one
  * at the head of the input, and removals are announced as text. Synthetic tool search can
  * only add tools. Without mid-conversation system messages there is nothing to anchor.
  */
@@ -42,10 +42,6 @@ export function renderIncrementalToolsNotice(unavailable: ReadonlySet<string>): 
 export function renderToolRemovalNotice(names: readonly string[]): string {
 	return `The following tools are no longer available. Do not call them:\n${names.map((name) => `- ${name}`).join("\n")}`;
 }
-
-// =============================================================================
-// Tool conversion
-// =============================================================================
 
 export function convertResponsesTools(tools: readonly Tool[], options?: ConvertResponsesToolsOptions): OpenAITool[] {
 	const defaultStrict = options?.strict === undefined ? false : options.strict;

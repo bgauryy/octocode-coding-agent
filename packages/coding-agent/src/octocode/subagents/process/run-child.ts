@@ -162,9 +162,14 @@ export async function runChild(
 				);
 			};
 			signal?.addEventListener("abort", abort, { once: true });
-			// The request budget: one steer at the soft limit, the same stop as above at the hard limit (0: off).
+			// The request budget: one steer at the soft limit; at the hard limit one last request without tools, then the same
+			// stop as above (0: off).
 			const steer = (message: string) => void send({ type: "steer", message });
-			const budget = new RequestBudget(history.limit, steer, abort, history.requests, {
+			const budget: RequestBudget = new RequestBudget(history.limit, steer, abort, history.requests, {
+				final: (message) => {
+					host?.budgets?.remove(identity.id, budget);
+					void send({ type: "steer", message, toolChoice: "none" });
+				},
 				// A foreground child's parent is inside this call, and one without the team has no parent to write to.
 				canAsk: Boolean(identity.parentId) && !identity.parentWaits,
 				resumeIsGrant: identity.peerResumed !== true,

@@ -20,7 +20,6 @@ export function findNearestVisibleIndex(
 ): number {
 	if (filteredNodes.length === 0) return 0;
 
-	// Build a map for parent lookup
 	const entryMap = new Map<string, FlatNode>();
 	for (const flatNode of flatNodes) {
 		entryMap.set(flatNode.node.entry.id, flatNode);
@@ -45,7 +44,6 @@ export function buildActivePath(flatNodes: FlatNode[], currentLeafId: string | n
 	activePathIds.clear();
 	if (!currentLeafId) return;
 
-	// Build a map of id -> entry for parent lookup
 	const entryMap = new Map<string, FlatNode>();
 	for (const flatNode of flatNodes) {
 		entryMap.set(flatNode.node.entry.id, flatNode);
@@ -150,7 +148,6 @@ export function flattenTree(
 			return [...prioritized, ...rest];
 		})();
 
-		// Calculate child indent
 		let childIndent: number;
 		if (multipleChildren) {
 			// Parent branches: children get +1
@@ -240,7 +237,6 @@ export function recalculateVisualStructure(
 		visibleChildren.get(ancestorId)!.push(nodeId);
 	}
 
-	// Update multipleRoots based on visible roots
 	const visibleRootIds = visibleChildren.get(null)!;
 	const multipleRoots = visibleRootIds.length > 1;
 
@@ -267,14 +263,12 @@ export function recalculateVisualStructure(
 		const flatNode = filteredNodeMap.get(nodeId);
 		if (!flatNode) continue;
 
-		// Update this node's visual properties
 		flatNode.indent = indent;
 		flatNode.showConnector = showConnector;
 		flatNode.isLast = isLast;
 		flatNode.gutters = gutters;
 		flatNode.isVirtualRootChild = isVirtualRootChild;
 
-		// Get visible children of this node
 		const children = visibleChildren.get(nodeId) ?? [];
 		const multipleChildren = children.length > 1;
 

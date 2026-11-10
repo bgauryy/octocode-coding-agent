@@ -49,7 +49,7 @@ describe("provider switches saved by another process", () => {
 		});
 		const running = SettingsManager.create(join(home, "project"), agentDir);
 		let applied = 0;
-		const session = {};
+		const session = { model: undefined, modelRuntime: runtime, sendCustomMessage: async () => {} };
 		stops.push(
 			onProviderSettingsApplied(session, () => applied++),
 			watchProviderSettings(running, runtime, session),
@@ -92,7 +92,7 @@ describe("provider switches saved by another process", () => {
 		});
 		const running = SettingsManager.create(join(home, "project"), agentDir);
 		let applied = 0;
-		const session = {};
+		const session = { model: undefined, modelRuntime: runtime, sendCustomMessage: async () => {} };
 		stops.push(
 			onProviderSettingsApplied(session, () => applied++),
 			watchProviderSettings(running, runtime, session),

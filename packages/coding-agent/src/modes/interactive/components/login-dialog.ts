@@ -45,10 +45,8 @@ export class LoginDialogComponent extends Container implements Focusable {
 		const providerName = providerNameOverride || providerId;
 		const title = titleOverride ?? `Login to ${providerName}`;
 
-		// Top border
 		this.addChild(new DynamicBorder());
 
-		// Title
 		this.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 
 		// Dynamic content area
@@ -58,7 +56,6 @@ export class LoginDialogComponent extends Container implements Focusable {
 		// Input (always present, used when needed)
 		this.input = this.createInput();
 
-		// Bottom border
 		this.addChild(new DynamicBorder());
 	}
 
@@ -254,7 +251,6 @@ export class LoginDialogComponent extends Container implements Focusable {
 			return;
 		}
 
-		// Pass to input
 		this.input.handleInput(data);
 	}
 }

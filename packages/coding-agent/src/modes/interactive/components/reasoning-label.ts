@@ -1,6 +1,6 @@
-import { animationClock, type Component, ELLIPSIS, mixColors, shimmerText, Text } from "@octocodeai/octocode-tui";
+import { type Component, ELLIPSIS, Text } from "@octocodeai/octocode-tui";
 import { formatDuration } from "../../../octocode/shared/format.ts";
-import { stateMark } from "../../../theme/status.ts";
+import { liveShimmer, stateMark } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { keyText } from "./keybinding-hints.ts";
 
@@ -92,23 +92,6 @@ export function interruptedText(message: string | undefined): string {
 const THINKING_LABEL = `Thinking${ELLIPSIS}`;
 
 /**
- * `text` with the light band the working line's verb has (`text` colour, peaking toward the accent), or in plain
- * `text` colour in reduced motion and in a theme without concrete colours.
- */
-function shimmerLabel(text: string, now: number): string {
-	try {
-		const { colors } = theme;
-		if (!animationClock.isReducedMotion() && colors.text && colors.accent) {
-			const peak = mixColors(colors.text, colors.accent, theme.appearance === "light" ? 0.7 : 0.55);
-			return shimmerText(text, { base: colors.text, peak, mode: theme.getColorMode(), now });
-		}
-	} catch {
-		// A theme without concrete colours draws the label plain.
-	}
-	return theme.fg("text", text);
-}
-
-/**
  * The label of a reasoning block while it streams: the running spinner mark and `Thinking…` shimmering. It paints from
  * the clock at render time, so the owner only has to request a render per frame while the block streams.
  */
@@ -132,7 +115,7 @@ export class LiveThinkingLabel implements Component {
 		this.renderedAt = now;
 		const hint = this.hint ? theme.fg("dim", ` ${this.hint}`) : "";
 		return new Text(
-			`${stateMark(theme, "running", { now })} ${shimmerLabel(THINKING_LABEL, now)}${hint}`,
+			`${stateMark(theme, "running", { now })} ${liveShimmer(theme, THINKING_LABEL, now)}${hint}`,
 			this.padding,
 			0,
 		).render(width);

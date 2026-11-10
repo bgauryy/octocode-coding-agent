@@ -62,7 +62,7 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 			declared,
 			server.connection?.instructions,
 			connectionState === "connected",
-			deferralOf(server.entry, declared, state.exposureSetting(), activeTools),
+			deferralOf(server.entry, declared, state.exposureSetting(), activeTools, state.deferRoles()),
 		);
 		const undeclared = [...described.tools].filter((tool) => !declared.includes(tool));
 		const deferred = described.deferred.size;

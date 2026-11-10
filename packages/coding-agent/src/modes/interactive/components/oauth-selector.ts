@@ -92,11 +92,9 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		this.onSelectCallback = onSelect;
 		this.onCancelCallback = onCancel;
 
-		// Add top border
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
-		// Add title
 		const title = mode === "sign-in" ? "Sign in — choose a provider" : "Remove a saved AI provider credential:";
 		this.addChild(new TruncatedText(theme.fg("accent", theme.bold(title)), 1, 0));
 		if (mode === "sign-in") {
@@ -126,7 +124,6 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		this.addChild(this.searchInput);
 		this.addChild(new Spacer(1));
 
-		// Create list container
 		this.listContainer = new Container();
 		this.addChild(this.listContainer);
 
@@ -142,10 +139,8 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 			),
 		);
 
-		// Add bottom border
 		this.addChild(new DynamicBorder());
 
-		// Initial render
 		this.filterProviders(initialSearchInput ?? "");
 	}
 
@@ -204,7 +199,6 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 			this.listContainer.addChild(new TruncatedText(scrollInfo, 1, 0));
 		}
 
-		// Show "no providers" if empty
 		if (this.filteredProviders.length === 0) {
 			const message =
 				this.allProviders.length === 0
@@ -218,31 +212,22 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		// Up arrow
 		if (kb.matches(keyData, "tui.select.up")) {
 			if (this.filteredProviders.length === 0) return;
 			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
 			this.updateList();
-		}
-		// Down arrow
-		else if (kb.matches(keyData, "tui.select.down")) {
+		} else if (kb.matches(keyData, "tui.select.down")) {
 			if (this.filteredProviders.length === 0) return;
 			this.selectedIndex = Math.min(this.filteredProviders.length - 1, this.selectedIndex + 1);
 			this.updateList();
-		}
-		// Enter
-		else if (kb.matches(keyData, "tui.select.confirm")) {
+		} else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selectedProvider = this.filteredProviders[this.selectedIndex];
 			if (selectedProvider) {
 				this.onSelectCallback(selectedProvider.id, selectedProvider.authType);
 			}
-		}
-		// Escape or Ctrl+C
-		else if (kb.matches(keyData, "tui.select.cancel")) {
+		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			this.onCancelCallback();
-		}
-		// Pass everything else to search input
-		else {
+		} else {
 			this.searchInput.handleInput(keyData);
 			this.filterProviders(this.searchInput.getValue());
 		}

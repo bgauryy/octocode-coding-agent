@@ -7,13 +7,9 @@ export interface DefaultTextStyle {
 	color?: (text: string) => string;
 	/** Background color function */
 	bgColor?: (text: string) => string;
-	/** Bold text */
 	bold?: boolean;
-	/** Italic text */
 	italic?: boolean;
-	/** Strikethrough text */
 	strikethrough?: boolean;
-	/** Underline text */
 	underline?: boolean;
 }
 

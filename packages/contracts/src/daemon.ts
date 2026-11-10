@@ -166,7 +166,6 @@ export const AttachResponseSchema = Type.Union([
 	}),
 ]);
 
-/** What `attach.hello` returns. */
 export const AttachHelloResultSchema = Type.Object(
 	{
 		sessionId: Text(),

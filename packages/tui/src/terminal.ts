@@ -52,6 +52,11 @@ export class ProcessTerminal implements Terminal {
 	private wasRaw = false;
 	private disposeExitRestore?: () => void;
 	private inputHandler?: (data: string) => void;
+	/** Called when the input handler throws; input keeps flowing. Default: one line on stderr. */
+	onInputError: (error: unknown) => void = (error) => {
+		const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+		process.stderr.write(`\r\noctocode: input handler failed: ${message.replaceAll("\n", "\r\n")}\r\n`);
+	};
 	private resizeHandler?: () => void;
 	private capabilitiesHandler?: () => void;
 	private stdinBuffer?: StdinBuffer;
@@ -134,7 +139,6 @@ export class ProcessTerminal implements Terminal {
 			pasteTimeout: resolvePasteTimeoutMs(),
 		});
 
-		// Forward individual sequences to the input handler
 		this.stdinBuffer.on("data", (sequence) => {
 			if (this.graphicsProbe.consume(sequence)) return;
 			if (this.programStatusReporter.handleReply(sequence)) return;
@@ -144,9 +148,7 @@ export class ProcessTerminal implements Terminal {
 
 		// Re-wrap paste content with bracketed paste markers for existing editor handling
 		this.stdinBuffer.on("paste", (content) => {
-			if (this.inputHandler) {
-				this.inputHandler(`\x1b[200~${content}\x1b[201~`);
-			}
+			this.dispatchInput(`\x1b[200~${content}\x1b[201~`);
 		});
 
 		// Handler that pipes stdin data through the buffer
@@ -176,6 +178,19 @@ export class ProcessTerminal implements Terminal {
 		this.programStatusReporter.write();
 	}
 
+	private dispatchInput(input: string): void {
+		if (!this.inputHandler) return;
+		try {
+			this.inputHandler(input);
+		} catch (error) {
+			try {
+				this.onInputError(error);
+			} catch {
+				// A failing reporter must not take input down with it.
+			}
+		}
+	}
+
 	private forwardInputSequence(sequence: string): void {
 		if (!this.inputHandler) return;
 		const shouldDetectNativeShiftEnter =
@@ -185,7 +200,7 @@ export class ProcessTerminal implements Terminal {
 			shouldDetectNativeShiftEnter,
 			shouldDetectNativeShiftEnter && isNativeModifierPressed("shift"),
 		);
-		this.inputHandler(input);
+		this.dispatchInput(input);
 	}
 
 	/**
@@ -249,20 +264,17 @@ export class ProcessTerminal implements Terminal {
 		this.progress.clear();
 		this.programStatusReporter.stop();
 
-		// Disable bracketed paste mode
 		this.bracketedPaste.stop();
 		process.stdout.write(DISABLE_BRACKETED_PASTE);
 
 		// Disable the keyboard protocols if drainInput() has not already done so.
 		this.keyboardProtocol.disable();
 
-		// Clean up StdinBuffer
 		if (this.stdinBuffer) {
 			this.stdinBuffer.destroy();
 			this.stdinBuffer = undefined;
 		}
 
-		// Remove event handlers
 		if (this.stdinDataHandler) {
 			process.stdin.removeListener("data", this.stdinDataHandler);
 			this.stdinDataHandler = undefined;
@@ -278,7 +290,6 @@ export class ProcessTerminal implements Terminal {
 		// where Ctrl+D could close the parent shell over SSH.
 		process.stdin.pause();
 
-		// Restore raw mode state
 		if (process.stdin.setRawMode) {
 			process.stdin.setRawMode(this.wasRaw);
 		}
@@ -298,10 +309,8 @@ export class ProcessTerminal implements Terminal {
 
 	moveBy(lines: number): void {
 		if (lines > 0) {
-			// Move down
 			process.stdout.write(`\x1b[${lines}B`);
 		} else if (lines < 0) {
-			// Move up
 			process.stdout.write(`\x1b[${-lines}A`);
 		}
 		// lines === 0: no movement

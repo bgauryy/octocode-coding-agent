@@ -10,7 +10,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 
 /** A compaction this few turns after the previous one counts as a refill (a summary that freed room lasts longer than this)... */
 export const THRASH_TURNS = 3;
-/** ...and this many refills in a row stop automatic compaction (Claude Code's thrash breaker): a single refill can be one big read, a streak is a loop. */
+/** ...and this many refills in a row stop automatic compaction: a single refill can be one big read, a streak is a loop. */
 export const THRASH_STREAK = 3;
 
 /** Counts compactions that came right after the previous one. */
@@ -36,7 +36,6 @@ export class ThrashBreaker {
 		this.#turnInRun = false;
 	}
 
-	/** Turns since the last compaction in this session, if one ran. */
 	get turnsSinceCompaction(): number | undefined {
 		return this.#turnsSince;
 	}

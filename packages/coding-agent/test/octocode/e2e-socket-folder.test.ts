@@ -28,11 +28,11 @@ beforeAll(async () => {
 });
 afterAll(async () => {
 	await endpoint.close();
-	fs.rmSync(temp, { recursive: true, force: true });
+	fs.rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	killEverything();
+	await killEverything();
 });
 
 /** A sandbox whose home is too deep for a socket path; everything else the same. */
@@ -66,7 +66,9 @@ describe.runIf(posix)("the session API's socket", () => {
 			await close(started);
 			expect(fs.existsSync(socket)).toBe(false);
 		} finally {
-			fs.rmSync(moved, { recursive: true, force: true });
+			// Descendants of the session may still be writing into its home: stop them before removing it.
+			await killEverything();
+			fs.rmSync(moved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 		}
 	});
 

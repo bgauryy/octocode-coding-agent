@@ -1,3 +1,4 @@
+import { ignoredSettingsKeys } from "../../core/settings-manager/ignored-keys.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { applied, closestIds, kindOf, refused } from "../result.ts";
 import { coerceSettingValue, findLeaf, OWNED_SETTINGS, type SettingLeaf, settingLeaves } from "../settings-leaves.ts";
@@ -75,6 +76,13 @@ async function set(op: ConfigOp, leaf: SettingLeaf, value: unknown, ctx: ConfigC
 	);
 }
 
+/** True when `unset` names a key the settings file holds but Octocode ignores: the one-step fix for the startup warning. */
+function isIgnoredKey(op: ConfigOp, ctx: ConfigContext): boolean {
+	if (op.scope === "run") return false;
+	const file = op.scope === "project" ? ctx.settings.getProjectSettings() : ctx.settings.getGlobalSettings();
+	return ignoredSettingsKeys(file).includes(op.id);
+}
+
 export const settingsAdapter: ConfigAdapter = {
 	kinds: ["setting"],
 	async list(ctx) {
@@ -88,6 +96,10 @@ export const settingsAdapter: ConfigAdapter = {
 		const owner = OWNED_SETTINGS[op.id];
 		if (owner) return refused(op, `${op.id} is changed through ${owner}, not as a settings key.`);
 		const leaf = findLeaf(op.id);
+		if (!leaf && op.verb === "unset" && isIgnoredKey(op, ctx)) {
+			await writeSettingsKey(ctx, op.scope === "project" ? "project" : "global", op.id, undefined);
+			return applied(op, "reload", `${op.id} removed from the ${op.scope ?? "global"} settings.`);
+		}
 		if (!leaf) {
 			const keys = settingLeaves()
 				.map((entry) => entry.key)

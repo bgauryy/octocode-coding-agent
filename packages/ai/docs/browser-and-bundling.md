@@ -13,7 +13,7 @@ import { anthropicProvider } from "@octocodeai/octocode-ai/providers/anthropic";
 const models = createModels();
 models.setProvider(anthropicProvider());
 
-const model = models.getModel("anthropic", "claude-3-5-haiku-20241022")!;
+const model = models.getModel("anthropic", "claude-haiku-4-5")!;
 const response = await models.complete(
 	model,
 	{

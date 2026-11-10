@@ -1,4 +1,4 @@
-import { reportToStderr } from "../../../common/src/stderr.ts";
+import { reportToStderr } from "@octocodeai/octocode-common/stderr";
 
 /** A failure handler for work no caller awaits or can act on: it goes to stderr, never the protocol stream. */
 export function reportFailure(message: string): (error: unknown) => void {

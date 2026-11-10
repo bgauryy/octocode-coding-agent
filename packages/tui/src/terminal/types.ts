@@ -7,7 +7,6 @@ export interface Terminal {
 	// Start the terminal with input and resize handlers
 	start(onInput: (data: string) => void, onResize: () => void, onCapabilitiesChange?: () => void): void;
 
-	// Stop the terminal and restore state
 	stop(): void;
 
 	/**
@@ -18,7 +17,6 @@ export interface Terminal {
 	 */
 	drainInput(maxMs?: number, idleMs?: number): Promise<void>;
 
-	// Write output to terminal
 	write(data: string): void;
 
 	/** Queued output bytes when the implementation can observe them; absent retains legacy rendering cadence. */
@@ -29,27 +27,22 @@ export interface Terminal {
 	setOutputTelemetryEnabled?(enabled: boolean): void;
 	getOutputTelemetry?(): Readonly<OutputTelemetry>;
 
-	// Get terminal dimensions
 	get columns(): number;
 	get rows(): number;
 
-	// Whether Kitty keyboard protocol is active
 	get kittyProtocolActive(): boolean;
 
 	// Cursor positioning (relative to current position)
 	moveBy(lines: number): void; // Move cursor up (negative) or down (positive) by N lines
 
-	// Cursor visibility
-	hideCursor(): void; // Hide the cursor
-	showCursor(): void; // Show the cursor
+	hideCursor(): void;
+	showCursor(): void;
 
-	// Clear operations
-	clearLine(): void; // Clear current line
-	clearFromCursor(): void; // Clear from cursor to end of screen
+	clearLine(): void;
+	clearFromCursor(): void;
 	clearScreen(): void; // Clear entire screen and move cursor to (0,0)
 
-	// Title operations
-	setTitle(title: string): void; // Set terminal window title
+	setTitle(title: string): void;
 
 	// Progress indicator (OSC 9;4)
 	setProgress(active: boolean): void;

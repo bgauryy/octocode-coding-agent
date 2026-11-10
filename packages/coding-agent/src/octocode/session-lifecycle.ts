@@ -66,13 +66,13 @@ export function registerNativeSessionLifecycle(
 		}
 		held.value = false;
 		// A subagent that answers while its own job runs is waiting for it: the job's completion goes to it in one more turn
-		// instead of the job being stopped below with the run (B82).
+		// instead of the job being stopped below with the run.
 		if (isSubagent) {
 			const holding = setInterval(() => undefined, MINUTE_MS);
 			try {
 				const notify = (text: string) =>
 					void api.sendMessage({ customType: JOB_HOLD_TYPE, content: text, display: true }, { triggerTurn: false });
-				// After the hold note, an answer that names no outcome is still waiting; a report ends the run (B193).
+				// After the hold note, an answer that names no outcome is still waiting; a report ends the run.
 				const answer = event.context.contextMessages.findLast((message) => message.role === "assistant");
 				const reported = answer !== undefined && reportStatus(contentText(answer.content)) !== undefined;
 				const holdMs = options.jobHoldMs ?? CHILD_JOB_HOLD_MS;

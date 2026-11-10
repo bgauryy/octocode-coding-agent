@@ -85,7 +85,8 @@ function ContextCard({ agent }: { agent: ProfileAgent }) {
 /** What the team table adds to the profiler's row: where it works, what it locks and its newest message. */
 function TeamCard({ member, traffic }: { member: Member; traffic: readonly Traffic[] }) {
 	const last = lastMessage(member.id, traffic);
-	if (!member.worktree && !member.locks?.length && !last && !member.pending) return null;
+	if (!member.worktree && !member.locks?.length && !last && !member.pending && !member.outcome && !member.waiting)
+		return null;
 	return (
 		<section className="pf-card" aria-label="Team">
 			<h4>Team</h4>
@@ -98,6 +99,17 @@ function TeamCard({ member, traffic }: { member: Member; traffic: readonly Traff
 				<p className="muted" style={{ margin: 0 }}>
 					Locks: <code>{member.locks.slice(0, 3).join(", ")}</code>
 					{member.locks.length > 3 ? ` +${member.locks.length - 3} more` : ""}
+				</p>
+			) : null}
+			{member.waiting ? (
+				<p style={{ margin: 0 }}>
+					{member.waiting === "approval" ? "Waiting for your approval" : "Waiting for your answer"}
+				</p>
+			) : null}
+			{member.outcome ? (
+				<p style={{ margin: 0 }}>
+					Ended: {member.outcome}
+					{member.headline ? ` · ${member.headline}` : ""}
 				</p>
 			) : null}
 			{member.pending ? <p style={{ margin: 0 }}>{member.pending} awaiting reply</p> : null}

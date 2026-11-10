@@ -11,11 +11,10 @@ import { type CompactDetails, compactHeader, compactResult } from "./compact-ren
 import { contextTokens, type ThrashBreaker, toolDefinitionChars } from "./pacing.ts";
 
 /**
- * The main agent's own compaction request (Codex's `new_context` tool sets a flag that its turn loop consumes; see
- * .octocode/compaction-tool/decision.md). The tool only queues the request: `compact()` aborts the running session
- * first, so it runs once the run settles, and a hidden message then resumes the task from the summary. It counts as
- * automatic for the thrash breaker, and is refused while the context is small or right after a compaction.
- * Subagents do not get it: a child's run settling is its report.
+ * The main agent's own compaction request. The tool only queues it: `compact()` aborts the running session first, so
+ * it runs once the run settles, and a hidden message then resumes the task from the summary. It counts as automatic for
+ * the thrash breaker, and is refused while the context is small or right after a compaction. Subagents do not get it:
+ * a child's run settling is its report.
  */
 export const COMPACT_TOOL = "compact";
 /** Below this share of the room before automatic compaction, a summary frees too little to pay for itself. */
@@ -79,7 +78,8 @@ export class CompactRequests {
 			return "Compaction refused: the context size is unknown.";
 		const limit = autoCompactAt(model, compactionThinking(api));
 		if (tokens < COMPACT_MIN_SHARE * limit) {
-			const percent = Math.round((tokens / Math.max(1, limit)) * 100);
+			// Rounded down: 49.6% must not read as the 50% floor it is refused under.
+			const percent = Math.floor((tokens / Math.max(1, limit)) * 100);
 			return `Compaction refused: the context is ${percent}% of the room before automatic compaction, under ${COMPACT_MIN_SHARE * 100}%, so a summary would free little. Continue the task.`;
 		}
 		return undefined;

@@ -68,13 +68,11 @@ export function buildSessionOptions(
 
 		if (savedInScope) {
 			options.model = savedInScope.model;
-			// Use thinking level from scoped model config if explicitly set
 			if (!parsed.thinking && savedInScope.thinkingLevel) {
 				options.thinkingLevel = savedInScope.thinkingLevel;
 			}
 		} else {
 			options.model = scopedModels[0].model;
-			// Use thinking level from first scoped model if explicitly set
 			if (!parsed.thinking && scopedModels[0].thinkingLevel) {
 				options.thinkingLevel = scopedModels[0].thinkingLevel;
 			}
@@ -99,7 +97,6 @@ export function buildSessionOptions(
 	// API key from CLI - set as a non-persistent runtime override
 	// (handled by caller before the session is created)
 
-	// Tools
 	if (parsed.noTools) {
 		options.noTools = "all";
 	} else if (parsed.noBuiltinTools) {

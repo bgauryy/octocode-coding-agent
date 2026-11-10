@@ -1,6 +1,7 @@
 import path from "node:path";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
-import { HOME_NAMES, octocodeHome } from "../shared/home.ts";
+import { HOME_NAMES } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../common/src/paths.ts";
 import { repoKey } from "../../utils/git-repository.ts";
@@ -11,7 +12,7 @@ import { WORKTREE_ROOT_ENV } from "./prompt-root.ts";
  * common directory, so the main checkout and each linked worktree share one folder, and a prune from any of them finds
  * the others' orphans.
  */
-export function worktreesDir(cwd: string, home = octocodeHome()): string {
+export function worktreesDir(cwd: string, home = getOctocodeHome()): string {
 	return path.join(home, HOME_NAMES.worktrees, shortHash(repoKey(cwd).key));
 }
 

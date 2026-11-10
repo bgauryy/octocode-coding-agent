@@ -62,7 +62,7 @@ import type { SessionNameSource } from "./session-manager.ts";
 import { exportSessionToJsonl } from "./session-export.ts";
 import { computeSessionStats, lastAssistantText, type SessionStats } from "./session-stats.ts";
 import type { BashOperations } from "./tools/bash.ts";
-import { watchProviderSettings } from "./provider-sources/index.ts";
+import { noticeDisabledProvider, watchProviderSettings } from "./provider-sources/index.ts";
 import { disposeApplicationPort, getApplicationPort } from "./application/index.ts";
 
 export { type ParsedSkillBlock, parseSkillBlock } from "./agent-session/prompt-expansion.ts";
@@ -131,6 +131,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			c.tools.setActiveTools([...new Set([...named, ...this.getActiveToolNames()])]);
 		}
 		getApplicationPort(this);
+		noticeDisabledProvider(this);
 	}
 
 	// Private seams (tests replace or call these on the instance)
@@ -140,7 +141,6 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		await handleAgentEvent(this._c.agentEvents, event);
 	};
 
-	/** Emit extension events based on agent events */
 	private async _emitExtensionEvent(event: AgentEvent): Promise<void> {
 		await emitExtensionEvent(this._c.agentEvents, event);
 	}

@@ -52,7 +52,7 @@ afterEach((context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
 });
 afterAll(async () => {
-	killEverything();
+	await killEverything();
 	page.close();
 	await endpoint.close();
 });
@@ -684,30 +684,40 @@ describe("the Octocode research tools against the real server", () => {
 		expect(declared().length).toBeGreaterThanOrEqual(12);
 	});
 
-	it.each(Object.keys(LOCAL_ROWS))("%s: every selector value in its signature has a row the server takes", (tool) => {
-		const { forms } = rowForms(toolBlock(system(), tool));
-		const values = forms.flatMap((form) => form.values);
-		expect(values.filter((value) => !(value in LOCAL_ROWS[tool]))).toEqual([]);
+	it.each(Object.keys(LOCAL_ROWS))(
+		"%s: every selector value in its signature has a row, and every row names real fields",
+		(tool) => {
+			const block = toolBlock(system(), tool);
+			const { forms } = rowForms(block);
+			const values = forms.flatMap((form) => form.values);
+			expect(values.filter((value) => !(value in LOCAL_ROWS[tool]))).toEqual([]);
+			expect(Object.keys(LOCAL_ROWS[tool]).filter((value) => !values.includes(value))).toEqual([]);
+			for (const one of Object.values(LOCAL_ROWS[tool]))
+				for (const key of Object.keys(one)) expect(block, key).toMatch(new RegExp(`\\b${key}\\??:`));
+		},
+	);
+
+	// Exposure smoke test: the external server behind each exposed tool answers; its result format is its own contract.
+	it.each(Object.keys(LOCAL_ROWS))("%s: the exposed tool reaches the server and every row gets results", (tool) => {
 		for (const { tool: name, value, index } of expected) {
 			if (name !== tool) continue;
 			const result = lastResults(steps)[index] ?? "";
 			expect(result, `${tool} ${value}`).not.toMatch(REFUSED_FOR_SHAPE);
 			expect(result, `${tool} ${value}`).toContain('"results"');
-			// Without a language server (a bare CI image) lspSearch answers so; the shape check above still holds.
+			// Without a language server (a bare CI image) lspSearch answers so.
 			const answered = tool !== "lspSearch" || result.includes('"serverAvailable":true');
 			const found = LOCAL_ANSWERS[tool].found[value];
 			if (found && answered) expect(result, `${tool} ${value}`).toContain(found);
 		}
-		// Every field a row names exists in the signature it was built from.
-		const block = toolBlock(system(), tool);
-		for (const one of Object.values(LOCAL_ROWS[tool]))
-			for (const key of Object.keys(one)) expect(block, key).toMatch(new RegExp(`\\b${key}\\??:`));
 	});
 
-	it.each(Object.keys(LOCAL_ROWS))("%s: a bad call comes back with the field or cause named", (tool) => {
-		const at = failing.find((one) => one.tool === tool)?.index ?? -1;
-		expect(lastResults(steps)[at]).toContain(LOCAL_ANSWERS[tool].says);
-	});
+	it.each(Object.keys(LOCAL_ROWS))(
+		"%s: exposure smoke: a bad call comes back with the field or cause named",
+		(tool) => {
+			const at = failing.find((one) => one.tool === tool)?.index ?? -1;
+			expect(lastResults(steps)[at]).toContain(LOCAL_ANSWERS[tool].says);
+		},
+	);
 
 	it("mcp stop takes a server's tools away with a clear error and restart brings them back", async () => {
 		const stopSteps: Step[] = [
@@ -770,6 +780,10 @@ const REMOTE: Record<string, { refused: Record<string, unknown>; says: RegExp }>
 	ghGetHistoryItem: {
 		refused: { ...OWNER, operation: "issue", number: 1, ref: "HEAD" },
 		says: /ref/,
+	},
+	ghCloneRepo: {
+		refused: { ...OWNER, historyDepth: 0 },
+		says: /historyDepth/,
 	},
 	artifactSearch: {
 		refused: { ecosystem: "npm", operation: "resolve", packageName: "left-pad", keywords: ["x"] },
@@ -1042,7 +1056,7 @@ describe("the browser, for real: headless Chrome on an isolated profile against 
 		);
 		// Closed: the package says so and the process is gone.
 		expect(browserData(results[7]).data?.status).toBe("CLEANED_UP");
-		expect(chromeOn(port)).toEqual([]);
+		await until(() => chromeOn(port).length === 0, "Chrome to exit after the close", 15_000);
 		// The profile's tools, its message and its report all reached the parent.
 		expect(reported).toContain("browser-report");
 		expect(
@@ -1051,7 +1065,7 @@ describe("the browser, for real: headless Chrome on an isolated profile against 
 				?.messages.map((message) => message.text)
 				.join("\n"),
 		).toContain("browser-note");
-		expect(box.survivors()).toEqual([]);
+		await until(() => box.survivors().length === 0, "every process of the run to stop", 15_000);
 	});
 
 	it("a page cannot reach a private address the agent did not open, and a Chrome left open stops with the session", async (context) => {

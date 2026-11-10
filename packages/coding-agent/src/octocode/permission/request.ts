@@ -62,4 +62,9 @@ export interface PermissionRequest {
 	/** Called once when this call will wait for the user, so whoever is behind it can be told. */
 	onAsk?: () => void;
 	signal?: AbortSignal;
+	/**
+	 * Set for a call started before its assistant message ended: the check never opens a dialog (a call that would ask ends
+	 * as `deferred`) and hands each audit entry to `park`, so a call that is discarded leaves none.
+	 */
+	early?: { park(record: () => void): void };
 }

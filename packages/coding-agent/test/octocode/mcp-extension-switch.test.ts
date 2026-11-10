@@ -17,7 +17,7 @@ import { createTestSession } from "../helpers/session.ts";
 import { tmp } from "./helpers.ts";
 
 /**
- * B167: a user-level `octocode` entry in the global mcp.json, as the developer has, and an `extensions` entry
+ * A user-level `octocode` entry in the global mcp.json, as the developer has, and an `extensions` entry
  * `-builtin:mcp`. MCP is core: the entry is ignored with a settings warning, every session keeps the `mcp` tool and the
  * servers' tools, no switch lists MCP, and only `--no-mcp` turns it off.
  */

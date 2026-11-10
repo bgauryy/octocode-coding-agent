@@ -236,11 +236,15 @@ const undoOf = (snapshot: Snapshot): string =>
 		: `none (${snapshot.none})`;
 
 /**
- * The card for `request`: lines the caller set stand, the rest are computed per class within `CARD_BUDGET_MS`; a line
+ * The card for `request`: lines the caller set stand, the rest are computed per class within `budgetMs` (default `CARD_BUDGET_MS`); a line
  * that is not ready says `unknown`. `snapshot` is what was taken before a destructive shell call.
  */
-export async function computeCard(request: PermissionRequest, snapshot?: Snapshot): Promise<EffectCard> {
-	const deadline = Date.now() + CARD_BUDGET_MS;
+export async function computeCard(
+	request: PermissionRequest,
+	snapshot?: Snapshot,
+	budgetMs = CARD_BUDGET_MS,
+): Promise<EffectCard> {
+	const deadline = Date.now() + budgetMs;
 	const base = request.action ? DEFAULTS[request.action](request) : CALL(request);
 	const lines: { effect: string | Promise<string>; undo: string; risk: string | Promise<string> } = { ...base };
 	if (request.action === "shell.destructive") {

@@ -8,7 +8,7 @@ import { shellTargetAccess } from "../../src/octocode/permission/file-access.ts"
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 import { shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { commandWriteTargets } from "../../src/octocode/permission/shell/write-targets.ts";
-import { octocodeHome } from "../../src/octocode/shared/home.ts";
+import { getOctocodeHome } from "../../src/config.ts";
 import { fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -28,7 +28,7 @@ function stateGuard(command: string, cwd: string) {
 
 // A working directory two levels below the folder that holds the real state folder: the wrong resolution of
 // `../../.octocode/tmp/f` lands in the state folder, the right one under the working directory.
-const home = path.dirname(octocodeHome());
+const home = path.dirname(getOctocodeHome());
 const deep = path.join(home, "proj", "sub");
 
 describe("cd following in the state-folder guard", () => {
@@ -43,9 +43,9 @@ describe("cd following in the state-folder guard", () => {
 	});
 
 	it.each([
-		[`echo x > ${path.join(octocodeHome(), "config.json")}`],
-		[`cd packages/x && echo x > ${path.join(octocodeHome(), "config.json")}`],
-		[`cd $DIR && echo x > ${path.join(octocodeHome(), "config.json")}`],
+		[`echo x > ${path.join(getOctocodeHome(), "config.json")}`],
+		[`cd packages/x && echo x > ${path.join(getOctocodeHome(), "config.json")}`],
+		[`cd $DIR && echo x > ${path.join(getOctocodeHome(), "config.json")}`],
 	])("still refuses a write into the real state folder: %s", (command) => {
 		expect(stateGuard(command, deep).refusal).toMatch(/state folder/);
 	});

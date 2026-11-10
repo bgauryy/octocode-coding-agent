@@ -106,7 +106,6 @@ export function createInteractiveModeHost(
 		// Track pending bash components (shown in pending area, moved to chat on submit)
 		pendingBashComponents: [],
 
-		// Auto-compaction state
 		autoCompactionEscapeHandler: undefined,
 
 		// Auto-retry state
@@ -216,11 +215,9 @@ export function createInteractiveModeHost(
 	host.footerContainer = new Container();
 	host.footerContainer.addChild(host.footer);
 
-	// Load hide thinking block setting
 	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
 	host.outputPad = host.settingsManager.getOutputPad();
 
-	// Register themes from resource loader and initialize
 	setRegisteredThemes(host.session.resourceLoader.getThemes().themes);
 	host.themeController = new InteractiveThemeController(host.ui, {
 		getSettingsManager: () => host.settingsManager,

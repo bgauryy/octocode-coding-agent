@@ -92,7 +92,7 @@ const roles = (payload: Payload) => payload.messages.map((message) => message.ro
 describe("Mistral system updates", () => {
 	const base = [user("hello", 2), call, result];
 
-	// Intentional change (B431, option e): an update after a tool result used to wait for the next user
+	// An update after a tool result used to wait for the next user
 	// message while the tools changed at once; it now reaches the leading prompt in the same request.
 	it("folds an update that changes the prompt after a tool result into the leading prompt", async () => {
 		const first = await run(...base);
@@ -171,7 +171,7 @@ describe("Mistral system updates", () => {
 	});
 });
 
-// T12 (B431): a contract update during a tool loop, as an MCP change delivers it.
+// A contract update during a tool loop, as an MCP change delivers it.
 describe("held contract update", () => {
 	const tool = (name: string, description: string): Tool => ({ name, description, parameters: Type.Object({}) });
 	const contractHead: SystemMessage = {

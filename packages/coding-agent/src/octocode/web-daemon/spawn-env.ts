@@ -1,6 +1,6 @@
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { octocodeHome } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 
 /** What a detached, long-lived process needs from the launching session's environment, and nothing else. */
 const KEPT =
@@ -23,5 +23,5 @@ export function daemonSpawnOptions(env: NodeJS.ProcessEnv): { env: NodeJS.Proces
 	}
 	for (const provider of builtinProviders())
 		for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) kept[name] = "set";
-	return { env: kept, cwd: octocodeHome(env) };
+	return { env: kept, cwd: getOctocodeHome(env) };
 }

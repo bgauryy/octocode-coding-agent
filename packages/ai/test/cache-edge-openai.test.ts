@@ -400,7 +400,7 @@ describe("payload describer on the routes that set cache fields", () => {
 });
 
 /**
- * Longest documented tier per route under the default settings (long instructions, long history), verified 2026-11-08:
+ * Longest documented tier per route under the default settings (long instructions, long history):
  * https://developers.openai.com/api/docs/guides/prompt-caching (GPT-5.6 and later: explicit mode, `ttl` 30m or 12h in
  * Responses; the extended-retention footnote lists the models that take `prompt_cache_retention: "24h"`) and
  * https://learn.microsoft.com/azure/foundry/openai/how-to/prompt-caching (Azure's own 24h list).

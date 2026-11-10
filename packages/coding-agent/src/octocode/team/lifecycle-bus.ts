@@ -81,7 +81,7 @@ interface BusHost {
 }
 
 /**
- * The in-process half of the agent lifecycle (design B36 §2): listeners hear every join, state change and end of every agent
+ * The in-process half of the agent lifecycle: listeners hear every join, state change and end of every agent
  * of the shared database, whichever process wrote it. The durable half is `agent_events`: the ticker calls `poll` only when
  * the database file changed, and `poll` reads the events after its cursor, so nothing is queried while nothing changes.
  */

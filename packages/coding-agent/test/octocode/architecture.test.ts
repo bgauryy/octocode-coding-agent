@@ -64,7 +64,8 @@ const ALLOWED: Record<string, string[]> = {
 	files: ["shared", "permission", "cli", "ask", "render", "tool-input"],
 	team: ["shared", "render", "tool-input", "worktree-paths"],
 	discovery: ["shared"],
-	hooks: ["shared", "discovery", "render", "tool-input"],
+	// `permission`: a Claude hook's `if` is one permission rule, judged by the source-policy parser and matcher.
+	hooks: ["shared", "discovery", "render", "tool-input", "permission"],
 	plugins: ["shared", "hooks", "discovery"],
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
 	harness: ["shared", "plugins", "hooks", "discovery", "skill"],

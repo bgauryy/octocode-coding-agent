@@ -255,7 +255,7 @@ export function registerCompaction(
 		// cleared only when its command is read-only, which the bash parse must confirm: load it first.
 		await shellParserReady();
 		clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
-			rewrite: prefixRewritten(event.messages, ctx.model),
+			rewrite: prefixRewritten(event.transcript ?? event.messages, ctx.model),
 			contextWindow: ctx.model?.contextWindow,
 		});
 		if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;

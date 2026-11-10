@@ -18,7 +18,6 @@ import type {
 import type { ModelRoute, ModelRouteRequest, VirtualModelDefinition } from "../../virtual-models.ts";
 import type { ExtensionContext } from "./context.ts";
 
-// ============================================================================
 // Provider Registration Types
 // ============================================================================
 
@@ -55,7 +54,6 @@ export interface ProviderConfig {
 	) => AssistantMessageEventStream;
 	/** Image-generation implementations keyed by image API. */
 	images?: Partial<Record<ImageApi, ProviderImages>>;
-	/** Classifier implementations keyed by classifier API. */
 	classifiers?: Partial<Record<ClassifierApi, ProviderClassifier>>;
 	/** Custom headers to include in requests. */
 	headers?: Record<string, string>;
@@ -80,7 +78,6 @@ export interface ProviderConfig {
 		login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials>;
 		/** Refresh expired credentials, return updated credentials to persist. */
 		refreshToken(credentials: OAuthCredentials, signal: AbortSignal): Promise<OAuthCredentials>;
-		/** Convert credentials to API key string for the provider. */
 		getApiKey(credentials: OAuthCredentials): string;
 		/** Legacy synchronous credential-dependent model projection. */
 		modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];

@@ -14,6 +14,12 @@ import type { PermissionRequest } from "../request.ts";
  * would have asked.
  */
 export type Verdict =
+	| Decided
+	/** An early call (`PermissionRequest.early`) that would ask: nothing is recorded, the call is judged again after its message ended. */
+	| { allowed: false; via: "deferred"; message: string };
+
+/** A verdict that is recorded in the audit. */
+export type Decided =
 	| { allowed: true; via: "mode" | "bypass" | "grant" | "user" | "hook" | "policy"; lasts: "call" | "session" }
 	| {
 			allowed: false;

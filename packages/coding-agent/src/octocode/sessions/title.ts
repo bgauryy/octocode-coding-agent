@@ -7,7 +7,7 @@ import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 
 /** How long the title call may take before it is given up. */
 // The call runs in the background and its write is guarded, so a slow model costs nothing; 5 s dropped 13 of 30 titles
-// on a frontier model (.octocode/title-eval/NOTES.md, 2026-10-31).
+// on a frontier model.
 const TITLE_TIMEOUT_MS = 20_000;
 /** Most characters of the request the model sees. */
 const INPUT_MAX = 2000;

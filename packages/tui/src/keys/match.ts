@@ -39,9 +39,7 @@ import {
 	SYMBOL_KEYS,
 } from "./tables.ts";
 
-// =============================================================================
 // Generic Key Matching
-// =============================================================================
 
 /**
  * Match input data against a key identifier string.

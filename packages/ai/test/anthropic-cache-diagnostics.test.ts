@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cacheMissDiagnostic } from "../src/api/anthropic-messages/cache-diagnostics.ts";
 import { handleAnthropicStreamEvent } from "../src/api/anthropic-messages/stream-events.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -25,6 +25,14 @@ const reply = (id: string | undefined, target: Model<"anthropic-messages"> = mod
 });
 
 describe("Anthropic cache diagnostics request field", () => {
+	beforeEach(() => {
+		// The variable is read from the process when a request passes no env; start from a known state.
+		vi.stubEnv("OCTOCODE_CACHE_DIAGNOSTICS", "");
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("is not sent unless enabled", async () => {
 		const payload = await capture(model, transcript([user("task")]));
 		expect("diagnostics" in payload).toBe(false);

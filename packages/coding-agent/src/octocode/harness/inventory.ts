@@ -15,6 +15,7 @@ import type { Settings } from "../../core/settings-schema.ts";
 import { getOctocodeSkillsDir } from "../../config.ts";
 import { collectionSkillDetail, coreSkillItems } from "../../core/extensibility/core-skill-items.ts";
 import { hostInstalledPlugins } from "../../core/extensibility/host-plugins.ts";
+import { markLosingSkills } from "./skill-duplicates.ts";
 import { vendorItems } from "./vendor-items.ts";
 import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
 import type { DiscoverInput } from "../../core/discovery/types.ts";
@@ -42,7 +43,6 @@ export {
 	type InventoryHost,
 	type InventoryItem,
 } from "../../core/extensibility/inventory-types.ts";
-
 /** Headings in display order. */
 export const HOST_TITLES: Record<InventoryHost, string> = {
 	harness: "Harnesses",
@@ -313,7 +313,7 @@ export async function buildInventory(options: {
 		builtinSkillsDir: getOctocodeSkillsDir(),
 	});
 	const statuses = harnessStatuses(input);
-	const items = [
+	const rows = [
 		...vendorItems(statuses, options.settings.toggles),
 		...pluginItems(
 			options.settings,
@@ -348,8 +348,8 @@ export async function buildInventory(options: {
 		])),
 		...mcpItems(options.mcp ?? [], options.home),
 	];
-	const ids = new Set(items.map((item) => item.id));
-	const projectIds = new Set(items.filter((item) => item.project).map((item) => item.id));
+	const ids = new Set(rows.map((item) => item.id));
+	const projectIds = new Set(rows.filter((item) => item.project).map((item) => item.id));
 	const keys = Object.keys(options.settings.toggles ?? {});
 	const ignored = keys
 		.filter((key) => key.startsWith(PROJECT_TOGGLE_PREFIX))
@@ -359,7 +359,7 @@ export async function buildInventory(options: {
 	const stale = keys
 		.map((key) => (key.startsWith(PROJECT_TOGGLE_PREFIX) ? key.slice(PROJECT_TOGGLE_PREFIX.length) : key))
 		.filter((id) => !ids.has(id));
-	return { items, stale: [...new Set(stale)], ignored, notes };
+	return { items: markLosingSkills(rows, options.agentDir), stale: [...new Set(stale)], ignored, notes };
 }
 
 /**

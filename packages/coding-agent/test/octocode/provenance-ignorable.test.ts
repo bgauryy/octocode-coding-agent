@@ -91,6 +91,21 @@ describe("provenance ignores text that is only a workspace path, the cwd or a mo
 		expect(provenance.check(bash(`run --model ${model}`), { cwd: root })?.why).toMatch(/text from agent c1/);
 	});
 
+	it.each(["off", "minimal", "low", "medium", "high", "xhigh", "max"])(
+		"does not trip on a registered model id with the :%s thinking suffix",
+		(level) => {
+			const root = workspace();
+			const provenance = createProvenance({ workspaceRoot: () => root });
+			const model = `guy-provider-anthropic-x/claude-sonnet-5-5:${level}`;
+			const known = {
+				cwd: root,
+				modelRegistry: { getAll: () => [{ provider: "guy-provider-anthropic-x", id: "claude-sonnet-5-5" }] },
+			};
+			provenance.record(result("agent", { task: "x" }, `Ran it on ${model}.`, { details: { id: "c1" } }), known);
+			expect(provenance.check(bash(`run --model ${model}`), known)?.why).toBeUndefined();
+		},
+	);
+
 	it("still trips on injected prose, also next to a workspace path", () => {
 		const root = workspace();
 		const provenance = createProvenance({ workspaceRoot: () => root });

@@ -67,11 +67,23 @@ export class SessionToolCalls {
 		agent.afterToolCall = (context) => this._afterToolCall(context);
 		agent.unknownToolMessage = (name) => unknownToolMessage(this.host.session, name, this.host.pendingToolNames());
 		agent.pendingToolNames = () => this.host.pendingToolNames();
+		// `toolExecution.earlyStart`: the extensions decide which calls may start while the message streams (no dialog).
+		agent.earlyStart = {
+			mayStart: (toolCall) =>
+				this.host.session.settingsManager.getToolExecutionEarlyStart() &&
+				this.host.session.extensionRunner.mayStartToolCallEarly({
+					origin: "model",
+					toolName: toolCall.name,
+					toolCallId: toolCall.id,
+					input: toolCall.arguments,
+				}),
+			onDiscarded: (toolCallId) => this.host.session.extensionRunner.toolCallDiscarded(toolCallId),
+		};
 	}
 
 	/** `tool_call` handlers. `parentToolCallId` is set for calls another tool made. */
 	private async _beforeToolCall(
-		{ toolCall, args }: BeforeToolCallContext,
+		{ toolCall, args, early }: BeforeToolCallContext,
 		signal?: AbortSignal,
 		parentToolCallId?: string,
 	): Promise<BeforeToolCallResult | undefined> {
@@ -88,6 +100,7 @@ export class SessionToolCalls {
 					toolName: toolCall.name,
 					toolCallId: toolCall.id,
 					...(parentToolCallId ? { parentToolCallId } : {}),
+					...(early ? { early } : {}),
 					input: args as Record<string, unknown>,
 				},
 				signal,

@@ -99,7 +99,7 @@ export function buildParams(
 		params.max_output_tokens = Math.max(options.maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS);
 	}
 
-	if (options?.temperature !== undefined && !omitUnsupportedFields) {
+	if (options?.temperature !== undefined && compat.supportsTemperature && !omitUnsupportedFields) {
 		params.temperature = options?.temperature;
 	}
 

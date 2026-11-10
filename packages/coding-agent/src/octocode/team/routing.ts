@@ -180,7 +180,7 @@ const outsideTeam = (who: string, parentId: string | undefined) =>
 /**
  * Who a message goes to: an id, a role held by one agent, `parent`, or `all` (every other agent in the session tree of
  * `scope`, the sender by default). Returns the recipients or an error text. `stalled` (`TeamStore.list` with `stalled`:
- * process running, not seen for `STALE_MS`) are reached by id or as `parent`, never by role or `all`. A subagent sender
+ * process running, not seen for `STALE_MS`) are reached by id, as `parent` or by `all`, never by role. A subagent sender
  * (`parentId` set, `from` an agent) reaches only its session tree, its parent included, plus `answering` (the sender of
  * the message it replies to, who opened that conversation); anything beyond goes through its parent.
  */
@@ -206,8 +206,9 @@ export function resolveTarget(
 		return renderInstruction("notices/mail/coordinator-left.md", { parent: parentId });
 	const others = members.filter((member) => member.id !== from);
 	if (to === "all") {
-		const tree = sessionTree(members, scope);
-		const reached = others.filter((member) => tree.has(member.id));
+		// A stalled member is still in the session: its mail waits for it, like a named message does.
+		const tree = sessionTree(everyone, scope);
+		const reached = everyone.filter((member) => member.id !== from && tree.has(member.id));
 		return reached.length > 0
 			? reached
 			: "No other agents are in your session tree (the top session and every subagent under it).";

@@ -2,7 +2,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
-import { octocodeHome } from "../../src/octocode/shared/home.ts";
+import { getOctocodeHome } from "../../src/config.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -52,7 +52,7 @@ it("uses one original invocation resolver for all target classes", async () => {
 	expect(resolver.mock.calls[0]?.[1]).toBe(request.invocation);
 });
 it("refuses state-folder writes before any hook even in full mode", async () => {
-	const { permission, ctx, request } = setup(path.join(octocodeHome(), "trust.json"), true);
+	const { permission, ctx, request } = setup(path.join(getOctocodeHome(), "trust.json"), true);
 	permission.setMode("full", ctx);
 	const resolver = vi.fn(async (..._args: unknown[]) => ({
 		decision: "allow" as const,

@@ -2,10 +2,8 @@ import {
 	animationClock,
 	type Component,
 	Loader,
-	mixColors,
 	MOTION,
 	SEPARATOR,
-	shimmerText,
 	stripTerminalSequences,
 	truncateToWidth,
 	type TUI,
@@ -13,6 +11,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import { formatDuration } from "../../../octocode/shared/format.ts";
+import { liveShimmer } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { getRunClock } from "../../../utils/run-clock.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
@@ -137,16 +136,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	private paintDetail(detail: string): string {
 		const plain = stripTerminalSequences(detail);
 		if (!this.isAnimated() || plain !== detail || plain.length > SHIMMER_MAX_CHARS) return theme.fg("text", detail);
-		try {
-			const colors = theme.colors;
-			const base = colors.text;
-			const accent = colors.accent;
-			if (!base || !accent) return theme.fg("text", detail);
-			const peak = mixColors(base, accent, theme.appearance === "light" ? 0.7 : 0.55);
-			return shimmerText(plain, { base, peak, mode: theme.getColorMode() });
-		} catch {
-			return theme.fg("text", detail);
-		}
+		return liveShimmer(theme, plain);
 	}
 }
 

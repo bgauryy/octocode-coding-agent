@@ -69,10 +69,6 @@ function assertSuccessfulOutput(output: AssistantMessage): asserts output is Suc
 	}
 }
 
-// ============================================================================
-// Main Stream Function
-// ============================================================================
-
 export const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions> = (
 	model: Model<"openai-codex-responses">,
 	context: TranscriptContext,

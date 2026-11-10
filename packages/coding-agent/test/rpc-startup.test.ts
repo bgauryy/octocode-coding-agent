@@ -18,7 +18,7 @@ import {
 /**
  * The RPC host keeps handling commands while a UI request is open, and answers every open request when it closes.
  * The native producer of a UI request is the permission prompt of a manual-mode shell call; no native feature opens
- * one while a session starts (see .octocode/sdk-removal/p3-coverage.md).
+ * one while a session starts.
  */
 let sandbox: Sandbox;
 let server: ModelServer | undefined;

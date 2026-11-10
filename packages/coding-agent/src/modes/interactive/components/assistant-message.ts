@@ -248,7 +248,6 @@ export class AssistantMessageComponent extends Container {
 			observeThinking(block.id, chars, index < blocks.length - 1, now, isStreaming);
 		});
 
-		// Clear content container
 		this.contentContainer.clear();
 		this.liveLabel = undefined;
 
@@ -258,7 +257,6 @@ export class AssistantMessageComponent extends Container {
 			this.contentContainer.addChild(new Spacer(1));
 		}
 
-		// Render content in order
 		let thinkingRunIndex = 0;
 		for (let i = 0; i < blocks.length; i++) {
 			const content = blocks[i];

@@ -8,10 +8,10 @@ import { effectiveTimeout } from "./results.ts";
 /** Overrides the `bashBackgroundAfterSeconds` setting; 0 turns the automatic move off. */
 export const BACKGROUND_AFTER_ENV = "OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS";
 
-/** The longest a deliberate foreground wait lasts before the command moves to the background (user decision, 2026-11-05). */
+/** The longest a deliberate foreground wait lasts before the command moves to the background. */
 const DELIBERATE_MAX_SECONDS = 600;
 
-/** A command starting with `sleep` is stopped at its deadline, not moved to the background (as Claude Code does). */
+/** A command starting with `sleep` is stopped at its deadline, not moved to the background. */
 const SLEEP_COMMAND = /^\s*sleep(?:\s|$)/;
 
 /** Seconds a foreground command may run before it moves: the environment, else the setting, else the default; 0 = never. */

@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from "vitest";
 import { captureAll, type AgentContext } from "./agent-context/capture.ts";
 import { formatFindings, lintPrompt } from "./agent-context/lint.ts";
 
-/** B149: the exact prompt of every agent, captured as `generate:prompts` captures it, must pass the free lint. */
+/** The exact prompt of every agent, captured as `generate:prompts` captures it, must pass the free lint. */
 let contexts: AgentContext[] = [];
 
 beforeAll(async () => {

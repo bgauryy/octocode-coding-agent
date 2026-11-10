@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { getAgentDir } from "../config.ts";
+import { getAgentDir, getLegacyConfigDirs } from "../config.ts";
+import { modelsFileHoldsLiteralKey } from "./models-json-keys.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
 import { ModelRuntime } from "./model-runtime.ts";
 import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type ResourceLoader } from "./resource-loader.ts";
@@ -82,9 +83,14 @@ export async function createAgentSessionServices(
 
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
 	if (!options.modelRuntime) {
-		diagnostics.push(
-			...checkAuthFileSafety(join(agentDir, "auth.json")).map((message) => ({ type: "warning" as const, message })),
-		);
+		const dirs = [agentDir, ...getLegacyConfigDirs(agentDir)];
+		const keyFiles = [
+			...dirs.map((dir) => join(dir, "auth.json")),
+			...dirs.map((dir) => join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),
+		];
+		for (const file of keyFiles) {
+			diagnostics.push(...checkAuthFileSafety(file).map((message) => ({ type: "warning" as const, message })));
+		}
 	}
 	const extensionsResult = resourceLoader.getExtensions();
 	for (const { name, config, extensionPath } of extensionsResult.runtime.pendingProviderRegistrations) {

@@ -209,7 +209,7 @@ describe("MCP OAuth client ID metadata documents", () => {
 	it("uses a document and callback path specific to the MCP server without the iss parameter", async () => {
 		const { server, signIn } = await startServer({ cimd: true });
 		await signIn(cimd);
-		// Computed like Codex: the first 9 bytes of the SHA-256 of the MCP server URL.
+		// The first 9 bytes of the SHA-256 of the MCP server URL.
 		const id = createHash("sha256").update(server.url).digest().subarray(0, 9).toString("base64url");
 		const [authorization] = server.authorizations;
 		expect(authorization.get("client_id")).toBe(`https://client.example/oauth/${id}/client.json`);

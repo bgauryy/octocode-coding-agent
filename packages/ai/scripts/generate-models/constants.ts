@@ -141,7 +141,7 @@ export const AZURE_DEEPSEEK_V4_THINKING_LEVEL_MAP = {
 	xhigh: null,
 	max: null,
 } as const;
-// Verified against Fireworks Messages raw_output on 2026-09-10 (#9323).
+// Verified against Fireworks Messages raw_output.
 // Fall back to verified support when models.dev omits effort metadata; this is
 // not an allowlist. Any Fireworks Messages model advertising effort uses adaptive thinking.
 export const FIREWORKS_ADAPTIVE_THINKING_FALLBACK_MODELS = new Set([
@@ -167,7 +167,7 @@ export const QWEN_TOKEN_PLAN_PROVIDER_IDS = new Set<string>([
 	"qwen-token-plan-cn",
 	"qwen-token-plan-individual",
 ]);
-// QwenCloud Token Plan Individual text-model allowlist, verified 2026-09-03.
+// QwenCloud Token Plan Individual text-model allowlist.
 // Retired models remain excluded above even if the public catalog lags.
 // https://docs.qwencloud.com/token-plan/personal/token-plan-personal-overview
 export const QWEN_TOKEN_PLAN_INDIVIDUAL_MODEL_IDS = new Set<string>([

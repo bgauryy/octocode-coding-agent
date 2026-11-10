@@ -3,10 +3,6 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePath } from "../../../common/src/paths.ts";
 
-// =============================================================================
-// Package Detection
-// =============================================================================
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -23,10 +19,6 @@ export const isBunRuntime = !!process.versions.bun;
 /** Detect the esbuild-bundled Node.js distribution. */
 declare const OCTOCODE_BUNDLED_NODE: boolean;
 export const isBundledNode = typeof OCTOCODE_BUNDLED_NODE !== "undefined" && OCTOCODE_BUNDLED_NODE;
-
-// =============================================================================
-// Package Directory
-// =============================================================================
 
 /**
  * Get the base directory for resolving package assets (themes, package.json, README.md, CHANGELOG.md).

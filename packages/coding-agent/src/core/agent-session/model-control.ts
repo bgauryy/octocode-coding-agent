@@ -16,6 +16,7 @@ import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
 export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 
 /** Share of a model's capacity the default working context may use. */
+type SetModelOptions = ModelMutationOptions & { source?: "set" | "fallback"; level?: ThinkingLevel };
 const DEFAULT_BUDGET_SHARE = 0.9;
 
 /**
@@ -190,7 +191,7 @@ export class SessionModelControl {
 	private async _emitModelSelect(
 		nextModel: Model<any>,
 		previousModel: Model<any> | undefined,
-		source: "set" | "cycle" | "restore",
+		source: "set" | "cycle" | "restore" | "fallback",
 	): Promise<void> {
 		if (modelsAreEqual(previousModel, nextModel)) return;
 		await this.host.session.extensionRunner.emit({
@@ -201,11 +202,12 @@ export class SessionModelControl {
 		});
 	}
 
-	async setModel(model: Model<any>, options: ModelMutationOptions): Promise<void> {
+	/** `fallback`: `retry.fallbackModels` replaces a model that hit a usage limit, at `level` when the entry names one. */
+	async setModel(model: Model<any>, options: SetModelOptions): Promise<void> {
 		if (!(await this.host.session.modelRuntime.checkAuth(model.provider))) {
 			throw new Error(`No API key for ${model.provider}/${model.id}`);
 		}
-		await this._switchTo(model, options, "set");
+		await this._switchTo(model, options, options.source ?? "set", options.level);
 	}
 
 	/**
@@ -215,7 +217,7 @@ export class SessionModelControl {
 	private async _switchTo(
 		model: Model<any>,
 		options: ModelMutationOptions,
-		source: "set" | "cycle",
+		source: "set" | "cycle" | "fallback",
 		explicitLevel?: ThinkingLevel,
 	): Promise<Model<any>> {
 		const { session } = this.host;

@@ -17,9 +17,7 @@ export {
 	type SelfUpdatePackageTarget,
 } from "./install/self-update.ts";
 
-// =============================================================================
 // Package Asset Paths (shipped with executable)
-// =============================================================================
 
 /**
  * Where the running code's assets are: `dist/` for code built into `dist/`, even inside a source checkout, so a build
@@ -63,22 +61,18 @@ export function getExportTemplateDir(): string {
 	return join(getSourceOrDistDir(), "core", "export-html");
 }
 
-/** Get path to package.json */
 function getPackageJsonPath(): string {
 	return join(getPackageDir(), "package.json");
 }
 
-/** Get path to README.md */
 export function getReadmePath(): string {
 	return resolve(join(getPackageDir(), "README.md"));
 }
 
-/** Get path to docs directory */
 export function getDocsPath(): string {
 	return resolve(join(getPackageDir(), "docs"));
 }
 
-/** Get path to examples directory */
 export function getExamplesPath(): string {
 	return resolve(join(getPackageDir(), "examples"));
 }
@@ -148,7 +142,6 @@ export function getCliInvocation(): { command: string; prefix: string[] } {
 	return { command: process.execPath, prefix: [bundleCli] };
 }
 
-/** Get path to CHANGELOG.md */
 export function getChangelogPath(): string {
 	return resolve(join(getPackageDir(), "CHANGELOG.md"));
 }
@@ -176,9 +169,7 @@ export function detectInstallChange(packageJsonPath = startupPackageJsonPath): I
 		: undefined;
 }
 
-// =============================================================================
 // App Config (from package.json octocodeConfig)
-// =============================================================================
 
 interface PackageJson {
 	name?: string;
@@ -212,15 +203,12 @@ export const VERSION: string = pkg.version || "0.0.0";
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
 
-/** Get the share viewer URL for a gist ID. */
 export function getShareViewerUrl(gistId: string): string {
 	const baseUrl = process.env.OCTOCODE_SHARE_VIEWER_URL;
 	return baseUrl ? `${baseUrl}#${gistId}` : `https://gist.github.com/${gistId}`;
 }
 
-// =============================================================================
 // User Config Paths (~/.octocode/octocodecode/*)
-// =============================================================================
 
 /** Shared root for Octocode Code configuration and runtime state. */
 export function getOctocodeHome(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
@@ -244,7 +232,6 @@ export function getLegacyConfigDirs(agentDir = getAgentDir()): string[] {
 	return [join(homedir(), ".pi", "agent"), join(homedir(), ".pi")];
 }
 
-/** Get path to user's custom themes directory */
 export function getCustomThemesDir(): string {
 	return join(getAgentDir(), "themes");
 }
@@ -258,12 +245,10 @@ export function getContextOptimizationDir(agentDir = getAgentDir()): string {
 	return join(agentDir, "context-optimization");
 }
 
-/** Get path to models.json */
 export function getModelsPath(): string {
 	return join(getAgentDir(), "models.json");
 }
 
-/** Get path to settings.json */
 export function getSettingsPath(): string {
 	return join(getAgentDir(), "settings.json");
 }
@@ -273,12 +258,10 @@ export function getBinDir(): string {
 	return join(getAgentDir(), "bin");
 }
 
-/** Get path to sessions directory */
 export function getSessionsDir(): string {
 	return join(getAgentDir(), "sessions");
 }
 
-/** Get path to debug log file */
 export function getDebugLogPath(): string {
 	return join(getAgentDir(), `${APP_NAME}-debug.log`);
 }

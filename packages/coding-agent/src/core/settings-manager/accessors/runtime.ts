@@ -61,6 +61,17 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		};
 	}
 
+	/** `retry.fallbackModels`: `provider/id[:thinking]` selectors to continue on after a usage-limit failure, in order. */
+	getRetryFallbackModels(): string[] {
+		const models = this.settings.retry?.fallbackModels;
+		return Array.isArray(models) ? models.filter((model) => typeof model === "string" && model.trim() !== "") : [];
+	}
+
+	/** `toolExecution.earlyStart`: start read-only, approval-free tool calls while the message still streams. */
+	getToolExecutionEarlyStart(): boolean {
+		return this.settings.toolExecution?.earlyStart ?? SETTINGS_DEFAULTS.toolExecution.earlyStart;
+	}
+
 	getHttpIdleTimeoutMs(): number {
 		return parseTimeoutSetting(this.settings.httpIdleTimeoutMs, "httpIdleTimeoutMs") ?? DEFAULT_HTTP_IDLE_TIMEOUT_MS;
 	}

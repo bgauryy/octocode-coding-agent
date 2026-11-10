@@ -26,7 +26,6 @@ export function isDefaultActive(entry: McpServerEntry, taskNamed?: ReadonlySet<s
 	return entry.config.defaultActive !== false || taskNamed?.has(entry.name) === true;
 }
 
-/** The prefix every tool name of the server starts with: `mcp__<namespace>__`. */
 const serverToolPrefix = (server: string): string => `${mcpNamespace(server)}__`;
 
 /**

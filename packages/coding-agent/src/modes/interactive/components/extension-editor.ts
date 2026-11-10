@@ -66,11 +66,9 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 		this.onCancelCallback = onCancel;
 		const { description, ...editorOptions } = options ?? {};
 
-		// Add top border
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
-		// Add title and optional description
 		this.addChild(new Text(theme.fg("accent", title), 1, 0));
 		if (description) {
 			this.addChild(new Spacer(1));
@@ -78,7 +76,6 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 		}
 		this.addChild(new Spacer(1));
 
-		// Create editor
 		this.editor = new Editor(tui, getEditorTheme(), editorOptions);
 		if (prefill) {
 			this.editor.setText(prefill);
@@ -91,7 +88,6 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 
 		this.addChild(new Spacer(1));
 
-		// Add hint
 		const hint =
 			keyHint("tui.select.confirm", "submit") +
 			"  " +
@@ -104,25 +100,21 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 
 		this.addChild(new Spacer(1));
 
-		// Add bottom border
 		this.addChild(new DynamicBorder());
 	}
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		// Escape or Ctrl+C to cancel
 		if (kb.matches(keyData, "tui.select.cancel")) {
 			this.onCancelCallback();
 			return;
 		}
 
-		// External editor (app keybinding)
 		if (this.keybindings.matches(keyData, "app.editor.external")) {
 			void this.handleOpenExternalEditor();
 			return;
 		}
 
-		// Forward to editor
 		this.editor.handleInput(keyData);
 	}
 

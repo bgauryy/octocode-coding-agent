@@ -25,6 +25,7 @@ import type { MutationReceipt, QueryOutcome } from "../outcome.ts";
 import { mutationEpoch, recordMutation } from "../feedback/revisions.ts";
 import { applyEdit, applyWrite } from "./apply.ts";
 import { resolveAnchoredEdits } from "./anchored.ts";
+import { ownEdit } from "./own-edits.ts";
 import { type FileGuard, judgeChange, lostAnchor, type WrittenContent } from "./guard.ts";
 import { copiedElision, type FileQuery } from "./queries.ts";
 
@@ -93,11 +94,14 @@ function guardedOperations(
 ) {
 	let read: string | undefined;
 	let written: WrittenContent | undefined;
+	let text: string | undefined;
 	let unverified = false;
 	let cached = initial;
 	return {
 		/** The digest and size of what the last write put on disk. */
 		written: () => written,
+		/** The text of the last write. */
+		writtenText: () => text,
 		/** The last write's read-back did not match what was written. */
 		unverified: () => unverified,
 		readFile: async (file: string) => {
@@ -124,6 +128,7 @@ function guardedOperations(
 					size: bytes.length,
 					lines: lineCount(bytes),
 				};
+				text = content;
 				onCommit?.(written.sha256);
 			} catch (error) {
 				if (error instanceof FileLockReleaseError) {
@@ -279,8 +284,10 @@ export async function runQuery(
 				: await applyWrite(file, query.path, query.content ?? "", operations, signal);
 		const written = operations.written();
 		// An edit over outside changes leaves them unseen: later edits go on, a write or delete needs a fresh read.
-		const lineDelta = recordChange(guard, file, mode, before, written);
+		const lineDelta = recordChange(guard, file, mode, before, written, operations.writtenText());
 		if (changed) guard.stale(file);
+		// The digest a following anchored edit names, when the guard knows the file whole.
+		const known = written && guard.wholeReadDigest(file) === written.sha256 ? written.sha256 : undefined;
 		const unsaved = await settleCheckpoint(ctx, checkpoints, capture, file, true, written?.sha256);
 		const message = (applied.message.trim() || `${query.type} ${query.path}`) + note + unsaved;
 		const diff = applied.diff ?? (query.type === "write" ? writeDiff(data, query.content) : undefined);
@@ -291,6 +298,7 @@ export async function runQuery(
 			message,
 			...(diff ? { diff } : {}),
 			...(lineDelta !== undefined ? { lineDelta } : {}),
+			...(known ? { sourceSha256: known } : {}),
 		};
 	} catch (error) {
 		// Octocode can observe cancellation after writeFile succeeded: retain both the read guard and the undo checkpoint.
@@ -327,13 +335,17 @@ function recordChange(
 	type: FileQuery["type"],
 	before: Buffer | undefined,
 	written: WrittenContent | undefined,
+	text?: string,
 ): number | undefined {
 	if (type !== "edit") {
 		guard.record(file, written);
 		return undefined;
 	}
 	const lineDelta = written && before ? written.lines - lineCount(before) : undefined;
-	guard.edited(file, written, lineDelta);
+	// From the bytes this edit changed; the guard links it only when they are the version it knows whole.
+	const from = before && sha256(before);
+	const link = from && written && text !== undefined ? ownEdit(from, written.sha256, before, text) : undefined;
+	guard.edited(file, written, lineDelta, link);
 	return lineDelta;
 }
 

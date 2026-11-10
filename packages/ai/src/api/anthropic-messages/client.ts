@@ -13,6 +13,7 @@ import { getUserAgent } from "../../utils/user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { claudeCodeVersion } from "./claude-code.ts";
 import { getAnthropicCompat } from "./compat.ts";
+import { isOAuthToken } from "./token.ts";
 
 function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
 	const merged: ProviderHeaders = {};
@@ -95,10 +96,6 @@ export function getAnthropicFederation(
  */
 let federationClient: { key: string; fetch: typeof globalThis.fetch | undefined; client: Anthropic } | undefined;
 
-function isOAuthToken(apiKey: string): boolean {
-	return apiKey.includes("sk-ant-oat");
-}
-
 export function createClient(
 	model: Model<"anthropic-messages">,
 	apiKey: string | undefined,
@@ -108,7 +105,6 @@ export function createClient(
 	sessionId?: string,
 	federation?: AnthropicFederationConfig,
 ): { client: Anthropic; isOAuthToken: boolean } {
-	// Copilot: Bearer auth.
 	if (getProviderCapabilities(model.provider).anthropicBearerAuth) {
 		const client = new HeaderAuthAnthropic({
 			apiKey: null,

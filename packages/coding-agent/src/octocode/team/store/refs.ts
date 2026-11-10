@@ -5,7 +5,7 @@ import { insertMessage } from "./mail.ts";
 
 /**
  * Stored messages used by reference (`msg#N`): read one by id, forward it to more recipients without copying its body,
- * store a resumed run's message, and the B200 relay (a child's message to an agent it cannot reach, held as a delivery to
+ * store a resumed run's message, and the relay (a child's message to an agent it cannot reach, held as a delivery to
  * its parent with `relay_to`, which the parent process settles; `team/relay.ts`). Rows are those of `mail.ts`;
  * the columns are described in `packages/db/src/schema-sql.ts`. Authorization is the caller's (`team/session/references.ts`).
  */
@@ -189,9 +189,9 @@ export class MessageRefs {
 	}
 
 	/** The relay requests waiting for `parent`, oldest first (a bounded batch). */
-	relays(parent: string): RelayRequest[] {
+	relays(parent: string, now = Date.now()): RelayRequest[] {
 		return deliveries
-			.relayRequests(this.db, this.team, parent, INBOX_BATCH_SIZE)
+			.relayRequests(this.db, this.team, parent, INBOX_BATCH_SIZE, now)
 			.map((row) => ({ message: toMessage(row, String(row.relay_to)), target: String(row.relay_to) }));
 	}
 

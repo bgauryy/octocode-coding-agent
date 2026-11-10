@@ -133,6 +133,39 @@ describe("optional anchored edit adapter", () => {
 		expect(readFileSync(f.file, "utf8")).toContain("theirs\n");
 	});
 
+	it("reports the new digest after an edit, so the next anchored edit needs no re-read", async () => {
+		const f = fixture("a\nreturn null\nb\nreturn null\n");
+		const api = fakeHost();
+		registerFileTool(api.api, f.guard, fakePermission());
+		const tool = api.tools.get("file")!;
+		const run = (query: ReturnType<typeof f.edit>) =>
+			tool.execute("chained", { queries: [query] }, undefined, undefined, fakeCtx({ cwd: join(f.file, "..") }));
+		const first = await run(f.edit(4, "return null", "return 42"));
+		const after = readFileSync(f.file);
+		expect(first.content[0].text).toContain(`sourceSha256=${sha256(after)}`);
+		await run(f.edit(2, "return null", "return 1", sha256(after)));
+		expect(readFileSync(f.file, "utf8")).toBe("a\nreturn 1\nb\nreturn 42\n");
+	});
+
+	it("accepts the digest of the read after this tool's own edits, shifting the line, and refuses replaced lines", async () => {
+		const f = fixture("a\nreturn null\nb\nreturn null\nc\n");
+		const api = fakeHost();
+		registerFileTool(api.api, f.guard, fakePermission());
+		const tool = api.tools.get("file")!;
+		const run = (query: ReturnType<typeof f.edit>) =>
+			tool.execute("chain", { queries: [query] }, undefined, undefined, fakeCtx({ cwd: join(f.file, "..") }));
+		// The read's digest stays usable: the first edit adds a line above line 4.
+		await run(f.edit(1, "a", "a\na2"));
+		await run(f.edit(4, "return null", "return 42"));
+		expect(readFileSync(f.file, "utf8")).toBe("a\na2\nreturn null\nb\nreturn 42\nc\n");
+		// Line 4 was replaced by this tool: its old text cannot anchor any more.
+		await expect(run(f.edit(4, "return null", "return 43"))).rejects.toThrow(/stale/);
+		// An outside change ends the chain.
+		writeFileSync(f.file, "a\na2\nreturn null\nb\nreturn 42\nc\nd\n");
+		await expect(run(f.edit(5, "c", "C"))).rejects.toThrow(/stale/);
+		expect(readFileSync(f.file, "utf8")).toBe("a\na2\nreturn null\nb\nreturn 42\nc\nd\n");
+	});
+
 	it("commits a BOM and CRLF source through the guarded writer without changing unrelated bytes", async () => {
 		const f = fixture("\ufeffα\r\nβ\r\nα\r\n");
 		const api = fakeHost();

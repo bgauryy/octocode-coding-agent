@@ -9,6 +9,7 @@ import { rewriteFileQuery } from "../../tool-input/claude-file.ts";
 import { say } from "../../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "../config/calls.ts";
+import { ifFilter } from "../config/if-filter.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../catalog.ts";
 import { capContext } from "../runner.ts";
@@ -111,6 +112,7 @@ export const preToolUseGate =
 					}),
 					ctx.signal,
 					call.protocol,
+					ifFilter(event.toolName, event.input, ctx.cwd, call.index >= 0 ? call.index : undefined),
 				),
 			),
 		);

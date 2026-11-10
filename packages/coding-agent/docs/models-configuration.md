@@ -160,6 +160,7 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether the provider supports OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system or developer messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models. |
 | `supportsMidConvoToolAdditions` | boolean | `false` | Whether system messages can introduce additional tools mid-conversation. Requires supportsMidConvoSystemMessages. The generated catalog enables this for capable models. |
+| `supportsTemperature` | boolean | `true` | Whether the model accepts the temperature request field. When false, temperature is omitted. |
 | `supportsStrictMode` | boolean | `false` | Whether the provider supports the strict field in tool definitions. Generated capable models enable it explicitly. |
 | `cacheControlFormat` | `"anthropic"` |  | Cache control convention for prompt caching. Anthropic applies cache_control markers to the system prompt, last tool definition, and last user, assistant, or tool-result text content. |
 | `sendSessionAffinityHeaders` | boolean |  | Whether to send session-affinity data from options.sessionId. Default: true for OpenRouter endpoints, false otherwise. |
@@ -178,6 +179,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts developer or system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models. |
 | `sessionAffinityFormat` | `"openai" \| "openai-nosession" \| "openrouter"` |  | Session-affinity header format. openai sends session_id and x-client-request-id; openai-nosession sends x-client-request-id; openrouter sends x-session-id. Does not affect prompt_cache_key. Default: auto-detected. |
 | `supportsLongCacheRetention` | boolean | `true` | Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models. |
+| `supportsTemperature` | boolean | `true` | Whether the model accepts the temperature request field. When false, temperature is omitted. |
 | `supportsStrictMode` | boolean |  | Whether the provider supports strict JSON-schema function tools. Defaults are API-specific; generated OpenAI models enable it explicitly. |
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether to emit OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
 | `supportsAdditionalTools` | boolean | `false` | Whether the model supports message-anchored additional_tools input items. |
@@ -216,3 +218,13 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. |
+| `supportsTemperature` | boolean | `true` | Whether the model accepts the temperature request field. When false, temperature is omitted. |
+| `supportsStrictMode` | boolean | `true` | Whether the model accepts the strict field in tool definitions. When false, tools are sent without it. |
+
+### `google-generative-ai`
+
+Also applies to `google-vertex`.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `supportsTemperature` | boolean | `true` | Whether the model accepts the temperature request field. When false, temperature is omitted. |

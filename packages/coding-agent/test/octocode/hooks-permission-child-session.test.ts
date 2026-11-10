@@ -278,7 +278,8 @@ it.each(["claude", "codex"] as const)(
 			expect(records).toHaveLength(1);
 			expect(records[0]).toMatchObject({
 				hook_event_name: "PermissionRequest",
-				session_id: f.childSession.id,
+				// Codex hooks reference, common input fields: "Subagent hooks use the parent session id." Claude keeps the child's.
+				session_id: protocol === "codex" ? f.identity.parentSession : f.childSession.id,
 				agent_id: protocol === "codex" ? f.childSession.id : f.identity.id,
 				agent_type: "reviewer",
 				permission_mode: "default",
@@ -316,7 +317,8 @@ it("Codex configured MCP permission handler resolves through an actual stdio tra
 		const calls = records.filter((x) => x.message.method === "tools/call");
 		expect(calls).toHaveLength(1);
 		expect(calls[0].message.params.arguments).toMatchObject({
-			session: f.childSession.id,
+			// "Subagent hooks use the parent session id" (Codex hooks reference, common input fields).
+			session: f.identity.parentSession,
 			agent: f.childSession.id,
 			tool: "Bash",
 		});

@@ -32,7 +32,6 @@ export type SizeValue = number | `${number}%`;
  * Values can be absolute numbers or percentage strings (e.g., "50%").
  */
 export interface OverlayOptions {
-	// === Sizing ===
 	/** Width in columns, or percentage of terminal width (e.g., "50%") */
 	width?: SizeValue;
 	/** Minimum width in columns */
@@ -40,7 +39,6 @@ export interface OverlayOptions {
 	/** Maximum height in rows, or percentage of terminal height (e.g., "50%") */
 	maxHeight?: SizeValue;
 
-	// === Positioning - anchor-based ===
 	/** Anchor point for positioning (default: 'center') */
 	anchor?: OverlayAnchor;
 	/** Horizontal offset from anchor position (positive = right) */
@@ -48,17 +46,14 @@ export interface OverlayOptions {
 	/** Vertical offset from anchor position (positive = down) */
 	offsetY?: number;
 
-	// === Positioning - percentage or absolute ===
 	/** Row position: absolute number, or percentage (e.g., "25%" = 25% from top) */
 	row?: SizeValue;
 	/** Column position: absolute number, or percentage (e.g., "50%" = centered horizontally) */
 	col?: SizeValue;
 
-	// === Margin from terminal edges ===
 	/** Margin from terminal edges. Number applies to all sides. */
 	margin?: OverlayMargin | number;
 
-	// === Visibility ===
 	/**
 	 * Control overlay visibility based on terminal dimensions.
 	 * If provided, overlay is only rendered when this returns true.

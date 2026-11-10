@@ -12,7 +12,8 @@ import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 import { LIBRARY_FILE } from "../../src/octocode/history/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
-import { octocodeHome, sessionFolder } from "../../src/octocode/shared/home.ts";
+import { sessionFolder } from "../../src/octocode/shared/home.ts";
+import { getOctocodeHome } from "../../src/config.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -156,7 +157,7 @@ describe("places that run code later", () => {
 		"refuses the file tool and a shell redirect into the Octocode home in %s mode",
 		async (mode) => {
 			const cwd = repo();
-			const target = path.join(octocodeHome(), "pi-trust.json");
+			const target = path.join(getOctocodeHome(), "pi-trust.json");
 			expect(await headlessFileTool(mode, cwd).write(target, "{}")).toMatch(/Octocode's state folder/);
 			const gate = permissionGate({
 				permission: fakePermission(mode),

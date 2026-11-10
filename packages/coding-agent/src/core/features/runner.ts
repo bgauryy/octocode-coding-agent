@@ -157,7 +157,6 @@ export class ExtensionRunner {
 		return collectRegisteredTools(this.extensions);
 	}
 
-	/** Get a tool definition by name. Returns undefined if not found. */
 	getToolDefinition(toolName: string): Types.RegisteredTool["definition"] | undefined {
 		return this.getAllRegisteredTools().find((tool) => tool.definition.name === toolName)?.definition;
 	}
@@ -223,6 +222,33 @@ export class ExtensionRunner {
 
 	hasHandlers(eventType: string): boolean {
 		return hasEventHandlers(this.extensions, eventType);
+	}
+
+	/** `tool_call_early_start`: true only when some handler answers and every handler returns true; a throw is false. */
+	mayStartToolCallEarly(event: Omit<Types.ToolCallEvent, "type">): boolean {
+		const handlers = this.extensions.flatMap((extension) => extension.handlers.get("tool_call_early_start") ?? []);
+		try {
+			const ctx = this.createContext();
+			return (
+				handlers.length > 0 &&
+				handlers.every((handler) => (handler as (e: typeof event, c: typeof ctx) => unknown)(event, ctx) === true)
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	/** `tool_call_discarded`, synchronously; a failing handler does not stop the others. */
+	toolCallDiscarded(toolCallId: string): void {
+		for (const extension of this.extensions) {
+			for (const handler of extension.handlers.get("tool_call_discarded") ?? []) {
+				try {
+					void (handler as (e: { toolCallId: string }) => unknown)({ toolCallId });
+				} catch {
+					// A cleanup handler's failure leaves only its own leftovers.
+				}
+			}
+		}
 	}
 
 	getMessageRenderer(customType: string): Types.MessageRenderer | undefined {

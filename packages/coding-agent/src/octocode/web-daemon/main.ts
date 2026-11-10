@@ -1,32 +1,18 @@
 import path from "node:path";
-import { Value } from "typebox/value";
 import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode-contracts/daemon";
-import { ConfigSnapshotSchema, HarnessListSchema } from "@octocodeai/octocode-contracts/config";
-import { getAgentDir } from "../../config.ts";
 import { privateDir } from "../shared/home.ts";
 import { processStartTime } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
-import { configAudits } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
-import { buildConfigSnapshot } from "./config-status.ts";
-import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
-import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
-import { writeConfigSetting } from "./config-write.ts";
-import { writeConfigProvider } from "./provider-write.ts";
-import { listHarness, switchHarness } from "./harness-config.ts";
+import { createConfigRoutes } from "./config-factory.ts";
 import { WEB_DAEMON_IDLE_ENV, webDaemonPaths } from "./paths.ts";
 import { removeRecord, writeDaemonRecord } from "./records.ts";
 import { startDaemonServer, type DaemonServer } from "./server.ts";
 
 const DEFAULT_IDLE_MINUTES = 10;
 
-function checkedHarness<T>(list: T): T {
-	if (!Value.Check(HarnessListSchema, list)) throw new Error("The harness list is invalid.");
-	return list;
-}
 const DRAIN_LIMIT_MS = 30_000;
 const LOCK_WAIT_MS = 2000;
 
@@ -72,11 +58,7 @@ export async function startWebDaemon(
 	const stopped = new Promise<void>((resolve) => (onStopped = resolve));
 	let server: DaemonServer | undefined;
 	let nonce = "";
-	const signIns = new SignInManager({
-		...runtimeSignIn(getAgentDir()),
-		actor: () => `web:${nonce.slice(0, 8)}`,
-		audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
-	});
+	const { routes: configRoutes, signIns } = createConfigRoutes({ env, actor: () => `web:${nonce.slice(0, 8)}` });
 	const idleTimer = setInterval(
 		() => {
 			if (!server || server.draining) return;
@@ -104,40 +86,7 @@ export async function startWebDaemon(
 			env,
 			page: options.page,
 			onActivity: () => (lastActivity = Date.now()),
-			config: async (repo) => {
-				const snapshot = await buildConfigSnapshot({ agentDir: getAgentDir(), cwd: repo?.root, env });
-				if (!Value.Check(ConfigSnapshotSchema, snapshot)) throw new Error("The configuration snapshot is invalid.");
-				return snapshot;
-			},
-			writeSetting: (command, repo) => writeConfigSetting(command, { agentDir: getAgentDir(), cwd: repo?.root }),
-			writeCredential: (command) =>
-				writeConfigCredential(command, {
-					agentDir: getAgentDir(),
-					env,
-					actor: `web:${nonce.slice(0, 8)}`,
-					audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
-				}),
-			writeProvider: (command) =>
-				writeConfigProvider(command, {
-					agentDir: getAgentDir(),
-					env,
-					actor: `web:${nonce.slice(0, 8)}`,
-					audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
-				}),
-			signIn: (command) => signIns.handle(command),
-			harness: async (repo) => checkedHarness(await listHarness({ agentDir: getAgentDir(), cwd: repo?.root })),
-			writeHarness: async (command, repo) =>
-				checkedHarness(
-					await switchHarness(command, {
-						agentDir: getAgentDir(),
-						cwd: repo?.root,
-						actor: `web:${nonce.slice(0, 8)}`,
-						audit: (entry) => configAudits.record(sharedAgentDb(env).db, entry),
-					}),
-				),
-			auditRefused: refusalAuditor(`web:${nonce.slice(0, 8)}`, (entry) =>
-				configAudits.record(sharedAgentDb(env).db, entry),
-			),
+			...configRoutes,
 			onDrain: () => {
 				if (!server || server.draining) return;
 				server.draining = true;

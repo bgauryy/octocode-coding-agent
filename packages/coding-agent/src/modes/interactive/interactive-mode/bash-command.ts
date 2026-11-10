@@ -29,7 +29,6 @@ export async function handleBashCommand(
 ): Promise<void> {
 	const extensionRunner = host.session.extensionRunner;
 
-	// Emit user_bash event to let extensions intercept
 	let eventResult: UserBashEventResult | undefined;
 	try {
 		eventResult = await extensionRunner.emitUserBash({
@@ -47,7 +46,6 @@ export async function handleBashCommand(
 	if (eventResult?.result) {
 		const result = eventResult.result;
 
-		// Create UI component for display
 		host.bashComponent = new BashExecutionComponent(command, host.ui, excludeFromContext, host.outputPad);
 		if (host.session.isStreaming) {
 			host.pendingMessagesContainer.addChild(host.bashComponent);
@@ -56,7 +54,6 @@ export async function handleBashCommand(
 			host.chatContainer.addChild(host.bashComponent);
 		}
 
-		// Show output and complete
 		if (result.output) {
 			host.bashComponent.appendOutput(result.output);
 		}
@@ -68,7 +65,6 @@ export async function handleBashCommand(
 			result.header,
 		);
 
-		// Record the result in session
 		getApplicationPort(host.session).invoke("recordBashResult", command, result, { excludeFromContext });
 		host.bashComponent = undefined;
 		host.ui.requestRender();
@@ -80,11 +76,9 @@ export async function handleBashCommand(
 	host.bashComponent = new BashExecutionComponent(command, host.ui, excludeFromContext, host.outputPad);
 
 	if (isDeferred) {
-		// Show in pending area when agent is streaming
 		host.pendingMessagesContainer.addChild(host.bashComponent);
 		host.pendingBashComponents.push(host.bashComponent);
 	} else {
-		// Show in chat immediately when agent is idle
 		host.chatContainer.addChild(host.bashComponent);
 	}
 	host.ui.requestRender();

@@ -78,7 +78,7 @@ export abstract class TeamState {
 	setMessageHook(hook: MessageHook): void {
 		this.messageHook = hook;
 	}
-	/** Settles children's relay requests to agents they cannot reach (B200), before mail reaches the model. */
+	/** Settles children's relay requests to agents they cannot reach, before mail reaches the model. */
 	protected readonly relays = new Relays({
 		id: () => this.me?.id,
 		finished: this.finished,

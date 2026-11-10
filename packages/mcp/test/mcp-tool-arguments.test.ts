@@ -39,7 +39,7 @@ const OCTOCODE = {
 	$defs: { query: ITEM },
 };
 
-// The server owns its input (user decision, 2026-11-05): nothing is added, dropped, moved, converted or parsed, and a
+// The server owns its input (by design): nothing is added, dropped, moved, converted or parsed, and a
 // call its schema rejects fails instead of being repaired.
 describe("MCP tool arguments", () => {
 	it("declares no argument preparation and opts out of validator coercion", () => {

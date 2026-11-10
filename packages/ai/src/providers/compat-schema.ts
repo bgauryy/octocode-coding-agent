@@ -33,8 +33,27 @@ const MistralConversationsCompatSchema = Type.Object(
 				"Whether the exact model accepts system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages.",
 			default: false,
 		}),
+		supportsTemperature: optionalCompatBoolean({
+			description: "Whether the model accepts the temperature request field. When false, temperature is omitted.",
+			default: true,
+		}),
+		supportsStrictMode: optionalCompatBoolean({
+			description:
+				"Whether the model accepts the strict field in tool definitions. When false, tools are sent without it.",
+			default: true,
+		}),
 	},
 	{ description: "Compatibility settings for the Mistral chat API.", additionalProperties: true },
+);
+
+const GoogleCompatSchema = Type.Object(
+	{
+		supportsTemperature: optionalCompatBoolean({
+			description: "Whether the model accepts the temperature request field. When false, temperature is omitted.",
+			default: true,
+		}),
+	},
+	{ description: "Compatibility settings for Gemini models.", additionalProperties: true },
 );
 
 const ProviderCompatPropertyOverrides = {
@@ -60,6 +79,9 @@ const ProviderCompatPropertyOverrides = {
 	}),
 	supportsStrictMode: optionalCompatBoolean({
 		description: "Whether the provider supports strict tool schemas. Defaults are API-specific.",
+	}),
+	supportsTemperature: optionalCompatBoolean({
+		description: "Whether the model accepts the temperature request field. Default: true.",
 	}),
 	supportsOpenAIGrammarTools: optionalCompatBoolean({
 		description:
@@ -125,6 +147,8 @@ export const CompatSchemasByApi = {
 	"anthropic-messages": AnthropicMessagesCompatSchema,
 	"bedrock-converse-stream": BedrockCompatSchema,
 	"mistral-conversations": MistralConversationsCompatSchema,
+	"google-generative-ai": GoogleCompatSchema,
+	"google-vertex": GoogleCompatSchema,
 } as const;
 
 const ProviderCompatProperties = mergeCompatProperties(
@@ -141,9 +165,7 @@ export type ChatTemplateKwargValue = Static<typeof ChatTemplateKwargValueSchema>
 /** Top-level request field used to cap reasoning tokens on OpenAI-compatible servers. */
 export type ThinkingTokenBudgetField = Static<typeof ThinkingTokenBudgetFieldSchema>;
 export type SessionAffinityFormat = Static<typeof SessionAffinityFormatSchema>;
-/** OpenRouter provider routing preferences. */
 export interface OpenRouterRouting extends Static<typeof OpenRouterRoutingSchema> {}
-/** Vercel AI Gateway routing preferences. */
 export interface VercelGatewayRouting extends Static<typeof VercelGatewayRoutingSchema> {}
 /** An Anthropic server-side refusal fallback model with local pricing metadata. */
 export interface AnthropicAllowedFallbackModel extends Static<typeof AnthropicAllowedFallbackModelSchema> {}
@@ -156,5 +178,7 @@ export interface OpenAIResponsesCompat extends Static<typeof OpenAIResponsesComp
 export interface AnthropicMessagesCompat extends Static<typeof AnthropicMessagesCompatSchema> {}
 /** Compatibility settings for Amazon Bedrock models. */
 export interface BedrockCompat extends Static<typeof BedrockCompatSchema> {}
+/** Compatibility settings for Gemini models on the Generative AI and Vertex APIs. */
+export interface GoogleCompat extends Static<typeof GoogleCompatSchema> {}
 /** Compatibility settings for the Mistral chat API. */
 export interface MistralConversationsCompat extends Static<typeof MistralConversationsCompatSchema> {}

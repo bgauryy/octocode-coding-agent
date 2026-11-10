@@ -314,14 +314,15 @@ it("inherits accepted model-only and qualified plugin resources through the actu
 	const f = await fixture();
 	try {
 		await f.run("Inspect the inherited catalog and use $review-kit:review. Return a short report.");
-		expect(f.parentCatalog()).toContain("<name>model-only</name>");
-		expect(f.parentCatalog()).toContain("<name>review-kit:review</name>");
+		expect(f.parentCatalog()).toContain('<skill name="model-only"');
+		expect(f.parentCatalog()).toContain('<skill name="review-kit:review"');
 		expect(f.commands()).not.toContain("model-only");
 		expect(f.commands()).toContain("review-kit:review");
 		expect(f.requests).toHaveLength(1);
 		const child = JSON.stringify(f.requests[0]);
-		expect(child).toContain("<name>model-only</name>");
-		expect(child).toContain("<name>review-kit:review</name>");
+		// The request is JSON, so the attribute's quotes are escaped.
+		expect(child).toContain('<skill name=\\"model-only\\"');
+		expect(child).toContain('<skill name=\\"review-kit:review\\"');
 		expect(child).toContain("PLUGIN_QUALIFIED_BODY");
 		expect(child).not.toContain("MODEL_ONLY_BODY");
 	} finally {
@@ -496,8 +497,8 @@ it("resumes the actual named child with its captured inventory after the parent 
 		const second = JSON.stringify(f.requests[1]);
 		expect(second).toContain("CANONICAL_BODY");
 		expect(second).not.toContain("RETARGET_BODY");
-		expect(second).toContain("<name>model-only</name>");
-		expect(second).toContain("<name>review-kit:review</name>");
+		expect(second).toContain('<skill name=\\"model-only\\"');
+		expect(second).toContain('<skill name=\\"review-kit:review\\"');
 	} finally {
 		await f.close();
 	}
@@ -624,7 +625,7 @@ it("pins a model-only accepted alias for the child catalog and actual MCP refere
 		const first = JSON.stringify(f.requests[0]),
 			second = JSON.stringify(f.requests[1]);
 		// The catalog names skills; the `skill` tool returns the directory when one is loaded.
-		expect(first).toContain("<name>model-only</name>");
+		expect(first).toContain('<skill name=\\"model-only\\"');
 		expect(first).not.toContain("UNACCEPTED_MODEL_BODY");
 		expect(second).toContain("REFERENCE_model-only");
 		expect(second).not.toContain("UNACCEPTED_MODEL_REFERENCE");

@@ -60,7 +60,7 @@ export function registerIdleItems(api: ExtensionAPI, team: Team, runs: Pick<Agen
 						(item) =>
 							item.assignee === backlog.session &&
 							!linked.has(item.ref) &&
-							!item.paths.some((entry) => team.reservation(path.resolve(ctx.cwd, entry), entry) !== undefined),
+							!item.paths.some((entry) => team.reserved(path.resolve(ctx.cwd, entry))),
 					)
 					.map((item) => item.ref);
 			} catch {

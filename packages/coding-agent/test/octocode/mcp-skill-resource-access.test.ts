@@ -141,7 +141,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 					expect(user).toContain("BODY_loser");
 					expect(user).not.toContain("BODY_winner");
 					expect(user).not.toContain("BODY_model-only");
-					expect(getCurrentSystemPrompt(context.messages)).toContain("<name>model-only</name>");
+					expect(getCurrentSystemPrompt(context.messages)).toContain('<skill name="model-only"');
 					return fauxAssistantMessage(
 						[
 							fauxToolCall(reader!, {

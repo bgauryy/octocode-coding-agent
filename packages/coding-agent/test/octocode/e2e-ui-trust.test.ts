@@ -32,10 +32,10 @@ afterAll(async () => {
 });
 
 const sockets: string[] = [];
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
 	for (const socket of sockets.splice(0)) spawnSync("tmux", ["-L", socket, "kill-server"]);
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 

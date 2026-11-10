@@ -179,6 +179,9 @@ interface McpPageOptions {
 	confirmLabel: string;
 	/** What Escape does, for the key hint. */
 	cancelLabel: string;
+	/** Single keys reported with the highlighted row, each with the label its key hint shows. */
+	keys?: ReadonlyArray<{ key: string; label: string }>;
+	onKey?(key: string, id: string): void;
 	onSelect(id: string): void;
 	onHighlight(id: string): void;
 	onCancel(): void;

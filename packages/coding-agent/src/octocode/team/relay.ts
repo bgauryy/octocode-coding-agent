@@ -20,7 +20,7 @@ const RESUME_WINDOW_MS = 10 * 60_000;
 const REJOIN_MS = 60_000;
 
 /**
- * The parent side of the B200 relay, run by `Delivery` on every tick before mail is handed to the model: a child's
+ * The parent side of the relay, run by `Delivery` on every tick before mail is handed to the model: a child's
  * message to an agent it cannot reach waits as a relay request (`TeamStore.refs.relays`). The parent process, not its
  * model, settles each one: a target that is live again gets the message in its inbox; a finished subagent of this
  * session that lingers is resumed with it (the resumer's permission check still applies); anything else becomes a dead
@@ -36,6 +36,8 @@ export class Relays {
 	private readonly resuming = new Map<string, number | undefined>();
 	/** When each target was resumed by relay, within the budget window. */
 	private readonly resumed = new Map<string, number[]>();
+	/** Failures whose dead-letter write did not land (a busy database): written again on the next ticks. */
+	private unsettled: Array<{ message: Message; me: string; target: string; reason: string }> = [];
 	constructor(host: RelaySource) {
 		this.host = host;
 	}
@@ -48,12 +50,14 @@ export class Relays {
 		this.generation++;
 		this.resuming.clear();
 		this.resumed.clear();
+		this.unsettled = [];
 	}
 
 	/** Takes the waiting requests (synchronously, in the tick); resumes run in the background. */
 	take(db: TeamStore, now = Date.now()): void {
 		const me = this.host.id();
 		if (!me) return;
+		this.settleFailures(db);
 		const requests = db.refs.relays(me);
 		if (requests.length === 0) return;
 		const members = db.list();
@@ -128,8 +132,15 @@ export class Relays {
 		try {
 			db.refs.failRelay(message.id, me, target, reason);
 		} catch {
-			// A closed or busy database: the request stays taken; `retire` dead-letters it when this agent leaves the team.
+			// A busy database: the failure is written again on a later tick, so the child is still told.
+			this.unsettled.push({ message, me, target, reason });
 		}
+	}
+
+	private settleFailures(db: TeamStore): void {
+		const waiting = this.unsettled;
+		this.unsettled = [];
+		for (const failure of waiting) this.fail(db, failure.me, failure.message, failure.target, failure.reason);
 	}
 
 	/** Resumes `target` with the relayed message; whether its run started (else the request is a dead letter). */

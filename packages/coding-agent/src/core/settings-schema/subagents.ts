@@ -7,6 +7,19 @@ import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
  */
 export const SubagentSettingsSchema = Type.Object(
 	{
+		models: Type.Optional(
+			Type.Object(
+				{
+					small: Type.Optional(Type.String({ minLength: 1 })),
+					medium: Type.Optional(Type.String({ minLength: 1 })),
+				},
+				{
+					description:
+						'Model for the `small` and `medium` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { "small": "openai/gpt-5-mini:low" }. Used by every profile or task that names the purpose, before the automatic choice; a call\'s own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.',
+					additionalProperties: false,
+				},
+			),
+		),
 		maxChildren: Type.Optional(
 			Type.Integer({
 				minimum: 1,

@@ -193,4 +193,18 @@ describe("skills in /harness", () => {
 		await manager.flush();
 		expect((await skillRows(f)).rows.some((item) => item.label === "run-test")).toBe(false);
 	});
+
+	it("say which copy wins when a switched-on skill shares its name with another", async () => {
+		const f = fixture();
+		writeSkill(path.join(f.home, ".pi", "agent", "skills"), "octocode-debugging");
+		const { rows } = await skillRows(f);
+		const copies = rows.filter((item) => item.label === "octocode-debugging");
+		expect(copies).toHaveLength(2);
+		const loser = copies.find((item) => item.detail.includes("Pi (global)"));
+		expect(loser).toMatchObject({
+			on: true,
+			detail: expect.stringMatching(/^not loaded: Octocode \(core\) wins · Pi \(global\)/),
+		});
+		expect(copies.find((item) => item !== loser)?.detail).not.toContain("not loaded");
+	});
 });

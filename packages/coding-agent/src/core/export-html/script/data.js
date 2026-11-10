@@ -1,4 +1,3 @@
-// ============================================================
 // DATA LOADING
 // ============================================================
 
@@ -11,7 +10,6 @@ for (let i = 0; i < binary.length; i++) {
 const data = JSON.parse(new TextDecoder("utf-8").decode(bytes));
 const { header, entries, leafId: defaultLeafId, systemPrompt, tools, renderedTools } = data;
 
-// ============================================================
 // URL PARAMETER HANDLING
 // ============================================================
 
@@ -25,7 +23,6 @@ const urlTargetId = urlParams.get("targetId");
 // Use URL leafId if provided, otherwise fall back to session default
 const leafId = urlLeafId || defaultLeafId;
 
-// ============================================================
 // DATA STRUCTURES
 // ============================================================
 

@@ -155,16 +155,16 @@ describe("mcp tool", () => {
 });
 
 describe("mcp tool contract", () => {
-	it("declares four intents, and names the field when a server is missing", async () => {
+	it("declares six intents, and names the field when a server is missing", async () => {
 		const { run, tool } = setup();
 		const properties = tool.parameters.properties as unknown as Record<
 			string,
 			{ description?: string; enum?: string[] }
 		>;
-		expect(properties.intent.enum).toEqual(["list", "tools", "restart", "stop"]);
+		expect(properties.intent.enum).toEqual(["list", "tools", "resources", "read", "restart", "stop"]);
 		expect(properties.config).toBeUndefined();
 		expect(properties.server.description).toBe("Server name; required for every intent except list");
-		for (const intent of ["tools", "restart", "stop"])
+		for (const intent of ["tools", "resources", "read", "restart", "stop"])
 			await expect(run({ intent })).rejects.toThrow(/Name the server in the server field[^]*Servers: docs\./);
 		await expect(run({ intent: "list" })).resolves.toBeDefined();
 	});

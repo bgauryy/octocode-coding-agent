@@ -4,7 +4,6 @@ import { CONFIG_DIR_NAME } from "../../config.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { ConfigItem, ConfigKind, ConfigScope, DiscoverInput, ItemVendor, Product, Provenance } from "./types.ts";
 
-/** Pi's project folder. */
 export const PI_PROJECT_DIR_NAME = ".pi";
 
 /** A folder that holds `skills/`, `prompts/`, `themes/`, `SYSTEM.md` and the other named files of one product and scope. */

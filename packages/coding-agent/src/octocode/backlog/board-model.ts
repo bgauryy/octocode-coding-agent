@@ -48,7 +48,6 @@ export function boardRows(items: Item[]): Item[] {
 	});
 }
 
-/** The items that belong to `epic`. */
 export const epicItems = (epic: Item, items: readonly Item[]): Item[] =>
 	items.filter((item) => item.parentId === epic.ref);
 

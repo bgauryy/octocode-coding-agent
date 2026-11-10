@@ -1,6 +1,7 @@
 import path from "node:path";
 import { envFlag } from "../../../../common/src/env.ts";
-import { octocodeHome, sessionDirName } from "../shared/home.ts";
+import { sessionDirName } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 
 /** `1` makes every session accept the user-level web daemon and `/web` use it; unset or `0` keeps the per-session server. */
 export const WEB_DAEMON_ENV = "OCTOCODE_WEB_DAEMON";
@@ -14,7 +15,6 @@ export function webDaemonEnabled(env: NodeJS.ProcessEnv = process.env): boolean 
 export interface WebDaemonPaths {
 	/** `<octocode home>/web`, owner-only. */
 	dir: string;
-	/** The running daemon's record. */
 	record: string;
 	/** Held briefly by a launcher while it checks for, drains or spawns a daemon. */
 	launchLock: string;
@@ -25,7 +25,7 @@ export interface WebDaemonPaths {
 }
 
 export function webDaemonPaths(env: NodeJS.ProcessEnv = process.env): WebDaemonPaths {
-	const dir = path.join(octocodeHome(env), "web");
+	const dir = path.join(getOctocodeHome(env), "web");
 	return {
 		dir,
 		record: path.join(dir, "daemon.json"),

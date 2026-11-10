@@ -1,7 +1,13 @@
 import { permissionOutput } from "./permission-output.ts";
 import { usesCodexSpecificDecision } from "./codex-output.ts";
 import { runPromptHook, type PromptEvaluator } from "./prompt.ts";
-import { type HookRun, type HookVerdict, HOOK_OUTPUT_MAX_BYTES, type HookBase, type HookHandler } from "./contracts.ts";
+import {
+	type HookRun,
+	type HookVerdict,
+	HOOK_COMMAND_OUTPUT_MAX_BYTES,
+	type HookBase,
+	type HookHandler,
+} from "./contracts.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import { runMcpHook } from "./mcp.ts";
 import type { BoundMcpHookCaller } from "../../../../mcp/src/hook-caller.ts";
@@ -23,6 +29,8 @@ const EXIT_DRAIN_MS = 150;
 
 /** Context a hook may add to the conversation, as in the native host. */
 export const HOOK_CONTEXT_MAX_BYTES = 16 * 1024;
+/** Claude Code caps each `additionalContext`, `systemMessage` and plain stdout string at 10,000 characters (hooks reference, "Add context for Claude"). */
+export const CLAUDE_HOOK_CONTEXT_MAX = 10_000;
 
 /** Sends JSON on stdin; argv hooks spawn directly, otherwise commands use the shell. Spawn failures become results. */
 export function runHook(
@@ -89,7 +97,7 @@ export function runHook(
 		let timedOut = false;
 		let exited = false;
 		const collect = (chunks: Buffer[], size: number, chunk: Buffer): number => {
-			if (size < HOOK_OUTPUT_MAX_BYTES) chunks.push(chunk.subarray(0, HOOK_OUTPUT_MAX_BYTES - size));
+			if (size < HOOK_COMMAND_OUTPUT_MAX_BYTES) chunks.push(chunk.subarray(0, HOOK_COMMAND_OUTPUT_MAX_BYTES - size));
 			return size + chunk.length;
 		};
 		child.stdout.on("data", (chunk: Buffer) => {
@@ -130,8 +138,8 @@ export function runHook(
 			for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy();
 			signal?.removeEventListener("abort", stop);
 			const dropped = {
-				stdout: Math.max(0, outBytes - HOOK_OUTPUT_MAX_BYTES),
-				stderr: Math.max(0, errBytes - HOOK_OUTPUT_MAX_BYTES),
+				stdout: Math.max(0, outBytes - HOOK_COMMAND_OUTPUT_MAX_BYTES),
+				stderr: Math.max(0, errBytes - HOOK_COMMAND_OUTPUT_MAX_BYTES),
 			};
 			resolve({
 				code,
@@ -172,6 +180,7 @@ export function interpret(event: HookEvent, run: HookRun, protocol: HookProtocol
 		continueReason,
 		ask,
 		stop,
+		haltTurn,
 		error,
 		replaceResult,
 		rejectNested,
@@ -188,6 +197,7 @@ export function interpret(event: HookEvent, run: HookRun, protocol: HookProtocol
 		...(rejectNested ? { rejectNested } : {}),
 		...(error ? { error: visibleControls(error) } : {}),
 		...(stop ? { stop } : {}),
+		...(haltTurn ? { haltTurn } : {}),
 		...(block ? { block: visibleControls(block) } : {}),
 		...(context ? { context: visibleControls(context) } : {}),
 		...(continueReason ? { continueReason: visibleControls(continueReason) } : {}),
@@ -236,9 +246,14 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 	// Output past the kept bytes is counted, never dropped silently.
 	const notKept = (bytes = 0) =>
 		bytes > 0
-			? `\n[… ${formatSize(bytes)} more output not kept: a hook's output is read up to ${formatSize(HOOK_OUTPUT_MAX_BYTES)}]`
+			? `\n[… ${formatSize(bytes)} more output not kept: a hook's output is read up to ${formatSize(HOOK_COMMAND_OUTPUT_MAX_BYTES)}]`
 			: "";
-	if (run.code === 2 && (event === "PostToolUseFailure" || event === "SubagentStart")) return {};
+	// Claude: exit 2 of SessionStart/SubagentStart "shows stderr to user only"; it neither blocks nor reaches the model.
+	if (run.code === 2 && protocol === "claude" && (event === "SessionStart" || event === "SubagentStart"))
+		return run.stderr.trim()
+			? { systemMessage: `${event} hook: ${run.stderr.trim()}${notKept(run.dropped?.stderr)}` }
+			: {};
+	if (run.code === 2 && event === "SubagentStart") return {};
 	// Claude: a Stop hook whose script is missing exits 2 with the shell's message; that is a failure to run, not a block.
 	if (
 		run.code === 2 &&
@@ -267,6 +282,9 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 		return { error: "Codex PreToolUse output must be a JSON object" };
 	if (!json && protocol === "codex" && event === "SubagentStart" && /^[{[]/.test(run.stdout.trimStart()))
 		return { error: "Codex SubagentStart returned invalid JSON output" };
+	// Codex: "Stop expects JSON on stdout when it exits 0. Plain text output is invalid for this event."
+	if (!json && protocol === "codex" && (event === "Stop" || event === "SubagentStop") && run.stdout.trim())
+		return { error: `Codex ${event} requires JSON output` };
 	if (!json)
 		return (event === "SessionStart" || event === "SubagentStart" || event === "UserPromptSubmit") && run.stdout.trim()
 			? { context: `${run.stdout.trim()}${notKept(run.dropped?.stdout)}` }
@@ -311,6 +329,11 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 			event !== "SubagentStop" &&
 			((!(protocol === "claude" && event === "PreCompact") && json.continue === false) ||
 				specific.permissionDecision === "deny"));
+	// Claude: "continue: false" stops processing entirely, even after a tool call completed or failed.
+	const halts =
+		protocol === "claude" &&
+		json.continue === false &&
+		(event === "PreToolUse" || event === "PostToolUse" || event === "PostToolUseFailure");
 	const asks =
 		!blocked && (event === "PreToolUse" || event === "PreMessageSend") && specific.permissionDecision === "ask";
 	return {
@@ -324,7 +347,8 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 		...(blocked && protocol === "codex" && event === "PostToolUse"
 			? ({ replaceResult: true, ...(json.decision === "block" ? ({ rejectNested: true } as const) : {}) } as const)
 			: {}),
-		...(blocked && event !== "PostToolUseFailure" ? { block: reason ?? "Blocked by a hook." } : {}),
+		...(halts ? { haltTurn: true as const } : {}),
+		...(blocked && (event !== "PostToolUseFailure" || halts) ? { block: reason ?? "Blocked by a hook." } : {}),
 		...(asks ? { ask: reason ?? `A ${event} hook asks you to confirm this call.` } : {}),
 		...(context && event !== "PreMessageSend" ? { context } : {}),
 		...(context && (event === "Stop" || event === "SubagentStop") && protocol === "claude"
@@ -335,7 +359,7 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 
 /**
  * Why a `PreToolUse` hook did not give an answer: it timed out, crashed (could not start, was killed, or exited with a
- * code other than 0 and 2), or printed JSON that does not parse to an object (plain text is a normal answer). Hooks fail open, as in Claude Code, so a
+ * code other than 0 and 2), or printed JSON that does not parse to an object (plain text is a normal answer). Hooks fail open, as the hook protocol specifies, so a
  * broken security hook would allow every call: the caller shows this and audits it, and denies when the hook is
  * `failClosed`. Undefined when the hook answered, or the run was cancelled.
  */

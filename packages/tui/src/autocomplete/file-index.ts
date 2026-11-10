@@ -20,6 +20,8 @@ export interface FileIndexStatus {
 
 export const FILE_INDEX_CAP = 200_000;
 export const FILE_INDEX_REFRESH_MS = 10_000;
+/** A query miss rebuilds an index only when it is at least this old, so a run of misses walks the tree once. */
+export const FILE_INDEX_MISS_REFRESH_MS = 1_000;
 const WALK_MAX_DEPTH = 6;
 const WALK_MAX_ENTRIES = 20_000;
 const WALK_SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
@@ -170,10 +172,16 @@ export async function getFileIndex(cwd: string, fdPath: string | null): Promise<
 	return (await (slot.building ?? startBuild(cwd, fdPath, slot))).entries;
 }
 
-/** The background rebuild of an index that is already in use, or null: a caller whose query found nothing can wait for it. */
-export function pendingIndexRefresh(cwd: string): Promise<unknown> | null {
+/**
+ * Rebuilds the index for `cwd` now and resolves when it lands; joins a running rebuild.
+ * For a caller whose query found nothing in the cached index. Null when `cwd` was never indexed or the index is
+ * younger than `FILE_INDEX_MISS_REFRESH_MS`.
+ */
+export function refreshFileIndexNow(cwd: string, fdPath: string | null): Promise<unknown> | null {
 	const slot = slots.get(cwd);
-	return slot?.built && slot.building ? slot.building.catch(() => {}) : null;
+	if (!slot?.built) return null;
+	if (!slot.building && Date.now() - slot.builtAt < FILE_INDEX_MISS_REFRESH_MS) return null;
+	return (slot.building ?? startBuild(cwd, fdPath, slot)).catch(() => {});
 }
 
 /** Progress of the index for `cwd`, for an "Indexing… N files" row. */

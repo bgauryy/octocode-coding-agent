@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
-import type { Api, Model, Usage } from "@octocodeai/octocode-ai";
+import { type Api, isUsageLimitError, type Model, type Usage } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -9,7 +9,8 @@ import { currentPrice, type ModelRef } from "./model.ts";
 
 /**
  * The account cannot pay for the request (402, "Insufficient account funds", no credit or quota left): the key is
- * fine, funds or a plan are missing, and every model of that provider fails the same way.
+ * fine, funds or a plan are missing, and every priced model of that provider fails the same way; its free models
+ * still run (OpenCode Go: beam-free answered while a paid model said 402).
  */
 export const BILLING_ERROR =
 	/\b402\b|payment required|insufficient[ _](?:account[ _])?(?:quota|credit|balance|funds)|billing|out of credit/i;
@@ -19,10 +20,17 @@ export const CREDENTIAL_ERROR =
 	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|permission[ _]denied|expired/i;
 
 /**
- * A provider refused the credential or the account: a credential error or no funds. Narrower than a request refusal:
- * a model-level or request-shape refusal says nothing about the other models of that provider.
+ * A provider refused the credential or the account: a credential error, no funds, or a usage limit (the shared
+ * classifier the session retry uses). Narrower than a request refusal: a model-level or request-shape refusal says
+ * nothing about the other models of that provider.
  */
-const CREDENTIAL_REFUSED = new RegExp(`${CREDENTIAL_ERROR.source}|${BILLING_ERROR.source}`, "i");
+const credentialRefused = (text: string): boolean =>
+	CREDENTIAL_ERROR.test(text) || BILLING_ERROR.test(text) || isUsageLimitError(text);
+/** A known price of zero for input and output; an unknown price is not free. */
+const costsNothing = (cost: ModelRef["cost"]): boolean => {
+	const rates = currentPrice(cost);
+	return rates !== undefined && rates.input + rates.output === 0;
+};
 const CHECK_TIMEOUT_MS = 20_000;
 /** How long a credential refusal steers routing away from its provider: a `/providers` since then is not otherwise seen. */
 const REFUSAL_ROUTING_MS = 15 * 60_000;
@@ -72,7 +80,7 @@ export class ProviderHealth {
 		if (!error) {
 			this.status.set(provider, { ok: true, at: Date.now(), via: "run" });
 			this.models.delete(ref);
-		} else if (CREDENTIAL_REFUSED.test(error))
+		} else if (credentialRefused(error))
 			this.status.set(provider, { ok: false, at: Date.now(), via: "run", detail: clean(error) });
 		else if (refusedBeforeWork(error, nothingSpent)) this.models.set(ref, Date.now());
 	}
@@ -96,17 +104,16 @@ export class ProviderHealth {
 	 * `proven`: the parent's own provider, whose session proves it) `provider` refused its credential (a run or check said
 	 * so; a timeout or other failure does not count): routing then prefers other models (`usableModels`).
 	 */
-	refused(provider: string, id?: string, proven = false): boolean {
+	refused(provider: string, id?: string, proven = false, cost?: ModelRef["cost"]): boolean {
 		const at = id === undefined ? undefined : this.models.get(`${provider}/${id}`);
 		if (at !== undefined && Date.now() - at < REFUSAL_ROUTING_MS) return true;
 		if (proven) return false;
 		const status = this.status.get(provider);
-		return (
-			status !== undefined &&
-			!status.ok &&
-			Date.now() - status.at < REFUSAL_ROUTING_MS &&
-			CREDENTIAL_REFUSED.test(status.detail ?? "")
-		);
+		if (status === undefined || status.ok || Date.now() - status.at >= REFUSAL_ROUTING_MS) return false;
+		const detail = status.detail ?? "";
+		// Missing funds stop only what costs money: a model priced at zero (`cost` given and free) still routes.
+		if (BILLING_ERROR.test(detail) && !CREDENTIAL_ERROR.test(detail) && costsNothing(cost)) return false;
+		return credentialRefused(detail);
 	}
 }
 
@@ -122,16 +129,29 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	if (status.ok) return ` ✓ credential worked (${source}, ${when})`;
 	const detail = status.detail ?? "";
 	const billing = BILLING_ERROR.test(detail);
-	const refused = billing || CREDENTIAL_REFUSED.test(detail);
-	const label = billing ? "out of funds" : refused ? "credential refused" : "check failed";
-	const fix = billing ? " — add funds or a plan with the provider" : refused ? " — fix with /providers" : "";
+	const limited = !billing && !CREDENTIAL_ERROR.test(detail) && isUsageLimitError(detail);
+	const refused = billing || limited || credentialRefused(detail);
+	const label = billing
+		? "out of funds"
+		: limited
+			? "usage limit reached"
+			: refused
+				? "credential refused"
+				: "check failed";
+	const fix = billing
+		? " — add funds or a plan with the provider"
+		: limited
+			? " — wait for the limit to reset or use another provider"
+			: refused
+				? " — fix with /providers"
+				: "";
 	return ` ✗ ${label} (${source}, ${when}): ${status.detail ?? "no detail"}${fix}`;
 }
 
 /**
  * Models a check tries per provider before it gives up: one model may be refused for itself (an account opt-in, a
- * retired id). Five, because the cheapest models of a gateway catalog are often opt-in or retired ones (OpenCode Go,
- * 2026-10-29: two contributor models and a deprecated one before the first that answered).
+ * retired id). Five, because the cheapest models of a gateway catalog are often opt-in or retired ones (OpenCode Go:
+ * two contributor models and a deprecated one before the first that answered).
  */
 const CHECK_CANDIDATES = 5;
 
@@ -245,7 +265,7 @@ export async function checkProviders(
 			for (const candidate of candidates) {
 				const refused = await tinyRequest(registry, candidate, bounded);
 				error = refused && candidates.length > 1 ? `${candidate.id}: ${refused}` : refused;
-				if (!refused || CREDENTIAL_REFUSED.test(refused) || bounded.aborted) break;
+				if (!refused || credentialRefused(refused) || bounded.aborted) break;
 			}
 			if (signal?.aborted) return;
 			if (error && timeout.aborted) error = `no answer within ${CHECK_TIMEOUT_MS / 1000} s (${error})`;

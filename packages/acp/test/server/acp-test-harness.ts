@@ -58,6 +58,11 @@ export class FakeWorker implements Worker {
 		sessionId: this.sessionId,
 		sessionFile: "/tmp/acp-fixture-session.jsonl",
 	}));
+	model = "fixture/one";
+	getModels = vi.fn(async () => ({ current: this.model, available: ["fixture/one", "fixture/two"] }));
+	setModel = vi.fn(async (model: string) => {
+		this.model = model;
+	});
 	persistSession = vi.fn(async () => {});
 	prompt = vi.fn(async (_message: string, _images?: ImageContent[]): Promise<string> => "started");
 	abort = vi.fn(async () => {

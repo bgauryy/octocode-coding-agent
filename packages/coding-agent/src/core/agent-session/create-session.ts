@@ -59,7 +59,6 @@ export interface CreateSessionFromServicesOptions {
 	customTools?: ToolDefinition[];
 }
 
-/** Result of creating a session. */
 export interface CreateSessionResult {
 	session: AgentSession;
 	/** Extensions result (for UI context setup in interactive mode). */
@@ -134,7 +133,6 @@ export async function createSessionFromServices(
 
 	let thinkingLevel = options.thinkingLevel;
 
-	// If session has data, restore thinking level from it
 	if (thinkingLevel === undefined && hasExistingSession) {
 		thinkingLevel = hasThinkingEntry
 			? (existingSession.thinkingLevel as ThinkingLevel)

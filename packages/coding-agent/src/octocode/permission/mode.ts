@@ -343,24 +343,43 @@ export interface ActionCount {
 	warnings: number;
 }
 
-/** The chip text of `mode`; in full or bypass, once a call ran, it counts them: `⏵⏵ permission: full · 12 actions · 2 ⚠ · Shift+Tab`. */
-export function chipText(mode: PermissionMode, count?: ActionCount): string {
-	if (!runsUnasked(mode) || !count || count.actions === 0) return CHIPS[mode].text;
-	const warned = count.warnings > 0 ? ` · ${count.warnings} ⚠` : "";
-	const icon = mode === "bypass" ? "⏵⏵⏵" : "⏵⏵";
-	return `${icon} permission: ${mode} · ${plural(count.actions, "action")}${warned} · ${shortcutText("app.permission.cycle")}`;
+/** The chip as parts, so the footer paints the mode and its shortcut apart: `{icon: "⏵⏵", mode: "full", counters: "12 actions · 2 ⚠", key: "shift+tab"}`. */
+export interface ChipParts {
+	icon: string;
+	mode: PermissionMode;
+	/** What full mode did this session; empty until a call ran, and always empty outside full and bypass. */
+	counters: string;
+	key: string;
 }
 
-const UNASKED_CHIP = /⏵⏵⏵? permission: (full|bypass)( · \d+ actions?(?: · \d+ ⚠)?)? · /;
+const CHIP_ICONS: Record<PermissionMode, string> = { manual: "⏸", workspace: "", full: "⏵⏵", bypass: "⏵⏵⏵" };
 
-/** A chip status (coloured or not) with its text replaced by the short form; a full or bypass chip keeps its counters. */
-export function shortChip(status: string): string {
-	const unasked = UNASKED_CHIP.exec(status);
-	if (unasked) {
-		const short = CHIPS[unasked[1] as "full" | "bypass"].short;
-		return status.replace(`${unasked[0]}${shortcutText("app.permission.cycle")}`, `${short}${unasked[2] ?? ""}`);
-	}
-	for (const chip of [CHIPS.manual, CHIPS.workspace])
-		if (status.includes(chip.text)) return status.replace(chip.text, chip.short);
-	return status;
+/** The parts of `mode`'s chip; in full or bypass, once a call ran, the counters read `12 actions · 2 ⚠`. */
+export function chipParts(mode: PermissionMode, count?: ActionCount): ChipParts {
+	const counted = runsUnasked(mode) && count !== undefined && count.actions > 0;
+	const warned = counted && count.warnings > 0 ? ` · ${count.warnings} ⚠` : "";
+	return {
+		icon: CHIP_ICONS[mode],
+		mode,
+		counters: counted ? `${plural(count.actions, "action")}${warned}` : "",
+		key: shortcutText("app.permission.cycle"),
+	};
+}
+
+/** `⏵⏵ permission: full · 12 actions · 2 ⚠` and the same without the icon or counters: what the chip says before its shortcut. */
+export function chipLabel(parts: ChipParts): string {
+	const label = `${parts.icon ? `${parts.icon} ` : ""}permission: ${parts.mode}`;
+	return parts.counters ? `${label} · ${parts.counters}` : label;
+}
+
+/** The narrow form: `⏵⏵ full · 12 actions · 2 ⚠`, with no shortcut. */
+export function chipShortLabel(parts: ChipParts): string {
+	const short = CHIPS[parts.mode].short;
+	return parts.counters ? `${short} · ${parts.counters}` : short;
+}
+
+/** The chip text of `mode`; in full or bypass, once a call ran, it counts them: `⏵⏵ permission: full · 12 actions · 2 ⚠ · Shift+Tab`. */
+export function chipText(mode: PermissionMode, count?: ActionCount): string {
+	const parts = chipParts(mode, count);
+	return `${chipLabel(parts)} · ${parts.key}`;
 }

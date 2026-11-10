@@ -148,7 +148,7 @@ describe("checkInConfig", () => {
 });
 
 describe("a foreground child's report", () => {
-	// The run audit a parent keeps (B38): a run is begun and finished around each foreground child.
+	// The run audit a parent keeps: a run is begun and finished around each foreground child.
 	const audit = { begin: vi.fn(), finish: vi.fn(), hint: vi.fn() };
 	const run = () => ({
 		identity: { id: "c-1" },

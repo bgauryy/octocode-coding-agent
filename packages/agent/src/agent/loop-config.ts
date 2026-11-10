@@ -1,4 +1,4 @@
-import type { Transport } from "@octocodeai/octocode-ai";
+import type { ToolChoice, Transport } from "@octocodeai/octocode-ai";
 import type { AgentLoopConfig, AgentState, ToolExecutionMode } from "../types.ts";
 import type { AgentOptions } from "./options.ts";
 import type { PendingMessageQueue } from "./state.ts";
@@ -24,9 +24,13 @@ type AgentLoopHost = Pick<
 	| "thinkingBudgets"
 	| "maxRetryDelayMs"
 > & {
+	/** Tool choice for the next request only; read and cleared as that request is prepared. */
+	nextToolChoice?: ToolChoice;
 	convertToLlm: NonNullable<AgentOptions["convertToLlm"]>;
 	transport: Transport;
 	toolExecution: ToolExecutionMode;
+	/** Set by the host on the agent (not an option); see `AgentLoopConfig.earlyStart`. */
+	earlyStart?: AgentLoopConfig["earlyStart"];
 	/** Active abort signal for the current run, if any. */
 	readonly signal: AbortSignal | undefined;
 };
@@ -54,8 +58,14 @@ export function createAgentLoopConfig(
 		beforeToolCall: agent.beforeToolCall,
 		afterToolCall: agent.afterToolCall,
 		unknownToolMessage: agent.unknownToolMessage,
+		earlyStart: agent.earlyStart,
 		finishTurn: agent.finishTurn,
-		prepareRequest: agent.prepareRequest,
+		prepareRequest: async (request, signal) => {
+			const update = await agent.prepareRequest?.(request, signal);
+			const toolChoice = agent.nextToolChoice;
+			agent.nextToolChoice = undefined;
+			return toolChoice ? { ...update, toolChoice } : (update ?? undefined);
+		},
 		prepareInput: agent.prepareInput,
 		onInputSelected: agent.onInputSelected,
 		prepareNextTurn:

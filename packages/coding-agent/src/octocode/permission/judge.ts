@@ -19,10 +19,11 @@ export type Gate = (
 export type JudgeEntry = "tool" | "hook";
 
 /**
- * Table 1, the `tool_call` pipeline, cheapest and most certain first. The current order, kept as it was before the table:
+ * Table 1, the `tool_call` pipeline, cheapest and most certain first. The order:
  *
  *  1. plan-mode      planning blocks what changes anything (audited here)
- *  2. git-state      a subagent in the shared tree leaves git state alone (audited; only in such a subagent)
+ *  2. git-state      a subagent in the shared tree leaves git state alone (audited); the main session is asked before it
+ *                    discards uncommitted work while a peer session shares the checkout
  *  3. reservation    another agent's reserved paths (audited)
  *  4. metadata       a browser call that opens a cloud metadata address, in every mode and on every entry (audited)
  *  5. pre-tool-use   the user's PreToolUse hooks, which spawn processes, so only calls 1-4 let through; a hook's `ask`
@@ -45,7 +46,7 @@ export const GATE_STEPS = [
 
 export type GateStepName = (typeof GATE_STEPS)[number]["name"];
 
-/** A step's body; `git-state` is undefined outside a subagent in the shared tree, which skips the step. */
+/** A step's body; `git-state` is undefined for an isolated subagent and for a main session that cannot tell about peers, which skip the step. */
 export type GateStepBodies = { [N in GateStepName]: N extends "git-state" ? Gate | undefined : Gate };
 
 interface JudgeOptions {
@@ -69,7 +70,7 @@ export async function judge(
 		const body = bodies[step.name];
 		if (!body) continue;
 		const verdict = await (step.audited ? options.audited(body) : body)(event, ctx, prior);
-		if (verdict?.block) return verdict;
+		if (verdict?.block || verdict?.defer) return verdict;
 		if (verdict?.rewritten) {
 			const reserved = await options.audited(options.invariants)(event, ctx);
 			if (reserved?.block) return reserved;

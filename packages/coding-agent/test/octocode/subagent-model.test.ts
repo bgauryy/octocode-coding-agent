@@ -192,7 +192,7 @@ describe("subagent thinking", () => {
 		};
 		const route = planRun(profiles, { profile: "lean", model: "p/tiny:off" }, ctx).route;
 		expect(route.model).toBe("p/tiny:minimal");
-		expect(route.via).toBe("model argument: p/tiny:off; the model does not support off, so it runs at minimal");
+		expect(route.via).toBe("model argument: p/tiny:off; asked off; this model does not support off");
 	});
 
 	it("routes a task without a profile or model to the medium purpose, and a profile without a model to the parent's", () => {

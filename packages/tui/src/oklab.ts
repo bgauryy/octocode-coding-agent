@@ -22,9 +22,7 @@ type Matrix = [Vector, Vector, Vector];
 const multiply = (m: Matrix, [x, y, z]: Vector): Vector =>
 	m.map((row) => row[0] * x + row[1] * y + row[2] * z) as Vector;
 
-// ============================================================================
 // OKHSL <-> sRGB
-// ============================================================================
 
 const LINEAR_SRGB_TO_LMS: Matrix = [
 	[0.4122214694707629, 0.5363325372617349, 0.0514459932675022],

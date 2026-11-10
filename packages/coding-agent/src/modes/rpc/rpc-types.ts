@@ -27,9 +27,7 @@ import type { PurgeResult } from "../../octocode/sessions/purge.ts";
 import type { Static } from "typebox";
 import type { RpcCommandSchema } from "./rpc-command-schema.ts";
 
-// ============================================================================
 // RPC Commands (stdin)
-// ============================================================================
 
 /** The command union is derived from the validation schema, so the two cannot drift apart. */
 export type RpcCommand = Static<typeof RpcCommandSchema>;
@@ -45,15 +43,12 @@ interface RpcPurgeResult {
 	result?: PurgeResult;
 }
 
-// ============================================================================
 // RPC Slash Command (for get_commands response)
-// ============================================================================
 
 /** A command available for invocation via prompt */
 export interface RpcSlashCommand {
 	/** Command name (without leading slash) */
 	name: string;
-	/** Human-readable description */
 	description?: string;
 	/** Usage of the arguments, such as `[all|<query>]` (extension commands) */
 	argumentHint?: string;
@@ -63,9 +58,7 @@ export interface RpcSlashCommand {
 	sourceInfo: SourceInfo;
 }
 
-// ============================================================================
 // RPC State
-// ============================================================================
 
 export interface RpcSessionState {
 	/** The version of this protocol, as in `rpc_ready`. */
@@ -86,9 +79,7 @@ export interface RpcSessionState {
 	pendingMessageCount: number;
 }
 
-// ============================================================================
 // RPC Responses (stdout)
-// ============================================================================
 
 // Success responses with data
 export type RpcResponse =
@@ -128,8 +119,6 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "remove_queued"; success: true; data: { removed: boolean } }
 	| { id?: string; type: "response"; command: "move_queued"; success: true; data: { moved: boolean } }
 	| { id?: string; type: "response"; command: "new_session"; success: true; data: { cancelled: boolean } }
-
-	// State
 	| { id?: string; type: "response"; command: "plan"; success: true; data: PlanState }
 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
 
@@ -155,8 +144,6 @@ export type RpcResponse =
 			success: true;
 			data: { models: Model<any>[] };
 	  }
-
-	// Thinking
 	| { id?: string; type: "response"; command: "set_thinking_level"; success: true }
 	| {
 			id?: string;
@@ -176,19 +163,11 @@ export type RpcResponse =
 	// Queue modes
 	| { id?: string; type: "response"; command: "set_steering_mode"; success: true }
 	| { id?: string; type: "response"; command: "set_follow_up_mode"; success: true }
-
-	// Compaction
 	| { id?: string; type: "response"; command: "compact"; success: true; data: CompactionResult }
-
-	// Retry
 	| { id?: string; type: "response"; command: "set_auto_retry"; success: true }
 	| { id?: string; type: "response"; command: "abort_retry"; success: true }
-
-	// Bash
 	| { id?: string; type: "response"; command: "bash"; success: true; data: BashResult }
 	| { id?: string; type: "response"; command: "abort_bash"; success: true }
-
-	// Session
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: SessionStats }
 	| { id?: string; type: "response"; command: "export_html"; success: true; data: { path: string } }
 	| { id?: string; type: "response"; command: "switch_session"; success: true; data: { cancelled: boolean } }
@@ -226,8 +205,6 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "persist_session"; success: true }
 	| { id?: string; type: "response"; command: "delete_sessions"; success: true; data: RpcDeleteSessionsResult }
 	| { id?: string; type: "response"; command: "purge"; success: true; data: RpcPurgeResult }
-
-	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }
 
 	// Commands
@@ -250,9 +227,7 @@ export type RpcResponse =
 			authRequired?: true;
 	  };
 
-// ============================================================================
 // Extension UI Events (stdout)
-// ============================================================================
 
 /** Emitted when an extension needs user input */
 export type RpcExtensionUIRequest =
@@ -339,11 +314,8 @@ export interface RpcExtensionUIDismiss {
 	id: string;
 }
 
-// ============================================================================
 // Extension UI Commands (stdin)
-// ============================================================================
 
-/** Response to an extension UI request */
 export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }

@@ -8,9 +8,21 @@ import { getBuiltinCommand } from "../src/core/slash-commands.ts";
 import { getLoginProviderOptions, showOAuthSelector } from "../src/modes/interactive/interactive-mode/login-flow.ts";
 import { removeProviderCredential } from "../src/modes/interactive/interactive-mode/provider-actions.ts";
 import { showProviderManager } from "../src/modes/interactive/interactive-mode/provider-manager.ts";
+import { providerHealth, type ProviderHealth } from "../src/octocode/subagents/provider-health.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+
+// The one-request check is the network boundary: it records what a provider answered, as the real one does.
+const answers = vi.hoisted(() => ({ error: undefined as string | undefined }));
+vi.mock("../src/octocode/subagents/provider-health.ts", async (original) => ({
+	...(await original<Record<string, unknown>>()),
+	checkProviders: vi.fn(
+		async (_registry: unknown, entries: readonly { provider: string }[][], health: ProviderHealth) => {
+			health.noteCheck(entries[0][0].provider, answers.error);
+		},
+	),
+}));
 
 function manager() {
 	const codex = {
@@ -48,6 +60,7 @@ function manager() {
 			label: "OPENAI_API_KEY",
 		}),
 		isUsingOAuth: () => false,
+		getCredentialKind: vi.fn(async (): Promise<"account" | "subscription" | "key"> => "key"),
 		hasConfiguredAuth: (id: string) => id === "openai",
 		listCredentials: vi.fn(async () => [{ providerId: "openai", type: "api_key" }]),
 		logout: vi.fn(async () => {}),
@@ -329,6 +342,58 @@ describe("provider setup flow", () => {
 		expect(value.showStatus).toHaveBeenLastCalledWith("Turned off Pi. Files are unchanged.");
 		last.handleInput(ESC);
 		await run;
+	});
+
+	it("shows a stored key that is a subscription token as subscription, in the list and on the page", async () => {
+		const { host, value, runtime } = manager();
+		runtime.getCredentialKind.mockResolvedValue("subscription");
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const list = await pageAt(value, 0);
+		expect(textOf(list)).toMatch(/OpenAI +subscription · OPENAI_API_KEY · 1 model/);
+		list.handleInput(ENTER);
+		const detail = await pageAt(value, 1);
+		expect(textOf(detail)).toMatch(/Status +Subscription configured · OPENAI_API_KEY/);
+		expect(textOf(detail)).not.toContain("API key configured");
+		detail.handleInput(ESC);
+		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await run;
+	});
+
+	it("shows a plain key as key, in the list and on the page", async () => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const list = await pageAt(value, 0);
+		expect(textOf(list)).toMatch(/OpenAI +key · OPENAI_API_KEY/);
+		list.handleInput(ENTER);
+		const detail = await pageAt(value, 1);
+		expect(textOf(detail)).toMatch(/Status +API key configured/);
+		detail.handleInput(ESC);
+		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await run;
+	});
+
+	it("Test credential runs the check for this provider and shows a pass", async () => {
+		const { host, value } = manager();
+		providerHealth.noteCheck("openai"); // a stale answer must not outlive the new check
+		answers.error = undefined;
+		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "Test credential");
+		await run;
+		expect(value.showStatus).toHaveBeenCalledWith(expect.stringContaining("OpenAI: ✓ credential worked"));
+		expect(value.showError).not.toHaveBeenCalled();
+	});
+
+	it("Test credential shows a failure with the key redacted", async () => {
+		const { host, value } = manager();
+		answers.error = "401 invalid x-api-key sk-ant-api03-secretsecretsecretsecret";
+		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "Test credential");
+		await run;
+		const shown = String(value.showError.mock.calls.at(-1)?.[0]);
+		expect(shown).toContain("OpenAI: ✗ credential refused");
+		expect(shown).toContain("401 invalid x-api-key");
+		expect(shown).not.toContain("secretsecret");
+		answers.error = undefined;
 	});
 
 	it("offers replacement and removal next to model selection on the provider page", async () => {

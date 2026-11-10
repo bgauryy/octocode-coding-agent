@@ -251,7 +251,8 @@ async function appendHandler(f: Awaited<ReturnType<typeof fixture>>, event: stri
 }
 
 for (const firstDenies of [false, true]) {
-	it(`Claude first permission decision wins over a delayed ${firstDenies ? "allow" : "deny"}`, async () => {
+	// Every matching Claude PermissionRequest handler runs and a deny wins, whichever answers first.
+	it(`Claude ${firstDenies ? "first deny wins over a delayed allow" : "delayed deny wins over a first allow"}`, async () => {
 		const f = await fixture("claude", {
 			output: decision(
 				firstDenies
@@ -288,20 +289,17 @@ for (const firstDenies of [false, true]) {
 			await f.run("bash", { command: original });
 			expect(fs.existsSync(path.join(f.cwd, "original.txt"))).toBe(false);
 			expect(fs.existsSync(path.join(f.cwd, "late.txt"))).toBe(false);
-			if (firstDenies) {
-				expect(fs.existsSync(path.join(f.cwd, "replacement.txt"))).toBe(false);
-				expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toContain("FIRST_DENY");
-			} else expect(fs.readFileSync(path.join(f.cwd, "replacement.txt"), "utf8")).toBe("REWRITTEN");
-			expect(fs.existsSync(events)).toBe(true);
-			{
-				const rows = fs
-					.readFileSync(events, "utf8")
-					.trim()
-					.split("\n")
-					.map((s) => JSON.parse(s));
-				expect(rows.some((r) => r.phase === "completed")).toBe(false);
-				expect(() => process.kill(rows[0].pid, 0)).toThrow();
-			}
+			expect(fs.existsSync(path.join(f.cwd, "replacement.txt"))).toBe(false);
+			expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toContain(
+				firstDenies ? "FIRST_DENY" : "LATE_DENY",
+			);
+			const rows = fs
+				.readFileSync(events, "utf8")
+				.trim()
+				.split("\n")
+				.map((s) => JSON.parse(s));
+			// The slower handler is awaited, not cancelled.
+			expect(rows.some((r) => r.phase === "completed")).toBe(true);
 		} finally {
 			await f.close();
 		}

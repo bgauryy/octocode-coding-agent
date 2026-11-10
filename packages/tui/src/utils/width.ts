@@ -80,7 +80,6 @@ export function graphemeWidth(segment: string): number {
 		return [...segment].length;
 	}
 
-	// Zero-width clusters
 	if (zeroWidthRegex.test(segment)) {
 		return 0;
 	}
@@ -149,7 +148,6 @@ export function visibleWidth(str: string): number {
 		return asciiWidth;
 	}
 
-	// Check cache
 	const cached = widthCache.get(str);
 	if (cached !== undefined) {
 		return cached;
@@ -181,13 +179,11 @@ export function visibleWidth(str: string): number {
 		clean = stripped + clean.slice(copyFrom);
 	}
 
-	// Calculate width
 	let width = 0;
 	for (const { segment } of graphemeSegmenter.segment(clean)) {
 		width += graphemeWidth(segment);
 	}
 
-	// Cache result
 	if (widthCache.size >= WIDTH_CACHE_SIZE) {
 		const firstKey = widthCache.keys().next().value;
 		if (firstKey !== undefined) {

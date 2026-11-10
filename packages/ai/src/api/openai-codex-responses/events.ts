@@ -7,10 +7,6 @@ import { applyServiceTierPricing, resolveCodexServiceTier } from "./request.ts";
 import { parseSSE } from "./sse.ts";
 import { CODEX_RESPONSE_STATUSES, type CodexResponseStatus, type OpenAICodexResponsesOptions } from "./types.ts";
 
-// ============================================================================
-// Response Processing
-// ============================================================================
-
 export async function processStream(
 	response: Response,
 	output: AssistantMessage,

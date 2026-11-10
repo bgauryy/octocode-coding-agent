@@ -1,5 +1,8 @@
 const REQUEST_TIMEOUT_MS = 15_000;
 
+/** Every view reads a refused sign-in the same way: the link is missing, used up or expired. */
+export const SIGN_IN_MESSAGE = "Not signed in: this link is missing or has expired. Run /web again to open a new one.";
+
 /** Bound the full response, including its body, without retrying a mutation whose outcome may be unknown. */
 export async function requestJson<T = unknown>(
 	url: string,
@@ -16,6 +19,7 @@ export async function requestJson<T = unknown>(
 	);
 	try {
 		const response = await fetch(url, { ...options, signal: controller.signal });
+		if (response.status === 401) throw new Error(SIGN_IN_MESSAGE);
 		const result: unknown = await response.json();
 		if (!response.ok) {
 			const error = result && typeof result === "object" && "error" in result ? result.error : undefined;

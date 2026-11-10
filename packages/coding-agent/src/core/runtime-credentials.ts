@@ -143,7 +143,7 @@ export class RuntimeCredentials implements CredentialStore {
 		if (options?.signal?.aborted) onAbort();
 		let before: Credential | undefined;
 		let written: Credential | undefined;
-		// Set before the transform runs: it may write outside storage and then fail or time out (G-K1).
+		// Set before the transform runs: it may write outside storage and then fail or time out.
 		let transformStarted = false;
 		let outcome = undefined as CredentialWriteOutcome | undefined;
 		let compensated = false;

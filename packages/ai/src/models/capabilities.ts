@@ -20,6 +20,7 @@ import { usesGoogleThinkingLevel } from "../api/google-shared/thinking-format.ts
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
 import type { Api, Model, ModelThinkingLevel, ProviderEnv } from "../types.ts";
+import { matchesHost } from "../utils/provider-host.ts";
 import { getSupportedThinkingLevels } from "./model-helpers.ts";
 
 /**
@@ -37,13 +38,27 @@ export type ThinkingControl = "none" | "effort" | "budget" | "level";
  */
 export type CacheMechanism = "markers" | "key" | "explicit-breakpoint" | "implicit" | "none";
 
+/** `cached`: sent whenever caching is on; `long`: only with long retention; `never`: not sent. */
+export type PromptCacheKeyRule = "cached" | "long" | "never";
+
+/** The host that accepts `prompt_cache_key` with any retention, or a model whose compat allows long retention. */
+export function promptCacheKeyRule(model: Model<"openai-completions">): PromptCacheKeyRule {
+	if (matchesHost(model.baseUrl, "api.openai.com")) return "cached";
+	return getCompletionsCompat(model).supportsLongCacheRetention ? "long" : "never";
+}
+
 export interface ModelCapabilities {
 	/** The model's capacity in tokens; a session's working budget is applied separately. */
 	contextWindow: number;
 	maxOutputTokens: number;
 	input: Model<Api>["input"];
 	thinking: { control: ThinkingControl; levels: ModelThinkingLevel[]; canDisable: boolean };
-	cache: { mechanism: CacheMechanism; lifetimes: { short?: number; long?: number } };
+	cache: {
+		mechanism: CacheMechanism;
+		lifetimes: { short?: number; long?: number };
+		/** Chat Completions only: when the request carries `prompt_cache_key`. Absent where the adapter decides otherwise. */
+		key?: PromptCacheKeyRule;
+	};
 }
 
 /** Anthropic marker lifetimes in seconds: 5 minutes, and 1 hour where the endpoint accepts it. */
@@ -111,6 +126,12 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 		};
 	if (mechanism === "key" && model.api === "openai-responses")
 		return { mechanism, lifetimes: tiers(declared.short, declared.long ?? EXTENDED_KEY_LIFETIME) };
+	if (model.api === "openai-completions" && mechanism === "key")
+		return {
+			mechanism,
+			lifetimes: tiers(declared.short, declared.long),
+			key: promptCacheKeyRule(model as Model<"openai-completions">),
+		};
 	return { mechanism, lifetimes: tiers(declared.short, declared.long) };
 }
 

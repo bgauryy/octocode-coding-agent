@@ -54,6 +54,15 @@ Block 2 starts at the first non-base section present; `OCTOCODE_INSTRUCTION_CACH
 
 Directories run outermost first, stopping at the folder a trust grant is on and at the working directory's repository root when a parent repository lies above. In a linked worktree nested inside its main checkout, the worktree's own file replaces the main checkout's. These files load without project trust: they are text the model reads, and the permission gate still decides each action. A file over 64 KiB is cut and the rest is named by path. `--no-context-files` skips all of it.
 
+Folders below `cwd` load on read, not at start:
+
+| Part   | Rule                                                                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| When   | The first read of a file under a folder with its own context file (a research-server read or a plain `cat`, `head`, `tail` or `sed -n` in `bash`) |
+| Where  | Appended to that read's result in the same `project_instructions` frame, so the cached prompt does not change                                     |
+| Once   | A file already in the context is not sent again; after a compaction drops it, the next read under its folder sends it again                       |
+| Limits | Trusted projects only; each file cut at 64 KiB; at most 64 KiB of these files in the context at once                                              |
+
 ## How a change reaches the model
 
 Before each prompt, `before_agent_start` handlers (MCP, Octocode policy, planning, memory) fill the section inputs and `buildSystemPromptSections` renders them. The session compares the result with the sections the transcript already holds and sends only the difference.

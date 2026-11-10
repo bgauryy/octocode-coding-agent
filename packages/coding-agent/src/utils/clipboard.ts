@@ -56,7 +56,6 @@ async function copyViaWindowsClipboard(text: string): Promise<boolean> {
 	}
 }
 
-/** Read plain text from the system clipboard. */
 export async function readClipboardText(): Promise<string | null> {
 	const commands: [string, string[]][] = [];
 	// Termux reports platform "android", not "linux" (#10391).

@@ -6,6 +6,7 @@
 import { type AssistantMessage, EventStream, type ToolResultMessage } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import { streamAssistantResponse } from "./agent-loop/assistant-stream.ts";
+import { EarlyToolCalls } from "./agent-loop/early-start.ts";
 import type { AgentEventSink } from "./agent-loop/events.ts";
 import { inputCommitter } from "./agent-loop/input.ts";
 import { executeToolCalls, failToolCallsFromTruncatedMessage } from "./agent-loop/tool-batch.ts";
@@ -274,8 +275,28 @@ async function runLoop(
 			}
 
 			// Stream assistant response
-			const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFunction);
+			// Early starts (opt-in, parallel only): settled calls the host allows run while the message still streams.
+			const early =
+				config.earlyStart && config.toolExecution !== "sequential"
+					? new EarlyToolCalls(currentContext, config, config.earlyStart, signal)
+					: undefined;
+			// A throw while streaming or running the batch must not leave early runs going or the signal linked.
+			const requestConfig = requestUpdate?.toolChoice ? { ...config, toolChoice: requestUpdate.toolChoice } : config;
+			const message = await streamAssistantResponse(
+				currentContext,
+				requestConfig,
+				signal,
+				emit,
+				streamFunction,
+				(event) => early?.observe(event),
+			).catch((error: unknown) => {
+				early?.discard();
+				throw error;
+			});
 			newMessages.push(message);
+			// A message cut by error, abort or the output limit runs none of its calls, early ones included.
+			if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "length")
+				early?.discard();
 
 			if (message.stopReason === "error" || message.stopReason === "aborted") {
 				lastCompletedTurn = {
@@ -290,11 +311,11 @@ async function runLoop(
 				return;
 			}
 
-			// Check for tool calls
 			const toolCalls = message.content.filter((c) => c.type === "toolCall");
 
 			const toolResults: ToolResultMessage[] = [];
 			hasMoreToolCalls = false;
+			if (toolCalls.length === 0) early?.dispose();
 			if (toolCalls.length > 0) {
 				// A "length" stop means the output was cut off by the token limit, so
 				// every tool call in the message may carry truncated arguments. Fail
@@ -302,7 +323,13 @@ async function runLoop(
 				const executedToolBatch =
 					message.stopReason === "length"
 						? await failToolCallsFromTruncatedMessage(toolCalls, message, emit)
-						: await executeToolCalls(currentContext, message, config, signal, emit);
+						: await executeToolCalls(currentContext, message, config, signal, emit, early?.take(toolCalls)).catch(
+								(error: unknown) => {
+									early?.discard();
+									throw error;
+								},
+							);
+				early?.dispose();
 				toolResults.push(...executedToolBatch.messages);
 				hasMoreToolCalls = !executedToolBatch.terminate;
 

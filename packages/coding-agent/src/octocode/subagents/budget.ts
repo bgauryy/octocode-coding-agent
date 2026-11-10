@@ -21,7 +21,7 @@ export const MAX_REQUESTS_ENV = "OCTOCODE_SUBAGENT_MAX_REQUESTS";
 
 /**
  * The soft limit when neither the profile nor the environment sets one. In 154 measured subagent runs
- * (2026-10-26: p50 40, p95 120, p99 219, max 236 requests), the steer reached about 4% of runs and the hard limit (240)
+ * (p50 40, p95 120, p99 219, max 236 requests), the steer reached about 4% of runs and the hard limit (240)
  * exceeded the observed maximum. That historical sample is not a guarantee for future tasks. 0 turns the budget off.
  */
 export const DEFAULT_MAX_REQUESTS = 160;
@@ -61,6 +61,9 @@ export const steerMessage = (
 		ask: options.ask === true,
 	});
 
+/** What the parent tells a child at the hard limit: its next request has no tools, so it answers. */
+export const finalMessage = (hard: number): string => renderInstruction("notices/subagents/budget-final.md", { hard });
+
 /**
  * Applies the budget to a child's replies: one steer at the soft limit, one stop at the hard limit. Both only while the
  * reply asked for tools (the child goes on); a final answer needs neither. `canAsk`: the steer may tell the child to ask its
@@ -78,6 +81,10 @@ export class RequestBudget {
 	private readonly allowance: number;
 	private readonly steer: (message: string) => void;
 	private readonly stop: () => void;
+	/** Gives the child one last request without tools; without it the hard limit stops the run at once. */
+	private readonly final: ((message: string) => void) | undefined;
+	private finalGiven = false;
+	private stopRequested = false;
 	private readonly previous: number;
 	private readonly canAsk: boolean;
 	/** This run continues a child that was at or past its soft limit. */
@@ -88,8 +95,13 @@ export class RequestBudget {
 		steer: (message: string) => void,
 		stop: () => void,
 		previous = 0,
-		{ canAsk = true, resumeIsGrant = true }: { canAsk?: boolean; resumeIsGrant?: boolean } = {},
+		{
+			canAsk = true,
+			resumeIsGrant = true,
+			final,
+		}: { canAsk?: boolean; resumeIsGrant?: boolean; final?: (message: string) => void } = {},
 	) {
+		this.final = final;
 		this.allowance = soft < 1 ? 0 : hardLimit(soft);
 		this.continued = soft >= 1 && previous >= soft;
 		const start = this.continued && resumeIsGrant ? previous : 0;
@@ -137,10 +149,22 @@ export class RequestBudget {
 	/** A reply ended: `count` replies in this process; `continues`: it asked for tools. */
 	onReply(count: number, continues: boolean): void {
 		this.used = count + this.previous;
-		if (this.soft < 1 || this.stoppedAt !== undefined || !continues) return;
+		if (this.soft < 1) return;
+		// Past the final turn: a provider that kept the tools may still be asking for them, and the run ends here.
+		if (this.stoppedAt !== undefined) {
+			if (continues && this.finalGiven && !this.stopRequested) {
+				this.stopRequested = true;
+				this.stop();
+			}
+			return;
+		}
+		if (!continues) return;
 		if (this.used >= this.hard) {
 			this.stoppedAt = this.used;
-			this.stop();
+			if (this.final) {
+				this.finalGiven = true;
+				this.final(finalMessage(this.hard));
+			} else this.stop();
 		} else if (this.used >= this.soft && !this.steered) {
 			this.steered = true;
 			this.steer(steerMessage(this.used, this.soft, this.hard, { ask: this.canAsk }));

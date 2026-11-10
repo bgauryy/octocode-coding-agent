@@ -14,11 +14,9 @@ import type { Theme } from "../../../theme/theme.ts";
 import type { SourceInfo } from "../../source-info.ts";
 import type { ExtensionToolContext } from "./context.ts";
 
-// ============================================================================
 // Tool Types
 // ============================================================================
 
-/** Rendering options for tool results */
 export interface ToolRenderResultOptions {
 	/** Whether the result view is expanded */
 	expanded: boolean;
@@ -123,7 +121,6 @@ export interface ToolLoadout {
 	readonly declared: readonly AgentTool[];
 	/** Tools callable through `ctx.executeTool()`. */
 	readonly callable: readonly AgentTool[];
-	/** Every registered tool. */
 	readonly registered: readonly AgentTool[];
 	getExposure(name: string): ToolExposure;
 	getNamespace(name: string): ToolNamespace | undefined;
@@ -175,7 +172,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	 * Text appended to this tool's validation failures, such as its typed signature. `envelope` is true when every
 	 * problem is at the top level of the arguments. Never sent to the provider.
 	 */
-	validationHint?: (failure: { envelope: boolean }) => string | undefined;
+	validationHint?: (failure: { envelope: boolean; properties: string[] }) => string | undefined;
 	/** False: arguments are validated as the model sent them and reach `execute` unchanged, with no coercion (MCP tools). */
 	coerceArguments?: false;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
@@ -230,6 +227,9 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	 * If omitted, the default execution mode applies.
 	 */
 	executionMode?: ToolExecutionMode;
+
+	/** The call's concurrency, fixed or from its validated arguments. Takes precedence over `executionMode`. */
+	concurrency?: AgentTool["concurrency"];
 
 	/** How long a call may keep running after an abort before it is abandoned, in ms. If omitted, a short default applies. */
 	abortGraceMs?: number;

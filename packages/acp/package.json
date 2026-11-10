@@ -22,6 +22,8 @@
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
+		"@octocodeai/octocode-common": "workspace:*",
+		"@octocodeai/octocode-mcp": "workspace:*",
 		"@types/node": "24.19.2",
 		"vitest": "4.1.12"
 	},

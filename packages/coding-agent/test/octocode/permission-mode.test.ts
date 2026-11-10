@@ -16,7 +16,8 @@ import {
 	type PermissionMode,
 	parseGrants,
 	reasonAsks,
-	shortChip,
+	chipParts,
+	chipShortLabel,
 	SPAWN_GRANTABLE,
 	startMode,
 	UNGRANTABLE,
@@ -118,8 +119,8 @@ describe("permission modes", () => {
 		expect(chipText("bypass")).toBe(CHIPS.bypass.text);
 		const counted = chipText("bypass", { actions: 3, warnings: 1 });
 		expect(counted).toMatch(/^⏵⏵⏵ permission: bypass · 3 actions · 1 ⚠ · /);
-		expect(shortChip(counted)).toBe("⏵⏵⏵ bypass · 3 actions · 1 ⚠");
-		expect(shortChip(chipText("full", { actions: 2, warnings: 0 }))).toBe("⏵⏵ full · 2 actions");
+		expect(chipShortLabel(chipParts("bypass", { actions: 3, warnings: 1 }))).toBe("⏵⏵⏵ bypass · 3 actions · 1 ⚠");
+		expect(chipShortLabel(chipParts("full", { actions: 2, warnings: 0 }))).toBe("⏵⏵ full · 2 actions");
 		expect(unaskedRunLine("bypass")?.("s.jsonl")).toContain("permission mode bypass: every action runs without asking");
 		expect(unaskedRunLine("workspace")).toBeUndefined();
 	});

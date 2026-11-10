@@ -294,7 +294,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("<skills>");
 			expect(prompt).toContain("<available_skills>");
-			expect(prompt).toContain("<name>test-skill</name>");
+			expect(prompt).toContain('<skill name="test-skill" location=');
 			expect(prompt).toContain("Use bash to load the file of every skill");
 		});
 

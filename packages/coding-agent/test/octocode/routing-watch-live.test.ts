@@ -53,7 +53,13 @@ describe("a provider another process disables", () => {
 		});
 		const registry = new ModelRegistry(runtime);
 		const running = SettingsManager.create(join(home, "project"), agentDir);
-		stops.push(watchProviderSettings(running, runtime, {}));
+		stops.push(
+			watchProviderSettings(running, runtime, {
+				model: undefined,
+				modelRuntime: runtime,
+				sendCustomMessage: async () => {},
+			}),
+		);
 		const available = () => registry.getAvailable();
 		const session = available().find((model) => model.provider === "groq");
 		expect(session).toBeDefined();

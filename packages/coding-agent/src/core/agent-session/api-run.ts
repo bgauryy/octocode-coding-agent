@@ -14,7 +14,6 @@ import type {
 	ReleasedQueuedInput,
 } from "./types.ts";
 
-/** Prompting and input queues of `AgentSession`. */
 export interface AgentSessionPromptingApi {
 	/**
 	 * Send a prompt to the agent.
@@ -176,7 +175,6 @@ export interface AgentSessionRecoveryApi {
 	 */
 	abortBranchSummary(): void;
 
-	/** Whether auto-compaction is enabled */
 	readonly autoCompactionEnabled: boolean;
 
 	/**
@@ -187,7 +185,6 @@ export interface AgentSessionRecoveryApi {
 	/** Whether auto-retry is currently in progress */
 	readonly isRetrying: boolean;
 
-	/** Whether auto-retry is enabled */
 	readonly autoRetryEnabled: boolean;
 
 	/**

@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { CombinedAutocompleteProvider } from "../src/autocomplete.ts";
-import { FILE_INDEX_REFRESH_MS, resetFileIndexCache } from "../src/autocomplete/file-index.ts";
+import {
+	FILE_INDEX_MISS_REFRESH_MS,
+	FILE_INDEX_REFRESH_MS,
+	resetFileIndexCache,
+} from "../src/autocomplete/file-index.ts";
 import { Editor } from "../src/components/editor.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 import { stripTerminalSequences } from "../src/utils.ts";
@@ -53,6 +57,18 @@ describe("@ mentions of files created after the index was built", () => {
 		await type("see @CHECK");
 		await until("CHECK.md");
 		assert.ok(rendered().includes("CHECK.md"), rendered());
+	});
+
+	it("rebuilds on a miss once the index is a second old", async () => {
+		await type("@READ");
+		await until("README.md");
+		editor.setText("");
+		writeFileSync(join(dir, "FRESH.md"), "x");
+		const realNow = Date.now();
+		mock.method(Date, "now", () => realNow + FILE_INDEX_MISS_REFRESH_MS + 1);
+		await type("see @FRESH");
+		await until("FRESH.md");
+		assert.ok(rendered().includes("FRESH.md"), rendered());
 	});
 });
 

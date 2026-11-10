@@ -16,7 +16,6 @@ import type { KeybindingsManager } from "../../keybindings.ts";
 import type { SessionInfo } from "../../session-manager.ts";
 import type { SessionPickerOptions } from "../../session-picker.ts";
 
-// ============================================================================
 // UI Context
 // ============================================================================
 
@@ -60,7 +59,6 @@ export interface ExtensionUIRemoteAnswer<T> {
 	answer(answer: { choice: string } | { text: string }): T | undefined;
 }
 
-/** Options for extension UI dialogs. */
 export interface ExtensionUIDialogOptions {
 	/** AbortSignal to programmatically dismiss the dialog. */
 	signal?: AbortSignal;
@@ -89,10 +87,8 @@ export interface ExtensionUIAskOptions {
 	header?: string;
 }
 
-/** Placement for extension widgets. */
 type WidgetPlacement = "aboveEditor" | "belowEditor";
 
-/** Options for extension widgets. */
 export interface ExtensionWidgetOptions {
 	/** Where the widget is rendered. Defaults to "aboveEditor". */
 	placement?: WidgetPlacement;

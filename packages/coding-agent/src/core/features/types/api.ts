@@ -39,11 +39,9 @@ import type * as SessionEvents from "./session-events.ts";
 import type { ToolCallEvent, ToolResultEvent } from "./tool-events.ts";
 import type { ToolDefinition, ToolInfo, ToolRendererResolver } from "./tools.ts";
 
-// ============================================================================
 // Extension API
 // ============================================================================
 
-/** Handler function type for events */
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows bare return statements
 type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContext) => Promise<R | void> | R | void;
 
@@ -51,7 +49,6 @@ type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContext) => P
  * ExtensionAPI passed to extension factory functions.
  */
 export interface ExtensionAPI {
-	// =========================================================================
 	// Event Subscription
 	// =========================================================================
 
@@ -117,12 +114,18 @@ export interface ExtensionAPI {
 	on(event: "model_select", handler: ExtensionHandler<ModelSelectEvent>): () => void;
 	on(event: "thinking_level_select", handler: ExtensionHandler<ThinkingLevelSelectEvent>): () => void;
 	on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): () => void;
+	/** Synchronous, with `toolExecution.earlyStart` on: may this model call start before its message ended (every handler true)? */
+	on(
+		event: "tool_call_early_start",
+		handler: (event: Omit<ToolCallEvent, "type">, ctx: ExtensionContext) => boolean,
+	): () => void;
+	/** An early-started call was discarded (its message did not complete); its `tool_call` checks saw a call that never ran. */
+	on(event: "tool_call_discarded", handler: (event: { toolCallId: string }) => void): () => void;
 	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): () => void;
 	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): () => void;
 	on(event: "input", handler: ExtensionHandler<InputEvent, InputEventResult>): () => void;
 	on(event: "user_input", handler: ExtensionHandler<UserInputEvent, UserInputEventResult>): () => void;
 
-	// =========================================================================
 	// Tool Registration
 	// =========================================================================
 
@@ -134,14 +137,11 @@ export interface ExtensionAPI {
 	/** Register a catalog of tools with one registry refresh instead of one per tool; all are validated first. */
 	registerTools<TDetails = unknown>(tools: readonly ToolDefinition<TSchema, TDetails>[]): void;
 
-	// =========================================================================
 	// Command, Shortcut, Flag Registration
 	// =========================================================================
 
-	/** Register a custom command. */
 	registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
 
-	/** Register a keyboard shortcut. */
 	registerShortcut(
 		shortcut: KeyId,
 		options: {
@@ -150,11 +150,9 @@ export interface ExtensionAPI {
 		},
 	): void;
 
-	// =========================================================================
 	// Message Rendering
 	// =========================================================================
 
-	/** Register a custom renderer for CustomMessageEntry. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
 	/** Register a transformer for user and assistant Markdown before Octocode renders it in the interactive transcript. */
@@ -166,7 +164,6 @@ export interface ExtensionAPI {
 	/** Choose how tool calls are drawn. Resolvers run in extension load order. */
 	registerToolRenderer(resolver: ToolRendererResolver): void;
 
-	// =========================================================================
 	// Actions
 	// =========================================================================
 
@@ -195,14 +192,12 @@ export interface ExtensionAPI {
 	/** Add one side call's spend (a call that is not an assistant turn, such as a timer `check`) to the session's cost total, once. */
 	recordUsage(kind: string, provider: string, model: string, usage: Usage): void;
 
-	// =========================================================================
 	// Session Metadata
 	// =========================================================================
 
 	/** Set the session display name (shown in session selector); `source` defaults to `user` (see `SessionNameSource`). */
 	setSessionName(name: string, source?: SessionEvents.SessionInfoChangedEvent["source"]): void;
 
-	/** Get the current session name, if set. */
 	getSessionName(): string | undefined;
 
 	/** Set or clear a label on an entry. Labels are user-defined markers for bookmarking/navigation. */
@@ -236,7 +231,6 @@ export interface ExtensionAPI {
 	/** Capture accepted skill resources after runtime initialization. Omit names for all; command names select a subset; [] is empty. No discovery or plugin activation. */
 	getSkillResourceSnapshot(names?: readonly string[]): SkillResourceSnapshot;
 
-	// =========================================================================
 	// Model and Thinking Level
 	// =========================================================================
 
@@ -246,7 +240,6 @@ export interface ExtensionAPI {
 	 */
 	setModel(model: Model<any>): Promise<boolean>;
 
-	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel;
 
 	/**
@@ -256,7 +249,6 @@ export interface ExtensionAPI {
 	 */
 	setThinkingLevel(level: ThinkingLevel): void;
 
-	// =========================================================================
 	// Provider Registration
 	// =========================================================================
 
@@ -330,7 +322,6 @@ export interface ExtensionAPI {
 	 */
 	unregisterProvider(name: string): void;
 
-	// =========================================================================
 	// MCP Servers
 	// =========================================================================
 

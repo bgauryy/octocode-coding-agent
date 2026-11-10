@@ -19,7 +19,7 @@ import { tmp } from "./helpers.ts";
 const FREE_FORM = new Map<string, string>([
 	["agent.resultSchema", "user-supplied JSON Schema for a child's structured result"],
 	// Batch entries are plain objects so every request stays small (about 150 characters instead of 550-700 for spelled-out
-	// entries, B218/B219); each entry is validated in code against the single call's own schema, so none goes unchecked.
+	// entries); each entry is validated in code against the single call's own schema, so none goes unchecked.
 	["agent.tasks", "batch entries, each validated against the single task call's schema (agent-batch.ts)"],
 	["backlog.items", "batch entries, each validated against the single add's schema (checkedEntry in tool-schema.ts)"],
 	[

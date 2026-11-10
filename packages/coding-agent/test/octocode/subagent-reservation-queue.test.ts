@@ -9,7 +9,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-/** A start whose paths only running children of this session hold waits for their release (B204). */
+/** A start whose paths only running children of this session hold waits for their release. */
 
 const FIXTURE = path.join(import.meta.dirname, "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];

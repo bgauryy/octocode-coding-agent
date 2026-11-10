@@ -29,7 +29,12 @@ export const RpcCommandSchema = Type.Union([
 		waitForCompletion: Type.Optional(Type.Boolean()),
 		dispatchId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 	}),
-	command("steer", { message: Type.String(), images: ImagesSchema }),
+	command("steer", {
+		message: Type.String(),
+		images: ImagesSchema,
+		// The one provider request that follows this message is sent without tools (a final answer turn).
+		toolChoice: Type.Optional(Type.Literal("none")),
+	}),
 	command("follow_up", { message: Type.String(), images: ImagesSchema }),
 	command("abort"),
 	command("clear_queue"),
@@ -49,32 +54,25 @@ export const RpcCommandSchema = Type.Union([
 	}),
 	command("get_state"),
 
-	// Model
 	command("set_model", { provider: Type.String(), modelId: Type.String() }),
 	command("cycle_model"),
 	command("get_available_models"),
 
-	// Thinking
 	command("set_thinking_level", { level: ThinkingLevelSchema }),
 	command("cycle_thinking_level"),
 	command("get_available_thinking_levels"),
 
-	// Queue modes
 	command("set_steering_mode", { mode: QueueModeSchema }),
 	command("set_follow_up_mode", { mode: QueueModeSchema }),
 
-	// Compaction
 	command("compact", { customInstructions: Type.Optional(Type.String({ maxLength: MAX_COMPACTION_INSTRUCTIONS })) }),
 
-	// Retry
 	command("set_auto_retry", { enabled: Type.Boolean() }),
 	command("abort_retry"),
 
-	// Bash
 	command("bash", { command: Type.String(), excludeFromContext: Type.Optional(Type.Boolean()) }),
 	command("abort_bash"),
 
-	// Session
 	command("get_session_stats"),
 	command("persist_session"),
 	command("export_html", { outputPath: Type.Optional(Type.String()) }),
@@ -91,7 +89,6 @@ export const RpcCommandSchema = Type.Union([
 	// Delete this workspace's or all Octocode data; nothing is deleted unless `confirm` is true (false returns the preview).
 	command("purge", { scope: Type.Union([Type.Literal("workspace"), Type.Literal("all")]), confirm: Type.Boolean() }),
 
-	// Messages
 	command("get_messages"),
 
 	// Commands (available for invocation via prompt)

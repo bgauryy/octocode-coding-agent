@@ -67,12 +67,14 @@ function setup() {
 const reportOf = (text: string) => JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
 
 describe("the agent tool's goal", () => {
-	it("requires a goal in the schema without a size limit (a refusal would echo every argument back), and says how much shows", () => {
+	it("takes a goal in the schema (required for a new child) without a size limit (a refusal would echo every argument back), and says how much shows", () => {
 		const { agent } = setup();
 		const goal = agent.parameters.properties.goal;
-		expect(agent.parameters.required).toContain("goal");
+		// Optional in the schema so `resume` can keep the child's goal; a new child without one is refused (next test).
+		expect(agent.parameters.required).toEqual(["task"]);
 		expect(goal).toEqual({ type: "string", description: expect.any(String) });
 		expect(goal.description).toMatch(/about 48 characters fit/);
+		expect(goal.description).toMatch(/Required for a new child/);
 		expect(goal.description).not.toContain("audit auth token refresh");
 		expect(agent.parameters.properties.task).not.toHaveProperty("minLength");
 	});

@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import { WORKSPACE_STATE } from "../../storage/workspace.ts";
 import path from "node:path";
-import { OCTOCODE_DIR, octocodeHome, resolveToolPath } from "../shared/home.ts";
+import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 import { ownWorktreeRoot } from "../worktree-paths/own-worktree.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
@@ -92,7 +93,7 @@ export function stateFolderRefusal(
 		(name, i) => name === parent && parts[i + 1] === folder && (parts[i + 2] !== "temp" || parts[i + 3] === "sessions"),
 	);
 	if (!state) {
-		if (!isWithin(real, canonicalPath(octocodeHome()))) return undefined;
+		if (!isWithin(real, canonicalPath(getOctocodeHome()))) return undefined;
 		const own = cwd === undefined ? undefined : ownWorktreeRoot(cwd, env);
 		if (own !== undefined && isWithin(real, own)) return undefined;
 	}

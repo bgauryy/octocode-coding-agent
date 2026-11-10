@@ -53,8 +53,10 @@ export function resolveAnchoredEdits(query: FileQuery, data: Buffer, guard: File
 	if (normalized.endsWith("\n")) lines.pop();
 	const edits = query.edits.map((edit) => {
 		if (edit.line === undefined && edit.sourceSha256 === undefined) return edit;
-		if (edit.sourceSha256 !== digest || lines[edit.line! - 1] !== edit.oldText) fresh();
-		const at = edit.line! - 1;
+		// The digest of an earlier version is accepted only through this tool's own edits since, at the line they moved it to.
+		const line = edit.sourceSha256 === digest ? edit.line! : guard.ownLine(file, edit.sourceSha256!, edit.line!);
+		if (line === undefined || lines[line - 1] !== edit.oldText) fresh();
+		const at = line! - 1;
 		let first = at;
 		let last = at;
 		let oldText = lines[at];

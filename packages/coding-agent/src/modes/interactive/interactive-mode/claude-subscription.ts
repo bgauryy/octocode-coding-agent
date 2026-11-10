@@ -17,7 +17,6 @@ import { findOnPath } from "../../../../../common/src/find-on-path.ts";
 import { holdTerminalForChild } from "../../../utils/foreground-child.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 
-/** The provider a Claude subscription token signs in to. */
 export const CLAUDE_SUBSCRIPTION_PROVIDER = "anthropic";
 export const CLAUDE_SUBSCRIPTION_ACTION = "Sign in with your Claude subscription — browser, through Claude Code";
 

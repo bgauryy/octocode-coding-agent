@@ -83,7 +83,6 @@ export function getChildEntries(state: SessionState, parentId: string): SessionE
 	return children;
 }
 
-/** The latest session_info entry, if any. */
 function latestSessionInfo(state: SessionState): SessionInfoEntry | undefined {
 	// Walk entries in reverse. Reads fileEntries directly: the footer calls this on every frame, and getEntries()
 	// copies the whole session.

@@ -341,12 +341,19 @@ export function outputOfRuns(): string {
 	return started.map((run) => `--- stdout\n${run.stdout()}\n--- stderr\n${run.stderr()}`).join("\n");
 }
 
-/** Kills everything the suite started, whatever a test did or failed to do. */
-export function killEverything(): void {
-	for (const run of started.splice(0))
-		if (run.process.exitCode === null && run.process.signalCode === null) run.process.kill("SIGKILL");
+/** Kills everything the suite started and waits, bounded, until each process is gone, so a caller can remove the folders they used. */
+export async function killEverything(waitMs = 10_000): Promise<void> {
+	const exits: Promise<void>[] = [];
+	for (const run of started.splice(0)) {
+		const child = run.process;
+		if (child.exitCode !== null || child.signalCode !== null) continue;
+		exits.push(new Promise((resolve) => child.once("exit", () => resolve())));
+		child.kill("SIGKILL");
+	}
+	const orphans = new Set<number>();
 	for (const box of sandboxes.splice(0)) {
 		for (const pid of box.survivors()) {
+			orphans.add(pid);
 			try {
 				process.kill(pid, "SIGKILL");
 			} catch {
@@ -354,4 +361,7 @@ export function killEverything(): void {
 			}
 		}
 	}
+	const deadline = Date.now() + waitMs;
+	await Promise.race([Promise.all(exits), new Promise((resolve) => setTimeout(resolve, waitMs))]);
+	while ([...orphans].some(alive) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
 }

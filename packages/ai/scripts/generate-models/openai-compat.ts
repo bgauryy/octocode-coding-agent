@@ -22,6 +22,7 @@ type OpenAICompletionsResolvedCompat = Required<
 		| "sessionAffinityFormat"
 		| "vllmPriority"
 		| "toolSchemaFlavor"
+		| "supportsTemperature"
 	>
 > & {
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];

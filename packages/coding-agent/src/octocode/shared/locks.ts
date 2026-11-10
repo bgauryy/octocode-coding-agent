@@ -3,10 +3,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 /**
  * Locks for tool calls that Octocode runs in parallel, and the time a call spent before it ran.
  *
- * Octocode runs the calls of one assistant message in parallel unless one of their tools is `executionMode: 'sequential'`,
- * which serializes the whole message (MCP, bash and every other call batched beside it). These locks hold back only
- * the calls that share state: one tool's own calls (`exclusive`), or every interaction that opens a dialog
- * (`withDialog`).
+ * Octocode runs the calls of one assistant message in parallel; a call of an `executionMode: 'sequential'` tool is
+ * exclusive in its message (it waits for every earlier call and holds every later one). These locks hold back only the
+ * calls that share state: one tool's own calls (`exclusive`), also across messages and nested calls, or every interaction
+ * that opens a dialog (`withDialog`).
  */
 
 /** The locks the current async call chain holds, so a holder that re-enters its own lock does not wait on itself. */
@@ -69,8 +69,8 @@ class Queue {
  * answers its abort the tool's own way (a cancelled result, an error), as it would have unqueued. A call the holder
  * makes itself (through `ctx.executeTool`) runs at once instead of deadlocking on its own lock.
  *
- * Use this, not `executionMode: 'sequential'`, for tools with shared state (one browser page, one store): Octocode runs a
- * whole assistant message sequentially when any of its calls is a sequential tool.
+ * Use this, not `executionMode: 'sequential'`, for tools with shared state (one browser page, one store): a sequential
+ * tool also holds back every other tool's calls after it in the message, which only an ordering need justifies.
  */
 export function exclusive<A extends unknown[], R>(execute: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
 	const queue = new Queue();

@@ -126,7 +126,6 @@ function applyPackageFilter(
 		return;
 	}
 
-	// Apply user patterns
 	const enabledByUser = applyPatterns(allFiles, userPatterns, packageRoot);
 
 	for (const f of allFiles) {

@@ -12,3 +12,9 @@ export const INTERPRETER_HELD = ({ name, cause }: { name: string; cause: string 
 /** A refused run that is no interpreter: a reader given a computed word, a wrapper hiding its command, arithmetic on an unknown value. */
 export const NOT_CHECKED_HELD = ({ name, cause }: { name: string; cause: string }): string =>
 	`This command was not run: what it writes cannot be checked against reservations, so while another agent holds one it is refused${/^[\w.+-]+$/.test(name) ? ` (\`${name}\`)` : ""}. Why: ${cause}. Instead: write the command to a script file under .octocode/code/temp/ and run that file, or use the file tool for edits.`;
+
+/** A package-manager script run (`yarn run x`, `npm test`, `pnpm run x`): what it writes is not in the command line. */
+export const PACKAGE_SCRIPT =
+	/(?:^|[;&|(]\s*)(?:(?:npm|pnpm|bun)\s+(?:run(?:-script)?|test|start)\b|yarn\s+(?:workspaces?\s+\S+\s+)?(?:run|test|start)\b)/;
+export const PACKAGE_SCRIPT_NOTE =
+	"[Another agent holds a reservation and this command ran a package script: reservations cannot check what a script writes, so it may have changed a reserved file. Check `coordinate` `changes` before relying on those files.]";

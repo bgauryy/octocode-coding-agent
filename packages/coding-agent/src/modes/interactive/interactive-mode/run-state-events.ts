@@ -145,7 +145,6 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		}
 
 		case "auto_retry_end": {
-			// Restore escape handler
 			if (host.retryEscapeHandler) {
 				host.defaultEditor.onEscape = host.retryEscapeHandler;
 				host.retryEscapeHandler = undefined;

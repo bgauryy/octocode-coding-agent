@@ -105,12 +105,10 @@ export class RpcConnection {
 			this.closed(stdinError);
 		});
 
-		// Set up strict JSONL reader for stdout.
 		this.stopReadingStdout = attachJsonlLineReader(childProcess.stdout, (line) => {
 			this.handleLine(line);
 		});
 
-		// Wait a moment for process to initialize
 		await new Promise((resolve) => setTimeout(resolve, 100));
 
 		// The exit handlers set `exitError` during the wait; control-flow analysis only sees the reset above.
@@ -279,7 +277,6 @@ export class RpcConnection {
 			return;
 		}
 
-		// Check if it's a response to a pending request
 		if (data.type === "response" && data.id && this.pendingRequests.has(data.id)) {
 			const pending = this.pendingRequests.get(data.id)!;
 			this.pendingRequests.delete(data.id);

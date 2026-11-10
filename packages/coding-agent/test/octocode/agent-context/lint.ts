@@ -2,7 +2,7 @@ import type { AgentContext } from "./capture.ts";
 import { systemText } from "./render.ts";
 
 /**
- * A free, offline lint over the exact final prompt each agent receives (B149). It reports defects a reader of the
+ * A free, offline lint over the exact final prompt each agent receives. It reports defects a reader of the
  * rendered prompt would hit and the source Markdown cannot show: a template marker that was never rendered, a tool the
  * prompt names that this agent cannot call, and a long sentence stated twice.
  */

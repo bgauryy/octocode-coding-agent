@@ -1,4 +1,3 @@
-/** Parsed skill block from a user message */
 export interface ParsedSkillBlock {
 	name: string;
 	location: string;

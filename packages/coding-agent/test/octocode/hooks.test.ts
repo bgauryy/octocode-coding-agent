@@ -44,6 +44,7 @@ const context = (cwd: string, trusted = true) => ({
 	hasUI: false,
 	isProjectTrusted: () => trusted,
 	sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => undefined },
+	ui: { notify: () => undefined },
 });
 const command = (text: string, matcher = "") => [{ matcher, hooks: [{ type: "command", command: text }] }];
 
@@ -320,7 +321,7 @@ describe("hook runner", () => {
 	it("says how much output past the read limit was not kept", () => {
 		const run = { code: 0, stdout: "hello", stderr: "", timedOut: false, dropped: { stdout: 2048, stderr: 0 } };
 		expect(interpret("SessionStart", run).context).toBe(
-			"hello\n[… 2.0KB more output not kept: a hook's output is read up to 64.0KB]",
+			"hello\n[… 2.0KB more output not kept: a hook's output is read up to 1.0MB]",
 		);
 		expect(
 			interpret("PreToolUse", { ...run, code: 2, stderr: "no", dropped: { stdout: 0, stderr: 10 } }).block,
@@ -893,6 +894,36 @@ describe("Stop, Notification and hook timing", () => {
 			vi.useRealTimers();
 		}
 	}, 10_000);
+});
+
+it("writes hook configuration diagnostics to stderr when the session has no UI", async () => {
+	const cwd = project({ PreToolUse: [{ hooks: [{ type: "command", command: "true", args: [] }] }] });
+	const { api, fire } = fakeHost();
+	registerHooks(api, {}, tmp());
+	const written: string[] = [];
+	const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+		written.push(String(chunk));
+		return true;
+	});
+	try {
+		await fire("session_start", { reason: "startup" }, context(cwd));
+	} finally {
+		spy.mockRestore();
+	}
+	expect(written.join("")).toMatch(/Hook configuration diagnostics: .*args/);
+});
+
+it("says which calls a PreToolUse hook would see, by its matcher, and none while paused", async () => {
+	const cwd = project({ PreToolUse: command("true", "Bash|mcp__research__.*") });
+	const { api, fire } = fakeHost();
+	let paused = false;
+	const hooks = registerHooks(api, {}, tmp(), undefined, undefined, () => paused);
+	await fire("session_start", { reason: "startup" }, context(cwd));
+	expect(hooks.hasPreToolUse("bash", { command: "ls" }, cwd)).toBe(true);
+	expect(hooks.hasPreToolUse("mcp__research__search", {}, cwd)).toBe(true);
+	expect(hooks.hasPreToolUse("mcp__other__search", {}, cwd)).toBe(false);
+	paused = true;
+	expect(hooks.hasPreToolUse("bash", { command: "ls" }, cwd)).toBe(false);
 });
 
 it("pauses executable hooks during planning and permits them after leaving", async () => {

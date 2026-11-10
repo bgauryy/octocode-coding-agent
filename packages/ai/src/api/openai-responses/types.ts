@@ -2,7 +2,6 @@ import type { ResponseCreateParamsStreaming } from "openai/resources/responses/r
 import type { StreamOptions } from "../../types.ts";
 import type { OpenAIResponsesCacheFields } from "../openai-prompt-cache.ts";
 
-// OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	reasoningSummary?: "auto" | "detailed" | "concise" | null;

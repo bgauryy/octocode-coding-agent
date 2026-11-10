@@ -10,7 +10,7 @@ import type { Node } from "web-tree-sitter";
  *
  * `cd a && f` runs `f` in `a` alone; `cd a; f` runs it in `a` or, when the `cd` fails, where it started, so both are kept.
  *
- * `builtin cd x` and `command cd x` are read as `cd x`. Not followed, as before: a directory change made by `source` / `.`,
+ * `builtin cd x` and `command cd x` are read as `cd x`. Not followed: a directory change made by `source` / `.`,
  * `eval` or a `trap`.
  */
 type Dirs = string[] | undefined;

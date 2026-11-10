@@ -210,7 +210,6 @@ export class FocusManager {
 		this.host.hideCursor();
 		this.host.requestRender();
 
-		// Return handle for controlling this overlay
 		return createOverlayHandle(this, entry);
 	}
 
@@ -251,7 +250,6 @@ export class FocusManager {
 		return component;
 	}
 
-	/** Check if an overlay entry is currently visible */
 	isOverlayVisible(entry: OverlayStackEntry): boolean {
 		if (entry.hidden) return false;
 		if (entry.options?.visible) {

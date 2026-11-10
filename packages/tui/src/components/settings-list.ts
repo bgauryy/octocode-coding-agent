@@ -49,7 +49,6 @@ export class SettingsList implements Component {
 	private searchInput?: Input;
 	private searchEnabled: boolean;
 
-	// Submenu state
 	private submenuComponent: Component | null = null;
 	private submenuItemIndex: number | null = null;
 	private navigateAfterClose: string | null = null;
@@ -74,7 +73,6 @@ export class SettingsList implements Component {
 		}
 	}
 
-	/** Update an item's currentValue */
 	updateValue(id: string, newValue: string): void {
 		const item = this.items.find((i) => i.id === id);
 		if (item) {
@@ -127,13 +125,10 @@ export class SettingsList implements Component {
 			return lines;
 		}
 
-		// Calculate visible range with scrolling
 		const { startIndex, endIndex } = this.getVisibleRange(displayItems);
 
-		// Calculate max label width for alignment
 		const maxLabelWidth = Math.min(36, Math.max(...this.items.map((item) => visibleWidth(item.label))));
 
-		// Render visible items
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = displayItems[i];
 			if (!item) continue;
@@ -142,11 +137,9 @@ export class SettingsList implements Component {
 			const prefix = isSelected ? this.theme.cursor : "  ";
 			const prefixWidth = visibleWidth(prefix);
 
-			// Pad label to align values
 			const labelPadded = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 			const labelText = this.theme.label(labelPadded, isSelected);
 
-			// Calculate space for value
 			const separator = "  ";
 			const usedWidth = prefixWidth + maxLabelWidth + visibleWidth(separator);
 			const valueMaxWidth = width - usedWidth - 2;
@@ -156,13 +149,11 @@ export class SettingsList implements Component {
 			lines.push(truncateToWidth(prefix + labelText + separator + valueText, width));
 		}
 
-		// Add scroll indicator if needed
 		if (startIndex > 0 || endIndex < displayItems.length) {
 			const scrollText = `  (${this.selectedIndex + 1}/${displayItems.length})`;
 			lines.push(this.theme.hint(truncateToWidth(scrollText, width - 2, "")));
 		}
 
-		// Add description for selected item
 		const selectedItem = displayItems[this.selectedIndex];
 		if (selectedItem?.description) {
 			lines.push("");
@@ -172,7 +163,6 @@ export class SettingsList implements Component {
 			}
 		}
 
-		// Add hint
 		this.addHintLine(lines, width);
 
 		return lines;
@@ -229,7 +219,6 @@ export class SettingsList implements Component {
 			return;
 		}
 
-		// Main list input handling
 		const kb = getKeybindings();
 		const displayItems = this.getDisplayItems();
 		if (kb.matches(data, "tui.select.up")) {
@@ -284,7 +273,6 @@ export class SettingsList implements Component {
 				},
 			);
 		} else if (item.values && item.values.length > 0) {
-			// Cycle through values
 			const currentIndex = item.values.indexOf(item.currentValue);
 			const nextIndex = (currentIndex + 1) % item.values.length;
 			const newValue = item.values[nextIndex];

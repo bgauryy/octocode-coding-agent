@@ -1,4 +1,4 @@
-// B123 L6: the footer's CH figure is the cache hit rate of the latest reply on the current branch. After `/tree` back to
+// The footer's CH figure is the cache hit rate of the latest reply on the current branch. After `/tree` back to
 // an earlier branch it must not show the reply another branch wrote last.
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";

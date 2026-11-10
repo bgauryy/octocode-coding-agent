@@ -153,11 +153,9 @@ export function renderTable(
 		}
 	}
 
-	// Render top border
 	const topBorderCells = columnWidths.map((w) => "─".repeat(w));
 	lines.push(`┌─${topBorderCells.join("─┬─")}─┐`);
 
-	// Render header with wrapping
 	const headerCellLines: string[][] = token.header.map((cell, i) => {
 		const text = renderInlineTokens(host, cell.tokens || [], styleContext);
 		return wrapCellText(text, columnWidths[i], styleContext?.stylePrefix);
@@ -173,12 +171,10 @@ export function renderTable(
 		lines.push(`│ ${rowParts.join(" │ ")} │`);
 	}
 
-	// Render separator
 	const separatorCells = columnWidths.map((w) => "─".repeat(w));
 	const separatorLine = `├─${separatorCells.join("─┼─")}─┤`;
 	lines.push(separatorLine);
 
-	// Render rows with wrapping
 	const rowsCellLines: string[][][] = token.rows.map((row) =>
 		row.map((cell, i) => {
 			const text = renderInlineTokens(host, cell.tokens || [], styleContext);
@@ -204,7 +200,6 @@ export function renderTable(
 		}
 	}
 
-	// Render bottom border
 	const bottomBorderCells = columnWidths.map((w) => "─".repeat(w));
 	lines.push(`└─${bottomBorderCells.join("─┴─")}─┘`);
 

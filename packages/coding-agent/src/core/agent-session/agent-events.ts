@@ -54,9 +54,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 		// Before the append, which can throw: the run's outcome must not depend on the disk.
 		if (event.message.role === "assistant") recordRunMessage(run.outcome, event.message);
 		let entryId: string | undefined;
-		// Check if this is a custom message from extensions
 		if (event.message.role === "custom") {
-			// Persist as CustomMessageEntry
 			entryId = session.sessionManager.appendCustomMessageEntry(
 				event.message.customType,
 				event.message.content,
@@ -104,7 +102,6 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 	}
 }
 
-/** Emit extension events based on agent events */
 export async function emitExtensionEvent(
 	host: Pick<AgentEventsHost, "session" | "run" | "boundaries">,
 	event: AgentEvent,

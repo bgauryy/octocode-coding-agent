@@ -51,8 +51,8 @@ export function claimName(
 }
 
 /**
- * A session joins the team when it starts (design B36 O6), so "on" means on for every agent: a subagent whose parent chose its
- * name must (a failure ends it, as before); a main session joins best effort, because a team database that cannot be used
+ * A session joins the team when it starts, so "on" means on for every agent: a subagent whose parent chose its
+ * name must (a failure ends it); a main session joins best effort, because a team database that cannot be used
  * must not stop a session that never collaborates. It stays unjoined then, and its first team action joins again and reports
  * the same failure (`Team.problem`, `/agents` and the footer show a foreign database at once).
  */

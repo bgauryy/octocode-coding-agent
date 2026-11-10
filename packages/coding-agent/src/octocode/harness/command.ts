@@ -40,7 +40,7 @@ const USAGE = [
 	"Usage: /harness opens the switch list (text outside the terminal)",
 	`  /harness list [${Object.keys(SECTIONS).join("|")}|<text>]`,
 	"  /harness install|update|remove <plugin@marketplace> [--yes]",
-	"  /harness hooks [events]",
+	"  /harness hooks [events|test <Event> [<tool or matcher> [<json>]]]",
 	"  /harness config",
 ].join("\n");
 
@@ -264,7 +264,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			const prefixWith = (items: AutocompleteItem[] | null) =>
 				items?.map((item) => ({ ...item, value: `${action} ${item.value}` })) ?? null;
 			if (action === "list") return prefixWith(wordCompletions(Object.keys(SECTIONS), rest));
-			if (action === "hooks") return prefixWith(wordCompletions(["events"], rest));
+			if (action === "hooks") return prefixWith(wordCompletions(["events", "test"], rest));
 			return null;
 		},
 		handler: async (args, ctx) => {
@@ -282,10 +282,11 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			if (MARKETPLACE_ACTIONS.includes(action)) return marketplace([action, ...words], ctx);
 			if (action === "hooks") {
 				if (words[0] === "events" && words.length === 1) return say(ctx, hookEventsReport());
+				if (words[0] === "test") return say(ctx, await hooks.testRun(ctx, words.slice(1)));
 				if (words.length)
 					return say(
 						ctx,
-						'Usage: /harness hooks [events] (inspection only). Switch hooks with /configuration enable|disable hook:<id> (IDs: /configuration list hook); "disableAllHooks": true in a hook file turns them all off.',
+						'Usage: /harness hooks [events|test <Event> ...] (test runs the hooks once on a sample event; the rest is inspection only). Switch hooks with /configuration enable|disable hook:<id> (IDs: /configuration list hook); "disableAllHooks": true in a hook file turns them all off.',
 						"warning",
 					);
 				return say(ctx, hooks.report(ctx.cwd));

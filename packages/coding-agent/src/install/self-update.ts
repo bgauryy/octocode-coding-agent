@@ -7,9 +7,7 @@ import { getPackageDir, isBunBinary, isBunRuntime } from "./package-detection.ts
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// =============================================================================
 // Install Method Detection
-// =============================================================================
 
 export type InstallMethod = "bun-binary" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 

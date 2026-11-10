@@ -8,7 +8,7 @@ import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
-/** One regression test per call-shape mistake seen in recorded sessions (.octocode/coordinator-plan/backlog-model.md §3). */
+/** One regression test per call-shape mistake seen in recorded sessions. */
 
 let tmp: string;
 let savedDb: string | undefined;

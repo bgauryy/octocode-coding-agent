@@ -1,8 +1,8 @@
 import { Readable } from "node:stream";
 import { resolve } from "node:path";
 import { ndJsonStream } from "@agentclientprotocol/sdk";
-import { ACP_WORKER_ENV } from "../../../common/src/env.ts";
-import { normalizePath } from "../../../common/src/paths.ts";
+import { ACP_WORKER_ENV } from "@octocodeai/octocode-common/env";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 import type { AcpLaunchOptions, AcpServerHost } from "../host.ts";
 import { AcpBroker, type AcpWorker } from "./broker.ts";
 import { prepareAcpMcpServers } from "./mcp.ts";
@@ -96,6 +96,8 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 				onExtensionUIRequest: (listener) => client.onExtensionUIRequest(listener),
 				respondToExtensionUIRequest: (response) => client.respondToExtensionUIRequest(response),
 				getCommands: () => client.getCommands(),
+				getModels: () => client.getModels(),
+				setModel: (model) => client.setModel(model),
 			};
 		},
 	});

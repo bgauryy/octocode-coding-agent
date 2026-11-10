@@ -194,7 +194,7 @@ describe("compaction system base", () => {
 });
 
 /**
- * T19 (B431 A2.4): an MCP tool withdrawn inside the range a compaction keeps is replayed once; one withdrawn before the
+ * An MCP tool withdrawn inside the range a compaction keeps is replayed once; one withdrawn before the
  * boundary stays withdrawn without a stale addition. The session projection keeps the kept-range order. On the wire the
  * two paths differ: Anthropic (native mid-conversation system messages) keeps that order with one `tool_removal` block,
  * while Mistral sends only the current tools and places the status where its transcript fold puts it (see

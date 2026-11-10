@@ -121,7 +121,7 @@ describe("interactive input during /compact", () => {
 			{ customType: "wake", content: "WAKE-UP-CALL", display: true },
 			{ triggerTurn: true, deliverAs: "steer" },
 		);
-		// Contract change (B220): nothing runs beside the summary request.
+		// Nothing runs beside the summary request.
 		expect(t!.host.session.isStreaming).toBe(false);
 		expect(t!.requests).toHaveLength(4);
 		expect(JSON.stringify(t!.host.session.messages)).not.toContain("WAKE-UP-CALL");

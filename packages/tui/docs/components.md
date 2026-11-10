@@ -56,7 +56,7 @@ editor.borderDecorator = (edge, width, hiddenLineCount, standard) =>
 | `borderDecorator`                          | Draws a border row itself; `standard()` draws the editor's own (scroll markers) |
 | `visibleLineCount`                         | Text rows drawn between the borders in the last render                          |
 
-Pastes over 10 lines become a `[paste #1 +50 lines]` marker (shorter long pastes show `[paste #N <chars> chars]`); control characters other than newlines are removed from pasted text. Autocomplete: see [input](input-and-terminal.md#autocomplete).
+Pastes over 10 lines become a `[paste #1 +50 lines]` marker (shorter long pastes show `[paste #N <chars> chars]`); control characters other than newlines are removed from pasted text. Autocomplete (`/` commands, mid-text `/` skills, `@` files): see [input](input-and-terminal.md#autocomplete).
 
 ## Markdown
 

@@ -35,27 +35,21 @@ export class EditorModel implements EditorAutocompleteHost {
 	renderedVisibleLineCount = 1;
 	renderedAutocompleteHeight = 0;
 
-	// Vertical scrolling support
 	scrollOffset: number = 0;
 
-	// Paste tracking for large pastes
 	pastes: Map<number, string> = new Map();
 	pasteCounter: number = 0;
 
-	// Bracketed paste mode buffering
 	pasteBuffer: string = "";
 	isInPaste: boolean = false;
 
-	// Prompt history for up/down navigation
 	history: string[] = [];
 	historyIndex: number = -1; // -1 = not browsing, 0 = most recent, 1 = older, etc.
 	historyDraft: EditorState | null = null;
 
-	// Kill ring for Emacs-style kill/yank operations
 	killRing = new KillRing();
 	lastAction: EditorLastAction = null;
 
-	// Character jump mode
 	jumpMode: "forward" | "backward" | null = null;
 
 	// Preferred visual column for vertical cursor movement (sticky column)
@@ -68,14 +62,12 @@ export class EditorModel implements EditorAutocompleteHost {
 	// to.
 	snappedFromCursorCol: number | null = null;
 
-	// Undo support
 	undoStack = new UndoStack<EditorSnapshot>((snapshot) => ({
 		state: { ...snapshot.state, lines: [...snapshot.state.lines] },
 		pastes: new Map(snapshot.pastes),
 		pasteCounter: snapshot.pasteCounter,
 	}));
 
-	// Autocomplete support
 	readonly autocomplete: EditorAutocomplete;
 
 	readonly host: EditorHost;

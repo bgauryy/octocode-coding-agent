@@ -1,7 +1,7 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
- * The wire protocol of the external API: JSON-RPC 2.0 (the framing MCP, ACP and Codex's app-server also use).
+ * The wire protocol of the external API: JSON-RPC 2.0 (the framing MCP and ACP also use).
  * Over the Unix socket every message is one JSON line; over HTTP a request is one POST and events arrive as SSE.
  */
 export const PROTOCOL_VERSION = 1;

@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { contentText } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "../config/calls.ts";
+import { ifFilter } from "../config/if-filter.ts";
 import { CODEX_PATCH_NAMES } from "../patch.ts";
 import { capContext } from "../runner.ts";
 import type { Dispatch, HookSession } from "./types.ts";
@@ -19,13 +20,19 @@ export function registerPostToolUseHook(
 			event.toolName === "file" && isRecord(event.details) && Array.isArray(event.details.outcomes)
 				? event.details.outcomes
 				: undefined;
+		// Codex: "For Bash, it also runs after commands that exit with a non-zero status"; a refused, aborted or timed-out call has no exit code.
+		const exitedNonZero =
+			event.toolName === "bash" &&
+			isRecord(event.details) &&
+			typeof event.details.exitCode === "number" &&
+			event.details.exitCode !== 0;
 		const patch = patches.get(event.toolCallId);
 		patches.delete(event.toolCallId);
 		const feedback: string[] = [];
 		let replaceResult = false;
 		let rejectNested = false;
 		for (const protocol of ["octocode", "claude", "codex"] as const) {
-			if (event.isError && protocol !== "claude") continue;
+			if (event.isError && protocol !== "claude" && !(protocol === "codex" && exitedNonZero)) continue;
 			// Codex's patch observer only follows a fully successful patch, not a partially applied native batch.
 			if (protocol === "codex" && outcomes?.some((outcome) => !isRecord(outcome) || outcome.ok !== true)) continue;
 			const hookEvent = event.isError && protocol === "claude" ? "PostToolUseFailure" : "PostToolUse";
@@ -74,10 +81,17 @@ export function registerPostToolUseHook(
 						tool_input: call.tool_input,
 						...(hookEvent === "PostToolUseFailure"
 							? { error: contentText(event.content), ...(ctx.signal?.aborted ? { is_interrupt: true } : {}) }
-							: { tool_response: contentText(event.content) }),
+							: {
+									// Codex documents a text `tool_response`; Claude and Octocode hooks get the result blocks.
+									tool_response:
+										protocol === "codex"
+											? contentText(event.content)
+											: { content: event.content, text: contentText(event.content) },
+								}),
 					}),
 					ctx.signal,
 					protocol,
+					ifFilter(event.toolName, event.input, ctx.cwd, codexFile ? undefined : index),
 				);
 				feedback.push(...[verdict.block, verdict.context].filter((text): text is string => Boolean(text)));
 				replaceResult ||= verdict.replaceResult === true;

@@ -2,7 +2,7 @@ import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
 import { parseStringifiedContainers } from "./stringified-containers.ts";
-import { formatValidationFailure } from "./validation-errors.ts";
+import { failingProperties, formatValidationFailure } from "./validation-errors.ts";
 import { inferSchemaTypes, parseJsonContainer, resolveLocalRef } from "./json-schema-shape.ts";
 import { getToolValidator, getValidator } from "./validation-compiler.ts";
 
@@ -389,6 +389,7 @@ function validationFailure(
 	// ("schema is false") sits at the unexpected property itself; its sibling at the object names it.
 	const located = errors.filter((error) => error.keyword !== "boolean");
 	const hint = tool.validationHint?.({
+		properties: failingProperties(located),
 		envelope:
 			located.every((error) => error.instancePath === "") &&
 			located.some((error) => error.keyword === "additionalProperties"),

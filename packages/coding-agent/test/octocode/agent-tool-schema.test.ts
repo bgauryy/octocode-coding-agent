@@ -109,7 +109,7 @@ describe("flat agent schema", () => {
 		expect(schema.properties.task.description).toBe("task: brief");
 		expect(schema.properties.to.description).toBe("message only");
 		expect(schema.properties.subagent.description).toBe("coordinate only");
-		expect(schema.properties.reason.description).toMatch(/^Why this call/);
+		expect(JSON.parse(JSON.stringify(schema.properties.reason))).toEqual({ type: "string" });
 		expect(JSON.stringify(schema)).not.toContain('"input"');
 		for (const args of valid) expect(Check(tool.parameters, args)).toBe(true);
 		expect(Check(tool.parameters, { type: "message", input: { to: "parent" }, reason: "old" })).toBe(false);

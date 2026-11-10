@@ -44,7 +44,7 @@ function stateTone(server: McpServer): McpMenuItem["tone"] {
 	}
 }
 
-function serversMenu(state: McpExtensionState): McpMenu {
+function serversMenu(state: McpExtensionState, ctx: McpContext): McpMenu {
 	const { projectTrusted } = state;
 	return {
 		title: "MCP servers — connect, enable or disable, manage tools",
@@ -63,6 +63,11 @@ function serversMenu(state: McpExtensionState): McpMenu {
 		empty: `No MCP servers configured. Add them to ${state.configLocations().globalWrite} or ${state.configLocations().projectWrite}.`,
 		confirmLabel: "open",
 		cancelLabel: "close",
+		keys: [{ key: "e", label: "enable/disable" }],
+		onKey: (_key, name) => {
+			const server = state.findServer(name);
+			if (server) runInBackground(state, ctx, server, () => setEnabled(state, server, !isEnabled(server), false));
+		},
 	};
 }
 
@@ -307,7 +312,7 @@ async function runAction(
 
 export async function manage(state: McpExtensionState, ui: McpUi, ctx: McpContext): Promise<void> {
 	for (;;) {
-		const name = await ui.menu(() => serversMenu(state), state.subscribe);
+		const name = await ui.menu(() => serversMenu(state, ctx), state.subscribe);
 		if (!name) return;
 		for (;;) {
 			const action = await ui.menu(() => serverMenu(state, name), state.subscribe);

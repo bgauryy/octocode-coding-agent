@@ -90,7 +90,6 @@ export class BacklogStore {
 		return agentRuns.forItem(this.db, this.repo, item.seq);
 	}
 
-	/** The items that came from `item`, in board order. */
 	derived(item: Item): Item[] {
 		return derivedItems(this.db, this.repo, item);
 	}

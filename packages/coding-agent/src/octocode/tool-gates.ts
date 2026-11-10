@@ -5,6 +5,8 @@ import { renderInstruction } from "../core/prompt-template.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import { permissionGate } from "./permission/gate.ts";
+import { classify } from "./permission/gate/classify.ts";
+import { decide } from "./permission/mode.ts";
 import { type Gate, type GateStepBodies, type GateVerdict, judge } from "./permission/judge.ts";
 import { gitStateGate } from "./permission/git-state.ts";
 import type { createProvenance } from "./permission/provenance.ts";
@@ -35,6 +37,8 @@ export interface ToolGatesOptions {
 	localReads: Map<string, Awaited<ReturnType<typeof snapshotLocalReads>>>;
 	/** Says whether this process is a subagent in the shared tree (`permission/git-state.ts`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
+	/** Whether another live session works in this checkout (`permission/git-state.ts` asks before the main session discards uncommitted work). */
+	peerSessions?: () => boolean;
 	/** A tool's annotations (an MCP server's `destructiveHint`); the registered tool's own by default. */
 	annotations?: (toolName: string) => ToolAnnotations | undefined;
 }
@@ -82,12 +86,12 @@ export function registerToolGates(
 		env,
 		planning,
 		annotations,
+		peerSessions,
 	}: ToolGatesOptions,
 ): void {
 	// The tool-call pipeline: `GATE_STEPS` in `permission/judge.ts` is its order (the first block wins); this function
-	// supplies each step's body. A refusal by an earlier step is audited here; the permission gate audits its own. Octocode
-	// runs no call of a batch before every call's checks ended, so their time is shown: live on the working line, then in
-	// the row (`timed` reads `recordCheck`).
+	// supplies each step's body. A refusal by an earlier step is audited here; the permission gate audits its own. A call's
+	// check time is shown live on the working line, then in the row (`timed` reads `recordCheck`).
 	const audited =
 		(gate: Gate): Gate =>
 		async (event, ctx, prior) => {
@@ -105,6 +109,7 @@ export function registerToolGates(
 	const sharedTree = gitStateGate({
 		subagent: envFlag(scope, SUBAGENT_ENV),
 		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
+		peers: peerSessions,
 	});
 	// The invariants and hooks see a timer's until-command as the bash call it is.
 	const gitState = sharedTree && asBash(sharedTree);
@@ -114,11 +119,19 @@ export function registerToolGates(
 		const reason = await browserMetadataRefusal(event.toolName, event.input);
 		return reason ? { block: true, reason } : undefined;
 	};
+	// An ask of the git-state step is no invariant: only its refusals stop a rewritten command here.
+	const blocking = (verdict: GateVerdict | undefined) => (verdict?.block ? verdict : undefined);
 	// The invariants again for a command a hook rewrote.
 	const invariants: Gate = async (event, ctx) =>
-		planning?.gate(event) ?? (await gitState?.(event, ctx)) ?? (await reservation(event, ctx)) ?? metadata(event, ctx);
+		planning?.gate(event) ??
+		blocking(await gitState?.(event, ctx)) ??
+		(await reservation(event, ctx)) ??
+		metadata(event, ctx);
+	// An early call's audit entries, by call id: written when it ends, dropped when it is discarded.
+	const parked = new Map<string, Array<() => void>>();
 	const permissionStep: Gate = (event, ctx, prior) =>
 		permissionGate({
+			early: { park: (id, record) => void parked.set(id, [...(parked.get(id) ?? []), record]) },
 			permission,
 			provenance,
 			network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
@@ -173,22 +186,69 @@ export function registerToolGates(
 		const started = Date.now();
 		await sourcePolicy.refresh(ctx);
 		activity.checking(event.toolCallId, true);
+		let deferred = false;
 		try {
 			const refused = await judge("tool", bodies, event, ctx, judgeOptions);
+			deferred = refused?.defer === true;
 			if (refused) return refused;
 			const snapshots = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
 			if (snapshots.size) localReads.set(event.toolCallId, snapshots);
+			// An earlier call of the batch may change a file before this read runs (the `file` tool runs alone, in order): the
+			// snapshot is retaken when the call starts executing, so the receipt credits the content the read returns.
+			const retake: Gate | undefined = snapshots.size
+				? async () => {
+						const fresh = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
+						if (fresh.size) localReads.set(event.toolCallId, fresh);
+						else localReads.delete(event.toolCallId);
+						return undefined;
+					}
+				: undefined;
 			// A shell call's targets (a timer's until-command included) are only checked above; the `file` tool checks its own at write time. Between this
 			// point and the run, a batch's later approvals, a dialog or a peer's lock can change what the checks saw.
 			return event.toolName === "bash" || event.toolName === "powershell" || timerOperation(event) !== event
 				? { revalidate: () => audited(invariants)(event, ctx) }
-				: undefined;
+				: retake
+					? { revalidate: () => retake(event, ctx) }
+					: undefined;
 		} finally {
-			recordCheck(event.toolCallId, Date.now() - started);
+			// A deferred early attempt is judged again later: no timing belongs to it.
+			if (!deferred) recordCheck(event.toolCallId, Date.now() - started);
 			activity.checking(event.toolCallId, false);
 		}
 	});
-	api.on("tool_execution_end", async (event) => forgetCheck(event.toolCallId));
+	api.on("tool_execution_end", async (event) => {
+		forgetCheck(event.toolCallId);
+		// The early call was committed (its message ended and the batch ran it): its audit entries are written now.
+		for (const record of parked.get(event.toolCallId) ?? []) record();
+		parked.delete(event.toolCallId);
+	});
+
+	// Early start (`toolExecution.earlyStart`): only a call that changes nothing (a tool declaring `readOnlyHint`, or an MCP tool
+	// whose trusted entry gives it the `readOnly` role, which is how a read is classed `mcp.read`: the client drops a server's
+	// own `readOnlyHint`) and that the current mode allows without asking, so no dialog opens while the reply streams and a
+	// discarded call changed nothing. Plan mode keeps its own verdict. A call a PreToolUse hook matches waits for its message
+	// to end: the hook then runs once, and never for a call that is discarded.
+	api.on("tool_call_early_start", (call, ctx) => {
+		const event = { type: "tool_call" as const, ...call } as ToolCallEvent;
+		if (planning?.gate(event)) return false;
+		if (hooks.hasPreToolUse(call.toolName, call.input, ctx.cwd)) return false;
+		const toolAnnotations = (
+			annotations ?? ((name) => api.getAllTools().find((tool) => tool.name === name)?.annotations)
+		)(call.toolName);
+		const request = classify(event, { cwd: ctx.cwd }, false, toolAnnotations);
+		// Anything else may change state or open a dialog the gate never sees (`ask`): the call may not start.
+		const { action, also, reasons } = request ?? {};
+		if (also?.length || reasons?.length) return false;
+		if (request === undefined) return toolAnnotations?.readOnlyHint === true;
+		if (action !== "mcp.read" && !(action === "read.outside" && toolAnnotations?.readOnlyHint === true)) return false;
+		return decide(permission.mode, action) === "allow";
+	});
+	// A discarded early call never runs: drop what its checks recorded, so no receipt or timing is credited to it.
+	api.on("tool_call_discarded", ({ toolCallId }) => {
+		parked.delete(toolCallId);
+		localReads.delete(toolCallId);
+		forgetCheck(toolCallId);
+	});
 
 	// The user's own `!cmd`: the hooks and the permission check decide, as for an agent's `bash` call (`permission/user-bash`).
 	api.on("user_bash", async (event, ctx) => {

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../../common/src/paths.ts";
+import { THINKING_LEVELS } from "../../subagents/thinking.ts";
 
 /**
  * Text that carries no instruction however it got into a report: an existing path inside the workspace, the session's
@@ -22,7 +23,7 @@ const MASK = "\u0000";
 const MIN_LITERAL = 12;
 const MAX_TOKENS = 100;
 const MAX_TOKEN = 4096;
-const THINKING = /^:(?:off|minimal|low|medium|high|xhigh)\b/;
+const THINKING = new RegExp(`^:(?:${[...THINKING_LEVELS].join("|")})\\b`);
 const PATH_TOKEN = /[^\s"'`<>|&;(){}=,]*\/[^\s"'`<>|&;(){}=,]*/g;
 
 type Span = [start: number, end: number];

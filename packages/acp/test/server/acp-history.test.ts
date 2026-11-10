@@ -81,7 +81,7 @@ describe("ACP persistent sessions", () => {
 				sessionId: saved.id,
 				mcpServers: [],
 			}),
-		).resolves.toEqual({});
+		).resolves.toEqual({ configOptions: [expect.objectContaining({ id: "model" })] });
 		expect(h.createWorker).toHaveBeenCalledWith(cwd, [], saved.path);
 		expect(h.updates.map(({ update }) => update)).toMatchObject([
 			{ sessionUpdate: "user_message_chunk", content: { text: "earlier question" } },
@@ -93,7 +93,7 @@ describe("ACP persistent sessions", () => {
 				sessionId: saved.id,
 				mcpServers: [],
 			}),
-		).resolves.toEqual({});
+		).resolves.toEqual({ configOptions: [expect.objectContaining({ id: "model" })] });
 		expect(h.updates).toHaveLength(2);
 	});
 
@@ -120,7 +120,7 @@ describe("ACP persistent sessions", () => {
 				sessionId: saved.id,
 				mcpServers: [],
 			}),
-		).resolves.toEqual({});
+		).resolves.toEqual({ configOptions: [expect.objectContaining({ id: "model" })] });
 		expect(h.updates).toEqual([]);
 	});
 
@@ -251,7 +251,7 @@ describe("ACP persistent sessions", () => {
 			}),
 		).rejects.toThrow("restoring");
 		release();
-		await expect(loading).resolves.toEqual({});
+		await expect(loading).resolves.toEqual({ configOptions: [expect.objectContaining({ id: "model" })] });
 	});
 
 	it("resolves a relative session directory against the requested workspace", async () => {

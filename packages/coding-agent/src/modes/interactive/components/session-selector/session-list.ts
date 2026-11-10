@@ -143,7 +143,6 @@ export class SessionList implements Component, Focusable {
 		this.currentSessionCanonicalPath = currentSessionFilePath && canonicalizePath(currentSessionFilePath);
 		this.setSessions(sessions, showCwd);
 
-		// Handle Enter in search input - select current item
 		this.searchInput.onSubmit = () => {
 			const selected = this.filteredSessions[this.selectedIndex];
 			if (selected) this.onSelect?.(selected.session.path);
@@ -307,7 +306,6 @@ export class SessionList implements Component, Focusable {
 			return;
 		}
 
-		// Ctrl+P: toggle path display
 		if (kb.matches(keyData, "app.session.togglePath")) {
 			this.showPath = !this.showPath;
 			this.onTogglePath?.(this.showPath);
@@ -326,7 +324,6 @@ export class SessionList implements Component, Focusable {
 			return;
 		}
 
-		// Rename selected session
 		if (kb.matches(keyData, "app.session.rename")) {
 			const selected = this.filteredSessions[this.selectedIndex];
 			if (selected) {
@@ -388,7 +385,6 @@ export class SessionList implements Component, Focusable {
 		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			this.onCancel?.();
 		} else {
-			// Everything else goes to the search box
 			this.searchInput.handleInput(keyData);
 			this.filterSessions(this.searchInput.getValue());
 		}

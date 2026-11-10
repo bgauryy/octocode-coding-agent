@@ -8,8 +8,10 @@ import {
 	fauxAssistantMessage,
 	getCurrentSystemMessage,
 	getCurrentTools,
+	type Tool,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
+import { resolveJsonSchemaStrictSampling } from "@octocodeai/octocode-ai/api/constrained-sampling";
 import { parseArgs } from "../../../src/cli/args.ts";
 import { getOctocodeSkillsDir } from "../../../src/config.ts";
 import type { ExtensionFactory } from "../../../src/core/features/index.ts";
@@ -50,6 +52,16 @@ export interface CapturedTool {
 	name: string;
 	description: string;
 	parameters: unknown;
+	/** What a provider with strict tool mode would send for it: strict, not strict, or the error that refuses it. */
+	strict?: boolean | { refused: string };
+}
+
+export function strictResolution(tool: Tool): boolean | { refused: string } {
+	try {
+		return resolveJsonSchemaStrictSampling(tool, true) === true;
+	} catch (error) {
+		return { refused: (error as Error).message };
+	}
 }
 
 /** The first model request one agent receives, with machine-specific values replaced by fixed ones. */
@@ -280,6 +292,7 @@ function describeRequest(
 			name: tool.name,
 			description: normalize(tool.description ?? ""),
 			parameters: JSON.parse(normalize(JSON.stringify(tool.parameters ?? null))) as unknown,
+			strict: strictResolution(tool),
 		})),
 		// The system messages are the prompt and tool deltas shown above; these are the conversation.
 		messages: context.messages

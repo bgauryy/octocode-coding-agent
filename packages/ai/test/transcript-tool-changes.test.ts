@@ -440,7 +440,7 @@ describe("transcript system messages", () => {
 			],
 		});
 
-		// Like Codex: notice, then the tools, then the removal notice.
+		// Notice, then the tools, then the removal notice.
 		const [notice] = payload.input.slice(-4);
 		expect(notice?.content).toContain("incremental tools update");
 		expect(notice?.content).not.toContain("Still unavailable");

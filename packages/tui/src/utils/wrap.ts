@@ -200,7 +200,6 @@ function wrapSingleLine(line: string, width: number): string[] {
 				currentVisibleLength = tokenVisibleLength;
 			}
 		} else {
-			// Add to current line
 			currentLine += token;
 			currentVisibleLength += tokenVisibleLength;
 		}

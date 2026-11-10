@@ -23,6 +23,19 @@ describe("provider health", () => {
 		expect(describeHealth(health.get("opencode-go"))).toContain("✓ credential worked (subagent run");
 	});
 
+	it.each(["subscription_sharing_usage_limit_exceeded", "Monthly usage limit reached", "429 quota exceeded"])(
+		"steers routing away from a provider whose account hit a usage limit: %s",
+		(error) => {
+			const health = new ProviderHealth();
+			health.noteRun("openai-chatgpt/gpt", error);
+			expect(health.refused("openai-chatgpt")).toBe(true);
+			expect(health.refused("openai-chatgpt", "gpt", true)).toBe(false);
+			expect(describeHealth(health.get("openai-chatgpt"))).toMatch(
+				/✗ usage limit reached .*wait for the limit to reset/,
+			);
+		},
+	);
+
 	it("redacts credentials echoed in provider errors and keeps the rest of the text", () => {
 		const health = new ProviderHealth();
 		const key = `sk-proj-${"a1B2".repeat(10)}`;

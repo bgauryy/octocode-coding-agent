@@ -263,7 +263,6 @@ export function findSessionFileById(cwd: string, id: string, sessionDir?: string
 	return undefined;
 }
 
-/** List all sessions for a directory (`SessionManager.list()`). */
 export async function listSessions(
 	cwd: string,
 	sessionDir?: string,

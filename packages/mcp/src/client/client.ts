@@ -6,6 +6,7 @@ import {
 	type StandardSchemaV1,
 	type ClientCapabilities,
 } from "@modelcontextprotocol/client";
+import * as catalog from "./client/catalog.ts";
 import { isTool, listAll, toTool, validateCallToolResult } from "./client/results.ts";
 import { SdkTransportAdapter } from "./client/sdk-transport.ts";
 import type {
@@ -17,7 +18,7 @@ import type {
 	NotificationListener,
 	RequestHandler,
 } from "./client/types.ts";
-import type { CallToolResult } from "./protocol/content.ts";
+import type { CallToolResult, ContentBlock } from "./protocol/content.ts";
 import {
 	McpAbortError,
 	McpConnectionClosedError,
@@ -228,6 +229,29 @@ export class McpClient {
 			await this.request("tools/call", { name, ...(args === undefined ? {} : { arguments: args }) }, options),
 		);
 	}
+	/** Resources and templates the server lists; none when it does not declare the `resources` capability. */
+	async listResources(options: McpRequestOptions = {}): Promise<catalog.McpResource[]> {
+		return this.serverCapabilities?.resources ? catalog.listResources(this.lister, options) : [];
+	}
+	async listResourceTemplates(options: McpRequestOptions = {}): Promise<catalog.McpResourceTemplate[]> {
+		return this.serverCapabilities?.resources ? catalog.listResourceTemplates(this.lister, options) : [];
+	}
+	async readResource(uri: string, options: McpRequestOptions = {}): Promise<ContentBlock[]> {
+		this.requireCapability("resources");
+		return catalog.readResourceContent(await this.request("resources/read", { uri }, options));
+	}
+	/** Prompts the server lists; none when it does not declare the `prompts` capability. */
+	async listPrompts(options: McpRequestOptions = {}): Promise<catalog.McpPrompt[]> {
+		return this.serverCapabilities?.prompts ? catalog.listPrompts(this.lister, options) : [];
+	}
+	async getPrompt(
+		name: string,
+		args: Record<string, string>,
+		options: McpRequestOptions = {},
+	): Promise<catalog.McpPromptMessage[]> {
+		this.requireCapability("prompts");
+		return catalog.promptMessages(await this.request("prompts/get", { name, arguments: args }, options));
+	}
 	async close(): Promise<void> {
 		this.markClosed();
 		try {
@@ -269,6 +293,13 @@ export class McpClient {
 			return new McpTimeoutError(timeout);
 		}
 		return toError(error);
+	}
+	private readonly lister = (method: string, params: Record<string, unknown> | undefined, options: McpRequestOptions) =>
+		this.request(method, params, options);
+	private requireCapability(name: "resources" | "prompts"): void {
+		this.requireConnected();
+		if (!this.serverCapabilities?.[name])
+			throw new McpError(-32601, `MCP server "${this.serverInfo?.name ?? "server"}" offers no ${name}`);
 	}
 	private requireConnected(): void {
 		if (this.state !== "connected") throw new McpConnectionClosedError(`MCP client is ${this.state}`);

@@ -87,7 +87,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		this.enabledIds = config.enabledModelIds === null ? null : [...config.enabledModelIds];
 		this.filteredItems = this.buildItems();
 
-		// Header
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 		this.addChild(
@@ -98,16 +97,13 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		);
 		this.addChild(new Spacer(1));
 
-		// Search input
 		this.searchInput = new Input();
 		this.addChild(this.searchInput);
 		this.addChild(new Spacer(1));
 
-		// List container
 		this.listContainer = new Container();
 		this.addChild(this.listContainer);
 
-		// Footer hint
 		this.addChild(new Spacer(1));
 		if (config.refreshStatus) {
 			this.refreshStatusText = new Text(theme.fg("muted", `  ${plainText(config.refreshStatus)}`), 0, 0);
@@ -222,7 +218,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			this.listContainer.addChild(new Text(`${prefix}${status}${modelText}${providerBadge}`, 0, 0));
 		}
 
-		// Add scroll indicator if needed
 		if (startIndex > 0 || endIndex < this.filteredItems.length) {
 			this.listContainer.addChild(
 				new Text(theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredItems.length})`), 0, 0),
@@ -248,7 +243,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	handleInput(data: string): void {
 		const kb = getKeybindings();
 
-		// Navigation
 		if (kb.matches(data, "tui.select.up")) {
 			if (this.filteredItems.length === 0) return;
 			this.selectedIndex = this.selectedIndex === 0 ? this.filteredItems.length - 1 : this.selectedIndex - 1;
@@ -262,7 +256,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			return;
 		}
 
-		// Reorder enabled models
 		const reorderUp = kb.matches(data, "app.models.reorderUp");
 		const reorderDown = kb.matches(data, "app.models.reorderDown");
 		if (reorderUp || reorderDown) {
@@ -272,7 +265,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 				const delta = reorderUp ? -1 : 1;
 				const currentIndex = this.enabledIds.indexOf(item.fullId);
 				const newIndex = currentIndex + delta;
-				// Only move if within bounds
 				if (newIndex >= 0 && newIndex < this.enabledIds.length) {
 					this.enabledIds = move(this.enabledIds, item.fullId, delta);
 					this.isDirty = true;
@@ -285,7 +277,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			return;
 		}
 
-		// Toggle on Enter
 		if (kb.matches(data, "tui.select.confirm")) {
 			const item = this.filteredItems[this.selectedIndex];
 			if (item) {
@@ -317,7 +308,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			return;
 		}
 
-		// Toggle provider of current item
 		if (kb.matches(data, "app.models.toggleProvider")) {
 			const item = this.filteredItems[this.selectedIndex];
 			if (item?.model) {
@@ -334,7 +324,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			return;
 		}
 
-		// Save/persist to settings
 		if (kb.matches(data, "app.models.save")) {
 			void this.callbacks.onPersist(this.enabledIds === null ? null : [...this.enabledIds]);
 			this.isDirty = false;
@@ -353,13 +342,11 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			return;
 		}
 
-		// Escape - cancel
 		if (matchesKey(data, Key.escape)) {
 			this.callbacks.onCancel();
 			return;
 		}
 
-		// Pass everything else to search input
 		this.searchInput.handleInput(data);
 		this.refresh();
 	}

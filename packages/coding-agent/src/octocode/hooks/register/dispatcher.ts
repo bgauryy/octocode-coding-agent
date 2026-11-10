@@ -16,7 +16,7 @@ import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
 import { conflictingRewrites, firstRewrite, reducePermission } from "../verdicts.ts";
-import { capContext, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
+import { capContext, CLAUDE_HOOK_CONTEXT_MAX, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
 	type HookFailureSink,
@@ -37,6 +37,8 @@ export function createDispatcher(
 	child: boolean,
 	metadata: (() => HookHostMetadata) | undefined,
 	paused?: () => boolean,
+	/** A subagent's parent session id: Codex hooks in a child receive it as `session_id`. */
+	parentSession?: string,
 ): { dispatch: Dispatch; reportFailure: ReportFailure; stop(): Promise<void> } {
 	let controller = new AbortController();
 	const active = new Set<Promise<HookVerdict>>();
@@ -125,19 +127,21 @@ export function createDispatcher(
 	};
 
 	/**
-	 * Runs the hooks matching `names` in parallel, as Claude Code does; any block blocks, and verdicts combine in
+	 * Runs the hooks matching `names` in parallel, as the hook protocol specifies; any block blocks, and verdicts combine in
 	 * config order. Most tool calls match no hook, so the input (which may join a large tool result) is built only when
 	 * one does.
 	 */
-	const dispatchImpl: Dispatch = async (ctx, event, names, input, requested, protocol) => {
+	const dispatchImpl: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
 		const signal = requested ?? ctx.signal;
-		const hooks = commandsFor(session.config, event, names).filter(
-			(hook) =>
-				!protocol ||
-				(typeof protocol === "string"
-					? (hook.protocol ?? "octocode") === protocol
-					: protocol.includes(hook.protocol ?? "octocode")),
-		);
+		const hooks = commandsFor(session.config, event, names)
+			.filter(
+				(hook) =>
+					!protocol ||
+					(typeof protocol === "string"
+						? (hook.protocol ?? "octocode") === protocol
+						: protocol.includes(hook.protocol ?? "octocode")),
+			)
+			.filter((hook) => !hookFilter || hookFilter(hook));
 		if (hooks.length === 0) return {};
 		session.root ??= repoKey(ctx.cwd).root;
 		const payload: Record<string, unknown> = {
@@ -161,8 +165,14 @@ export function createDispatcher(
 					}
 				: undefined,
 		};
-		const race = event === "PermissionRequest" && protocol === "claude" ? new AbortController() : undefined;
-		let winner: HookVerdict | undefined;
+		// Codex: "Subagent hooks use the parent session id" (hooks reference, Common input fields).
+		const payloadFor = (hook: HookHandler): Record<string, unknown> => {
+			const protocolName = hook.protocol ?? "octocode";
+			const projected = hookPayload(protocolName, payload, dispatchMetadata);
+			return protocolName === "codex" && parentSession ? { ...projected, session_id: parentSession } : projected;
+		};
+		// Claude PermissionRequest hooks all finish (a deny beats an allow, as for Codex); a hook's crash is its own verdict.
+		const guarded = event === "PermissionRequest" && protocol === "claude";
 		const runOne = async (hook: HookHandler, signal: AbortSignal | undefined): Promise<HookVerdict> => {
 			if (hook.configurationError && event === "PermissionRequest") {
 				say(ctx, hook.configurationError, "warning");
@@ -186,15 +196,7 @@ export function createDispatcher(
 						hook,
 						event,
 						(backgroundSignal) =>
-							timeHook(ctx, event, hook, () =>
-								runHook(
-									hook,
-									hookPayload(hook.protocol ?? "octocode", payload, dispatchMetadata),
-									ctx.cwd,
-									env,
-									backgroundSignal,
-								),
-							),
+							timeHook(ctx, event, hook, () => runHook(hook, payloadFor(hook), ctx.cwd, env, backgroundSignal)),
 						(message) => say(ctx, message, "warning"),
 					);
 				return {};
@@ -204,7 +206,7 @@ export function createDispatcher(
 				await timeHook(ctx, event, hook, () =>
 					runHook(
 						hook,
-						hookPayload(hook.protocol ?? "octocode", payload, dispatchMetadata),
+						payloadFor(hook),
 						ctx.cwd,
 						env,
 						signal,
@@ -213,7 +215,7 @@ export function createDispatcher(
 					),
 				),
 			);
-			if (race && signal?.aborted) return {};
+			if (guarded && signal?.aborted) return {};
 			const verdict = labelHttpVerdict(
 				hook,
 				hook.type === "prompt"
@@ -227,6 +229,10 @@ export function createDispatcher(
 			if (verdict.systemMessage) say(ctx, verdict.systemMessage, "warning");
 			if (hook.protocol === "codex" && verdict.context)
 				verdict.context = limitCodexContext(verdict.context, hook.additionalContextLimit);
+			if (hook.protocol === "claude" && verdict.context)
+				verdict.context = capContext(verdict.context, CLAUDE_HOOK_CONTEXT_MAX);
+			if (hook.protocol === "claude" && verdict.systemMessage)
+				verdict.systemMessage = capContext(verdict.systemMessage, CLAUDE_HOOK_CONTEXT_MAX);
 			const gate = event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
 			// Failure text can hold what a server or a script printed, so it is redacted before it is shown or audited.
 			const reported = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
@@ -269,37 +275,33 @@ export function createDispatcher(
 				? { ...outcome, cancelCompaction: true }
 				: outcome;
 		};
-		const running = hooks.map(async (hook) => {
-			let verdict: HookVerdict;
+		const running = hooks.map(async (hook): Promise<HookVerdict> => {
 			try {
-				verdict = await runOne(hook, race ? (signal ? AbortSignal.any([signal, race.signal]) : race.signal) : signal);
+				return await runOne(hook, signal);
 			} catch (error) {
-				if (!race) throw error;
-				if (winner || signal?.aborted) return {};
+				if (!guarded) throw error;
+				if (signal?.aborted) return {};
 				const message = errorMessage(error);
 				say(ctx, message, "warning");
-				verdict =
-					hook.failClosed || hook.onFailure === "block"
-						? { permissionDecision: "deny", block: message }
-						: { error: message };
+				return hook.failClosed || hook.onFailure === "block"
+					? { permissionDecision: "deny", block: message }
+					: { error: message };
 			}
-			if (race && !winner && !signal?.aborted && verdict.permissionDecision) {
-				winner = verdict;
-				race.abort();
-			}
-			return verdict;
 		});
-		if (race) {
-			await Promise.allSettled(running);
-			return signal?.aborted ? {} : (winner ?? {});
-		}
 		const verdicts = await Promise.all(running);
-		if (event === "PermissionRequest") return reducePermission(verdicts);
+		if (event === "PermissionRequest") {
+			if (signal?.aborted) return {};
+			const reduced = reducePermission(verdicts);
+			// An allow keeps what its hook attached (rewritten input, permission updates).
+			return reduced.permissionDecision === "allow"
+				? (verdicts.find((verdict) => verdict.permissionDecision === "allow") ?? reduced)
+				: reduced;
+		}
 		if ((event === "Stop" || event === "SubagentStop") && verdicts.some((verdict) => verdict.stop))
 			return { stop: true };
 		const halted = verdicts.find((verdict) => verdict.haltTurn);
 		if (halted) {
-			say(ctx, halted.block ?? halted.context ?? "Stopped by a prompt hook", "warning");
+			say(ctx, halted.block ?? halted.context ?? "Stopped by a hook", "warning");
 			ctx.abort("internal");
 		}
 		if (conflictingRewrites(verdicts)) return { block: "Conflicting hook input rewrites; call not executed" };
@@ -350,11 +352,11 @@ export function createDispatcher(
 		}
 	};
 
-	const dispatch: Dispatch = async (ctx, event, names, input, requested, protocol) => {
+	const dispatch: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
 		const signal = requested ?? ctx.signal;
 		if (paused?.()) return {};
 		const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-		const work = dispatchImpl(ctx, event, names, input, combined, protocol);
+		const work = dispatchImpl(ctx, event, names, input, combined, protocol, hookFilter);
 		active.add(work);
 		try {
 			return await work;

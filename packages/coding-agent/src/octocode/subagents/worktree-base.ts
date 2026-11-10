@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-file.ts";
-import { HOME_NAMES, octocodeHome } from "../shared/home.ts";
+import { HOME_NAMES } from "../shared/home.ts";
+import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 import { processStartTime } from "../shared/process.ts";
 
@@ -41,7 +42,7 @@ export interface WorktreeResult {
 export { worktreesDir } from "../worktree-paths/own-worktree.ts";
 
 /** The folder earlier versions used: named by the checkout's own root, so a linked worktree's orphans were not shared. */
-export function legacyWorktreesDir(root: string, home = octocodeHome()): string {
+export function legacyWorktreesDir(root: string, home = getOctocodeHome()): string {
 	return path.join(home, HOME_NAMES.worktrees, shortHash(root));
 }
 

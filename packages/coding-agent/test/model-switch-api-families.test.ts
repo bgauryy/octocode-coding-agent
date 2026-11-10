@@ -1,4 +1,4 @@
-// B154 gap 4: `/model` across API families inside one session. Two faux providers with different `api` ids stand in for
+// `/model` across API families inside one session. Two faux providers with different `api` ids stand in for
 // two provider families; the session switches between them mid-conversation and the next request must still carry the
 // whole transcript (text and a tool call with its result), and each family's adapter must answer from its own script.
 import type { AgentTool } from "@octocodeai/octocode-agent-core";

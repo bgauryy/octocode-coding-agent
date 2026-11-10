@@ -8,7 +8,7 @@ import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-/** B209: every way the coordinator exits takes its subagents' process groups along, and nothing stays stale. */
+/** Every way the coordinator exits takes its subagents' process groups along, and nothing stays stale. */
 
 const SRC = path.join(import.meta.dirname, "..", "..", "src");
 const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "scripts", "source-resolver.ts");

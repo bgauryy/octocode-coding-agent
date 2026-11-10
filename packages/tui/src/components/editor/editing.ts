@@ -13,7 +13,6 @@ import { PASTE_MARKER_REGEX, PASTE_MARKER_SINGLE } from "./segmentation.ts";
 export function insertTextAtCursorInternal(editor: EditorModel, text: string): void {
 	if (!text) return;
 
-	// Normalize line endings and tabs
 	const normalized = editor.normalizeText(text);
 	const insertedLines = normalized.split("\n");
 
@@ -22,25 +21,20 @@ export function insertTextAtCursorInternal(editor: EditorModel, text: string): v
 	const afterCursor = currentLine.slice(editor.state.cursorCol);
 
 	if (insertedLines.length === 1) {
-		// Single line - insert at cursor position
 		editor.state.lines[editor.state.cursorLine] = beforeCursor + normalized + afterCursor;
 		editor.setCursorCol(editor.state.cursorCol + normalized.length);
 	} else {
-		// Multi-line insertion
 		editor.state.lines = [
-			// All lines before current line
 			...editor.state.lines.slice(0, editor.state.cursorLine),
 
 			// The first inserted line merged with text before cursor
 			beforeCursor + insertedLines[0],
 
-			// All middle inserted lines
 			...insertedLines.slice(1, -1),
 
 			// The last inserted line with text after cursor
 			insertedLines[insertedLines.length - 1] + afterCursor,
 
-			// All lines after current line
 			...editor.state.lines.slice(editor.state.cursorLine + 1),
 		];
 
@@ -51,7 +45,6 @@ export function insertTextAtCursorInternal(editor: EditorModel, text: string): v
 	editor.notifyChange();
 }
 
-// All the editor methods from before...
 export function insertCharacter(editor: EditorModel, char: string, skipUndoCoalescing?: boolean): void {
 	editor.exitHistoryBrowsing();
 
@@ -174,11 +167,9 @@ export function addNewLine(editor: EditorModel): void {
 	const before = currentLine.slice(0, editor.state.cursorCol);
 	const after = currentLine.slice(editor.state.cursorCol);
 
-	// Split current line
 	editor.state.lines[editor.state.cursorLine] = before;
 	editor.state.lines.splice(editor.state.cursorLine + 1, 0, after);
 
-	// Move cursor to start of new line
 	editor.state.cursorLine++;
 	editor.setCursorCol(0);
 

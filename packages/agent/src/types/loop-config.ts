@@ -6,12 +6,14 @@ import type {
 	Model,
 	SimpleStreamOptions,
 	TextContent,
+	ToolChoice,
 	ToolResultMessage,
 	Usage,
 } from "@octocodeai/octocode-ai";
 import type {
 	AgentContext,
 	AgentMessage,
+	AgentTool,
 	AgentToolCall,
 	AgentToolResult,
 	ThinkingLevel,
@@ -32,6 +34,12 @@ export interface BeforeToolCallResult {
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.
 	 */
 	terminate?: boolean;
+	/**
+	 * Only for a call with `BeforeToolCallContext.early`: the call would need the user (a dialog) and none may open while the
+	 * message streams. The call is withdrawn from the early set: this attempt leaves no events, and the call goes through
+	 * `beforeToolCall` again, as a normal call, after the message ended.
+	 */
+	defer?: boolean;
 	/**
 	 * Checked again right before the tool executes. A parallel batch approves every call before it runs any, and an
 	 * approval can wait on a user, so state the approval relied on may have changed. `{ block: true }` ends the call as
@@ -70,7 +78,6 @@ export interface AfterToolCallResult {
 	terminate?: boolean;
 }
 
-/** Context passed to `beforeToolCall`. */
 export interface BeforeToolCallContext {
 	/** The assistant message that requested the tool call. */
 	assistantMessage: AssistantMessage;
@@ -80,9 +87,10 @@ export interface BeforeToolCallContext {
 	args: unknown;
 	/** Current agent context at the time the tool call is prepared. */
 	context: AgentContext;
+	/** Set while the call is started before its message ended (see {@link EarlyToolStart}): answer `defer` rather than ask a person. */
+	early?: true;
 }
 
-/** Context passed to `afterToolCall`. */
 export interface AfterToolCallContext {
 	/** The assistant message that requested the tool call. */
 	assistantMessage: AssistantMessage;
@@ -144,7 +152,10 @@ export interface PrepareRequestContext {
 }
 
 /** Replacement runtime state for the provider request being prepared. */
-export type AgentRequestUpdate = Omit<AgentLoopTurnUpdate, "messages">;
+export type AgentRequestUpdate = Omit<AgentLoopTurnUpdate, "messages"> & {
+	/** Tool choice for this one provider request only; later requests are unchanged. */
+	toolChoice?: ToolChoice;
+};
 
 /**
  * Called immediately before every conversational provider request, including the first.
@@ -330,4 +341,25 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * `Tool <name> not found`, for example how to make the tool available; undefined keeps the default.
 	 */
 	unknownToolMessage?: (toolName: string) => string | undefined;
+
+	/**
+	 * Start calls while the assistant message still streams (parallel execution only); omitted, nothing starts before the
+	 * message ends. See {@link EarlyToolStart}.
+	 */
+	earlyStart?: EarlyToolStart;
+}
+
+/**
+ * Which calls may start before their assistant message ended. A call is considered once the next content block began
+ * (so the call's own block ended whole), and only while every earlier call of the message started early: the first call
+ * `mayStart` refuses, or the first exclusive one, ends early starts for that message. A started call runs `beforeToolCall`
+ * then its tool, with the message streamed so far; its events are emitted after the message ends, in the usual order.
+ * A message that ends by error, abort or the output limit discards its early calls: they are aborted and leave no events.
+ * `beforeToolCall` runs with `early` set and may answer `defer`: that call is not started early.
+ */
+export interface EarlyToolStart {
+	/** Whether this call may start now. Return true only for calls that open no dialog and change nothing. */
+	mayStart: (toolCall: AgentToolCall, tool: AgentTool<any>) => boolean;
+	/** Called for each early call that was discarded, after its abort: `beforeToolCall` saw a call that never completes. */
+	onDiscarded?: (toolCallId: string) => void;
 }

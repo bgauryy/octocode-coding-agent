@@ -130,7 +130,6 @@ export function renderSessionItems(
 			host.addMessageToChat(message);
 			const last = host.chatContainer.children.at(-1);
 			const parent = last instanceof AssistantMessageComponent ? last : undefined;
-			// Render tool call components
 			for (const content of message.content) {
 				if (content.type === "toolCall") {
 					const component = addToolExecution(host, content.name, content.id, content.arguments, parent);
@@ -148,7 +147,6 @@ export function renderSessionItems(
 				if (miss) addCacheMissNotice(host, miss, message);
 			}
 		} else if (message.role === "toolResult") {
-			// Match tool results to pending tool components
 			const component = renderedPendingTools.get(message.toolCallId);
 			if (component) {
 				const port = getApplicationPort(host.session);
@@ -160,7 +158,6 @@ export function renderSessionItems(
 				renderedPendingTools.delete(message.toolCallId);
 			}
 		} else {
-			// All other messages use standard rendering
 			host.addMessageToChat(message, options);
 		}
 	}
@@ -330,7 +327,6 @@ export function renderInitialMessages(host: SessionRenderHost): void {
 		populateHistory: true,
 	});
 
-	// Show compaction info if session was compacted
 	const allEntries = host.sessionManager.getEntries();
 	const compactionCount = allEntries.filter((e) => e.type === "compaction").length;
 	if (compactionCount > 0) {

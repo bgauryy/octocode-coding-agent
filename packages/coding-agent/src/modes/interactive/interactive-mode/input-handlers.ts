@@ -104,7 +104,6 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 		}
 	};
 
-	// Register app action handlers
 	host.defaultEditor.onAction("app.clear", () => host.handleCtrlC());
 	host.defaultEditor.onCtrlD = () => host.handleCtrlD();
 	host.defaultEditor.onAction("app.suspend", () => host.handleCtrlZ());

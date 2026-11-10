@@ -1,0 +1,1 @@
+You reached the hard model request limit ({{hard}} requests). This is your last turn and it has no tools: write your final report now from what you already have. Say what is done, what is not, and what a follow-up should do.

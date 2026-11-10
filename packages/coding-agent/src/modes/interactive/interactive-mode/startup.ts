@@ -208,12 +208,10 @@ export async function init(host: StartupHost): Promise<void> {
 		);
 		host.builtInHeader = header;
 
-		// Setup UI layout
 		host.headerContainer.addChild(new Spacer(1));
 		host.headerContainer.addChild(host.builtInHeader);
 		host.headerContainer.addChild(new Spacer(1));
 	} else {
-		// Minimal header when silenced
 		host.builtInHeader = new Text("", 0, 0);
 		host.headerContainer.addChild(host.builtInHeader);
 	}
@@ -236,7 +234,6 @@ export async function init(host: StartupHost): Promise<void> {
 	host.ui.requestRender();
 	renderInitialSessionState(host);
 
-	// Set up theme file watcher
 	onThemeChange(() => {
 		host.ui.invalidate();
 		host.updateEditorBorderColor();
@@ -247,7 +244,6 @@ export async function init(host: StartupHost): Promise<void> {
 	// so its writers never request frames themselves.
 	bindFooterState(host);
 
-	// Initialize available provider count for footer display
 	host.updateAvailableProviderCount();
 
 	// Flush the completed startup state before loading the remaining syntax grammars.
@@ -285,14 +281,12 @@ export async function run(host: StartupHost): Promise<void> {
 			.finally(() => clearTimeout(timeout));
 	}
 
-	// Start version check asynchronously
 	void checkForNewOctocodeVersion(host.version).then((newRelease) => {
 		if (newRelease) {
 			host.showNewVersionNotification(newRelease);
 		}
 	});
 
-	// Start package update check asynchronously
 	void host
 		.checkForPackageUpdates()
 		.then((updates) => {
@@ -308,14 +302,12 @@ export async function run(host: StartupHost): Promise<void> {
 			}
 		});
 
-	// Check tmux keyboard setup asynchronously
 	void host.checkTmuxKeyboardSetup().then((warning) => {
 		if (warning) {
 			host.showWarning(warning);
 		}
 	});
 
-	// Show startup warnings
 	const { startupDiagnostics, modelFallbackMessage, initialMessage, initialImages, initialMessages } = host.options;
 
 	for (const diagnostic of startupDiagnostics ?? []) {
@@ -347,7 +339,6 @@ export async function run(host: StartupHost): Promise<void> {
 
 	void host.maybeWarnAboutAnthropicSubscriptionAuth();
 
-	// Process initial messages
 	if (initialMessage) {
 		try {
 			await getApplicationPort(host.session).invoke("prompt", initialMessage, { images: initialImages });
@@ -366,7 +357,6 @@ export async function run(host: StartupHost): Promise<void> {
 		}
 	}
 
-	// Main interactive loop
 	while (true) {
 		const userInput = await host.getUserInput();
 		try {

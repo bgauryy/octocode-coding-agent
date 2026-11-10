@@ -5,7 +5,7 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../../core/features/index.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
 import type { HookEvent, HookProtocol } from "../catalog.ts";
-import type { HookConfig, HookVerdict } from "../contracts.ts";
+import type { HookConfig, HookHandler, HookVerdict } from "../contracts.ts";
 
 export const CONTEXT_TYPE = "octocode-hook-context";
 /** Longest the first prompt waits for SessionStart hooks still running. */
@@ -56,10 +56,14 @@ export interface HooksView {
 		  }
 		| undefined
 	>;
+	/** `/harness hooks test`: runs the configured hooks on a sample event and describes the answers. */
+	testRun(ctx: ExtensionContext, words: readonly string[]): Promise<string>;
 	/** One line for the `/status` report. */
 	summary(): string;
 	/** On/off, the loaded commands per event, the files read (✓ = exists) and any config errors. */
 	report(cwd: string): string;
+	/** Whether a PreToolUse hook would run for this call (false while hooks are off or paused). Such a call never starts early, so its hooks run once, and only for a call that runs. */
+	hasPreToolUse(toolName: string, input: Record<string, unknown>, cwd: string): boolean;
 	/** The PreToolUse hooks as a tool-call gate (a no-op while hooks are off); `ask` carries a hook's ask to the permission gate. */
 	preToolUse(
 		event: ToolCallEvent,
@@ -91,6 +95,8 @@ export type Dispatch = (
 	input: () => Record<string, unknown>,
 	signal?: AbortSignal,
 	protocol?: HookProtocol | readonly HookProtocol[],
+	/** Narrows the matched hooks per call, e.g. Claude's `if` permission rule. */
+	hookFilter?: (hook: HookHandler) => boolean,
 ) => Promise<HookVerdict>;
 export interface HookHostMetadata {
 	permissionMode?: "manual" | "workspace" | "full" | "bypass";

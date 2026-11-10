@@ -44,7 +44,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 `/providers` separates managing providers from signing in. Its sections, in order:
 
-- **Signed in**: each provider that has credentials, with the credential source (a label or variable name, never a value), its model count and whether it is enabled. “Configured” means credentials are present; it does not verify that the provider will accept a request.
+- **Signed in**: each provider that has credentials, with the credential kind (**account**, **subscription** or **key**) and source (a label or variable name, never a value), its model count and whether it is enabled. “Configured” means credentials are present; it does not verify that the provider will accept a request; **Test credential** on the provider's page does. A key that the provider recognizes as a subscription token (a Claude token starting `sk-ant-oat`) is listed as **subscription**, whether it is stored, read from a keychain or command reference, or set in the environment; the key is inspected for this and never shown or kept.
 - **Disabled**: providers you turned off, hidden from `/model`.
 - **Sign in**: one row, **+ Add a provider**, opens the sign-in flow: pick a provider (those with a subscription or account sign-in are listed first), then its browser/device sign-in, **Add API key** or **Replace API key**. Only supported methods appear. Successful sign-in opens the model picker; Esc keeps the current model and Ctrl+S explicitly changes the default.
 - **Sources**: where providers, models and credentials come from: Octocode (always on), Pi, and the `COPILOT_GITHUB_TOKEN` variable. See [Sources](#sources).
@@ -53,7 +53,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 Keys: Enter opens a row, `e` enables or disables the selected provider or source, Esc closes (on a provider's page, Esc goes back to the list).
 
-A provider's page shows its status, credential source, enabled state, model count and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Sign out** or **Remove saved credential**, edit definition (the file path), and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
+A provider's page shows its status (account, subscription or API key), credential source, enabled state, model count and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Test credential** (one small request to this provider; the result is shown with any error text redacted), **Sign out** or **Remove saved credential**, edit definition (the file path), and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
 
 On a remote or headless machine, an OAuth callback may not reach the local process. When prompted, paste the final redirect URL or authorization code back into Octocode.
 

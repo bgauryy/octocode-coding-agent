@@ -1,6 +1,6 @@
 /**
- * A system-section update (a new day changes only `environment`) reaches the model after the history it already cached
- * (B321). The session builds the context from its entries, the `context` handlers (Octocode's own fences web results in
+ * A system-section update (a new day changes only `environment`) reaches the model after the history it already cached.
+ * The session builds the context from its entries, the `context` handlers (Octocode's own fences web results in
  * every request) change the messages, and the adapter builds the Anthropic request: the request after the update must
  * start with the bytes of the request before it. No network.
  */

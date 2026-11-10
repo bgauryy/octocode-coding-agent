@@ -99,7 +99,10 @@ describe("compact tool", () => {
 	it("refuses below half the room before automatic compaction, and right after a compaction", async () => {
 		const { state, call, settle, compacted } = host();
 		state.tokens = 40_000;
-		await expect(call()).rejects.toThrow(/46% of the room.*under 50%/);
+		await expect(call()).rejects.toThrow(/45% of the room.*under 50%/);
+		// Just under the floor (49.9%) reads as under it, not as the 50% it is refused below.
+		state.tokens = 43_700;
+		await expect(call()).rejects.toThrow(/49% of the room.*under 50%/);
 		state.tokens = 60_000;
 		await compacted("threshold");
 		await expect(call()).rejects.toThrow(/compacted in this turn/);

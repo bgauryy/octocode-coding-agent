@@ -1,4 +1,4 @@
-// B103: a subagent messages only its own session tree (its parent relays beyond it), a parent holds a stand-up with one
+// A subagent messages only its own session tree (its parent relays beyond it), a parent holds a stand-up with one
 // broadcast whose replies come back to it, and `coordinate list` shows each agent's item, why and log folders.
 import fs from "node:fs";
 import path from "node:path";

@@ -1,5 +1,6 @@
 import { openAIDecisionsApi } from "../api/openai-decisions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
+import { verifyByRequest } from "../auth/verify.ts";
 import { envApiKeyAuth, lazyOAuth } from "../auth/helpers.ts";
 import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { loadOpenAIChatGPTOAuth } from "../auth/oauth/load.ts";
@@ -16,7 +17,13 @@ export function openaiProvider(): Provider<"openai-responses"> {
 		name: "OpenAI",
 		baseUrl: "https://api.openai.com/v1",
 		auth: {
-			apiKey: envApiKeyAuth("OpenAI API key", apiKeyEnvVars("openai"), "https://platform.openai.com/api-keys"),
+			apiKey: envApiKeyAuth(
+				"OpenAI API key",
+				apiKeyEnvVars("openai"),
+				"https://platform.openai.com/api-keys",
+				({ key, signal }) =>
+					verifyByRequest("https://api.openai.com/v1/models", { Authorization: `Bearer ${key}` }, signal),
+			),
 			oauth: lazyOAuth({
 				name: "OpenAI (ChatGPT subscription)",
 				isSubscription: true,

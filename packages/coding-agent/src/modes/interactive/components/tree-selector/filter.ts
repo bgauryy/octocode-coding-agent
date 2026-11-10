@@ -24,7 +24,6 @@ export function matchesTreeFilter(
 		}
 	}
 
-	// Apply filter mode
 	let passesFilter = true;
 	// Entry types hidden in default view (settings/bookkeeping)
 	const isSettingsEntry =
@@ -37,7 +36,6 @@ export function matchesTreeFilter(
 
 	switch (filterMode) {
 		case "user-only":
-			// Just user messages
 			passesFilter = entry.type === "message" && entry.message.role === "user";
 			break;
 		case "no-tools":
@@ -45,7 +43,6 @@ export function matchesTreeFilter(
 			passesFilter = !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
 			break;
 		case "labeled-only":
-			// Just labeled entries
 			passesFilter = flatNode.node.label !== undefined;
 			break;
 		case "all":
@@ -53,14 +50,12 @@ export function matchesTreeFilter(
 			passesFilter = true;
 			break;
 		default:
-			// Default mode: hide settings/bookkeeping entries
 			passesFilter = !isSettingsEntry;
 			break;
 	}
 
 	if (!passesFilter) return false;
 
-	// Apply search filter
 	if (searchTokens.length > 0) {
 		const nodeText = getSearchableText(flatNode.node).toLowerCase();
 		return searchTokens.every((token) => nodeText.includes(token));

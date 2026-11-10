@@ -286,7 +286,7 @@ export async function dispatchToolCall(
 
 			if (handlerResult) {
 				result = handlerResult;
-				if (result.block) {
+				if (result.block || result.defer) {
 					return result;
 				}
 				if (handlerResult.revalidate) checks.push(handlerResult.revalidate);

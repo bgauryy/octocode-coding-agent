@@ -17,10 +17,6 @@ import type { Theme } from "./theme-class.ts";
 import type { ThemeColor } from "./theme-types.ts";
 import { theme } from "./theme-global.ts";
 
-// ============================================================================
-// TUI Helpers
-// ============================================================================
-
 /** The GitHub alert kinds a `MarkdownTheme` styles. */
 type MarkdownAlertKind = Parameters<NonNullable<MarkdownTheme["alert"]>>[0];
 

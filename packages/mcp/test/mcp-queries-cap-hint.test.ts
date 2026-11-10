@@ -50,14 +50,29 @@ describe("MCP queries batch cap", () => {
 		);
 	});
 
+	it("leaves the cap out of a failure that does not concern queries", () => {
+		const tool = define({ ...batchSchema(5), additionalProperties: false });
+		const message = (args: Record<string, unknown>) => {
+			try {
+				validateToolArguments(tool as never, { type: "toolCall", id: "c", name: tool.name, arguments: args } as never);
+			} catch (error) {
+				return (error as Error).message;
+			}
+			throw new Error("expected a validation failure");
+		};
+		expect(message({ queries: [{ path: "a" }], cursor: "next" })).not.toContain("queries holds at most");
+		expect(message({ queries: [{ path: "a" }], reason: "why" })).not.toContain("queries holds at most");
+		expect(message({ queries: Array.from({ length: 7 }, () => ({ path: "a" })) })).toContain("queries holds at most 5");
+	});
+
 	it("accepts a batch within the cap and adds no cap hint where the server declares no cap", () => {
 		expect(validate(define(batchSchema(5)), 5)).toMatchObject({ queries: expect.any(Array) });
 		const uncapped = define(batchSchema());
-		expect(uncapped.validationHint?.({ envelope: false })).toBeUndefined();
+		expect(uncapped.validationHint?.({ envelope: false, properties: [] })).toBeUndefined();
 		expect(validate(uncapped, 9)).toMatchObject({ queries: expect.any(Array) });
 		// A compact tool without a cap keeps only its signature.
 		const compact = define(batchSchema(), { signature: () => "declare function t(): void;" });
-		expect(compact.validationHint?.({ envelope: false })).toBe(
+		expect(compact.validationHint?.({ envelope: false, properties: [] })).toBe(
 			"Expected signature (TypeScript):\ndeclare function t(): void;",
 		);
 	});

@@ -22,7 +22,6 @@ export interface AgentSessionStateApi {
 	/** Refresh the public finalized transcript from the canonical session projection. */
 	refreshContext(): void;
 
-	/** Full agent state */
 	readonly state: AgentState;
 
 	/** Current cache-warming state and the policy inputs that produced it. */
@@ -34,7 +33,6 @@ export interface AgentSessionStateApi {
 	/** Current model (may be undefined if not yet selected) */
 	readonly model: Model<any> | undefined;
 
-	/** Current thinking level */
 	readonly thinkingLevel: ThinkingLevel;
 
 	/** Under a virtual selection, the physical model and thinking level of the latest successful response. */
@@ -58,16 +56,13 @@ export interface AgentSessionStateApi {
 	/** All messages including custom types like BashExecutionMessage */
 	readonly messages: AgentMessage[];
 
-	/** Current steering mode */
 	readonly steeringMode: "all" | "one-at-a-time";
 
-	/** Current follow-up mode */
 	readonly followUpMode: "all" | "one-at-a-time";
 
 	/** Current session file path, or undefined if sessions are disabled */
 	readonly sessionFile: string | undefined;
 
-	/** Current session ID */
 	readonly sessionId: string;
 
 	/** Current session display name, if set */
@@ -86,7 +81,6 @@ export interface AgentSessionStateApi {
 	readonly promptTemplates: ReadonlyArray<PromptTemplate>;
 }
 
-/** Tool loadout of `AgentSession`. */
 export interface AgentSessionToolsApi {
 	/**
 	 * Get the names of currently active tools, which are the tools declared to the model.

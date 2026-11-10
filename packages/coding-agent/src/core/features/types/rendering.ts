@@ -7,7 +7,6 @@ import type { CustomEntry } from "../../session-manager.ts";
 import type { SourceInfo } from "../../source-info.ts";
 import type { ExtensionCommandContext } from "./context.ts";
 
-// ============================================================================
 // Message and Entry Rendering
 // ============================================================================
 
@@ -41,7 +40,6 @@ export type EntryRenderer<T = unknown> = (
 	theme: Theme,
 ) => Component | undefined;
 
-// ============================================================================
 // Command Registration
 // ============================================================================
 

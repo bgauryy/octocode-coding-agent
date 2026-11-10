@@ -23,7 +23,7 @@ import type {
 	ToolRendererResolver,
 } from "./types.ts";
 
-type HandlerFn = (...args: unknown[]) => Promise<unknown>;
+type HandlerFn = (...args: unknown[]) => unknown;
 
 /**
  * Create the ExtensionAPI for an extension.

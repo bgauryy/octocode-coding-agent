@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { setRunClock } from "../../utils/run-clock.ts";
+import { beginRun, resetRun, settleRun } from "../../utils/run-clock.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { setRowsAnimate } from "./chrome.ts";
 import { isStaleSessionError } from "../shared/util.ts";
@@ -67,7 +67,6 @@ export function registerActivity(
 	};
 	const stop = () => {
 		activity.end();
-		setRunClock(undefined);
 		paint();
 	};
 
@@ -76,11 +75,13 @@ export function registerActivity(
 		shown = undefined;
 		unsubscribe?.();
 		unsubscribe = onDialogsChange(paint);
+		if (options.workingLine) resetRun();
 		stop();
 	});
 	api.on("session_shutdown", async () => {
 		unsubscribe?.();
 		unsubscribe = undefined;
+		if (options.workingLine) resetRun();
 		stop();
 		ctx = undefined;
 	});
@@ -89,7 +90,7 @@ export function registerActivity(
 
 		const now = Date.now();
 		activity.start(now);
-		if (options.workingLine) setRunClock(now);
+		if (options.workingLine) beginRun(now);
 		paint();
 	});
 	api.on("message_update", async (event) => {
@@ -123,7 +124,11 @@ export function registerActivity(
 		activity.promptEnd();
 		paint();
 	});
-	api.on("agent_settled", async () => stop());
+	api.on("agent_settled", async (event, next) => {
+		// A queued message continues the run: the working line resumes on the same clock.
+		if (options.workingLine) settleRun(Date.now(), next.hasPendingMessages() && !event.aborted);
+		stop();
+	});
 	return {
 		activity,
 		consequential: (action, what, warn) => {

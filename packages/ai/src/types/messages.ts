@@ -267,6 +267,8 @@ export type ConstrainedSamplingConfig =
 interface ToolValidationFailure {
 	/** Every problem is at the top level of the arguments, none inside a nested value. */
 	envelope: boolean;
+	/** Top-level properties the problems sit at or under, by name. */
+	properties: string[];
 }
 
 export interface Tool<TParameters extends TSchema = TSchema> {

@@ -37,6 +37,14 @@ import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 import { readerStalled } from "./socket-pressure.ts";
 
+/** Settings routes injected by the root composer: the workspace domain cannot import `web-daemon`, which owns them. */
+export interface SessionConfig {
+	/** Answers a settings request (the caller checked the token) and returns true, or returns false for another route. */
+	handle(req: http.IncomingMessage, url: URL, reply: (status: number, body: unknown) => void): Promise<boolean>;
+	/** Cancels running sign-ins; called when the server closes. */
+	close(): void;
+}
+
 /** A loopback board with a per-launch capability; the general session API stays browser-inaccessible. */
 export async function startWorkspaceWeb(
 	backlog: Backlog,
@@ -44,6 +52,7 @@ export async function startWorkspaceWeb(
 	workspace?: RevisedWorkspace,
 	repoDocsTrusted: RepoDocsTrusted = repoDocsNeverTrusted,
 	webPrefs: WebPrefsStore = settingsWebPrefs(),
+	sessionConfig?: SessionConfig,
 ): Promise<BacklogWeb> {
 	const token = randomBytes(32).toString("hex");
 	const notifyChanged = () => {
@@ -173,7 +182,7 @@ export async function startWorkspaceWeb(
 			const supplied = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
 			const expected = Buffer.from(token);
 			if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
-				return reply(401, { error: "Reopen /web to connect to this board." });
+				return reply(401, { error: "Reopen /web to connect to the Octocode web workspace." });
 			if (req.url === WORKSPACE_ROUTES.application && !workspace?.application)
 				return reply(503, { error: "Application controls are unavailable in this session." });
 			if (req.url === WORKSPACE_ROUTES.workspace && !workspace)
@@ -181,6 +190,7 @@ export async function startWorkspaceWeb(
 			const requestUrl = new URL(req.url ?? "/", origin);
 			if (await handleWebPrefsRequest(req, requestUrl.pathname, webPrefs, reply, WEB_PAGE_ASSETS)) return;
 			if (await handleApplicationDataRequest(req, requestUrl, workspace?.application, backlog.session, reply)) return;
+			if (await sessionConfig?.handle(req, requestUrl, reply)) return;
 			if (await handleProfilerRequest(req, requestUrl, workspace?.profiler, reply)) return;
 			if (requestUrl.pathname === WORKSPACE_ROUTES.audit && req.method === "GET") {
 				const before = requestUrl.searchParams.get("before");
@@ -351,6 +361,7 @@ export async function startWorkspaceWeb(
 			stopProfiler?.();
 			unsubscribe?.();
 			workspace?.close();
+			sessionConfig?.close();
 			sockets.close();
 			reject(error);
 		};
@@ -373,6 +384,7 @@ export async function startWorkspaceWeb(
 				stopProfiler?.();
 				unsubscribe?.();
 				workspace?.close();
+				sessionConfig?.close();
 				for (const socket of sockets.clients) socket.terminate();
 				sockets.close();
 				server.close(() => resolve());

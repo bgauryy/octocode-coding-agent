@@ -1,10 +1,10 @@
-import { type AssistantMessage, normalizeContext } from "@octocodeai/octocode-ai";
+import { type AssistantMessage, type AssistantMessageEvent, normalizeContext } from "@octocodeai/octocode-ai";
 import type { AgentContext, AgentLoopConfig, StreamFn } from "../types.ts";
 import type { AgentEventSink } from "./events.ts";
 
 /**
  * Stream an assistant response from the LLM.
- * This is where AgentMessage[] gets transformed to Message[] for the LLM.
+ * This is where AgentMessage[] gets transformed to Message[] for the LLM. `onEvent` sees each stream event first.
  */
 export async function streamAssistantResponse(
 	context: AgentContext,
@@ -12,6 +12,7 @@ export async function streamAssistantResponse(
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
 	streamFunction: StreamFn,
+	onEvent?: (event: AssistantMessageEvent) => void,
 ): Promise<AssistantMessage> {
 	// Apply context transform if configured (AgentMessage[] → AgentMessage[])
 	let messages = context.messages;
@@ -19,7 +20,6 @@ export async function streamAssistantResponse(
 		messages = await config.transformContext(messages, signal);
 	}
 
-	// Convert to LLM-compatible messages (AgentMessage[] → Message[])
 	const llmMessages = await config.convertToLlm(messages);
 
 	const llmContext = normalizeContext({ messages: llmMessages });
@@ -40,6 +40,7 @@ export async function streamAssistantResponse(
 	let addedPartial = false;
 
 	for await (const event of response) {
+		onEvent?.(event);
 		switch (event.type) {
 			case "start":
 				partialMessage = event.partial;

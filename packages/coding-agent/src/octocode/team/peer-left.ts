@@ -12,7 +12,7 @@ export interface PeerNoticeHost {
 }
 
 /**
- * Tells an agent that a peer it corresponded with has ended (design B36 §7): one line, `<agent> ended: <reason>`, when the
+ * Tells an agent that a peer it corresponded with has ended: one line, `<agent> ended: <reason>`, when the
  * peer's AgentOff is heard. A correspondent is one this agent sent mail to or received mail from; the line is an FYI unless a
  * question of this agent's to that peer is still unanswered, which wakes it (the answer is not coming). A subagent's parent
  * hears its children's ends in their reports, so those get no line.

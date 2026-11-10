@@ -27,6 +27,30 @@ export async function mergeAgent(
 	return { ok: true, ref, into: merged.into, text: `Merged ${ref} into ${merged.into}.` };
 }
 
+/** The saved ref of `agentId` and the files it changes since its merge base with HEAD; undefined when none is saved. */
+export async function savedChanges(
+	cwd: string,
+	agentId: string,
+): Promise<{ ref: string; files: string[] } | undefined> {
+	if (!ID_PATTERN.test(agentId)) return undefined;
+	const repo = repoRoot(cwd);
+	const ref = await savedRef(repo, agentId);
+	if (!ref) return undefined;
+	const changed = (await gitQuiet(repo, ["diff", "--name-only", "--no-renames", `HEAD...${ref}`])) ?? "";
+	return { ref, files: changed.split("\n").filter(Boolean) };
+}
+
+/** Deletes the saved ref of `agentId` without merging it; the ref it deleted, or why there was none. */
+export async function discardAgent(cwd: string, agentId: string): Promise<{ ok: boolean; text: string }> {
+	if (!ID_PATTERN.test(agentId)) return { ok: false, text: `Invalid agent id "${agentId}"` };
+	const repo = repoRoot(cwd);
+	const ref = await savedRef(repo, agentId);
+	if (!ref) return { ok: false, text: `No isolated changes for ${agentId} (${REF_PREFIX}${agentId} does not exist).` };
+	if ((await gitQuiet(repo, ["update-ref", "-d", ref])) === undefined)
+		return { ok: false, text: `Could not delete ${ref}; it is kept.` };
+	return { ok: true, text: `Discarded ${ref}: its changes were not merged.` };
+}
+
 /**
  * Why the merge of `agentId`'s saved ref may not write its files: `reservation`'s refusal (another agent's lease, as
  * the file tool checks it) for each path the ref changes since its merge base with HEAD. Empty when nothing is held.

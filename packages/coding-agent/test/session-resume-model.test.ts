@@ -1,4 +1,4 @@
-// B347 P2-4: a session resumed with another model (a subagent resume, `octocode --session X --model Y`) records the change,
+// A session resumed with another model (a subagent resume, `octocode --session X --model Y`) records the change,
 // so its transcript names the model that answers from then on and a later reopen without a model restores it.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

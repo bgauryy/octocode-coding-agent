@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
 
 /**
- * The audit of one run of an agent (`agent_runs`, design B36 §4): who it was, where it worked, what it was for, how it
+ * The audit of one run of an agent (`agent_runs`): who it was, where it worked, what it was for, how it
  * ended and what it cost. The parent writes the start (`begin`) and the outcome (`finish`); the agent's own join links
  * its registration (`opened`), and whoever retires its `agents` row writes the end (`ended`), the parent's `finish`
  * only when no row is left to retire. One open run (no `endedAt`) exists per agent name: a new one closes the old.
@@ -121,7 +121,6 @@ export interface RunStart {
 const CLOSE_OPEN =
 	"UPDATE agent_runs SET ended_at = ?, end_reason = 'crashed', end_detail = ? WHERE agent_id = ? AND ended_at IS NULL";
 
-/** The run of `agentId` that began last. */
 export function latest(db: DatabaseSync, agentId: string): AgentRun | undefined {
 	const row = db
 		.prepare("SELECT * FROM agent_runs WHERE agent_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1")

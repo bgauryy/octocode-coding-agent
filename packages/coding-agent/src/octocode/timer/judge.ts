@@ -3,7 +3,7 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { JudgeOutcome, JudgeRequest } from "./conditions/types.ts";
 
-/** What a `check` may spend and how often it may call the model. Defaults the user accepted (RFC B163 §10). */
+/** What a `check` may spend and how often it may call the model. Defaults the user accepted. */
 export const CHECK_CAPS = {
 	perCheckUsd: 0.01,
 	perWaitUsd: 0.05,

@@ -43,7 +43,6 @@ function moveToVisualLine(
 
 	const moveToVisualCol = computeVerticalMoveColumn(editor, currentVisualCol, sourceMaxVisualCol, targetMaxVisualCol);
 
-	// Set cursor position
 	editor.state.cursorLine = targetVL.logicalLine;
 	const targetCol = targetVL.startCol + moveToVisualCol;
 	const logicalLine = editor.state.lines[targetVL.logicalLine] || "";
@@ -181,7 +180,6 @@ export function moveCursor(editor: EditorModel, deltaLine: number, deltaCol: num
 				const firstGrapheme = graphemes[0];
 				editor.setCursorCol(editor.state.cursorCol + (firstGrapheme ? firstGrapheme.segment.length : 1));
 			} else if (editor.state.cursorLine < editor.state.lines.length - 1) {
-				// Wrap to start of next logical line
 				editor.state.cursorLine++;
 				editor.setCursorCol(0);
 			} else {
@@ -199,7 +197,6 @@ export function moveCursor(editor: EditorModel, deltaLine: number, deltaCol: num
 				const lastGrapheme = graphemes[graphemes.length - 1];
 				editor.setCursorCol(editor.state.cursorCol - (lastGrapheme ? lastGrapheme.segment.length : 1));
 			} else if (editor.state.cursorLine > 0) {
-				// Wrap to end of previous logical line
 				editor.state.cursorLine--;
 				const prevLine = editor.state.lines[editor.state.cursorLine] || "";
 				editor.setCursorCol(prevLine.length);

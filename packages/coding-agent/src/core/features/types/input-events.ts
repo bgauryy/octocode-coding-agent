@@ -3,11 +3,11 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, Model } from "@octocodeai/octocode-ai";
 
-// ============================================================================
 // Model Events
 // ============================================================================
 
-type ModelSelectSource = "set" | "cycle" | "restore";
+/** `fallback`: `retry.fallbackModels` replaced a model that hit a usage limit. */
+type ModelSelectSource = "set" | "cycle" | "restore" | "fallback";
 
 /** Fired when a new model is selected */
 export interface ModelSelectEvent {
@@ -24,7 +24,6 @@ export interface ThinkingLevelSelectEvent {
 	previousLevel: ThinkingLevel;
 }
 
-// ============================================================================
 // User Bash Events
 // ============================================================================
 
@@ -39,11 +38,9 @@ export interface UserBashEvent {
 	cwd: string;
 }
 
-// ============================================================================
 // Input Events
 // ============================================================================
 
-/** Source of user input */
 export type InputSource = "interactive" | "rpc" | "extension";
 
 /** Fired when user input is received, before agent processing */
@@ -68,7 +65,6 @@ export interface UserInputEventResult {
 	additionalContext?: string[];
 }
 
-/** Result from input event handler */
 export type InputEventResult =
 	| { action: "continue" }
 	| { action: "transform"; text: string; images?: ImageContent[] }

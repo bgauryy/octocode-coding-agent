@@ -373,7 +373,6 @@ const either = (values: readonly string[]) =>
 export const missingValue = (spec: FlagSpec): string =>
 	spec.missing ?? (spec.values ? `${spec.name} requires ${either(spec.values)}` : `${spec.name} requires a value`);
 
-/** The error for a value outside `spec.values`, or undefined. */
 export const invalidValue = (spec: FlagSpec, value: string): string | undefined =>
 	spec.values && !spec.values.includes(value)
 		? `Invalid ${spec.label ?? spec.name.slice(2)} "${value}". Valid values: ${spec.values.join(", ")}`

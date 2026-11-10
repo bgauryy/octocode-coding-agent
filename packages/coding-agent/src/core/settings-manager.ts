@@ -107,7 +107,6 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		});
 	}
 
-	/** Create a SettingsManager from an arbitrary storage backend */
 	static fromStorage(storage: SettingsStorage, options: SettingsManagerCreateOptions = {}): SettingsManager {
 		return SettingsManager.fromStorageWithPaths(storage, options);
 	}

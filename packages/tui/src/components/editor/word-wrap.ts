@@ -52,7 +52,6 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 		const charIndex = seg.index;
 		const isWs = !isPasteMarker(grapheme) && isWhitespaceChar(grapheme);
 
-		// Overflow check before advancing.
 		if (currentWidth + gWidth > maxWidth) {
 			if (wrapOppIndex >= 0 && currentWidth - wrapOppWidth + gWidth <= maxWidth) {
 				// Backtrack to last wrap opportunity (the remaining content
@@ -101,7 +100,6 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 			continue;
 		}
 
-		// Advance.
 		currentWidth += gWidth;
 
 		// Record wrap opportunity: whitespace followed by non-whitespace
@@ -122,7 +120,6 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 		}
 	}
 
-	// Push final chunk.
 	chunks.push({ text: line.slice(chunkStart), startIndex: chunkStart, endIndex: line.length });
 
 	return chunks;

@@ -58,7 +58,7 @@ export function toGoogleSdkThinkingLevel(level: GoogleApiThinkingLevel): GoogleS
 }
 
 export function getDisabledGoogleThinkingConfig<T extends GoogleApiType>(model: Model<T>): ThinkingConfig {
-	if (!usesGoogleThinkingLevel(model)) return { thinkingBudget: 0 };
+	if (!usesGoogleThinkingLevel(model)) return disabledGoogleThinkingBudget(model);
 
 	const fallback = clampThinkingLevel(model, "off");
 	if (fallback === "off") return { thinkingBudget: 0 };
@@ -66,4 +66,12 @@ export function getDisabledGoogleThinkingConfig<T extends GoogleApiType>(model: 
 	const resolvedLevel = resolveGoogleThinkingLevel(model, fallback);
 	const apiLevel = toGoogleThinkingLevel(resolvedLevel);
 	return { thinkingLevel: toGoogleSdkThinkingLevel(apiLevel) };
+}
+
+/** Budget-path models: a numeric `off` mapping is the smallest budget they accept; `null` means thinking cannot be disabled. */
+function disabledGoogleThinkingBudget<T extends GoogleApiType>(model: Model<T>): ThinkingConfig {
+	const off = model.thinkingLevelMap?.off;
+	if (off === null) return {};
+	const budget = off === undefined ? Number.NaN : Number(off);
+	return { thinkingBudget: Number.isInteger(budget) && budget >= 0 ? budget : 0 };
 }

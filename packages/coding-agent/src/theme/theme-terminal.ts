@@ -2,9 +2,7 @@ import type { TerminalColors } from "@octocodeai/octocode-tui";
 import { terminalAppearance } from "./system-theme.ts";
 import type { ThemeAppearance } from "./theme-types.ts";
 
-// ============================================================================
 // Appearance & Terminal Default Colors
-// ============================================================================
 
 // The terminal's reported colors. Replaced (never mutated) on update, so themes can cache resolved colors
 // by identity.

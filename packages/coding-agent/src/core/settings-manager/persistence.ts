@@ -40,7 +40,6 @@ export class SettingsPersistence {
 		}
 	}
 
-	/** Mark a project field as modified during this session */
 	markProjectModified(field: keyof Settings, nestedKey?: string): void {
 		this.modifiedProjectFields.add(field);
 		if (nestedKey) {
@@ -68,7 +67,7 @@ export class SettingsPersistence {
 	 */
 	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
 		const path = this.state.settingsPaths[scope];
-		const ignored = describeIgnoredKeys(ignoredSettingsKeys(settings));
+		const ignored = describeIgnoredKeys(ignoredSettingsKeys(settings), scope);
 		const messages = [
 			...(ignored ? [ignored] : []),
 			...ignoredBuiltinSwitches(settings.extensions ?? []),

@@ -103,7 +103,6 @@ function emit(nodes: Node[], values: TemplateValues): string {
 	return text;
 }
 
-/** Render template text with the given values. */
 export function renderTemplate(source: string, values: TemplateValues): string {
 	const text = source.replace(WHOLE_LINE_COMMENT, "").replace(COMMENT, "");
 	// Every line of a file ends with a newline; the last one is not part of the text. A value's own newlines stay.
@@ -112,8 +111,11 @@ export function renderTemplate(source: string, values: TemplateValues): string {
 
 let sources: Map<string, string> | undefined;
 
+/** Reader-only Markdown in a source checkout, never rendered: the generated `final/` prompts and the folder READMEs. The package build leaves them out too (`scripts/copy-instructions.mjs`). */
+const isReaderOnly = (name: string): boolean => name.startsWith("final/") || name.split("/").at(-1) === "README.md";
+
 /**
- * Every instruction file, read together on first use (about 70 KB). A running process keeps the text it started with while the files change on disk, so its loaded code never
+ * Every instruction file, read together on first use (about 85 KB). A running process keeps the text it started with while the files change on disk, so its loaded code never
  * meets a template naming a value that code does not pass.
  */
 function instructionSources(): Map<string, string> {
@@ -123,7 +125,7 @@ function instructionSources(): Map<string, string> {
 	for (const entry of fs.readdirSync(root, { recursive: true, withFileTypes: true })) {
 		const file = path.join(entry.parentPath, entry.name);
 		const name = path.relative(root, file).split(path.sep).join("/");
-		if (entry.isFile() && name.endsWith(".md")) read.set(name, fs.readFileSync(file, "utf8"));
+		if (entry.isFile() && name.endsWith(".md") && !isReaderOnly(name)) read.set(name, fs.readFileSync(file, "utf8"));
 	}
 	sources = read;
 	return read;

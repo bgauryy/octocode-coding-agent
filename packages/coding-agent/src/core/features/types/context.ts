@@ -15,7 +15,6 @@ import type { ReadonlySessionManager, SessionManager } from "../../session-manag
 import type { BuildSystemPromptOptions } from "../../system-prompt.ts";
 import type { ExtensionUIContext } from "./ui.ts";
 
-// ============================================================================
 // Extension Context
 // ============================================================================
 

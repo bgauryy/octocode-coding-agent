@@ -35,9 +35,7 @@ export interface ThemeStyle extends TextAttributes {
 	bg?: ThemeBg | Color;
 }
 
-// ============================================================================
 // Color Utilities
-// ============================================================================
 
 export function resolveVarRefs(
 	value: ThemeColorValue,
@@ -123,9 +121,7 @@ function detectAppearance(foregrounds: Color[], backgrounds: Color[]): ThemeAppe
 	return undefined;
 }
 
-// ============================================================================
 // Theme Class
-// ============================================================================
 
 export class Theme {
 	readonly name?: string;
@@ -167,7 +163,6 @@ export class Theme {
 		);
 		const concreteForegrounds: Color[] = [];
 		const concreteBackgrounds: Color[] = [];
-		// Returns the escape sequence for the token's own slot.
 		const addToken = (token: ThemeToken, value: string | number, isBackground: boolean): string => {
 			if (value === "") {
 				(isBackground ? this.defaultBackgroundTokens : this.defaultForegroundTokens).push(token);

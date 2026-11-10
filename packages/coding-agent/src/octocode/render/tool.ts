@@ -19,7 +19,7 @@ import { bodyLines, clip, expandKey, GUTTER, INDENT, plural } from "../shared/te
 import type { ColorToken, Phase, RenderContext } from "./types.ts";
 
 /**
- * Shared tool presentation, in the shape Claude Code and Codex use:
+ * Shared tool presentation:
  *
  *   ✓ Name(summary) · 1.2s
  *     ⎿  one-line summary

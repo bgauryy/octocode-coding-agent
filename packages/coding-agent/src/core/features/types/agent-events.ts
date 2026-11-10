@@ -16,7 +16,6 @@ import type { CustomMessage } from "../../messages.ts";
 import type { ContextEditEntry, ProjectedSessionEntry } from "../../session-manager.ts";
 import type { NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts";
 
-// ============================================================================
 // Agent Events
 // ============================================================================
 
@@ -29,7 +28,10 @@ import type { NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts"
  */
 export interface ContextEvent {
 	type: "context";
+	/** The conversation without system messages; edit it or return a new list. */
 	messages: AgentMessage[];
+	/** The whole transcript as the request sends it, system messages included (read-only: changes are ignored). */
+	readonly transcript?: readonly AgentMessage[];
 }
 
 interface BeforeAgentStartEventBase {
@@ -173,7 +175,6 @@ export interface UIPromptEndEvent {
 	nested?: boolean;
 }
 
-/** Fired at the start of each turn */
 export interface TurnStartEvent {
 	type: "turn_start";
 	turnIndex: number;
@@ -190,7 +191,6 @@ export interface TurnPromptEvent {
 	systemPromptOptions: NormalizedBuildSystemPromptOptions;
 }
 
-/** Fired at the end of each turn */
 export interface TurnEndEvent extends BoundaryState {
 	type: "turn_end";
 	turnIndex: number;
@@ -213,7 +213,6 @@ export interface MessageUpdateEvent {
 	assistantMessageEvent: AssistantMessageEvent;
 }
 
-/** Fired when a message ends */
 export interface MessageEndEvent {
 	type: "message_end";
 	message: AgentMessage;

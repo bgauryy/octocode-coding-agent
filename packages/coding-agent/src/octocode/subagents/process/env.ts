@@ -12,6 +12,7 @@ import { ROLE_PROMPT_FILE_ENV } from "../../instructions/role.ts";
 import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
 	BACKLOG_ITEM_ENV,
+	MCP_DEFER_ROLES_ENV,
 	CACHE_RETENTION_ENV,
 	SUBAGENT_HOOKS_ENV,
 	READ_ONLY_ENV,
@@ -151,6 +152,7 @@ export function subagentProcessEnv(
 		// Children ask the provider why a request missed the cache (Anthropic API only) so a cold start can be attributed; a user value wins.
 		[CACHE_DIAGNOSTICS_ENV]: inherited[CACHE_DIAGNOSTICS_ENV] ?? "on",
 		...(profile?.hooks ? { [SUBAGENT_HOOKS_ENV]: "1" } : {}),
+		...(profile?.mcpDefer?.length ? { [MCP_DEFER_ROLES_ENV]: profile.mcpDefer.join(",") } : {}),
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
 		// A lean child's prompt is its role and task only: no memory notes are injected either.
 		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),

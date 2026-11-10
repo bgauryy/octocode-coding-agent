@@ -30,7 +30,7 @@ describe("MCP reason argument declared outside the root properties", () => {
 		});
 		expect(tool.prepareArguments).toBeUndefined();
 		expect(tool.parameters).toMatchObject({ properties: { reason: { type: "string" } } });
-		expect(tool.validationHint?.({ envelope: true })).toContain('takes only {"reason":"..."}');
+		expect(tool.validationHint?.({ envelope: true, properties: [] })).toContain('takes only {"reason":"..."}');
 	});
 
 	it("keeps a reason declared behind a root $ref", () => {
@@ -52,14 +52,14 @@ describe("MCP reason argument declared outside the root properties", () => {
 			expect(tool.coerceArguments).toBe(false);
 		}
 		const undeclared = define({ type: "object", properties: { q: { type: "string" } }, required: ["q", "reason"] });
-		expect(undeclared.validationHint?.({ envelope: true })).toBe(
+		expect(undeclared.validationHint?.({ envelope: true, properties: [] })).toBe(
 			'mcp__third__note takes only {"q":"..."} as its arguments, with no other top-level property.',
 		);
 	});
 });
 
-// B150: in declared presentation (no compact signature, no queries cap) a native `reason` copied into the call failed
-// with only "unexpected property reason"; the failure now names the accepted call shape, and the input stays unchanged.
+// In declared presentation (no compact signature, no queries cap) a native `reason` copied into the call is rejected;
+// the failure names the accepted call shape, and the input stays unchanged.
 describe("MCP declared tool sent an undeclared reason", () => {
 	it("rejects the call and names the call shape without reason", () => {
 		const tool = createMcpToolDefinition({

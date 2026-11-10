@@ -92,7 +92,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.onSelectAsDefaultCallback = onSelectAsDefault;
 		this.onCancelCallback = onCancel;
 
-		// Add top border
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
@@ -108,7 +107,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 		this.addChild(new Spacer(1));
 
-		// Create search input
 		this.searchInput = new Input();
 		if (initialSearchInput) {
 			this.searchInput.setValue(initialSearchInput);
@@ -123,7 +121,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 		this.addChild(new Spacer(1));
 
-		// Create list container
 		this.listContainer = new Container();
 		this.addChild(this.listContainer);
 
@@ -138,7 +135,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			);
 		}
 
-		// Add bottom border
 		this.addChild(new DynamicBorder());
 
 		// Render the current snapshot immediately, then refresh in the background.
@@ -284,7 +280,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		);
 		const endIndex = Math.min(startIndex + maxVisible, this.filteredModels.length);
 
-		// Show visible slice of filtered models
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredModels[i];
 			if (!item) continue;
@@ -306,15 +301,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.listContainer.addChild(new Text(line, 0, 0));
 		}
 
-		// Add scroll indicator if needed
 		if (startIndex > 0 || endIndex < this.filteredModels.length) {
 			const scrollInfo = theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredModels.length})`);
 			this.listContainer.addChild(new Text(scrollInfo, 0, 0));
 		}
 
-		// Show error message or "no results" if empty
 		if (this.errorMessage) {
-			// Show error in red
 			const errorLines = this.errorMessage.split("\n");
 			for (const line of errorLines) {
 				this.listContainer.addChild(new Text(theme.fg("error", line), 0, 0));
@@ -357,29 +349,21 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			if (this.filteredModels.length === 0) return;
 			this.selectedIndex = this.selectedIndex === this.filteredModels.length - 1 ? 0 : this.selectedIndex + 1;
 			this.updateList();
-		}
-		// Enter
-		else if (kb.matches(keyData, "tui.select.confirm")) {
+		} else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selectedModel = this.filteredModels[this.selectedIndex];
 			if (selectedModel) {
 				this.handleSelect(selectedModel.model);
 			}
-		}
-		// Escape or Ctrl+C
-		else if (kb.matches(keyData, "tui.select.cancel")) {
+		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			this.dispose();
 			this.onCancelCallback();
-		}
-		// Select and save as default
-		else if (kb.matches(keyData, "app.models.save") && this.onSelectAsDefaultCallback) {
+		} else if (kb.matches(keyData, "app.models.save") && this.onSelectAsDefaultCallback) {
 			const selectedModel = this.filteredModels[this.selectedIndex];
 			if (selectedModel) {
 				this.dispose();
 				this.onSelectAsDefaultCallback(selectedModel.model);
 			}
-		}
-		// Pass everything else to search input
-		else {
+		} else {
 			this.searchInput.handleInput(keyData);
 			this.filterModels(this.searchInput.getValue());
 		}

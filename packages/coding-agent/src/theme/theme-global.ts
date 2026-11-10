@@ -1,9 +1,5 @@
 import type { Theme } from "./theme-class.ts";
 
-// ============================================================================
-// Global Theme Instance
-// ============================================================================
-
 // Use globalThis so every module instance of this file sees the same theme
 const THEME_KEY = Symbol.for("@octocodeai/octocodecode:theme");
 

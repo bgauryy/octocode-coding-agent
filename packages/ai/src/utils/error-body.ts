@@ -58,6 +58,23 @@ type SdkErrorShape = Error & {
 	$response?: { statusCode?: unknown; body?: unknown };
 };
 
+/**
+ * `error.message` plus the system error code of its cause chain when the message does not name it: fetch and SDK
+ * connection errors say only "fetch failed" or "Connection error." and keep `ENETUNREACH` in `cause.code`, which retry
+ * classification reads from the text.
+ */
+export function withNetworkCauseCode(error: Error): string {
+	let cause: unknown = error;
+	for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
+		const code = (cause as Error & { code?: unknown }).code;
+		if (typeof code === "string" && /^E[A-Z_]+$/.test(code)) {
+			return error.message.includes(code) ? error.message : `${error.message} (${code})`;
+		}
+		cause = cause.cause;
+	}
+	return error.message;
+}
+
 export function normalizeProviderError(error: unknown): NormalizedProviderError {
 	if (!(error instanceof Error)) {
 		return { message: redactProviderText(safeJsonStringify(error)), messageCarriesBody: false };
@@ -66,7 +83,7 @@ export function normalizeProviderError(error: unknown): NormalizedProviderError 
 	const sdkError = error as SdkErrorShape;
 	const status = extractStatus(sdkError);
 	const body = extractBody(sdkError);
-	const message = redactProviderText(error.message);
+	const message = redactProviderText(withNetworkCauseCode(error));
 	const messageCarriesBody = body === undefined || message.includes(body);
 
 	return {

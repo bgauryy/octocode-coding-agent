@@ -4,7 +4,6 @@ import type { CompactionPreparation } from "../../compaction/index.ts";
 import type { RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionNameSource } from "../../session-manager.ts";
 
-// ============================================================================
 // Startup/Resource Events
 // ============================================================================
 
@@ -15,7 +14,6 @@ export interface ResourcesDiscoverEvent {
 	reason: "startup" | "reload";
 }
 
-/** Result from resources_discover event handler */
 export interface ResourcesDiscoverResult {
 	skillPaths?: string[];
 	promptPaths?: string[];
@@ -34,7 +32,6 @@ export interface McpServersChangeEvent {
 	servers: RegisteredMcpServer[];
 }
 
-// ============================================================================
 // Session Events
 // ============================================================================
 
@@ -129,7 +126,6 @@ export interface TreePreparation {
 	commonAncestorId: string | null;
 	entriesToSummarize: SessionEntry[];
 	userWantsSummary: boolean;
-	/** Custom instructions for summarization */
 	customInstructions?: string;
 	/** If true, customInstructions replaces the default prompt instead of being appended */
 	replaceInstructions?: boolean;

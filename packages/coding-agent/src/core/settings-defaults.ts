@@ -34,7 +34,9 @@ export const SETTINGS_DEFAULTS = {
 		provider: {
 			maxRetryDelayMs: 60000,
 		},
+		fallbackModels: [] as string[],
 	},
+	toolExecution: { earlyStart: false },
 	hideThinkingBlock: true,
 	showCacheMissNotices: false,
 	quietStartup: false,

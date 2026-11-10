@@ -21,7 +21,6 @@ import { explicitSkillIdentity } from "../skills.ts";
 import type { SessionInternals } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
-// ============================================================================
 // Skill Block Parsing
 // ============================================================================
 
@@ -60,7 +59,6 @@ export async function tryExecuteExtensionCommand(
 		await command.handler(args, ctx);
 		return true;
 	} catch (err) {
-		// Emit error via extension runner
 		runner.emitError({
 			extensionPath: `command:${commandName}`,
 			event: "command",

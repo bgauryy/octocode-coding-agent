@@ -12,7 +12,7 @@ import type { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, createTestUiContext, type Harness, getToolResult } from "./harness.ts";
 
 /**
- * B431 option A (T5-T11, M1-M7): the `mcps` block is renewed only when a connected server's contract changes (its
+ * The `mcps` block is renewed only when a connected server's contract changes (its
  * instructions, or a described tool's description or schemas), as one appended patch of the section that rides with the
  * tool changes of the same request; a reconnect, a reload of the same catalog or a withdrawal appends no `mcps` text.
  * Each case annotates the characters the request appended to the prompt.

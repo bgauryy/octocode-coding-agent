@@ -1,4 +1,4 @@
-// B117: `coordinate grant` answers the child's open budget question, so the ask closes and the child resumes at once.
+// `coordinate grant` answers the child's open budget question, so the ask closes and the child resumes at once.
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";

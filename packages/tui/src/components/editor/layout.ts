@@ -30,7 +30,6 @@ export function layoutText(
 	const layoutLines: LayoutLine[] = [];
 
 	if (state.lines.length === 0 || (state.lines.length === 1 && state.lines[0] === "")) {
-		// Empty editor
 		layoutLines.push({
 			text: "",
 			hasCursor: true,
@@ -39,14 +38,12 @@ export function layoutText(
 		return layoutLines;
 	}
 
-	// Process each logical line
 	for (let i = 0; i < state.lines.length; i++) {
 		const line = state.lines[i] || "";
 		const isCurrentLine = i === state.cursorLine;
 		const lineVisibleWidth = visibleWidth(line);
 
 		if (lineVisibleWidth <= contentWidth) {
-			// Line fits in one layout line
 			if (isCurrentLine) {
 				layoutLines.push({
 					text: line,
@@ -60,7 +57,6 @@ export function layoutText(
 				});
 			}
 		} else {
-			// Line needs wrapping - use word-aware wrapping
 			const chunks = wordWrapLine(line, contentWidth, segmentGraphemes(line));
 
 			for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
@@ -78,7 +74,6 @@ export function layoutText(
 
 				if (isCurrentLine) {
 					if (isLastChunk) {
-						// Last chunk: cursor belongs here if >= startIndex
 						hasCursorInChunk = cursorPos >= chunk.startIndex;
 						adjustedCursorPos = cursorPos - chunk.startIndex;
 					} else {
@@ -132,12 +127,10 @@ export function buildVisualLineMap(
 		const line = lines[i] || "";
 		const lineVisWidth = visibleWidth(line);
 		if (line.length === 0) {
-			// Empty line still takes one visual line
 			visualLines.push({ logicalLine: i, startCol: 0, length: 0 });
 		} else if (lineVisWidth <= width) {
 			visualLines.push({ logicalLine: i, startCol: 0, length: line.length });
 		} else {
-			// Line needs wrapping - use word-aware wrapping
 			const chunks = wordWrapLine(line, width, segmentGraphemes(line));
 			for (const chunk of chunks) {
 				visualLines.push({

@@ -37,7 +37,6 @@ function formatAzureOpenAIError(error: unknown): string {
 	return formatProviderError(normalizeProviderError(error), "Azure OpenAI API error");
 }
 
-// Azure OpenAI Responses-specific options
 export interface AzureOpenAIResponsesOptions extends AzureEndpointOptions {
 	/** Refreshable Entra token provider, e.g. Azure Identity's getBearerTokenProvider. */
 	azureADTokenProvider?: () => Promise<string>;

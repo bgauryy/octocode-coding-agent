@@ -8,7 +8,7 @@ import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 export const settingsIntro = [
 	"`settings.json` holds global defaults in the agent directory (see [Configuration](configuration.md#agent-directory)) and project overrides in `.octocode/settings.json`. A trusted project's values override global ones: objects merge recursively and arrays replace. Edit the file and run `/reload`, or use `/configuration set <key> <value>` and `unset <key>` (`--local` for the project file); `octocode --set <key>=<value>` sets one for a single run. All locations and precedence: [Configuration](configuration.md).",
 	"For editor validation and completion, point `$schema` at `schemas/settings.schema.json` in the installed Octocode package.",
-	"Loading is permissive: a key this page does not list is kept in the file but has no effect. That covers root keys and keys inside a listed object setting with named fields (reported as a dotted path such as `thinkingBudgets.xhigh`). Startup reports them once per load, one line per file: `~/.octocode/octocodecode/settings.json: 2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): delete them`.",
+	"Loading is permissive: a key this page does not list is kept in the file but has no effect. That covers root keys and keys inside a listed object setting with named fields (reported as a dotted path such as `thinkingBudgets.xhigh`). Startup reports them once per load, one line per file: `~/.octocode/octocodecode/settings.json: 2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): /configuration unset thinkingBudgets.xhigh compaction`. Running that command removes exactly the listed keys; add `--local` for a project file.",
 	"Nested fields are listed as `parent.child`. Defaults shown are the values Octocode uses when a field is absent; an empty Default cell means no fixed value.",
 ].join("\n\n");
 
@@ -68,6 +68,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"doubleEscapeAction",
 			"treeFilterMode",
 			"defaultTools",
+			"toolExecution",
 			"subagents",
 			"mcpPresentation",
 		],

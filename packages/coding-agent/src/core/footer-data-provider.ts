@@ -102,7 +102,6 @@ export class FooterDataProvider {
 		return () => this.branchChangeCallbacks.delete(callback);
 	}
 
-	/** Internal: set extension status */
 	setExtensionStatus(key: string, text: string | undefined, tone?: StatusTone): void {
 		const entry = text === undefined ? undefined : statusEntry(text, tone);
 		if (sameStatus(this.extensionStatuses.get(key), entry)) return;
@@ -114,7 +113,6 @@ export class FooterDataProvider {
 		this.changed();
 	}
 
-	/** Internal: clear extension statuses */
 	clearExtensionStatuses(): void {
 		if (this.extensionStatuses.size === 0) return;
 		this.extensionStatuses = new Map();
@@ -126,7 +124,6 @@ export class FooterDataProvider {
 		return this.availableProviderCount;
 	}
 
-	/** Internal: update available provider count */
 	setAvailableProviderCount(count: number): void {
 		if (this.availableProviderCount === count) return;
 		this.availableProviderCount = count;

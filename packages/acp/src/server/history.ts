@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { RequestError, methods, type AgentContext } from "@agentclientprotocol/sdk";
 import type { AcpBrokerHost, AcpSessionInfo } from "../host.ts";
-import { normalizePath } from "../../../common/src/paths.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { compactionReplay, customMessageUpdates, toolContent, toolKind, toolTitle } from "./events.ts";
 
 function sessionDir(host: AcpBrokerHost, cwd: string, override?: string): string | undefined {

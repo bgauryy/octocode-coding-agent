@@ -34,18 +34,11 @@ export const OCTOCODE_DIR = ".octocode";
 export const workspaceOctocodeDir = (root: string): string => path.join(root, OCTOCODE_DIR);
 
 /**
- * Octocode Code's home: `OCTOCODE_HOME` when set, else `~/.octocode/octocodecode`.
- */
-export function octocodeHome(env: NodeJS.ProcessEnv = process.env, home = os.homedir()): string {
-	return getOctocodeHome(env, home);
-}
-
-/**
  * A folder under the Octocode home for files a tool writes at runtime (logs, spilled output, browser profiles), so
  * nothing the agent produces lands in the shared temp directory. Created on first use.
  */
 export function outputDir(name: string, env: NodeJS.ProcessEnv = process.env): string {
-	return privateDir(path.join(octocodeHome(env), name));
+	return privateDir(path.join(getOctocodeHome(env), name));
 }
 
 /** Resolve tracked and reserved files with the same rules as the native file tools. */

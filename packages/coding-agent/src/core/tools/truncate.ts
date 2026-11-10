@@ -21,13 +21,9 @@ export interface TruncationResult {
 	truncated: boolean;
 	/** Which limit was hit: "lines", "bytes", or null if not truncated */
 	truncatedBy: "lines" | "bytes" | null;
-	/** Total number of lines in the original content */
 	totalLines: number;
-	/** Total number of bytes in the original content */
 	totalBytes: number;
-	/** Number of complete lines in the truncated output */
 	outputLines: number;
-	/** Number of bytes in the truncated output */
 	outputBytes: number;
 	/** Whether the last line was partially truncated (only for tail truncation edge case) */
 	lastLinePartial: boolean;

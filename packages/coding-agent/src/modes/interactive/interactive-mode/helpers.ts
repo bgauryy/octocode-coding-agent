@@ -95,10 +95,6 @@ export function formatCrashExtensionHint(extensionMatches: readonly string[] | u
 export const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING =
 	"A Claude subscription token is in use: requests draw on your Claude plan's usage limits (https://claude.ai/settings/usage). Anthropic's terms reserve plan credentials for ordinary individual use and let Anthropic restrict their use outside its own apps: https://code.claude.com/docs/en/legal-and-compliance. Disable this warning in /settings.";
 
-export function isAnthropicSubscriptionAuthKey(apiKey: string | undefined): boolean {
-	return typeof apiKey === "string" && apiKey.startsWith("sk-ant-oat");
-}
-
 export function quoteIfNeeded(value: string): string {
 	if (value.length > 0 && !/[^a-zA-Z0-9_\-./~:@]/.test(value)) {
 		return value;

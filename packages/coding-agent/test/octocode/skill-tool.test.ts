@@ -339,8 +339,8 @@ describe("a session with skills", () => {
 		await h.session.prompt("do alpha work");
 		const sections = getCurrentSystemMessage(h.session.messages)?.sections;
 		expect(sections?.skills).toContain("Use the skill tool, one call per name, to load every skill");
-		expect(sections?.skills).toContain("<name>alpha</name>");
-		expect(sections?.skills).not.toContain("<name>hidden</name>");
+		expect(sections?.skills).toContain('<skill name="alpha">');
+		expect(sections?.skills).not.toContain('<skill name="hidden"');
 		const result = getToolResult(h, "skill");
 		expect(result.isError).toBe(false);
 		expect(JSON.stringify(result.content)).toContain("BODY_alpha");

@@ -5,6 +5,7 @@ import {
 	GLYPH,
 	MOTION,
 	mixColors,
+	shimmerText,
 	rgbColor,
 	SPINNER,
 	settle,
@@ -109,4 +110,29 @@ export function markMoves(state: UiState, options: MarkOptions = {}): boolean {
 /** The frame interval a moving mark needs. */
 export function markFrameMs(state: UiState): number {
 	return state === "running" ? MOTION.spinnerMs : MOTION.glowFrameMs;
+}
+
+/** What `liveShimmer` needs from a theme: concrete colours and their colour mode. */
+export interface ShimmerTheme {
+	fg(color: ThemeColor, text: string): string;
+	readonly colors: Readonly<Partial<Record<string, Color>>>;
+	readonly appearance?: "dark" | "light";
+	getColorMode(): Parameters<typeof shimmerText>[1]["mode"];
+}
+
+/**
+ * `text` with the light band the working line's verb has: `text` colour peaking toward the accent. It is plain `text`
+ * colour in reduced motion and in a theme without concrete colours, so every live label dims the same way.
+ */
+export function liveShimmer(theme: ShimmerTheme, text: string, now?: number): string {
+	try {
+		const { text: base, accent } = theme.colors;
+		if (!animationClock.isReducedMotion() && base && accent) {
+			const peak = mixColors(base, accent, theme.appearance === "light" ? 0.7 : 0.55);
+			return shimmerText(text, { base, peak, mode: theme.getColorMode(), ...(now === undefined ? {} : { now }) });
+		}
+	} catch {
+		// A theme without concrete colours draws the text plain.
+	}
+	return theme.fg("text", text);
 }

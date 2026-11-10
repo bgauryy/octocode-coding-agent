@@ -139,7 +139,6 @@ export interface NewMemory {
 	now: number;
 }
 
-/** Inserts a memory and returns its id. */
 export function insert(db: DatabaseSync, memory: NewMemory): number {
 	const result = db
 		.prepare(

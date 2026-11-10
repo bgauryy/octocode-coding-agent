@@ -20,6 +20,10 @@ export const PACKAGE_POLICY = {
 	webview: ["contracts"],
 };
 
+// Hosted workspaces that still reach a sibling workspace compiled into the same host by relative path. The list only shrinks: every
+// other package imports its siblings through their declared package names.
+const RELATIVE_SIBLING_BASELINE = new Set(["db", "mcp"]);
+
 export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLICY, layerRules = LAYER_RULES) {
 	const { hosts, issues } = sourceWorkspaceGroups(packages);
 	const unit = (name) => hosts.get(name) ?? name;
@@ -54,6 +58,10 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 					target = resolved;
 					if (unit(source.package) !== unit(target))
 						issues.push(`relative package import: ${source.package}/${source.path} -> ${specifier}`);
+					else if (manifest.octocodeSource && !RELATIVE_SIBLING_BASELINE.has(source.package))
+						issues.push(
+							`relative sibling import: ${source.package}/${source.path} -> ${specifier} (import it by package name and declare it)`,
+						);
 				}
 			}
 			// A layer may not reach the layer above it, except through files its baseline already lists.
@@ -89,7 +97,13 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 				issues.push(`forbidden import: ${source.package}/${source.path} -> ${target}`);
 			if (
 				!Object.hasOwn(
-					{ ...manifest.dependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies },
+					{
+						...manifest.dependencies,
+						...manifest.peerDependencies,
+						...manifest.optionalDependencies,
+						// A hosted workspace is compiled into its host, so it declares sibling workspaces as devDependencies.
+						...(manifest.octocodeSource ? manifest.devDependencies : {}),
+					},
 					packages[target].name,
 				)
 			)

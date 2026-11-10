@@ -127,7 +127,6 @@ function compactRawKeys(keys: string[]): string {
 		: keys.join("/");
 }
 
-/** Label input component shown when editing a label */
 export class LabelInput implements Component, Focusable {
 	private input: Input;
 	private entryId: string;

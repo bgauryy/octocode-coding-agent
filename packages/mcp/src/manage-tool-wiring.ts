@@ -1,6 +1,8 @@
 /** Connects the model's `mcp` tool to this session's servers. */
 
+import { readServerResource, resourceListing } from "./catalog-requests.ts";
 import { reconnect } from "./connections.ts";
+import { toToolResult } from "./tool-result.ts";
 import { serverInstructions, toolCatalog } from "./inspection.ts";
 import { mcpServerGroup, mcpServerSource } from "./group.ts";
 import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
@@ -34,6 +36,9 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
 			instructions: (name) => serverInstructions(state, name),
+			resources: (name, signal) => resourceListing(state, name, signal),
+			read: async (name, uri, signal) =>
+				toToolResult(`resource ${uri}`, { content: await readServerResource(state, name, uri, signal) }, false),
 			servers: (): ManagedMcpServer[] =>
 				state.servers.map((server) => ({
 					name: server.entry.name,

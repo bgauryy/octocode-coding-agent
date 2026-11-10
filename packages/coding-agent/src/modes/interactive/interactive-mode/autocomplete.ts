@@ -95,7 +95,6 @@ export function getSlashCommands(
 	host: AutocompleteHost,
 	includeSkills = host.settingsManager.getEnableSkillCommands(),
 ): SlashCommand[] {
-	// Define commands for autocomplete
 	const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.map((command) => ({
 		name: command.name,
 		description: command.description,
@@ -117,7 +116,6 @@ export function getSlashCommands(
 
 			if (models.length === 0) return null;
 
-			// Create items with provider/id format
 			const items = models.map((m) => ({
 				id: m.id,
 				provider: m.provider,
@@ -180,7 +178,6 @@ export function getSlashCommands(
 				.find((entry) => entry.name === name)?.getArgumentCompletions;
 	}
 
-	// Convert prompt templates to SlashCommand format for autocomplete
 	const templateCommands: SlashCommand[] = getPromptCommands(
 		host.session.promptTemplates,
 		host.session.extensionRunner.getRegisteredCommands(),
@@ -190,7 +187,6 @@ export function getSlashCommands(
 		...(template.argumentHint && { argumentHint: template.argumentHint }),
 	}));
 
-	// Convert extension commands to SlashCommand format
 	const builtinCommandNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 	const extensionCommands: SlashCommand[] = host.session.extensionRunner
 		.getRegisteredCommands()

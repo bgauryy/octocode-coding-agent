@@ -73,7 +73,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 				level === defaultThinkingLevel ? `${LEVEL_DESCRIPTIONS[level]} · default` : LEVEL_DESCRIPTIONS[level],
 		}));
 
-		// Add top border
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 		this.addChild(new Text("Thinking Level", 0, 0));
@@ -86,7 +85,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		this.addChild(this.searchInput);
 		this.addChild(new Spacer(1));
 
-		// Create selector
 		this.selectList = this.buildSelectList(this.allItems, currentLevel);
 		this.selectListChildIndex = this.children.length;
 		this.addChild(this.selectList);
@@ -99,7 +97,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 			]),
 		);
 
-		// Add bottom border
 		this.addChild(new DynamicBorder());
 	}
 

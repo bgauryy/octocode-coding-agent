@@ -6,7 +6,7 @@ Part of the [`@octocodeai/octocode-ai` guide](../README.md). Snippets assume a `
 
 A **provider** is the runtime unit: it owns its model catalog, its auth (API key resolution, OAuth flows), and its stream behavior. A `Models` collection holds providers and routes every request to the provider that owns the model.
 
-Providers internally share **API implementations** (the wire protocols): Anthropic models use `anthropic-messages`, OpenAI uses `openai-responses`, while xAI, Groq, Cerebras, OpenRouter, and most others share `openai-completions`. Mixed-API providers (GitHub Copilot, OpenCode Zen) dispatch per model.
+Providers internally share **API implementations** (the wire protocols): Anthropic models use `anthropic-messages`, OpenAI and xAI use `openai-responses`, while Groq, Cerebras, OpenRouter, and most others share `openai-completions`. Mixed-API providers (GitHub Copilot, OpenCode Zen) dispatch per model.
 
 HTTP and error handling for Chat Completions, Responses, Mistral and classifiers comes from `@ai-sdk/provider-utils`, with shared SSE framing for those streams plus Anthropic and Codex; adapters keep grammar tools, reasoning replay, cache boundaries and usage accounting. Official Anthropic, Google, AWS and Azure SDKs remain where they own the vendor protocol. See [library boundaries](../../../docs/FEATURES.md#library-boundaries).
 

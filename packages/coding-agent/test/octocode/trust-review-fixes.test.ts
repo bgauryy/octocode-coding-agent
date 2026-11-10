@@ -15,7 +15,7 @@ import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
 import { belowSession, insideSessionShell } from "../../src/octocode/trust/session-shell.ts";
 
 /**
- * The B409 trust review fixes, each through the entry point it concerns, with an isolated home and agent database.
+ * The trust review fixes, each through the entry point it concerns, with an isolated home and agent database.
  */
 const resolver = fileURLToPath(new URL("../../scripts/source-resolver.ts", import.meta.url));
 const cli = fileURLToPath(new URL("../../src/cli.ts", import.meta.url));

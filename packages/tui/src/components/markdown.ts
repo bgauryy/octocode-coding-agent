@@ -22,7 +22,6 @@ export class Markdown implements Component {
 	private options: MarkdownOptions;
 	private defaultStylePrefix?: string;
 
-	// Cache for rendered output
 	private cachedText?: string;
 	private cachedWidth?: number;
 	private cachedLines?: string[];
@@ -68,7 +67,6 @@ export class Markdown implements Component {
 	}
 
 	render(width: number): string[] {
-		// Check cache
 		if (this.cachedLines && this.cachedText === this.text && this.cachedWidth === width) {
 			return this.cachedLines;
 		}
@@ -80,7 +78,6 @@ export class Markdown implements Component {
 		// Don't render anything if there's no actual text
 		if (!text || text.trim() === "") {
 			const result: string[] = [];
-			// Update cache
 			this.cachedText = this.text;
 			this.cachedWidth = width;
 			this.cachedLines = result;
@@ -128,7 +125,6 @@ export class Markdown implements Component {
 			isImageLine,
 		);
 
-		// Update cache
 		this.cachedText = this.text;
 		this.cachedWidth = width;
 		this.cachedLines = result;

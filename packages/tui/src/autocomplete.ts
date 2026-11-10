@@ -1,6 +1,6 @@
 import { basename, isAbsolute, relative } from "node:path";
 import { walkDirectoryWithFd } from "./autocomplete/fd.ts";
-import { getFileIndex, getFileIndexStatus, pendingIndexRefresh, type IndexedPath } from "./autocomplete/file-index.ts";
+import { getFileIndex, getFileIndexStatus, refreshFileIndexNow, type IndexedPath } from "./autocomplete/file-index.ts";
 import { getFileSuggestions, resolveScopedFuzzyQuery, scopedPathForDisplay } from "./autocomplete/file-suggestions.ts";
 import {
 	buildCompletionValue,
@@ -191,7 +191,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		return replaceLine(item.value, valueOffset);
 	}
 
-	// Extract @ prefix for fuzzy file suggestions
 	private extractAtPrefix(text: string): string | null {
 		const quotedPrefix = extractQuotedPrefix(text);
 		if (quotedPrefix?.startsWith('@"')) {
@@ -304,9 +303,9 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const scopedQuery = resolveScopedFuzzyQuery(this.basePath, query);
 			const fuzzyQuery = scopedQuery?.query ?? query;
 			let ranked = await this.rankIndex(scopedQuery, fuzzyQuery, options.signal);
-			// The cached index may predate the file the user means (a new file, a checkout): when nothing matched
-			// and a refresh is running, wait for it once and rank again.
-			const refresh = ranked.length === 0 ? pendingIndexRefresh(this.basePath) : null;
+			// The cached index may predate the file the user means (a new file, a checkout): when nothing matched,
+			// rebuild it now (or join the running rebuild), wait once and rank again.
+			const refresh = ranked.length === 0 ? refreshFileIndexNow(this.basePath, this.fdPath) : null;
 			if (refresh) {
 				await refresh;
 				ranked = await this.rankIndex(scopedQuery, fuzzyQuery, options.signal);

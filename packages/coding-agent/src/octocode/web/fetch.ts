@@ -160,6 +160,22 @@ export function retryAfterMs(header: string | null, now = Date.now()): number | 
 
 const backoff = (attempt: number) => RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * RETRY_BASE_MS);
 
+const causeOf = (error: NetworkError) => (error as { cause?: { code?: unknown; message?: unknown } }).cause;
+
+/**
+ * Advice for a cause that fails the same way on every try (so it is not retried), or undefined for one that may pass
+ * later. A refused connection or an untrusted certificate is no bot block: a browser would meet the same.
+ */
+function lastingCause(error: NetworkError): string | undefined {
+	const code = causeOf(error)?.code;
+	if (typeof code !== "string") return undefined;
+	if (code === "ECONNREFUSED")
+		return "Nothing accepts connections at that address and port: check the URL, or start the server first";
+	if (/^(?:CERT_|ERR_TLS_CERT|DEPTH_ZERO_SELF_SIGNED|SELF_SIGNED_CERT|UNABLE_TO_(?:GET|VERIFY))/.test(code))
+		return "Its TLS certificate is not trusted here; do not work around the check: ask the user whether the site is expected to use this certificate";
+	return undefined;
+}
+
 /** The network cause of a failed fetch (ECONNRESET, ENOTFOUND, a TLS error), or a timeout. */
 function describeFetchError(error: unknown, url: string, tries: number): Error {
 	if (
@@ -169,10 +185,11 @@ function describeFetchError(error: unknown, url: string, tries: number): Error {
 		return new Error(`Timed out after ${TIMEOUT_MS / 1000}s fetching ${url}`);
 	}
 	if (!(error instanceof NetworkError)) return error instanceof Error ? error : new Error(String(error));
-	const cause = (error as { cause?: { code?: unknown; message?: unknown } }).cause;
+	const cause = causeOf(error);
 	const detail = [cause?.code, cause?.message].filter((part) => typeof part === "string" && part).join(": ");
+	const advice = lastingCause(error) ?? `The site may block automated requests; ${RENDER_ADVICE}`;
 	return new Error(
-		`Could not fetch ${url}: ${detail || error.message}${tries > 1 ? ` (tried ${tries} times)` : ""}. The site may block automated requests; ${RENDER_ADVICE}.`,
+		`Could not fetch ${url}: ${detail || error.message}${tries > 1 ? ` (tried ${tries} times)` : ""}. ${advice}.`,
 	);
 }
 
@@ -195,8 +212,9 @@ async function fetchWithRetry(
 				{ sameHost: true, firstHopPrivate: options.private === true },
 			);
 		} catch (error) {
-			// Only network failures are worth another try: not a refusal, a redirect, a timeout or the user's abort.
-			if (signal?.aborted || !(error instanceof NetworkError) || attempt >= RETRIES)
+			// Only passing network failures are worth another try: not a refusal, a redirect, a timeout, the user's abort,
+			// a refused connection or an untrusted certificate.
+			if (signal?.aborted || !(error instanceof NetworkError) || lastingCause(error) || attempt >= RETRIES)
 				throw describeFetchError(error, url, attempt + 1);
 			await sleep(backoff(attempt), undefined, { signal });
 			continue;

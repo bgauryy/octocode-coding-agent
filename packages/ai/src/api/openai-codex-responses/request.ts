@@ -18,10 +18,6 @@ import {
 	type RequestBody,
 } from "./types.ts";
 
-// ============================================================================
-// Request Building
-// ============================================================================
-
 export function buildRequestBody(
 	model: Model<"openai-codex-responses">,
 	context: TranscriptContext,
@@ -136,10 +132,6 @@ export function resolveCodexWebSocketUrl(baseUrl?: string): string {
 }
 
 const OPENAI_BETA_RESPONSES_WEBSOCKETS = "responses_websockets=2026-02-06";
-
-// ============================================================================
-// Auth & Headers
-// ============================================================================
 
 export function extractAccountId(token: string): string {
 	try {

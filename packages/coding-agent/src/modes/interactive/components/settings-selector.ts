@@ -216,7 +216,6 @@ export class SettingsSelectorComponent extends Container {
 
 		addConditionalItems(items, config, callbacks, supportsImages);
 
-		// Add borders
 		this.addChild(new DynamicBorder());
 
 		this.settingsList = new SettingsList(

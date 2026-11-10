@@ -83,6 +83,13 @@ export async function showProviderManager(
 			return;
 		}
 		const view = await loadSourcesView(ctx, options.sourceEnvironment);
+		// The kind of every signed-in provider, resolved before the rows are built; a key is inspected, never shown.
+		const kinds = new Map<string, string>();
+		await Promise.all(
+			[...ids]
+				.filter((id) => runtime.getProviderAuthStatus(id).configured)
+				.map(async (id) => kinds.set(id, await runtime.getCredentialKind(id, AbortSignal.timeout(15_000)))),
+		);
 		const providerRows = (disabled: boolean): PageRow[] =>
 			[...ids]
 				.filter((id) => isProviderDisabled(host, id) === disabled)
@@ -90,7 +97,7 @@ export async function showProviderManager(
 				.sort((a, b) => nameOf(a).localeCompare(nameOf(b)))
 				.map((id) => {
 					const configured = runtime.getProviderAuthStatus(id).configured;
-					const method = runtime.isUsingOAuth(id) ? "account" : "key";
+					const method = kinds.get(id) ?? "key";
 					const count = modelCount(host, id);
 					// A saved credential outlives its provider when a models.json entry is removed or renamed.
 					const state = !runtime.getProvider(id)

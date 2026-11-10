@@ -12,9 +12,8 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
- * Crash and resume must not inject team mail twice (review 2026-10-31, finding B1 of
- * `.octocode/review-kimi/messaging-hooks-mcp.md`): a recipient that accepted a message into its transcript but
- * crashed before the model saw it, then resumed under its recorded name. Every rejoin path retires the old row
+ * Crash and resume must not inject team mail twice (a recipient that accepted a message into its transcript but
+ * crashed before the model saw it, then resumed under its recorded name). Every rejoin path retires the old row
  * (unread mail becomes dead letters) before a fresh inbox could hand it again; these tests pin that.
  */
 

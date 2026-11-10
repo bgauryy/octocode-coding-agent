@@ -153,7 +153,7 @@ flowchart TD
 | `/trust remove <number\|path>`                                                                      | Revoke                                             |
 | `octocode trust list [--json]`, `add [path] [--scope ...] [--yes]`, `remove <number\|path> [--yes]` | Same without a session; `--yes` skips confirmation |
 
-Project resources need trust, except `AGENTS.md`-style instruction files, which load as text. Hooks are always on (Claude, Codex and Octocode hook files, each under its own profile; `disableAllHooks: true` in a loaded hook file turns them off); [Claude permission rules](permissions.md#claude-permission-rules) always apply. See [hooks](hooks.md).
+Project resources need trust, except `AGENTS.md`-style instruction files, which load as text. Octocode hook files always load; Claude Code and Codex hook files load once that harness is on (`/configuration enable harness:claude`), each under its own profile; `disableAllHooks: true` in a loaded hook file turns them all off; [Claude permission rules](permissions.md#claude-permission-rules) always apply. See [hooks](hooks.md).
 
 ## Pi configuration fallback
 
@@ -239,7 +239,32 @@ A transient model failure is retried up to `retry.maxRetries` times (default 3),
 | Failure class                                                                                                                                                                                                                                    | Policy                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Rate limits (`429`, "too many requests") and capacity or transport failures (`overloaded`, `502`, `503`, `504`, `520`, `524`, `529`, `server_busy`, "at capacity", connection reset, closed socket or websocket, `terminated`, early stream end) | At least six retries even if `retry.maxRetries` is lower (those beyond the configured count only within three minutes of the first failure). Wait spreads by up to half again the backoff, is at least the provider's `retry-after` plus up to 1 s, and stays capped by `retry.maxAgentDelayMs` |
+| No route to the network (`ENETUNREACH`, `EHOSTUNREACH`, `ENETDOWN`, `EAI_AGAIN`: sleep, VPN drop, network switch)                                                                                                                                | Retried for up to ten minutes from the first failure, at most 30 s apart, so a run continues when the connection returns. `ENOTFOUND` (a host that does not exist) keeps the configured count                                                                                                   |
 | Other retryable errors                                                                                                                                                                                                                           | Configured count and exact backoff (some never clear, and each attempt resends the context)                                                                                                                                                                                                     |
+
+### When a usage limit is reached
+
+A usage limit (quota, plan or billing limit, no funds) is not retried: it resets after hours. List models to continue on in `retry.fallbackModels`, in order, as `provider/id` with an optional `:thinking` level:
+
+```json
+{ "retry": { "fallbackModels": ["openrouter/some-model", "openai/other-model:high"] } }
+```
+
+```mermaid
+flowchart LR
+  E[Usage-limit error] --> L{Next listed model:<br/>signed in, not at its own limit,<br/>window holds the context?}
+  L -->|yes| S[Becomes the session model<br/>with a notice] --> C[Turn continues]
+  L -->|none left| F[Turn ends with the error]
+```
+
+| Behavior        | Detail                                                                                                                                                                                                               |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default         | Empty list: the turn ends with the error                                                                                                                                                                             |
+| Stays selected  | The session keeps the fallback model; `/model` switches back. Switching back by itself would pay for a cold prompt cache twice                                                                                       |
+| Skipped entries | No credentials, a usage limit in the last 15 minutes, or a context window that cannot hold the conversation plus the room kept free for compaction (compacting first would run on the model that just hit its limit) |
+| Virtual models  | The failure goes to the router once per failing model, so it can pick another model; the selection stays virtual and the list is not used                                                                            |
+| Subagents       | Use the same list; new subagent routes avoid a provider that just reported a usage limit                                                                                                                             |
+| Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                         |
 
 Compaction and branch summaries use the same policy; Esc stops a wait. After a subagent fails on a rate limit, the parent holds new subagent starts for 5 seconds, doubling to 30 for each further failure, and resets after a quiet minute.
 
@@ -266,6 +291,14 @@ Global `cacheWarming`: `"off"`, `"streaming"` (refresh while the agent is active
 ```
 
 A refresh replays the request with a one-token cap, needs a known cache lifetime and a replay-safe request, and never runs returned tool calls. It stops when context changes, the deadline is missed, a refresh fails or the provider reports no cache read. Active warming ends one hour after the original request; idle warming after thirty minutes or one cache lifetime, whichever is later. `/status` shows usage. Savings are not guaranteed: [prompt caching](prompt-caching.md).
+
+## Early tool start
+
+`toolExecution.earlyStart` (default `false`) lets a read-only call start while the model's reply is still streaming, as soon as the model has finished writing that call. Only a read that the current permission mode allows without asking qualifies: an MCP tool its server entry declares read-only, or a tool that declares itself read-only. Anything that could write or run a command waits for the reply to end, and so does a call a `PreToolUse` hook matches (the hook then runs once, and never for a call that is thrown away) or a read that turns out to need an answer (a source rule or hook that asks, untrusted text in its arguments, a credential read): no dialog opens while the reply streams, and the call is judged again normally once it ended. A call that was started early but never ran leaves no permission audit entry. If the reply is cut off by the output limit, the early calls are discarded and every call in it gets the output-limit error, so send them again.
+
+```json
+{ "toolExecution": { "earlyStart": true } }
+```
 
 ## Other topics
 

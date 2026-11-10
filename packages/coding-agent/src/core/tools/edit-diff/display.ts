@@ -1,6 +1,5 @@
 import * as Diff from "diff";
 
-/** Generate a standard unified patch. */
 export function generateUnifiedPatch(path: string, oldContent: string, newContent: string, contextLines = 4): string {
 	return Diff.createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
 		context: contextLines,

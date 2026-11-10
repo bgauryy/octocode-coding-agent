@@ -115,6 +115,7 @@ export class Permission {
 		agent?: () => string | undefined;
 		stderr?: (text: string) => void;
 		snapshotMs?: number;
+		cardBudgetMs?: number;
 	}) {
 		this.#api = options.api;
 		this.#env = options.env ?? process.env;
@@ -152,6 +153,7 @@ export class Permission {
 			grants: this.#grants,
 			denials: this.#denials,
 			snapshotMs: this.#snapshotMs,
+			...(options.cardBudgetMs === undefined ? {} : { cardBudgetMs: options.cardBudgetMs }),
 			relay: this.#relay,
 			isSubagent: this.#isSubagent,
 			select: (ctx, request) => this.#select(ctx, request),

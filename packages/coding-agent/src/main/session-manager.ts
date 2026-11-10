@@ -100,7 +100,6 @@ function isInteractiveStart(parsed: Args): boolean {
 	return resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY) === "interactive";
 }
 
-/** Prompt user for yes/no confirmation */
 async function promptConfirm(message: string): Promise<boolean> {
 	return new Promise((resolve) => {
 		const rl = createInterface({

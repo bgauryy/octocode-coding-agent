@@ -16,7 +16,6 @@ import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 
 const OPEN_TASKS = TASK_STATES.filter(isOpenTask);
 
-/** The `/backlog` subcommand. */
 export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand {
 	const doWeb = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
 		const url = await deps.openView(ctx, backlog);

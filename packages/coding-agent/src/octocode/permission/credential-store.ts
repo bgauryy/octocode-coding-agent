@@ -8,11 +8,13 @@ import { readerLocations } from "../shared/local-reads.ts";
 import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { optionalString } from "../shared/util.ts";
+import { modelsFileHoldsLiteralKey } from "../../core/models-json-keys.ts";
 
 /**
  * Reads of Octocode's credential store: the `auth.json` files a session loads keys from (the agent directory's, the
- * Octocode home's, and Pi's when Pi's roots are a read-only fallback), the MCP OAuth tokens in `mcp-auth.json`, and the OS keychain commands that read an entry
- * back (`security find-generic-password … -w`, `secret-tool lookup`). What they print enters the model context, so a
+ * Octocode home's, and Pi's when Pi's roots are a read-only fallback), a `models.json` that holds a literal `apiKey`, the
+ * MCP OAuth tokens in `mcp-auth.json`, the credential files of other command-line tools under the home (`~/.aws/credentials`,
+ * `~/.netrc`, …), and the OS keychain commands that read an entry back (`security find-generic-password … -w`, `secret-tool lookup`). What they print enters the model context, so a
  * read is a `credential.read` reason: it asks in `manual` and `workspace`, and `full` runs it and records it. Writes are
  * not decided here: `stateFolderRefusal` refuses those in every mode. Best effort, not a sandbox: a path the call does
  * not spell (`cat $X`, a glob, a program that computes it) is not seen.
@@ -22,6 +24,22 @@ import { optionalString } from "../shared/util.ts";
 const CREDENTIAL_ROOTS = new Set([OCTOCODE_DIR.toLowerCase(), ".pi"]);
 /** Provider keys (`auth.json`) and MCP OAuth tokens (`mcp-auth.json`, beside it in the agent directory). */
 const STORE_FILES = ["auth.json", "mcp-auth.json"];
+/** The model list: a credential file only when it holds a literal `apiKey` (a `$NAME` or `!command` reference holds no secret). */
+const MODELS_FILE = "models.json";
+/** Credential files of common command-line tools, relative to the home folder. */
+const CLI_CREDENTIAL_FILES = [
+	".aws/credentials",
+	".config/gh/hosts.yml",
+	".config/gcloud/application_default_credentials.json",
+	".config/gcloud/credentials.db",
+	".azure/accessTokens.json",
+	".docker/config.json",
+	".kube/config",
+	".netrc",
+	".npmrc",
+	".pypirc",
+	".git-credentials",
+];
 /** Words checked per shell command, so a very long command costs a bounded number of file-system lookups. */
 const WORD_LIMIT = 400;
 
@@ -29,24 +47,27 @@ const WORD_LIMIT = 400;
 const key = (file: string): string => canonicalPath(file).toLowerCase();
 
 /** The `auth.json` paths a session reads, and the folders whose read can reach one: each store's folder, and its parent when that is an Octocode or Pi root folder. */
-function credentialPaths(): { files: Set<string>; folders: Set<string> } {
+function credentialPaths(): { files: Set<string>; models: Set<string>; folders: Set<string> } {
 	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getLegacyConfigDirs()]);
 	const files = new Set<string>();
+	const models = new Set<string>();
 	const folders = new Set<string>();
 	for (const home of homes) {
 		for (const name of STORE_FILES) files.add(key(path.join(home, name)));
+		models.add(key(path.join(home, MODELS_FILE)));
 		folders.add(key(home));
 		const parent = path.dirname(home);
 		if (CREDENTIAL_ROOTS.has(path.basename(parent).toLowerCase()) && parent !== os.homedir()) folders.add(key(parent));
 	}
-	return { files, folders };
+	for (const name of CLI_CREDENTIAL_FILES) files.add(key(path.join(os.homedir(), name)));
+	return { files, models, folders };
 }
 
 /** Whether reading `file` (an absolute path) can read a credential store: it is one, or a folder that holds one. */
 function touchesCredentialStore(file: string): boolean {
-	const { files, folders } = credentialPaths();
+	const { files, models, folders } = credentialPaths();
 	const at = key(file);
-	return files.has(at) || folders.has(at);
+	return files.has(at) || folders.has(at) || (models.has(at) && modelsFileHoldsLiteralKey(canonicalPath(file)));
 }
 
 /** The programs and subcommands that print a keychain entry (or the keychain's contents), anywhere in a command line. */
@@ -66,8 +87,9 @@ function shellCredentialRead(command: string, cwd: string): string | undefined {
 		.filter(Boolean)
 		.slice(0, WORD_LIMIT);
 	for (const word of words) {
-		const storeName = STORE_FILES.find((name) => path.basename(word).toLowerCase() === name);
-		if (!storeName && !/[/\\~$.]/.test(word[0] ?? "") && !word.includes("/")) continue;
+		const base = path.basename(word).toLowerCase();
+		const storeName = STORE_FILES.find((name) => base === name);
+		if (!storeName && base !== MODELS_FILE && !/[/\\~$.]/.test(word[0] ?? "") && !word.includes("/")) continue;
 		if (storeName && UNRESOLVED_STORE.test(word)) return storeName;
 		const spelled = homeSpelling(word) ?? word;
 		if (touchesCredentialStore(shellPath(cwd, spelled))) return word;
@@ -89,4 +111,4 @@ export function credentialRead(toolName: string, input: Record<string, unknown>,
 
 /** The system line a `credential.read` request carries, from what `credentialRead` found. */
 export const credentialReason = (found: string): string =>
-	`reads Octocode's credential store (${found}): API keys and tokens in it would enter the model context`;
+	`reads a credential file or store (${found}): API keys and tokens in it would enter the model context`;

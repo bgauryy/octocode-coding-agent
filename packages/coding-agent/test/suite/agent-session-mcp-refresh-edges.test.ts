@@ -14,7 +14,7 @@ import {
 } from "./mcp-refresh-fixture.ts";
 
 /**
- * B434 lane F3: edges of the `mcps` semantic refresh (option A) in a real AgentSession. The block is renewed only when
+ * Edges of the `mcps` semantic refresh (option A) in a real AgentSession. The block is renewed only when
  * the connected server's instructions or a described tool's description or schemas change; everything else keeps the
  * block's bytes and the thin declarations built from it, and `mcp_status` names what is not ready.
  */

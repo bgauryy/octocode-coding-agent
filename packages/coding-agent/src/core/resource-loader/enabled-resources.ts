@@ -1,7 +1,6 @@
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../package-manager.ts";
 import { mapSkillPath } from "./paths.ts";
 
-/** Enabled resource paths from settings and packages. */
 export interface EnabledResourcePaths {
 	/** Enabled `extensions` entries: only `builtin:<name>` entries switch a built-in feature; the rest are ignored. */
 	extensions: string[];

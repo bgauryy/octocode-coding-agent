@@ -93,3 +93,44 @@ describe("the reservation gate for PowerShell", () => {
 		expect(await owner.gate("bash", write)).toBeUndefined();
 	});
 });
+
+describe("the reservation gate for package scripts", () => {
+	it("lets a package script run under a reservation and tells the result it was not checked", async () => {
+		const cwd = workspace();
+		const db = path.join(tmp(), "team.sqlite");
+		const make = async () => {
+			const fake = fakeHost();
+			const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db });
+			const { reservationGate } = registerCollab(fake.api, team);
+			const ctx = fakeCtx({ cwd });
+			await fake.emit("session_start", {}, ctx);
+			return { fake, team, ctx, reservationGate };
+		};
+		const owner = await make();
+		const peer = await make();
+		try {
+			await owner.fake.tools
+				.get("coordinate")
+				.execute("c", { action: "lock", paths: ["packages/a/src/x.ts"], reason: "r" }, undefined, undefined, owner.ctx);
+			const run = async (id: string, command: string) => {
+				const event = { toolName: "bash", toolCallId: id, input: { command } };
+				const verdict = await peer.reservationGate(event as never, peer.ctx);
+				const result = {
+					toolCallId: id,
+					toolName: "bash",
+					input: { command },
+					content: [{ type: "text", text: "ok" }],
+				};
+				return { verdict, after: await peer.fake.emit("tool_result", result, peer.ctx) };
+			};
+			const script = await run("s1", "yarn run build");
+			expect(script.verdict).toBeUndefined();
+			expect(JSON.stringify(script.after)).toContain("ran a package script");
+			const plain = await run("s2", "echo hi");
+			expect(JSON.stringify(plain.after ?? null)).not.toContain("package script");
+		} finally {
+			await owner.fake.emit("session_shutdown", {}, owner.ctx);
+			await peer.fake.emit("session_shutdown", {}, peer.ctx);
+		}
+	});
+});

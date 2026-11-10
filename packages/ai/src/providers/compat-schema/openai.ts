@@ -135,6 +135,10 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 				default: false,
 			}),
 		),
+		supportsTemperature: optionalCompatBoolean({
+			description: "Whether the model accepts the temperature request field. When false, temperature is omitted.",
+			default: true,
+		}),
 		supportsStrictMode: optionalCompatBoolean({
 			description:
 				"Whether the provider supports the strict field in tool definitions. Generated capable models enable it explicitly.",
@@ -196,6 +200,10 @@ export const OpenAIResponsesCompatSchema = Type.Object(
 		supportsLongCacheRetention: optionalCompatBoolean({
 			description:
 				'Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models.',
+			default: true,
+		}),
+		supportsTemperature: optionalCompatBoolean({
+			description: "Whether the model accepts the temperature request field. When false, temperature is omitted.",
 			default: true,
 		}),
 		supportsStrictMode: optionalCompatBoolean({

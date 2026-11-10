@@ -289,7 +289,6 @@ export function loadSkillFromFile(
 	const skillDir = dirname(filePath);
 	const parentDirName = basename(skillDir);
 
-	// Validate description
 	const descErrors = validateDescription(description);
 	for (const error of descErrors) {
 		diagnostics.push({ type: "warning", message: error, path: filePath });
@@ -300,7 +299,6 @@ export function loadSkillFromFile(
 	const frontmatterName = typeof frontmatter.name === "string" ? frontmatter.name : undefined;
 	const name = frontmatterName || (isDeclaredSkill ? parentDirName : basename(filePath, ".md"));
 
-	// Validate name
 	const nameErrors = validateName(name);
 	for (const error of nameErrors) {
 		diagnostics.push({ type: "warning", message: error, path: filePath });

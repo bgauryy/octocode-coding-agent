@@ -1,4 +1,4 @@
-// B114: what a native session caches ahead of its history (tool declarations and the leading system prompt, skills and
+// What a native session caches ahead of its history (tool declarations and the leading system prompt, skills and
 // the `<mcps>` block included) is byte-identical on every turn and after a compaction, so the instruction breakpoint
 // keeps reading the same entry. The adapter side of the same contract is in packages/ai/test/history-prefix-stability.
 import fs from "node:fs";

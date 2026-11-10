@@ -12,7 +12,9 @@
 		".": "./src/client/index.ts",
 		"./oauth": "./src/client/oauth/index.ts",
 		"./testing": "./src/client/testing/index.ts",
-		"./host": "./src/index.ts"
+		"./host": "./src/index.ts",
+		"./acp-session-servers": "./src/acp-session-servers.ts",
+		"./config": "./src/config.ts"
 	},
 	"scripts": {
 		"generate:compact": "node scripts/generate-compact.ts",

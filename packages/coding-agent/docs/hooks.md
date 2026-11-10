@@ -27,7 +27,7 @@ Save this as `<repository-root>/.octocode/hooks.json`:
 }
 ```
 
-Run `/trust`, then `/reload`, then `/harness hooks`. The command's stdout becomes hidden model context on the next prompt, not a terminal notice. The example needs Node on PATH.
+Run `/reload` (in a folder you have not trusted yet, `/trust` first), then `/harness hooks`. The command's stdout becomes hidden model context on the next prompt, not a terminal notice. The example needs Node on PATH.
 
 ## Add a command hook
 
@@ -50,7 +50,16 @@ Hooks are on in every main session; no flag switches them. Each file is read wit
 
    The script reads the event JSON on stdin. Exit 2 with a reason on stderr denies the call. Add `"failClosed": true` to deny when the script crashes or times out; otherwise such failures let the call through.
 
-2. `/trust` the project (user-level files need no trust), then `/reload` and check `/harness hooks`: each loaded command with its source file, profile, timing (runs, failed runs such as a timeout, crash or `mcp_tool` call to a missing server, average, maximum) and diagnostics. `/harness hooks events` lists events and handler types. Both only inspect; switch hooks with `/configuration enable|disable hook:<id>` (`/configuration list hook` shows IDs). The startup Hooks row counts files that define at least one hook.
+2. Run `/reload` (a project file needs a trusted folder: `/trust` it first if it is not; user-level files need no trust) and check `/harness hooks`: each loaded command with its source file, profile, timing (runs, failed runs such as a timeout, crash or `mcp_tool` call to a missing server, average, maximum) and diagnostics. `/harness hooks events` lists events and handler types. Both only inspect; switch hooks with `/configuration enable|disable hook:<id>` (`/configuration list hook` shows IDs). The startup Hooks row counts files that define at least one hook.
+
+### Editor schema and test runs
+
+| Need                                             | How                                                                                                                                                                                                                   |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validate and complete a hook file in your editor | Add `"$schema": "<package>/schemas/hooks.schema.json"` (the file ships in the installed Octocode package). It lists every event and every handler field across profiles; the file's profile still decides which apply |
+| Run the configured hooks once on a sample event  | `/harness hooks test <Event> [<tool or matcher> [<json>]]`                                                                                                                                                            |
+
+A tool event takes the tool name and its input as JSON: `/harness hooks test PreToolUse bash {"command":"rm -rf x"}`. Other events take the matcher value (for example `startup`) and extra input fields as JSON. The command prints which hooks ran and what they answered (block, ask, context, input rewrite, error). The hooks really run, so a hook with side effects has them; the agent never sees the result, and an event with no matching hook says so.
 
 Hooks you configured for Claude Code or Codex load from their usual files once that harness is on ([Discovery](#discovery)). To turn every hook off set `"disableAllHooks": true` in any loaded hook file. To turn off one host, file or hook without editing it, use `/configuration` ([plugins](plugins.md#inspect-and-switch)). The [Claude permission rules](permissions.md#claude-permission-rules) from the same settings files always apply.
 
@@ -101,7 +110,7 @@ A source decides the profile; handlers from different profiles are never merged,
 | `mcp_tool`                | No     | Yes                           | Yes, except on `SessionEnd` |
 | `agent`                   | No     | No                            | No                          |
 
-**Fields.** Every profile accepts `type`, `command`, `timeout`, `failClosed` (a local extension) and `statusMessage` (presentation only). Claude adds `args`, `shell` (`bash` or `powershell`; ignored with `args`), `onFailure`, `async`, `asyncRewake`; it rejects `if` (the hook is skipped with a diagnostic, never run unfiltered) and ignores `once` (honored upstream only for skill-scoped hooks, which Octocode does not activate). Codex adds `commandWindows` (Windows only), `async`, `additionalContextLimit` and rejects `once`, `asyncRewake`. Native rejects `args`, `if`, `async`, `command_windows`. Any other field rejects the handler. Timeouts are in seconds: native default 60, Claude and Codex 600 (exceptions below), never above 600.
+**Fields.** Every profile accepts `type`, `command`, `timeout`, `failClosed` (a local extension) and `statusMessage` (presentation only). Claude adds `args`, `shell` (`bash` or `powershell`; ignored with `args`), `onFailure`, `async`, `asyncRewake`, `if` ([Claude `if` conditions](#claude-if-conditions)) and ignores `once` (honored upstream only for skill-scoped hooks, which Octocode does not activate). Codex adds `commandWindows` (Windows only), `async`, `additionalContextLimit` and rejects `once`, `asyncRewake`. Native rejects `args`, `if`, `async`, `command_windows`. Any other field rejects the handler. Timeouts are in seconds: native default 60, Claude and Codex 600 (exceptions below), never above 600.
 
 **Matchers.** Native: whole-name regex; empty or `*` matches all; an invalid pattern matches nothing and is diagnosed. Aliases such as `Bash` and `Edit|Write` work, but an alias match does not mean a full upstream payload translation. Claude: exact names separated by `|` or `,`, otherwise an unanchored JavaScript regex. Codex: unanchored regex. Stop matchers are ignored by Claude and Codex; a native Stop matcher matches no names, so omit it.
 
@@ -128,7 +137,16 @@ flowchart TD
 
 Supported results: exit 2 with a stderr reason, JSON deny or block decisions, pre-tool and message approval requests, and event-specific context. A hook's `allow` never bypasses Octocode permissions. Pre and post tool payloads carry `tool_use_id`; file queries share their parent call's ID. Plain stdout or `additionalContext` becomes hidden context on the next prompt.
 
-- **Native input** is `session_id`, `transcript_path` (empty string when missing; an existing one is in Octocode's format), `cwd`, `hook_event_name`. Native `bash` becomes `Bash` with input otherwise kept; native `file` becomes one Edit, Write, MultiEdit or Delete dispatch per query (`Delete` is a local alias); other tools keep their native name and arguments (legacy `edit`, `write`, `read` rename `path` only). Check every field a script uses. `tool_response` is flattened text, and partial file batches dispatch only successful queries. `updatedInput` is ignored, `systemMessage` and `suppressOutput` are ignored, and `hookEventName` is not validated. `continue: false` stops Stop continuation and blocks PreToolUse; SessionStart and PreCompact discard it, so PreCompact cannot veto. A hook `ask` runs without a dialog in the default `full` mode and is recorded.
+| Claude result                                                    | Effect                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| `continue: false` on PreToolUse, PostToolUse, PostToolUseFailure | Stops the turn and shows `stopReason` to you              |
+| Exit 2 on PostToolUseFailure                                     | stderr goes to the model as feedback                      |
+| Exit 2 on SessionStart or SubagentStart                          | stderr is shown to you only                               |
+| Context, `systemMessage`, plain stdout                           | Capped at 10,000 characters each (other profiles: 16 KiB) |
+
+Hooks are paused while plan mode is on, so `permission_mode` never reports `plan`.
+
+- **Native input** is `session_id`, `transcript_path` (empty string when missing; an existing one is in Octocode's format), `cwd`, `hook_event_name`. Native `bash` becomes `Bash` with input otherwise kept; native `file` becomes one Edit, Write, MultiEdit or Delete dispatch per query (`Delete` is a local alias); other tools keep their native name and arguments (legacy `edit`, `write`, `read` rename `path` only). Check every field a script uses. `tool_response` is `{content, text}` for Claude and native hooks (the result blocks as Claude sends them, plus their text joined) and plain text for Codex hooks, and partial file batches dispatch only successful queries. `updatedInput` is ignored, `systemMessage` and `suppressOutput` are ignored, and `hookEventName` is not validated. `continue: false` stops Stop continuation and blocks PreToolUse; SessionStart and PreCompact discard it, so PreCompact cannot veto. A hook `ask` runs without a dialog in the default `full` mode and is recorded.
 - **Source-profile input** adds host metadata ([hook-events](hook-events.md#host-metadata-in-the-input)): the active model ID when known (Claude on `SessionStart`; Codex on most events), `permission_mode`, Codex `turn_id` (kept through tool iterations, steering, retry, automatic compaction and Stop continuation; a follow-up batch starts a new one; an idle manual compaction has none), and `agent_id` and `agent_type` inside an opted-in child. Codex gets `null` when no transcript exists. `pi_tool_name` is omitted.
 - **Permission labels** are coarse: `full` maps to `bypassPermissions`; `manual` and `workspace` map to `default` (native `workspace` permits shell actions and is not `acceptEdits`). The label grants nothing. Codex SessionEnd, PreCompact and PostCompact omit it.
 - **SessionStart source:** startup and reload send `startup`; new sends `clear`; resume `resume`; fork `fork` (native keeps `resume`); compaction `compact`. Start context is delivered as hidden data on a later prompt, with bounded waiting; do not assume upstream developer-message priority.
@@ -155,6 +173,26 @@ sequenceDiagram
     Post-->>Model: feedback or replaced result
 ```
 
+### Claude `if` conditions
+
+A Claude handler's `if` holds one permission rule, written as in [Claude permission rules](permissions.md#claude-permission-rules): the handler runs only for calls the rule matches.
+
+```json
+{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "./block-rm.sh", "if": "Bash(rm *)" }] }
+```
+
+| Case                                                            | Result                                                                                                          |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `rm -rf x`, `cd build && rm -rf x` (each subcommand is checked) | Runs                                                                                                            |
+| `ls`, `echo rm`                                                 | Skipped                                                                                                         |
+| A command the rule cannot judge, such as `echo $(rm -rf /)`     | Runs: a guard is never skipped silently                                                                         |
+| `file` calls with `Edit(*.env)`                                 | Judged per query: runs for `prod.env`, not for `main.ts`                                                        |
+| Events                                                          | PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest                                                  |
+| Handler types                                                   | Command, prompt, HTTP and MCP                                                                                   |
+| A rule that does not parse, or `if` on another event            | The handler is skipped with a diagnostic; it never denies calls, even with `failClosed` or `onFailure: "block"` |
+
+A call any PreToolUse hook would see (after `if`) never starts early ([early tool start](configuration.md#early-tool-start)).
+
 ### Input rewrite
 
 Source-profile PreToolUse `updatedInput` replaces Bash and generic tool arguments after validation against the tool's schema; Codex requires `permissionDecision: "allow"` with a rewrite. Reservations and permissions are rechecked on the changed arguments, and `allow` never bypasses policy. Conflicting rewrites, invalid arguments and rewrites of a user-typed shell command refuse the call.
@@ -179,16 +217,16 @@ Host timeout defaults and background lifetime stay native.
 | `continue: false`                                                                           | Stops the turn and beats a nested allow (Codex rejects it when true)                                                                                                                                                                                                    |
 | Claude `updatedInput` (agent Bash)                                                          | Validated, source policy and reservations rechecked; the original command does not run. A replacement that matches a source ask, trips the provenance check or follows a hook ask needs a person; headless it is refused. An empty object keeps the input and rechecks. |
 
-- First effective allow or deny wins within a Claude request (slower handlers are cancelled); across profiles and for Codex, deny wins. A handler with no decision does not win; invalid output is diagnosed and contributes nothing. Codex exit 2 denies only with a stderr reason; Claude exit 2 without a decision leaves the approval open. `failClosed` and `onFailure: "block"` deny on failure. Prompt handlers are observational here: `ok: false` shows its reason as a warning.
+- Every matching handler runs and a deny wins: within a Claude request, across profiles and for Codex. A handler with no decision does not win; invalid output is diagnosed and contributes nothing. Codex exit 2 denies only with a stderr reason; Claude exit 2 without a decision leaves the approval open. `failClosed` and `onFailure: "block"` deny on failure. Prompt handlers are observational here: `ok: false` shows its reason as a warning.
 - Native `file` batches need an allowance for every projected Claude query, and a hook whose file input cannot be represented causes refusal (another profile's allow cannot override). Cancellation or expiry while hooks run prevents a late allow. Hooks cannot undo invariant refusals that happen before the approval boundary.
 - Claude Write, Edit and MultiEdit replacements apply to native `file` batches before execution: every query must be approved, the batch is validated whole (read coverage, anchors, reservations, protected state), previews show the effective queries, and targets are checked again under the file lock. An empty replacement keeps the query and rechecks its ask; settings changes invalidate pending approvals. `replace_all: true` replaces non-overlapping occurrences against the original file, exact matches first, smart-quote matching only without an exact match, and does not widen partial-read coverage; combining it with an edit needing broader fuzzy matching is refused. Canonical patch replacements and overlapping rewritten targets are unsupported. Staging writes nothing before validation but does not roll back earlier writes if a later one fails.
 - Session-destination `addRules`, `replaceRules` and `removeRules` updates apply in order to future calls; an empty array is a no-op. Persistent destinations, mode changes and directory updates are unsupported. In an untrusted project a persistent `projectSettings` or `localSettings` update that would grant (allow rule, `acceptEdits`, extra directories) is refused before any write, naming `/trust` and the `userSettings` and `session` destinations; restricting updates are still written ([Claude permission rules](permissions.md#claude-permission-rules)).
-- Unsupported: replacement during other internal checks, typed shell commands and PowerShell. Host permission suggestions, full MCP metadata, source permission modes and the Claude SDK permission-host race are unverified; prompt evaluations cannot decide this event and agent verifiers do not exist.
+- Unsupported: replacement during other internal checks, typed shell commands and PowerShell. Host permission suggestions, full MCP metadata, source permission modes are unverified; prompt evaluations cannot decide this event and agent verifiers do not exist.
 
 ### Failed-tool and post-tool behavior
 
 - Claude `PostToolUseFailure` receives top-level tool errors and can add recovery context without replacing the error. Partial file-batch failures are not yet separated from denied or skipped queries.
-- Codex `PostToolUse` runs only for successful results (not failed tools, denied calls, invalid rewrites or batches with a failed query). A block, exit 2 or `continue: false` replaces the visible result with hook feedback (details and structured content are dropped); nested blocks mark the result an error, `continue: false` only replaces content. Non-null `updatedMCPToolOutput` and `suppressOutput: true` produce diagnostics without replacing output.
+- Codex `PostToolUse` runs for successful results and after a Bash command that completed with a non-zero exit, which it gets as `tool_response` (the result text, exit line included). It does not run for refused, aborted, timed-out or terminated calls, other failed tools, denied calls, invalid rewrites or batches with a failed query. A block, exit 2 or `continue: false` replaces the visible result with hook feedback (details and structured content are dropped); nested blocks mark the result an error, `continue: false` only replaces content. Non-null `updatedMCPToolOutput` and `suppressOutput: true` produce diagnostics without replacing output.
 - Claude `PostToolBatch` fires once at the turn-end boundary after top-level tool calls resolve, failed results included; matchers are ignored. Each `tool_calls` item has `tool_use_id`, `tool_name`, `tool_input` and the model-visible `tool_response` blocks; native `file` stays one batched call. `additionalContext` is persisted before the next request; exit 2, `decision: "block"`, `continue: false` or a blocking failure policy stops the run before another request and keeps the reason in the conversation.
 - Codex output validation covers PermissionRequest, PreToolUse, PostToolUse, SessionStart, PreCompact, PostCompact, UserPromptSubmit, Stop, SubagentStart, SubagentStop and Interrupt: unknown fields, wrong types and missing decision reasons are diagnostic failures; PreToolUse exit 2 needs a non-empty stderr reason and non-empty successful stdout must be a JSON object. Other profiles may ignore unknown fields.
 
@@ -256,7 +294,7 @@ Background decisions, rewrites and Stop feedback cannot change the completed eve
 
 ### Codex context limits
 
-`additionalContextLimit` (non-negative integer, Codex command hooks on PreToolUse, PostToolUse, SessionStart, SubagentStart, UserPromptSubmit) defaults to 2,500 approximate tokens (four UTF-8 bytes each); 0 disables per-handler spilling; other events ignore it with a diagnostic and malformed values reject the handler. Context over the limit is saved to an owner-only file in the session output folder; the model gets a head and tail preview plus the path. An independent 16 KiB aggregate delivery limit and 64 KiB process-output capture limit always apply. Different limits keep handlers distinct. See the [Codex large-output contract](https://learn.chatgpt.com/docs/hooks#large-hook-output).
+`additionalContextLimit` (non-negative integer, Codex command hooks on PreToolUse, PostToolUse, SessionStart, SubagentStart, UserPromptSubmit) defaults to 2,500 approximate tokens (four UTF-8 bytes each); 0 disables per-handler spilling; other events ignore it with a diagnostic and malformed values reject the handler. Context over the limit is saved to an owner-only file in the session output folder; the model gets a head and tail preview plus the path. An independent 16 KiB aggregate delivery limit and 1 MiB command-output capture limit always apply. Different limits keep handlers distinct. See the [Codex large-output contract](https://learn.chatgpt.com/docs/hooks#large-hook-output).
 
 ## Lifecycle events
 
@@ -277,11 +315,11 @@ Both expose `prompt` and ignore the matcher. Exit 2 or a JSON block prevents sub
 
 ### Child agents
 
-`SubagentStart` and `SubagentStop` run inside a subagent whose profile sets `hooks: true`; matchers use the profile name (such as `general`). Main-session SessionStart and Stop are not also sent for the child.
+`SubagentStart` and `SubagentStop` run inside a subagent whose profile sets `hooks: true`; matchers use the profile name (such as `general`). `SubagentStart` runs once per subagent; its context is offered again only after a compaction removed it. Main-session SessionStart and Stop are not also sent for the child.
 
 - **Start.** Codex runs for a new or forked child before its first request, not on reopening a saved session; Claude also runs on later child prompts. Start context belongs to the child and cannot veto creation. Claude suppresses identical startup context while an earlier copy is still in context.
 - **Stop.** Runs at successful settlement; a block reason continues the child through its loop with `stop_hook_active` (eight-continuation cap, a tool call resets it). Cancellation and provider failure emit nothing. Claude can return `additionalContext` as feedback; Codex has no such field.
-- **Identity.** Claude gets the parent session identity and transcript plus the child's agent identity; Codex gets the child session ID, turn ID and model. `SubagentStop` uses the parent `transcript_path` and the child `agent_transcript_path` (null if missing for Codex); these are Octocode transcripts. Other callbacks in the child carry `agent_id` and `agent_type` (Codex: PreToolUse, PostToolUse, UserPromptSubmit, PreCompact, PostCompact) and the child's own `session_id`; main sessions omit them.
+- **Identity.** Claude gets the parent session identity and transcript plus the child's agent identity; Codex gets the parent session ID (its spec: "Subagent hooks use the parent session id") and the child's turn ID and model. `SubagentStop` uses the parent `transcript_path` and the child `agent_transcript_path` (null if missing for Codex); these are Octocode transcripts. Other callbacks in the child carry `agent_id` and `agent_type` (Codex: PreToolUse, PostToolUse, UserPromptSubmit, PreCompact, PostCompact) and the child's own `session_id` (Codex: the parent's); main sessions omit them.
 - Metadata is captured before an async command queues, so later changes cannot relabel an earlier event. Vendor internal agents, transcript formats and background-task inventories are not provided.
 
 ### Session start and end

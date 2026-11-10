@@ -434,7 +434,7 @@ describe("agent tool with a scripted child", () => {
 			await s.run({ task: "auth error please", profile: "scout", background: true });
 			await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 			const report = String(s.sent[0].message.content);
-			// The first run's credential refusal steers routing away from `alt` (B347 P2-5): the report names where it ran instead.
+			// The first run's credential refusal steers routing away from `alt`: the report names where it ran instead.
 			expect(report).toContain("Ran on faux/model, medium thinking (shared: alt refused its credential).");
 			expect(report).toContain("fix the faux credential with /providers");
 			expect(report).not.toContain("narrower task");

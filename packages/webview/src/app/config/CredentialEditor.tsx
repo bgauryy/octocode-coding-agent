@@ -32,6 +32,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	const [plaintext, setPlaintext] = useState(false);
 	const [busy, setBusy] = useState<"save" | "clear" | undefined>();
 	const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | undefined>();
+	const noun = open === "token" ? "token" : "key";
 	const ready = key.trim().length > 0 && (keychainAvailable || plaintext) && !busy;
 
 	async function apply(command: ConfigCredentialCommand) {
@@ -95,7 +96,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 		);
 	}
 	return (
-		<form className="config-edit" onSubmit={submit} aria-label={`Edit key for ${title}`}>
+		<form className="config-edit" onSubmit={submit} aria-label={`Edit ${noun} for ${title}`}>
 			{open === "token" && (
 				<p className="muted">
 					Run <code>claude setup-token</code> in a terminal; it opens Anthropic's sign-in in your browser and prints a
@@ -112,7 +113,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 				onChange={(event) => setKey(event.target.value)}
 			/>
 			<Button type="submit" size="sm" variant="primary" loading={busy === "save"} disabled={!ready}>
-				{stored ? "Replace" : "Save"}
+				{open === "token" ? (stored ? "Replace token" : "Save token") : stored ? "Replace" : "Save"}
 			</Button>
 			<Button
 				size="sm"
@@ -127,7 +128,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 				Cancel
 			</Button>
 			{keychainAvailable ? (
-				<p className="muted">The key goes to the OS keychain. It is not shown again.</p>
+				<p className="muted">The {noun} goes to the OS keychain. It is not shown again.</p>
 			) : (
 				<label className="config-ack" htmlFor={`${id}-ack`}>
 					<input
@@ -136,7 +137,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 						checked={plaintext}
 						onChange={(event) => setPlaintext(event.target.checked)}
 					/>
-					This computer has no OS keychain. Save the key as plain text in auth.json. The key is not encrypted, and
+					This computer has no OS keychain. Save the {noun} as plain text in auth.json. The {noun} is not encrypted, and
 					auth.json is made readable by your user account only.
 				</label>
 			)}

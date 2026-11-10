@@ -168,7 +168,6 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 					isError,
 				};
 
-				// Render collapsed
 				const collapsedComponent = toolDef.renderResult(
 					agentToolResult,
 					{ expanded: false, isPartial: false },
@@ -182,7 +181,6 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 					...returned,
 				]);
 
-				// Render expanded
 				const expandedComponent = toolDef.renderResult(
 					agentToolResult,
 					{ expanded: true, isPartial: false },

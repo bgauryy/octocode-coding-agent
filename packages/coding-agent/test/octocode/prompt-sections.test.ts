@@ -115,8 +115,8 @@ describe("native prompt section updates", () => {
 		expect(writer).toContain("within your assigned area; report anything outside it instead of changing it");
 		expect(reader).not.toContain("blast radius");
 		// Plain-text visuals the terminal shows as written (user request: no Mermaid); only the main session answers the user.
-		expect(root).toContain("clearer than prose: a small box-and-arrow sketch");
-		expect(root).toContain("no Mermaid in answers.");
+		expect(root).toContain("flow or dependencies → box-and-arrow sketch; hierarchy → tree");
+		expect(root).toContain("within 100 columns, no Mermaid:");
 		expect(root).toContain("Finish or revert partial edits; stop only your jobs whose result is moot.");
 		for (const prompt of [writer, reader]) {
 			expect(prompt).not.toContain("draw it in plain text");

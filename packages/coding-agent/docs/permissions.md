@@ -33,7 +33,7 @@ An invalid `OCTOCODE_PERMISSION` starts in `manual`. In a session: `/permissions
 | A message from another process (`message.external`, [below](#external-messages))                                                                                                                                                                                                                       | asks     | asks        | allows |
 | Browser cookie access (`browser.cookies`), landing commits on the default branch of the main checkout (`worktree.merge`, [below](#worktree-merges))                                                                                                                                                    | asks     | asks        | asks   |
 
-Also asking in every mode, `full` included, and refused where nobody can be asked: source-policy asks and an agent's save of a global or pinned memory. Hook asks, provenance hits and credential-store reads ask only in `manual` and `workspace`; in `full` they run and are recorded.
+Also asking in every mode, `full` included, and refused where nobody can be asked: source-policy asks and an agent's save of a global or pinned memory. Hook asks, provenance hits, credential-file reads and the peer-session git ask ask only in `manual` and `workspace`; in `full` they run and are recorded.
 
 ### Start mode, `bypass` and mode changes
 
@@ -125,9 +125,24 @@ flowchart LR
 
 The command is read through wrappers (`env`, `timeout`, `sudo`), `git -c`, lists, `if`/`for` bodies, substitutions, `sh -c`, `eval`, heredoc and `echo … | sh` scripts, and `find -exec`. A destructive line that also lands stays `shell.destructive` (with its restore point) and offers no session answer. Hooks run first, so a `PreToolUse` deny refuses before any dialog. The guard fails open when the command, checkout or default branch cannot be determined, and does not see an interpreter running `git merge`, a git alias, `cd ..`/`cd "$X"` or a `powershell` command. Server-side branch protection is the strongest backstop.
 
+## Credential files
+
+A shell or research-tool call that names a file holding API keys or tokens asks in `manual` and `workspace`, because what it prints enters the model context. In `full` it runs and is recorded. The check reads the paths a call spells; a path built at run time (`cat $X`, a glob) is not seen.
+
+| Covered                                                                                           | Notes                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.json` of the agent directory, the Octocode home and, when Pi's folders are a fallback, Pi's | Also the folders that hold one, and `mcp-auth.json`                                                                                                                                |
+| `models.json`                                                                                     | Only when it holds a literal `apiKey`; a `$NAME` or `!command` reference holds no secret                                                                                           |
+| Other tools' files under the home folder                                                          | `~/.aws/credentials`, `~/.config/gh/hosts.yml`, gcloud and Azure token files, `~/.docker/config.json`, `~/.kube/config`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials` |
+| Keychain read commands                                                                            | `security find-generic-password`, `secret-tool lookup` and similar                                                                                                                 |
+
+At startup, a loose-permission or in-git-work-tree warning also covers each `auth.json` the session loads and a `models.json` with a literal key. Shell commands start without the provider keys of built-in providers and without the variables a custom provider's `apiKey` names in `models.json`; `bash.inheritProviderKeys` keeps them.
+
 ## Subagents and shared git state
 
 A subagent in the shared working tree (not `isolate: true`) is refused shell commands that change git state other agents share, in every mode, before hooks. The refusal tells it to leave git to its parent and report changed files. An isolated subagent works in its own worktree and keeps these commands.
+
+The main session is asked, not refused, before `git stash`, `git restore` or `git checkout -- <path>` (or `.`) while another live session works in the same checkout, because they can discard that session's uncommitted work. It asks in `manual` and `workspace`; in `full` it runs and is recorded, and where nobody can be asked it is refused. Without a peer session these commands follow the usual mode rules.
 
 | Refused                                                                                                                                                                                                                                           | Allowed                                                                                                                |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |

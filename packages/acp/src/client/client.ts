@@ -3,6 +3,7 @@ import { realpathSync, statSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
 import {
 	type ClientConnection,
+	type McpServer,
 	client,
 	methods,
 	ndJsonStream,
@@ -14,9 +15,10 @@ import {
 import type { AcpClientHost } from "../host.ts";
 import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { withAuthentication } from "./auth.ts";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
 import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
-import { untilAborted } from "../../../common/src/abort.ts";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
 
 export interface AcpConnectInput {
 	command: string;
@@ -26,6 +28,8 @@ export interface AcpConnectInput {
 	sessionId?: string;
 	/** A value of the agent's model config option, set before the connection is returned. */
 	model?: string;
+	/** MCP servers the agent's session starts with; none by default. */
+	mcpServers?: McpServer[];
 	timeoutMs?: number;
 }
 
@@ -80,6 +84,8 @@ export class AcpBackend implements ExternalBackend {
 	readonly cwd: string;
 	private currentSessionId: string;
 	private currentModels?: AcpModels;
+	/** The peer advertised `session/close` and a session is open on it. */
+	private closeOnShutdown = false;
 	private readonly permission: AcpPermission;
 	private constructor(
 		host: AcpClientHost,
@@ -178,29 +184,38 @@ export class AcpBackend implements ExternalBackend {
 			);
 			if (initialization.protocolVersion !== PROTOCOL_VERSION)
 				throw new Error(`Unsupported ACP protocol version ${initialization.protocolVersion}.`);
+			const mcpServers = input.mcpServers ?? [];
+			const capabilities = initialization.agentCapabilities;
+			const authenticated = <T>(request: () => Promise<T>) =>
+				withAuthentication(connection, initialization.authMethods, startup, request);
 			if (input.sessionId) {
-				phase = "session/load";
-				if (!initialization.agentCapabilities?.loadSession)
-					throw new Error("ACP agent does not advertise session/load; existing session was not replaced.");
-				const loaded = await untilAborted(
-					connection.agent.request(methods.agent.session.load, {
-						sessionId: input.sessionId,
-						cwd,
-						mcpServers: [],
-					}),
-					startup,
+				const resume = capabilities?.sessionCapabilities?.resume != null;
+				phase = resume ? "session/resume" : "session/load";
+				if (!resume && !capabilities?.loadSession)
+					throw new Error(
+						"ACP agent does not advertise session/resume or session/load; existing session was not replaced.",
+					);
+				const restored = await authenticated(() =>
+					untilAborted(
+						connection.agent.request(resume ? methods.agent.session.resume : methods.agent.session.load, {
+							sessionId: input.sessionId!,
+							cwd,
+							mcpServers,
+						}),
+						startup,
+					),
 				);
-				backend.currentModels = acpModels(loaded ?? {});
+				backend.currentModels = acpModels(restored ?? {});
 			} else {
 				phase = "session/new";
-				const session = await untilAborted(
-					connection.agent.request(methods.agent.session.new, { cwd, mcpServers: [] }),
-					startup,
+				const session = await authenticated(() =>
+					untilAborted(connection.agent.request(methods.agent.session.new, { cwd, mcpServers }), startup),
 				);
 				if (!session.sessionId) throw new Error("ACP agent returned an empty session ID.");
 				backend.currentSessionId = session.sessionId;
 				backend.currentModels = acpModels(session);
 			}
+			backend.closeOnShutdown = capabilities?.sessionCapabilities?.close != null;
 			if (input.model) {
 				phase = "session/set_config_option";
 				const refusal = modelRefusal(backend.currentModels, input.model);
@@ -340,11 +355,27 @@ export class AcpBackend implements ExternalBackend {
 		return this.shutdown(new Error("ACP connection closed"));
 	}
 
+	/** Tells a peer that supports it to release the session; the process is stopped next whether or not it answers. */
+	private async closeSession(): Promise<void> {
+		const connection = this.connection;
+		if (!this.closeOnShutdown || !connection || connection.signal.aborted) return;
+		this.closeOnShutdown = false;
+		try {
+			await untilAborted(
+				connection.agent.request(methods.agent.session.close, { sessionId: this.sessionId }),
+				timeoutSignal(this.host.processTree.graceMs),
+			);
+		} catch {
+			/* The peer may be gone or slow; stopping the owned process is authoritative. */
+		}
+	}
+
 	private shutdown(reason: unknown): Promise<void> {
 		if (this.closing) return this.closing;
 		this.lifetime.abort(reason);
 		this.closing = Promise.resolve().then(async () => {
 			try {
+				await this.closeSession();
 				this.connection?.close(reason);
 				await this.host.processTree.stop(this.child.pid);
 			} finally {

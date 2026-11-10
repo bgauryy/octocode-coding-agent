@@ -43,6 +43,35 @@ export function isTerminalProviderLimitError(errorText: string): boolean {
 	return TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN.test(errorText);
 }
 
+/** No funds: payment required, or no credit, balance or funds left on the account. */
+const NO_FUNDS_PATTERN = buildProviderErrorPattern([
+	statusCodes("402"),
+	"payment required",
+	"insufficient[ _](?:account[ _])?(?:quota|credit|balance|funds)",
+	"out of credit",
+]);
+
+/**
+ * Whether provider error text names a usage limit: an account, subscription, quota or billing limit, or no funds. The
+ * same request to that account fails until the limit resets or funds are added, so callers may move to another model.
+ */
+export function isUsageLimitError(errorText: string): boolean {
+	return isTerminalProviderLimitError(errorText) || NO_FUNDS_PATTERN.test(errorText);
+}
+
+/** The machine has no route to the network (sleep, VPN drop, network switch) or DNS failed for now. Not `ENOTFOUND`. */
+const OFFLINE_PATTERN = buildProviderErrorPattern([
+	"\\bENETUNREACH\\b",
+	"\\bEHOSTUNREACH\\b",
+	"\\bENETDOWN\\b",
+	"\\bEAI_AGAIN\\b",
+]);
+
+/** Whether a failure says the network is unreachable for now: it clears when the connection returns. */
+export function isOfflineText(text: string): boolean {
+	return OFFLINE_PATTERN.test(text);
+}
+
 /**
  * A 4xx status other than 408, 409 and 429 (the statuses providers retry) leading the text, with invalid-request
  * wording. The provider refused this request, so resending it fails the same way even when a gateway wraps the
@@ -100,6 +129,9 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	"getaddrinfo",
 	"ENOTFOUND",
 	"EAI_AGAIN",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"ENETDOWN",
 	"upstream.?connect",
 	"reset before headers",
 	"socket hang up",

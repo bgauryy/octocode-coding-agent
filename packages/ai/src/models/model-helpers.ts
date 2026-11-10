@@ -61,7 +61,7 @@ export function calculateCost(model: AnyModel, usage: Usage, now: Date | number 
 	const extendedRate = premium ? rates.input * CACHE_WRITE_12H_INPUT_MULTIPLIER : rates.cacheWrite;
 	const longWrite = usage.cacheWrite1h ?? 0;
 	const extendedWrite = usage.cacheWrite12h ?? 0;
-	const shortWrite = usage.cacheWrite - longWrite - extendedWrite;
+	const shortWrite = Math.max(0, usage.cacheWrite - longWrite - extendedWrite);
 	usage.cost.input = (rates.input / 1000000) * usage.input;
 	usage.cost.output = (rates.output / 1000000) * usage.output;
 	usage.cost.cacheRead = (rates.cacheRead / 1000000) * usage.cacheRead;

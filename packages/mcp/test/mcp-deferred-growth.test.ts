@@ -7,7 +7,7 @@ import { mcpServerPurposes, renderMcpsSection, type McpServerListing } from "../
 import { assignMcpToolNames } from "../src/tool-names.ts";
 
 /**
- * T4: prompt bytes per server, as in the exposure report's measurement (.octocode/mcp-exposure/report.md §4): server 1
+ * Prompt bytes per server: server 1
  * is the raw Octocode catalog, servers 2..N typical 8-tool servers with 350-character descriptions. Direct exposure
  * grows by the whole contract per server; deferred by a purpose line, the instructions and one trigger line per tool; `auto:<bytes>`
  * keeps servers direct, in name order, while their text fits the budget.

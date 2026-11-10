@@ -11,6 +11,7 @@ import { HOOK_MAX_TIMEOUT_S, type HookSource, type HookHandler, type HookConfig 
 import { parseHttpHook } from "../http.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { claudeSessionEndOverride, hookMatcher } from "../profiles.ts";
+import { IF_EVENTS, validIfCondition } from "./if-filter.ts";
 
 export const emptyHooks = (): HookConfig =>
 	Object.fromEntries(HOOK_EVENTS.map((event) => [event, []])) as unknown as HookConfig;
@@ -73,7 +74,7 @@ export function parseHooks(
 				errors.push(`${source}: unsupported ${event} group fields ${extraGroupFields.join(", ")}; skipped`);
 				continue;
 			}
-			const commands = group.hooks.flatMap((declared): HookHandler[] => {
+			const handlersOf = (declared: (typeof group.hooks)[number]): HookHandler[] => {
 				let hook = declared;
 				const invalidHandler = (failure: string): HookHandler[] => {
 					const required =
@@ -170,13 +171,8 @@ export function parseHooks(
 					return invalidHandler(`${event} requires a command hook with a non-empty command`);
 				}
 				const accepted = PROFILE_COMMAND_FIELDS[protocol];
-				const unsupported = Object.keys(hook).filter(
-					(key) => !accepted.includes(key) && !(protocol === "claude" && key === "if"),
-				);
+				const unsupported = Object.keys(hook).filter((key) => !accepted.includes(key));
 				const invalid: string[] = [];
-				// Claude's `if` filters by permission rule; running such a hook unfiltered would widen it, so it is skipped.
-				if (protocol === "claude" && hook.if !== undefined)
-					invalid.push('"if" conditions are not supported by Octocode; remove "if" or filter in the hook script');
 				if (protocol === "claude" && hook.shell !== undefined && hook.shell !== "bash" && hook.shell !== "powershell")
 					invalid.push('shell must be "bash" or "powershell"');
 				if (
@@ -254,6 +250,22 @@ export function parseHooks(
 						...(hook.failClosed === true ? { failClosed: true as const } : {}),
 					},
 				];
+			};
+			const commands = group.hooks.flatMap((declared): HookHandler[] => {
+				if (protocol !== "claude" || !isRecord(declared) || declared.if === undefined) return handlersOf(declared);
+				// Claude's `if` is one permission rule, on any handler type. A hook whose `if` cannot be applied is skipped, never
+				// run unfiltered and never turned into a deny-all gate by failClosed/onFailure: the rule is its filter, not its policy.
+				const reason = !IF_EVENTS.includes(event)
+					? `"if" is only evaluated on tool events; a Claude hook with "if" never runs on ${event}`
+					: validIfCondition(declared.if)
+						? undefined
+						: '"if" must be one permission rule such as "Bash(rm *)" or "Edit(*.env)"';
+				if (reason) {
+					errors.push(`${source}: ${event} hook skipped: ${reason}`);
+					return [];
+				}
+				const { if: condition, ...rest } = declared;
+				return handlersOf(rest).map((handler) => ({ ...handler, if: condition as string }));
 			});
 			if (commands.length === 0) continue;
 			const matcher = typeof group.matcher === "string" ? group.matcher : "";

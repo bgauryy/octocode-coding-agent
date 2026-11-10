@@ -9,6 +9,11 @@ fs.mkdirSync(path.join(dir, "subagent"));
 fs.mkdirSync(path.join(dir, "rendered"));
 fs.writeFileSync(path.join(dir, "subagent", "a.md"), "A {{x}}\n");
 fs.writeFileSync(path.join(dir, "subagent", "b.md"), "B {{x}}\n");
+// Reader-only Markdown of a source checkout: generated final prompts and READMEs are never instruction templates.
+fs.mkdirSync(path.join(dir, "final"));
+fs.writeFileSync(path.join(dir, "final", "main.md"), "generated\n");
+fs.writeFileSync(path.join(dir, "README.md"), "map\n");
+fs.writeFileSync(path.join(dir, "subagent", "README.md"), "map\n");
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
@@ -30,4 +35,11 @@ it("reads every instruction file on first use and keeps that text while the file
 	// b.md was never rendered before the edit, and still renders as it was when the process first read the folder.
 	expect(renderInstruction("subagent/b.md", { x: 2 })).toBe("B 2");
 	expect(() => renderInstruction("subagent/c.md")).toThrow(/subagent\/c\.md/);
+});
+
+it("does not load the generated final prompts or the READMEs of a source checkout", async () => {
+	const { instructionSource } = await import("../../src/core/prompt-template.ts");
+	expect(instructionSource("subagent/a.md")).toBe("A {{x}}\n");
+	for (const name of ["final/main.md", "README.md", "subagent/README.md"])
+		expect(() => instructionSource(name)).toThrow(/no file/);
 });

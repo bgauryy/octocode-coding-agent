@@ -165,3 +165,16 @@ export function formatValidationFailure(
 	const received = describeReceivedArguments(JSON.stringify(args) ?? "undefined");
 	return `Validation failed for tool "${toolName}":\n${problems}\n\n${received}`;
 }
+
+/** The top-level properties the problems sit at or under; an unexpected root property counts by its own name. */
+export function failingProperties(errors: ValidationError[]): string[] {
+	const names = new Set<string>();
+	for (const error of errors) {
+		const [, top] = error.instancePath.split("/");
+		if (top) names.add(top);
+		else
+			for (const name of (error.params as { additionalProperties?: string[] }).additionalProperties ?? [])
+				names.add(name);
+	}
+	return [...names];
+}

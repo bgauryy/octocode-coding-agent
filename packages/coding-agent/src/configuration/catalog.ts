@@ -12,7 +12,6 @@ import type {
 export interface ConfigCatalog {
 	/** Every entry the adapters list, narrowed by `filter`, ordered by kind then id. */
 	list(filter?: ConfigFilter): Promise<ConfigEntry[]>;
-	/** One entry by exact id, or undefined. */
 	get(id: string): Promise<ConfigEntry | undefined>;
 	/** Runs one write verb. Never throws for a refusal: the result says why. */
 	apply(op: ConfigOp): Promise<ConfigResult>;

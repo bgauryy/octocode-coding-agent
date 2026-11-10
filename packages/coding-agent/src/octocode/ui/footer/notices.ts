@@ -29,6 +29,21 @@ export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): Mode
 	return all.find((other) => other.id === model.id && other.provider !== model.provider && other.reasoning);
 }
 
+/** `retry.fallbackModels` replaced a model that hit a usage limit: say so, since the session model changed by itself.
+ * Interactive and RPC clients see this notification; print mode has no UI and reads the run outcome warning instead
+ * (`retry-fallback.ts`), so each surface shows the notice once. */
+export function registerFallbackNotice(api: ExtensionAPI): void {
+	api.on("model_select", async (event, ctx) => {
+		if (event.source !== "fallback" || !ctx.hasUI) return;
+		const from = event.previousModel ? `${event.previousModel.provider}/${event.previousModel.id}` : "The model";
+		notify(
+			ctx.ui,
+			`${from} hit a usage limit; continuing on ${event.model.provider}/${event.model.id} (retry.fallbackModels). /model switches back.`,
+			"warning",
+		);
+	});
+}
+
 /**
  * Says once per model and session when the model declares no `reasoning` but a model with its id does: Octocode then never
  * asks it to think, so there are no thinking blocks, no thinking level, and no thought on the working line.

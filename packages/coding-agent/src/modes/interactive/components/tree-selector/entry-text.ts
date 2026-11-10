@@ -5,7 +5,6 @@ import type { ToolCallInfo } from "./types.ts";
 
 export { plainText };
 
-/** Get searchable text content from a node */
 export function getSearchableText(node: SessionTreeNode): string {
 	const entry = node.entry;
 	const parts: string[] = [];

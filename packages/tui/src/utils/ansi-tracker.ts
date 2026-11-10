@@ -96,7 +96,6 @@ export class AnsiCodeTracker {
 
 		const params = match[1];
 		if (params === "" || params === "0") {
-			// Full reset
 			this.reset();
 			return;
 		}

@@ -85,7 +85,6 @@ export const CARRIER_KEYS = {
 	trace: "octocode-memory-trace",
 } as const;
 
-/** One identity field of a carrier. */
 export function carrierField(
 	carrier: Readonly<TelemetryCarrier> | undefined,
 	field: keyof typeof CARRIER_KEYS,

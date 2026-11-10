@@ -52,12 +52,13 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
  * (they can only be invoked explicitly via /skill:name commands).
  *
  * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
- * returns its directory; `indirect` names none, for a reader that is reachable only through another tool. Every entry
- * carries its SKILL.md `<location>`, whatever the reader, so the agent knows where each skill's folder is.
+ * returns its directory, so its entries carry no path; `indirect` names none, for a reader that is reachable only
+ * through another tool. A file reader (`bash`, `indirect`, `octocode`) needs the file, so each entry then carries its
+ * SKILL.md `location`.
  *
  * Entries are grouped by {@link skillCategory} in `<core_skills>`, `<octocode_skills>`, `<workspace_skills>` and
- * `<global_skills>`, in that order; an empty group is left out. Every visible skill is listed with its name, its full
- * description and its SKILL.md path.
+ * `<global_skills>`, in that order; an empty group is left out. Every visible skill is listed with its name and its
+ * full description, as written.
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
@@ -74,7 +75,7 @@ export function formatSkillsForPrompt(
 
 	const categories = visibleSkills.map(skillCategory);
 	const groups = SKILL_CATEGORIES.filter((category) => categories.includes(category));
-	const entries = visibleSkills.map(skillEntry);
+	const entries = visibleSkills.map((skill) => skillEntry(skill, fileReadTool !== "skill"));
 	// One intro line, the load instruction: each entry's description already says what its skill is for. The skill tool's
 	// description says how to resolve a loaded skill's relative paths, so only the other readers get that line.
 	const intro = renderInstruction("system/skills-intro.md", {
@@ -107,16 +108,12 @@ function groupTag(category: SkillCategory): string {
 const SKILL_LAYOUT =
 	"A skill is a folder: SKILL.md (frontmatter name and description, then instructions) with optional scripts/, references/ and assets/, resolved against that folder.";
 
-function skillEntry(skill: Skill): string {
+function skillEntry(skill: Skill, withLocation: boolean): string {
 	const description = skill.description?.trim();
-	// One line per skill: its name, its description as written and its SKILL.md path.
-	return [
-		"  <skill>",
-		`<name>${escapeXml(skill.name)}</name>`,
-		...(description ? [`<description>${escapeXml(description)}</description>`] : []),
-		`<location>${escapeXml(skill.filePath)}</location>`,
-		"</skill>",
-	].join("");
+	// One line per skill: its name, the SKILL.md path a file reader loads, and its description as written.
+	const location = withLocation ? ` location="${escapeXml(skill.filePath)}"` : "";
+	const open = `  <skill name="${escapeXml(skill.name)}"${location}`;
+	return description ? `${open}>${escapeXml(description)}</skill>` : `${open}/>`;
 }
 
 function escapeXml(str: string): string {
@@ -157,7 +154,7 @@ interface SkillCandidate {
  * candidate (project, settings, `--skill`, package, agent directory) wins, then the bundled skill, and a replaceable
  * copy only when neither exists: the agent gets the version this build ships unless the user chose another on purpose.
  */
-function chooseSkillWinner(candidates: readonly SkillCandidate[]): SkillCandidate {
+export function chooseSkillWinner<T extends { rank: SkillPrecedence | undefined }>(candidates: readonly T[]): T {
 	if (!candidates.some((candidate) => candidate.rank === "bundled")) return candidates[0];
 	return (
 		candidates.find((candidate) => candidate.rank === undefined) ??

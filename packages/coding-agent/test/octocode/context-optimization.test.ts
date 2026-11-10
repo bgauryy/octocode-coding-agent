@@ -197,8 +197,8 @@ describe("context optimization", () => {
 				selectedTools: ["skill"],
 				skills: event.systemPromptOptions.skills,
 			});
-			expect(prompt).toContain("<description>Load for local work.</description>");
-			expect(prompt).toContain("<description>Global source</description>");
+			expect(prompt).toContain('">Load for local work.</skill>');
+			expect(prompt).toContain('">Global source</skill>');
 			expect(prompt).not.toContain("Local source");
 		});
 

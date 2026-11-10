@@ -6,7 +6,6 @@ export const ITEM_TYPES = ["epic", "feature", "bug", "research"] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 /** The type an item gets when none is named. */
 export const DEFAULT_ITEM_TYPE: ItemType = "feature";
-/** Whether `type` names an item type. */
 export const isItemType = (type: string): type is ItemType => (ITEM_TYPES as readonly string[]).includes(type);
 
 /** Why an item was closed instead of completed: no longer needed, covered by another item, or deliberately not done. */
@@ -47,7 +46,6 @@ export interface BacklogTask {
 	/** `T<seq>`; numbered per repository and never reused. */
 	ref: string;
 	seq: number;
-	/** Database row id. */
 	rowId: number;
 	goal: string;
 	/** Why the step is needed; may be empty. */
@@ -66,7 +64,6 @@ export interface BacklogTask {
 	doneAt?: number;
 	version: number;
 }
-/** Tasks per state. */
 export type TaskTally = Record<TaskState, number>;
 /** Priority names in rank order; an item stores the index (`p0` is 0, most urgent). */
 export const PRIORITIES = ["p0", "p1", "p2", "p3"] as const;

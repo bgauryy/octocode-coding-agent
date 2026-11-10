@@ -19,7 +19,6 @@ export class SessionListeners {
 		};
 	}
 
-	/** Emit an event to all listeners */
 	emit(event: AgentSessionEvent): void {
 		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during dispatch do not change iteration
 		for (const l of [...this._eventListeners]) {

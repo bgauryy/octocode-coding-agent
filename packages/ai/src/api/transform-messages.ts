@@ -204,6 +204,8 @@ export function transformMessages<TApi extends Api>(
 	// call and its results is held back and emitted after the results (synthetic ones
 	// included), so it never causes a duplicate result for a call that is answered later.
 	const heldSystemMessages: Message[] = [];
+	// Results answering a skipped (errored/aborted) assistant message would be orphans: providers reject them.
+	const skippedToolCallIds = new Set<string>();
 	const closePendingToolCalls = () => {
 		if (pendingToolCalls.length > 0) {
 			for (const tc of pendingToolCalls) {
@@ -239,10 +241,12 @@ export function transformMessages<TApi extends Api>(
 			// - The model should retry from the last valid state
 			const assistantMsg = msg;
 			if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
+				for (const block of assistantMsg.content) {
+					if (block.type === "toolCall") skippedToolCallIds.add(block.id);
+				}
 				continue;
 			}
 
-			// Track tool calls from this assistant message
 			const toolCalls = assistantMsg.content.filter((b) => b.type === "toolCall");
 			if (toolCalls.length > 0) {
 				pendingToolCalls = toolCalls;
@@ -251,6 +255,7 @@ export function transformMessages<TApi extends Api>(
 
 			result.push(msg);
 		} else if (msg.role === "toolResult") {
+			if (skippedToolCallIds.has(msg.toolCallId)) continue;
 			existingToolResultIds.add(msg.toolCallId);
 			result.push(msg);
 		} else if (msg.role === "system") {

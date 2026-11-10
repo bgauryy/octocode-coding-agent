@@ -222,7 +222,6 @@ export class RpcClient {
 		return this.getData(response);
 	}
 
-	/** Set auto-retry enabled/disabled. */
 	async setAutoRetry(enabled: boolean): Promise<void> {
 		await this.send({ type: "set_auto_retry", enabled });
 	}
@@ -347,9 +346,7 @@ export class RpcClient {
 		return this.getData<{ commands: RpcSlashCommand[] }>(response).commands;
 	}
 
-	// =========================================================================
 	// Helpers
-	// =========================================================================
 	/**
 	 * Wait for agent to become idle (no streaming).
 	 * Resolves when agent_settled event is received.
@@ -372,9 +369,7 @@ export class RpcClient {
 		return promptAndCollect(this.connection, message, images, timeout);
 	}
 
-	// =========================================================================
 	// Internal
-	// =========================================================================
 
 	/**
 	 * Send a command and wait for its response. `timeoutMs` bounds short requests; commands that answer only after their

@@ -21,6 +21,7 @@ import {
 	RetrySettingsSchema,
 	SkillsInputSchema,
 	TerminalSettingsSchema,
+	ToolExecutionSettingsSchema,
 	type ThinkingBudgetsSettingsSchema,
 	thinkingBudgetsSettings,
 	timeoutSetting,
@@ -72,6 +73,7 @@ export const SettingsSchema = Type.Object(
 		theme: Type.Optional(Type.String()),
 		branchSummary: Type.Optional(BranchSummarySettingsSchema),
 		retry: Type.Optional(RetrySettingsSchema),
+		toolExecution: Type.Optional(ToolExecutionSettingsSchema),
 		hideThinkingBlock: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.hideThinkingBlock })),
 		showCacheMissNotices: Type.Optional(
 			Type.Boolean({
@@ -179,7 +181,7 @@ export const SettingsSchema = Type.Object(
 		toggles: Type.Optional(
 			Type.Record(Type.String(), Type.Boolean(), {
 				description:
-					"Harness, plugin and hook switches by ID, as `/harness` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
+					"Harness, plugin and hook switches by ID, as `/configuration` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
 			}),
 		),
 		packages: Type.Optional(

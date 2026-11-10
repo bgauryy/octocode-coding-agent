@@ -34,7 +34,6 @@ interface ResidentInput {
 	spent: number;
 	/** The full block text of the given tools (with the instructions when any is given). */
 	contractOf: (tools: readonly string[]) => { file: string | undefined; text: string; bytes?: number };
-	/** A deferred tool's index line. */
 	indexLine: (tool: string) => string;
 	/** The server's instructions as the direct block shows them, with no tool: empty without instructions. */
 	instructionsOf: () => string;

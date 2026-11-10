@@ -203,7 +203,7 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 				style={{ "--pf-drawer": `${drawerWidth}px` } as CSSProperties}
 			>
 				<div id="pf-panel" role="tabpanel" aria-labelledby={`pf-tab-${panel}`}>
-					{panel === "overview" ? (
+					{panel === "overview" && (loaded || !error) ? (
 						<OverviewPanel
 							loaded={loaded}
 							agents={core.agents}

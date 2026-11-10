@@ -7,13 +7,15 @@ import {
 	type ActionCount,
 	actionNoun,
 	CHIPS,
+	chipParts,
 	chipText,
 	PERMISSION_ID,
 	type PermissionMode,
 } from "../mode.ts";
 import type { PermissionRequest } from "../request.ts";
+import { publishChip } from "../chip-store.ts";
 import type { Snapshot } from "../snapshot.ts";
-import type { ActionEvent, Verdict } from "./types.ts";
+import type { ActionEvent, Decided } from "./types.ts";
 
 /**
  * The record a `Permission` keeps: its audit log, the activity listeners, the footer chip, and a subagent's forwarding
@@ -158,10 +160,11 @@ export class PermissionTrail {
 		const mode = this.#chipMode();
 		const chip = CHIPS[mode];
 		ctx.ui.setStatus(PERMISSION_ID, chipText(mode, this.#log.count), chip.color);
+		publishChip(chipParts(mode, this.#log.count));
 		return undefined;
 	}
 
-	decided(request: PermissionRequest, verdict: Verdict, note?: string, snapshot?: Snapshot): Verdict {
+	decided(request: PermissionRequest, verdict: Decided, note?: string, snapshot?: Snapshot): Decided {
 		const reasons = [...new Set(request.reasons)];
 		const action = request.action ?? "call";
 		this.record({

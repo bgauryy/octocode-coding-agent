@@ -202,7 +202,6 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 | \`!!\` | Run bash command (excluded from context) |
 `;
 
-	// Add extension-registered shortcuts
 	const extensionRunner = host.session.extensionRunner;
 	const shortcuts = extensionRunner.getShortcuts(host.keybindings.getEffectiveConfig());
 	if (shortcuts.size > 0) {

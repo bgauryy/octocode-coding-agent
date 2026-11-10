@@ -13,6 +13,7 @@ import {
 } from "@octocodeai/octocode-ai/providers/model-schema";
 import type { TSchema } from "typebox";
 import { KeybindingsSchema, KeybindingValueSchema } from "../src/core/keybindings-schema.ts";
+import { HooksFileSchema } from "../src/octocode/hooks/config/schema.ts";
 import { ModelsConfigSchema } from "../src/core/model-config.ts";
 import { SettingsSchema } from "../src/core/settings-schema.ts";
 import { ColorValueSchema, ThemeJsonSchema } from "../src/theme/theme-schema.ts";
@@ -51,6 +52,7 @@ const schemaArtifacts: readonly SchemaArtifact[] = [
 		schema: KeybindingsSchema,
 		definitions: { KeybindingValue: KeybindingValueSchema },
 	},
+	{ filename: "hooks.schema.json", schema: HooksFileSchema },
 	{
 		filename: "theme.schema.json",
 		schema: ThemeJsonSchema,

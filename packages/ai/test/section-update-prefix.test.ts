@@ -1,9 +1,9 @@
 /**
  * A mid-session system-section update (a new day changes only `environment`) must reach the model after the history it
  * already cached: the request that carries it starts with the bytes of the request before it, apart from where the
- * breakpoints sit. Recorded usage showed the whole history re-written at such an update (B321); this pins the adapters'
+ * breakpoints sit. Recorded usage showed the whole history re-written at such an update; this pins the adapters'
  * share of that contract, with the real payload builders and no network. The coding-agent side (the request hook that
- * rebuilds the transcript before it gets here) is pinned in packages/coding-agent/test/octocode/section-update-cache.test.ts.
+ * rebuilds the transcript before it gets here) is pinned in the coding-agent section-update-cache test.
  */
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

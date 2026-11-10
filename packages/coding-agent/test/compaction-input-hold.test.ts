@@ -502,7 +502,7 @@ describe("extension hooks that fire while compaction runs", () => {
 		await vi.waitFor(() => expect(count(branchLines(harness), "from the hook")).toBe(1), { timeout: 10_000 });
 		await harness.session.waitForIdle();
 		expect(api).toBeDefined();
-		// Contract change (B220): the hook's message is held and delivered, not refused as an extension error.
+		// The hook's message is held and delivered, not refused as an extension error.
 		expect(errors).toEqual([]);
 		expectEachOnce(harness, ["hook note", "from the hook"], "success");
 	});
@@ -566,7 +566,7 @@ describe("the compact tool's queued request (what `requests.settle` does when th
 		await vi.waitFor(() => expect(resumes).toHaveLength(1), { timeout: 10_000 });
 		await harness.session.waitForIdle();
 		expect(resumes).toEqual([ending === "success" ? "done" : "failed"]);
-		// Contract change (B220): the typed prompt and the steer are held and delivered on every ending, once.
+		// The typed prompt and the steer are held and delivered on every ending, once.
 		const marker = ending === "success" ? "RESUME-TASK" : "COMPACT-FAILED";
 		expectEachOnce(harness, ["typed meanwhile", "steered meanwhile", "note meanwhile", marker], ending);
 		expect(branchLines(harness).findIndex((line) => line.includes("steered meanwhile"))).toBeLessThan(

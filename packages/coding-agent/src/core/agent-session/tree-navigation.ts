@@ -116,7 +116,6 @@ export class SessionTreeNavigation {
 			let extensionSummary: { summary: string; details?: unknown; usage?: Usage } | undefined;
 			let fromExtension = false;
 
-			// Emit session_before_tree event
 			if (session.extensionRunner.hasHandlers("session_before_tree")) {
 				const result = await session.extensionRunner.emit({
 					type: "session_before_tree",

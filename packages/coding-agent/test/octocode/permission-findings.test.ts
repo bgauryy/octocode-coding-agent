@@ -23,7 +23,7 @@ import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/too
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-/** One test per finding of the permission review (B70, `.octocode/permission-review/review.md`), each failing before its fix. */
+/** One test per finding of the permission review, each failing before its fix. */
 
 const readOnlyEnv = { [SUBAGENT_ENV]: "1", [READ_ONLY_ENV]: "1" };
 const research = { reader: ["localFetch"], search: ["localSearch", "lspSearch"], readOnly: ["ghStructure"] };

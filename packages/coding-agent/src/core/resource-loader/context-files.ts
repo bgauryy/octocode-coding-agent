@@ -202,6 +202,33 @@ export function loadProjectContextFiles(options: {
 	return contextFiles;
 }
 
+/** Folders holding third-party or version-control files: their instruction files are not the user's project context. */
+const NESTED_CONTEXT_SKIPPED_DIRS = new Set(["node_modules", "vendor", ".git"]);
+
+/**
+ * The instruction files of the folders between `file` and `cwd`, below `cwd` only (cwd and its ancestors are already
+ * project context), outermost first, one per folder by the same candidates and 64 KB cap. Empty for a file outside cwd
+ * or under a dependency or version-control folder (`NESTED_CONTEXT_SKIPPED_DIRS`).
+ */
+export function nestedContextFiles(file: string, cwd: string): Array<{ path: string; content: string }> {
+	const root = canonicalizePath(resolvePath(cwd));
+	const start = dirname(canonicalizePath(resolvePath(file)));
+	if (!start.startsWith(`${root}${sep}`)) return [];
+	if (
+		start
+			.slice(root.length + 1)
+			.split(sep)
+			.some((part) => NESTED_CONTEXT_SKIPPED_DIRS.has(part))
+	)
+		return [];
+	const found: Array<{ path: string; content: string }> = [];
+	for (let dir = start; dir.startsWith(`${root}${sep}`); dir = dirname(dir)) {
+		const contextFile = loadContextFileFromDir(dir);
+		if (contextFile) found.unshift(contextFile);
+	}
+	return found;
+}
+
 /** Claude Code reads the first 200 lines or 25 KB of `MEMORY.md` at start; the same here. */
 const MEMORY_MAX_LINES = 200;
 const MEMORY_MAX_BYTES = 25 * 1024;

@@ -37,7 +37,6 @@ export function resolveOverlayLayout(
 ): { width: number; row: number; col: number; maxHeight: number | undefined } {
 	const opt = options ?? {};
 
-	// Parse margin (clamp to non-negative)
 	const margin =
 		typeof opt.margin === "number"
 			? { top: opt.margin, right: opt.margin, bottom: opt.margin, left: opt.margin }
@@ -47,27 +46,20 @@ export function resolveOverlayLayout(
 	const marginBottom = Math.max(0, margin.bottom ?? 0);
 	const marginLeft = Math.max(0, margin.left ?? 0);
 
-	// Available space after margins
 	const availWidth = Math.max(1, termWidth - marginLeft - marginRight);
 	const availHeight = Math.max(1, termHeight - marginTop - marginBottom);
 
-	// === Resolve width ===
 	let width = parseSizeValue(opt.width, termWidth) ?? Math.min(80, availWidth);
-	// Apply minWidth
 	if (opt.minWidth !== undefined) {
 		width = Math.max(width, opt.minWidth);
 	}
-	// Clamp to available space
 	width = Math.max(1, Math.min(width, availWidth));
 
-	// === Resolve maxHeight ===
 	let maxHeight = parseSizeValue(opt.maxHeight, termHeight);
-	// Clamp to available space
 	if (maxHeight !== undefined) {
 		maxHeight = Math.max(1, Math.min(maxHeight, availHeight));
 	}
 
-	// Effective overlay height (may be clamped by maxHeight)
 	const effectiveHeight = maxHeight !== undefined ? Math.min(overlayHeight, maxHeight) : overlayHeight;
 
 	// === Resolve position ===
@@ -84,7 +76,6 @@ export function resolveOverlayLayout(
 		(opt.col === undefined ? undefined : parseOverlayPosition(opt.col, Math.max(0, availWidth - width), marginLeft)) ??
 		resolveAnchorCol(colAnchor, width, availWidth, marginLeft);
 
-	// Apply offsets
 	if (opt.offsetY !== undefined) row += opt.offsetY;
 	if (opt.offsetX !== undefined) col += opt.offsetX;
 

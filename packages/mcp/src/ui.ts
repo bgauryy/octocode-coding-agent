@@ -40,6 +40,9 @@ export interface McpMenu {
 	confirmLabel: string;
 	/** What the cancel key does, for the key hint. */
 	cancelLabel: string;
+	/** Single keys that act on the highlighted item without closing the menu. */
+	keys?: ReadonlyArray<{ key: string; label: string }>;
+	onKey?(key: string, value: string): void;
 }
 
 /** After the view is disposed, menus and the sign-in prompt resolve as cancelled and a cancellable status cancels. */
@@ -132,6 +135,8 @@ export class McpManagerView implements McpUi, Component, Focusable {
 					initialId: wanted,
 					confirmLabel: menu.confirmLabel,
 					cancelLabel: menu.cancelLabel,
+					keys: menu.keys,
+					onKey: menu.onKey,
 					onSelect: (id) => finish(id),
 					onHighlight: (id) => {
 						selected = id;

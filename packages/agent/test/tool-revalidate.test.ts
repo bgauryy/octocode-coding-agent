@@ -50,25 +50,28 @@ const convertToLlm = (messages: AgentMessage[]): Message[] =>
 
 const schema = Type.Object({ value: Type.String() });
 
-function echoTool(executed: string[]): AgentTool<typeof schema, undefined> {
+/** An echo tool; a "hold" call is exclusive and ends only once `hold` resolves, so later calls wait behind it. */
+function echoTool(executed: string[], hold?: Promise<void>): AgentTool<typeof schema, undefined> {
 	return {
 		name: "echo",
 		label: "Echo",
 		description: "Echo",
 		parameters: schema,
+		concurrency: (args) => (args.value === "hold" ? "exclusive" : "shared"),
 		async execute(_id, params) {
 			executed.push(params.value);
+			if (params.value === "hold") await hold;
 			return { content: [{ type: "text", text: `echoed ${params.value}` }], details: undefined };
 		},
 	};
 }
 
 /** Run one turn that issues `values` as echo calls, then ends; return the tool results in call order. */
-async function runBatch(values: string[], config: Partial<AgentLoopConfig>, executed: string[]) {
+async function runBatch(values: string[], config: Partial<AgentLoopConfig>, executed: string[], hold?: Promise<void>) {
 	let turn = 0;
 	const stream = agentLoop(
 		[{ role: "user", content: "go", timestamp: Date.now() }],
-		{ messages: [], tools: [echoTool(executed)] },
+		{ messages: [], tools: [echoTool(executed, hold)] },
 		{ model, convertToLlm, ...config },
 		undefined,
 		() => {
@@ -98,14 +101,17 @@ async function runBatch(values: string[], config: Partial<AgentLoopConfig>, exec
 }
 
 /**
- * One batch of two calls. "a" is approved first; while "b" is still being approved (a prompt, a hook) the world changes,
- * so "a" would now be refused.
+ * "a" is approved first; while "b" is still being approved (a prompt, a hook) the world changes, so "a" would now be
+ * refused. `release` runs once "b" was approved (it lets a "hold" call in front of "a" end).
  */
-function staleApproval(withRevalidate: boolean): Partial<AgentLoopConfig> {
+function staleApproval(withRevalidate: boolean, release?: () => void): Partial<AgentLoopConfig> {
 	let held = false;
 	return {
 		beforeToolCall: async ({ toolCall }) => {
-			if (toolCall.id === "call-b") held = true;
+			if (toolCall.id === "call-b") {
+				held = true;
+				release?.();
+			}
 			if (toolCall.id !== "call-a" || !withRevalidate) return undefined;
 			return {
 				revalidate: async () => (held ? { block: true, reason: "path is now reserved by a peer" } : undefined),
@@ -121,10 +127,26 @@ describe("a call revalidated right before it executes", () => {
 		expect(executed).toEqual(["a", "b"]);
 	});
 
-	it("is refused in a parallel batch when its approval went stale, and the other call still runs", async () => {
+	it("starts a parallel call once its own approval passed, before a later call's approval", async () => {
 		const executed: string[] = [];
-		const [a, b] = await runBatch(["a", "b"], { toolExecution: "parallel", ...staleApproval(true) }, executed);
-		expect(executed).toEqual(["b"]);
+		const results = await runBatch(["a", "b"], { toolExecution: "parallel", ...staleApproval(true) }, executed);
+		expect(executed).toEqual(["a", "b"]);
+		expect(results.every((result) => !result.isError)).toBe(true);
+	});
+
+	it("is refused when its approval went stale while it waited behind an exclusive call, and the other call still runs", async () => {
+		const executed: string[] = [];
+		let release!: () => void;
+		const hold = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const [, a, b] = await runBatch(
+			["hold", "a", "b"],
+			{ toolExecution: "parallel", ...staleApproval(true, release) },
+			executed,
+			hold,
+		);
+		expect(executed).toEqual(["hold", "b"]);
 		expect(a.isError).toBe(true);
 		expect(a.content).toEqual([{ type: "text", text: "path is now reserved by a peer" }]);
 		expect(b.isError).toBe(false);

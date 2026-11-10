@@ -67,10 +67,6 @@ function convertToolResultOutput<TApi extends Api>(
 	return output;
 }
 
-// =============================================================================
-// Message conversion
-// =============================================================================
-
 /**
  * Providers whose Responses endpoints use OpenAI's `call_…|fc_…` tool-call ids: replayed to one of them, a recorded id
  * keeps its call id and item id instead of being flattened into one.

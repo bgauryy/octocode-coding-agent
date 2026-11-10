@@ -49,10 +49,10 @@ export function mapStopReason(
 		case "failed":
 		case "cancelled":
 			return { stopReason: "error" };
-		// These two are wonky ...
+		// A terminal event that still reports a running response means the answer is not final.
 		case "in_progress":
 		case "queued":
-			return { stopReason: "stop" };
+			return { stopReason: "error", errorMessage: `Response ended while still ${status}` };
 		default: {
 			const _exhaustive: never = status;
 			throw new Error(`Unhandled stop reason: ${String(_exhaustive)}`);

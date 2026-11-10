@@ -5,6 +5,7 @@ import {
 	BACKLOG_ITEM_ENV,
 	LEAN_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
+	MCP_DEFER_ROLES_ENV,
 	PARENT_SESSION_ENV,
 	PARENT_TRANSCRIPT_ENV,
 	PERMISSION_GRANTS_ENV,
@@ -44,6 +45,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	ROLE_PROMPT_FILE_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
+	MCP_DEFER_ROLES_ENV,
 	SUBAGENT_HOOKS_ENV,
 	READ_ONLY_ENV,
 	LEAN_ENV,
@@ -76,7 +78,6 @@ export const NESTING_ENV = "OCTOCODE_AGENT_NESTING";
 /** How deep a task may start: a child, and a child of the one session that child's shell may start. */
 const MAX_NESTING = 2;
 
-/** The nesting a process with this environment is at. */
 export const nestingOf = (env: NodeJS.ProcessEnv): number => {
 	const depth = Number(env[NESTING_ENV]);
 	return Number.isInteger(depth) && depth > 0 ? depth : 0;

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -412,6 +413,26 @@ describe("the matrix", () => {
 				"allow",
 			]);
 		}
+	});
+});
+
+describe("the card budget", () => {
+	const destructiveRequest = (cwd: string) => ({
+		action: "shell.destructive" as const,
+		title: "Remove?",
+		what: ["rm -rf loose.txt"],
+		cwd,
+	});
+
+	it("lets a caller give a line more time, and says unknown when the time is gone", async () => {
+		const cwd = tmp("card-budget-");
+		execFileSync("git", ["init", "-q"], { cwd });
+		fs.writeFileSync(path.join(cwd, "loose.txt"), "x");
+		const snapshot = { ref: "refs/octocode/snapshots/1-1" };
+		const patient = await computeCard(destructiveRequest(cwd), snapshot, 30_000);
+		expect(patient.risk).toBe("1 untracked or ignored file not in the snapshot");
+		const hurried = await computeCard(destructiveRequest(cwd), snapshot, 0);
+		expect(hurried.risk).toBe(UNKNOWN);
 	});
 });
 

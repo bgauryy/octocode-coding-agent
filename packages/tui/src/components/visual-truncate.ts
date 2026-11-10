@@ -8,7 +8,6 @@ import { truncateToWidth } from "../utils/truncate.ts";
 import { Text } from "./text.ts";
 
 export interface VisualTruncateResult {
-	/** The visual lines to display */
 	visualLines: string[];
 	/** Number of visual lines that were skipped (hidden) */
 	skippedCount: number;

@@ -27,6 +27,7 @@ import type {
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer, CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { ModelRuntime } from "./model-runtime.ts";
+import type { CredentialKind } from "./model-runtime/catalog.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -205,6 +206,10 @@ export class ModelRegistry {
 		} catch {
 			return undefined;
 		}
+	}
+
+	getCredentialKind(provider: string, signal?: AbortSignal): Promise<CredentialKind> {
+		return this.runtime.getCredentialKind(provider, signal);
 	}
 
 	isUsingOAuth(model: Model<Api>): boolean {

@@ -240,7 +240,10 @@ describe("startup banner from the context view", () => {
 
 	it("condenses a settings file's ignored keys into one line", () => {
 		expect(describeIgnoredKeys(["thinkingBudgets.xhigh", "compaction"])).toBe(
-			"2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): delete them",
+			"2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): /configuration unset thinkingBudgets.xhigh compaction",
+		);
+		expect(describeIgnoredKeys(["typo"], "project")).toBe(
+			"1 ignored key (typo unknown): /configuration unset typo --local",
 		);
 		expect(describeIgnoredKeys([])).toBeUndefined();
 	});
@@ -345,7 +348,7 @@ describe("harnesses", () => {
 });
 
 describe("skills in the agent's prompt", () => {
-	it("gives every skill its SKILL.md location, also for the skill tool, after one line on the folder layout", () => {
+	it("lists each skill by name for the skill tool, without its path, after one line on the folder layout", () => {
 		const skill = {
 			name: "demo",
 			description: "Demo skill.",
@@ -354,7 +357,11 @@ describe("skills in the agent's prompt", () => {
 		} as Skill;
 		const prompt = formatSkillsForPrompt([skill], "skill");
 
-		expect(prompt).toContain("<location>/skills/demo/SKILL.md</location>");
+		// The skill tool loads by name and returns the folder, so the listing carries no path.
+		expect(prompt).toContain('  <skill name="demo">Demo skill.</skill>');
+		expect(prompt).not.toContain("/skills/demo/SKILL.md");
+		// A file reader still gets the file it loads.
+		expect(formatSkillsForPrompt([skill], "bash")).toContain('<skill name="demo" location="/skills/demo/SKILL.md">');
 		expect(prompt).toContain(
 			"A skill is a folder: SKILL.md (frontmatter name and description, then instructions) with optional scripts/, references/ and assets/, resolved against that folder.",
 		);

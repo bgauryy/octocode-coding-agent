@@ -140,16 +140,16 @@ sequenceDiagram
   participant P as System prompt
   participant M as Model
   participant T as skill tool
-  S->>P: name, description, path of every skill
+  S->>P: name and description of every skill
   M->>T: skill(name) for a matching task
   T-->>M: SKILL.md body and its folder
   M->>M: read references, run scripts from that folder
 ```
 
-- The list shows every usable skill in full. When it exceeds 1% of the model's context window in characters (8,000 on 200,000 tokens), startup warns `Skill listing over budget`; the prompt is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
+- The list shows every usable skill's name and full description. A profile without the `skill` tool also gets each `SKILL.md` path, since its agent reads the file itself. When the list exceeds 1% of the model's context window in characters (8,000 on 200,000 tokens), startup warns `Skill listing over budget`; the prompt is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
 - The `skill` tool returns `SKILL.md` without frontmatter, plus the folder, so relative paths resolve. It refuses unknown names (offering close matches) and `disable-model-invocation` skills. The terminal shows a load as `Skill: <name>` with its group and line count.
 - A profile can drop the tool with `excludeTools: skill`; the prompt then names a file reader instead. The tool is left out while no skill allows model invocation.
-- Compaction may summarize a loaded skill; its path stays in the prompt so the model can read it again.
+- Compaction may summarize a loaded skill; its name stays in the prompt so the model can load it again.
 - The Octocode MCP server may read inside every loaded skill folder. Folders you add (`research.allowedPaths` in global settings, `ALLOWED_PATHS` in the environment or `~/.octocode/.env`) extend that; `ALLOWED_PATHS` in the server entry's `env` replaces it ([MCP](mcp-reference.md)).
 
 ### Optimized descriptions

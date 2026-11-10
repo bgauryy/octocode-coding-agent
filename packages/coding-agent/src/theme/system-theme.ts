@@ -52,9 +52,7 @@ import {
 
 export const SYSTEM_THEME_NAME = "system";
 
-// ============================================================================
 // Public API
-// ============================================================================
 
 export interface SystemThemeInput {
 	foreground?: RgbColor;
@@ -118,9 +116,7 @@ export function terminalAppearance(background: RgbColor, foreground?: RgbColor):
 	return whiteContrast >= blackContrast ? "dark" : "light";
 }
 
-// ============================================================================
 // Generation
-// ============================================================================
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 

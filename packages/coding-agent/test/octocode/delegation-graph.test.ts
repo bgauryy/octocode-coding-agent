@@ -25,19 +25,19 @@ describe("coordinator planning graph", () => {
 
 	it("plans work for two or more children as one backlog graph: owner, files, check and real dependencies per item", () => {
 		for (const text of delegation()) {
-			const plan = text.split("\n").find((line) => line.startsWith("- Before you start two or more children")) ?? "";
+			const plan = text.split("\n").find((line) => line.startsWith("  1. First plan the work as a graph")) ?? "";
 			expect(plan).toContain("one backlog `add`");
 			expect(plan).toContain("its owner (you or one child), its files, its pass/fail check and only real `dependsOn`");
 			// Reservations and busy children are scheduling, not dependencies.
 			expect(plan).toContain("a file a child reserves, or a busy child, is not one");
 			// The user sees who does what before work starts.
-			expect(plan).toContain("show the user the plan as one short list: item, owner, depends on");
+			expect(plan).toContain("show the user the plan as a table: item, owner, depends on");
 		}
 	});
 
 	it("checks the graph before starting: disjoint files, one owner per coupling and resource, work worth a start, critical path first", () => {
 		for (const text of delegation()) {
-			const check = text.split("\n").find((line) => line.startsWith("- Check the graph before you start it")) ?? "";
+			const check = text.split("\n").find((line) => line.startsWith("  2. Check the graph before you start it")) ?? "";
 			expect(check).toContain("give coupled work one owner and independent work disjoint files");
 			expect(check).toContain("each shared resource (such as a build) one owner");
 			expect(check).toContain("merge parts too small to pay for a child, or do them yourself");
@@ -47,7 +47,7 @@ describe("coordinator planning graph", () => {
 
 	it("runs the graph in waves with one build, and sends a failure back to the item that caused it", () => {
 		for (const text of delegation()) {
-			const waves = text.split("\n").find((line) => line.startsWith("- Run the graph in waves")) ?? "";
+			const waves = text.split("\n").find((line) => line.startsWith("  3. Run the graph in waves")) ?? "";
 			expect(waves).toContain("interfaces and shared types first");
 			expect(waves).toContain("then every item whose files and dependencies are free, together");
 			expect(waves).toContain("one build and full test run by its owner");
@@ -84,9 +84,9 @@ describe("coordinator planning graph", () => {
 		const text =
 			octocodePromptSections({ research: FAKE_RESEARCH, profiles: [], canDelegate: true, canBacklog: false })
 				.delegation ?? "";
-		const plan = text.split("\n").find((line) => line.startsWith("- Before you start two or more children")) ?? "";
+		const plan = text.split("\n").find((line) => line.startsWith("  1. First plan the work as a graph")) ?? "";
 		expect(plan).toContain("plan the work as a graph: one part per piece");
-		expect(plan).toContain("show the user the plan as one short list: part, owner, depends on");
+		expect(plan).toContain("show the user the plan as a table: part, owner, depends on");
 		// No rule may send the coordinator to a tool it lacks.
 		expect(text).not.toContain("backlog");
 		expect(text).not.toContain("`dependsOn`");

@@ -63,7 +63,6 @@ export abstract class AgentSessionState {
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
 	}
 
-	/** Emit an event to all listeners */
 	protected _emit(event: AgentSessionEvent): void {
 		this._listeners.emit(event);
 	}

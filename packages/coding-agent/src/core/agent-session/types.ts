@@ -86,7 +86,6 @@ export type AgentSessionEvent =
 	| { type: "summarization_retry_finished" }
 	| { type: "bash_execution_update"; id?: string; delta: string };
 
-/** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
 
 export interface AgentSessionConfig {
@@ -189,13 +188,11 @@ export interface PromptOptions {
 	preflightResult?: (disposition: PromptDisposition, commandFailure?: string) => void;
 }
 
-/** Options for model/thinking mutations. */
 export interface ModelMutationOptions {
 	/** Persist the new value to global defaults. Defaults to session-only. */
 	persist?: boolean;
 }
 
-/** Result from cycleModel() */
 export interface ModelCycleResult {
 	model: Model<any>;
 	thinkingLevel: ThinkingLevel;

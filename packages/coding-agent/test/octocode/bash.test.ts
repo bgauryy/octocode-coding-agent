@@ -80,7 +80,7 @@ describe("bash tool", () => {
 		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Trimmed output is saved in full"));
 		expect(guideline).not.toContain("Each result starts with");
 		expect(guideline).toContain("read that file by line range instead of rerunning");
-		// B149: the output-limit hint was dropped; agents copied it into tools whose schemas lack that field.
+		// The output-limit hint was dropped; agents copied it into tools whose schemas lack that field.
 		expect(guideline).not.toContain("output limit");
 		expect(guideline).not.toContain("maxOutputTokens");
 		expect(guideline).toContain(

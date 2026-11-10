@@ -31,6 +31,10 @@ type Options = {
 	secondOutput?: unknown;
 	preDeny?: boolean;
 	conditionalPath?: boolean;
+	/** Streaming speed of the scripted model, to leave time between a block and its message's end. */
+	tokensPerSecond?: number;
+	/** Gives the nested MCP server's `observe` tool the `readOnly` role, so the permission check classes it as a read. */
+	readRole?: boolean;
 };
 export async function fixture(protocol: "claude" | "codex", options: Options = {}) {
 	const root = tmp("permission-hook-session-"),
@@ -122,6 +126,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 					policy: {
 						command: process.execPath,
 						args: [serverFile],
+						...(options.readRole ? { roles: { readOnly: ["observe"] } } : {}),
 					},
 				},
 			}),
@@ -131,6 +136,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 	const faux = createFauxCore({
 		provider: "permission-fixture",
 		models: [{ id: "fixture", contextWindow: 200000, maxTokens: 4096 }],
+		tokensPerSecond: options.tokensPerSecond,
 	});
 	const settingsManager = SettingsManager.inMemory({
 		retry: { enabled: false },
@@ -249,6 +255,8 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 	};
 	let session = await makeSession();
 	return {
+		faux,
+		settingsManager,
 		get providerRequests() {
 			return providerRequests;
 		},

@@ -52,7 +52,6 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
 	return configuredMcpToolExposure(config, toolName) ?? DEFAULT_MCP_EXPOSURE;
 }
 
-/** The error for an exposure value that is not one of `MCP_EXPOSURES`. */
 const exposureError = (): string => `must be one of ${MCP_EXPOSURES.map((exposure) => `"${exposure}"`).join(", ")}`;
 
 /** Validate one server entry of the `mcpServers` shape. Returns the config, or an error message. */

@@ -382,7 +382,7 @@ describe("releasing when the run ends", () => {
 		});
 		expect(s.leases()).toHaveLength(1);
 		s.team.stop();
-		// B209: a child still closing may write its paths until its process exits, so the session's end keeps them
+		// A child still closing may write its paths until its process exits, so the session's end keeps them
 		// (the parent's own end still takes them along: see "goes with the parent's process" below).
 		expect(s.leases()).toEqual([{ path: "a.ts", kind: "file", owner: "kid-one" }]);
 		// The run's end releases them, also after the session restarted (/new).

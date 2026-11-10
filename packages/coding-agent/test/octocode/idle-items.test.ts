@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerIdleItems } from "../../src/octocode/subagents/idle-items.ts";
-import type { Team } from "../../src/octocode/team/session.ts";
+import { Team } from "../../src/octocode/team/session.ts";
+import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
@@ -27,14 +28,17 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-function setup() {
+function setup(realTeam = false) {
 	const fake = fakeHost();
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
 	const ctx = fakeCtx({ cwd });
 	const reserved = new Set<string>();
-	const team = { reservation: (absolute?: string) => (absolute && reserved.has(absolute) ? "held" : undefined) };
+	const team = realTeam
+		? new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp, "team.sqlite") })
+		: { reserved: (absolute: string) => reserved.has(absolute) };
 	const runs = { running: new Map<string, undefined>(), items: new Map<string, string>() };
+	if (realTeam) registerCollab(fake.api, team as Team, {});
 	registerIdleItems(fake.api, team as unknown as Team, runs);
 	const backlog = openBacklog(ctx, { isSubagent: false });
 	const hold = (title: string, paths: string[] = []) => {
@@ -44,7 +48,7 @@ function setup() {
 	const settle = async () => {
 		await fake.emit("agent_settled", { aborted: false }, ctx);
 	};
-	return { fake, cwd, runs, reserved, hold, settle };
+	return { fake, cwd, runs, reserved, hold, settle, team: team as Team };
 }
 
 describe("idle item notice", () => {
@@ -96,13 +100,27 @@ describe("idle item notice", () => {
 		expect(s.fake.sent).toHaveLength(1);
 	});
 
-	it("says nothing for an item whose paths another agent reserves", async () => {
+	it("says nothing for an item whose paths any agent reserves, this session included", async () => {
 		const s = setup();
 		s.hold("reserved", ["packages/"]);
 		s.reserved.add(path.resolve(s.cwd, "packages/"));
 		s.runs.running.set("child", undefined);
 		await s.settle();
 		expect(s.fake.sent).toHaveLength(0);
+	});
+
+	it("says nothing for an item whose paths this session holds in the team database", async () => {
+		const s = setup(true);
+		await s.fake.emit("session_start", {}, fakeCtx({ cwd: s.cwd }));
+		s.team.join("coordinate");
+		s.hold("mine", ["packages/"]);
+		expect(s.team.lock([path.join(s.cwd, "packages/")], "work").ok).toBe(true);
+		s.runs.running.set("child", undefined);
+		await s.settle();
+		expect(s.fake.sent).toHaveLength(0);
+		s.team.unlock();
+		await s.settle();
+		expect(s.fake.sent).toHaveLength(1);
 	});
 
 	it("says nothing when nothing runs", async () => {

@@ -117,6 +117,26 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 		};
 	}
 
+	it("reports a throwing input handler and keeps delivering input", () => {
+		const harness = setupNegotiation();
+		try {
+			const seen: string[] = [];
+			const errors: unknown[] = [];
+			harness.terminal.onInputError = (error) => errors.push(error);
+			(harness.terminal as unknown as { inputHandler?: (data: string) => void }).inputHandler = (data) => {
+				seen.push(data);
+				if (data === "a") throw new Error("boom");
+			};
+			harness.send("a");
+			harness.send("b");
+			assert.deepEqual(seen, ["a", "b"]);
+			assert.equal(errors.length, 1);
+			assert.equal((errors[0] as Error).message, "boom");
+		} finally {
+			harness.cleanup();
+		}
+	});
+
 	it("queries Kitty mode before enabling modifyOtherKeys fallback", () => {
 		const harness = setupNegotiation();
 		try {

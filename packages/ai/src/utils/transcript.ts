@@ -43,7 +43,6 @@ function isSystemMessage(message: { role: string }): message is SystemMessage {
 	return message.role === "system";
 }
 
-/** Return the leading system message, if the transcript starts with one. */
 export function getInitialSystemMessage(messages: TranscriptMessages): SystemMessage | undefined {
 	const first = messages[0];
 	return first && isSystemMessage(first) ? first : undefined;

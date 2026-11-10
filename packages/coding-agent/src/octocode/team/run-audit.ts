@@ -11,7 +11,7 @@ interface AuditHost {
 }
 
 /**
- * What a parent records about the agents it starts (`agent_runs`, design B36 \u00a74) and how anyone finds an agent again. The
+ * What a parent records about the agents it starts (`agent_runs`) and how anyone finds an agent again. The
  * writes are advisory: a team database that cannot be written leaves the agent to be audited by the row that retires it, so
  * they never fail the run they describe. The reads throw when the database is unusable, like every other read of the team.
  */

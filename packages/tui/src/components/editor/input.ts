@@ -55,7 +55,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		editor.jumpMode = null;
 	}
 
-	// Handle bracketed paste mode
 	if (data.includes("\x1b[200~")) {
 		editor.isInPaste = true;
 		editor.pasteBuffer = "";
@@ -86,7 +85,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Undo
 	if (kb.matches(data, "tui.editor.undo")) {
 		editor.undo();
 		return;
@@ -101,7 +99,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Handle autocomplete mode
 	if (editor.autocomplete.autocompleteState && editor.autocomplete.autocompleteList) {
 		if (kb.matches(data, "tui.select.cancel")) {
 			editor.autocomplete.dismissAutocomplete();
@@ -155,13 +152,11 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		}
 	}
 
-	// Tab - trigger completion
 	if (kb.matches(data, "tui.input.tab") && !editor.autocomplete.autocompleteState) {
 		editor.autocomplete.handleTabCompletion();
 		return;
 	}
 
-	// Deletion actions
 	if (kb.matches(data, "tui.editor.deleteToLineEnd")) {
 		deleteToEndOfLine(editor);
 		return;
@@ -187,7 +182,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Kill ring actions
 	if (kb.matches(data, "tui.editor.yank")) {
 		yank(editor);
 		return;
@@ -209,7 +203,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Cursor movement actions
 	if (kb.matches(data, "tui.editor.cursorLineStart")) {
 		moveToLineStart(editor);
 		return;
@@ -227,7 +220,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// New line
 	if (
 		kb.matches(data, "tui.input.newLine") ||
 		(data.charCodeAt(0) === 10 && data.length > 1) ||
@@ -245,7 +237,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Submit (Enter)
 	if (kb.matches(data, "tui.input.submit")) {
 		if (editor.host.isSubmitDisabled()) return;
 
@@ -307,7 +298,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Character jump mode triggers
 	if (kb.matches(data, "tui.editor.jumpForward")) {
 		editor.jumpMode = "forward";
 		return;
@@ -317,7 +307,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Shift+Space - insert regular space
 	if (matchesKey(data, "shift+space")) {
 		insertCharacter(editor, " ");
 		return;
@@ -329,7 +318,6 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		return;
 	}
 
-	// Regular characters
 	if (data.charCodeAt(0) >= 32) {
 		insertCharacter(editor, data);
 	}

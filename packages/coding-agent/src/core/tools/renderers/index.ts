@@ -12,8 +12,8 @@ import { createShellRenderers } from "./bash.ts";
 /**
  * Merge built-in renderers into a tool definition that does not supply its own.
  *
- * `ToolExecutionComponent` used to do this lookup itself, which forced every presentation to import
- * the tool implementations. Callers do it now, so a process that renders can import renderers alone.
+ * Callers do this lookup, not `ToolExecutionComponent`, so a process that renders can import renderers alone
+ * without importing the tool implementations.
  */
 export function withBuiltInRenderers<TDefinition extends ToolRenderers>(
 	toolName: string,

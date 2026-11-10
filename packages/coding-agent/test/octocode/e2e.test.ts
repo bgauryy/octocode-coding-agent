@@ -239,30 +239,30 @@ describe("with Octocode MCP (default)", () => {
 		console.log(
 			`default Octocode prefix: own ${ownChars} chars, MCP server text ${mcpChars} chars (prompt ${turn.systemPrompt.length}, ${turn.tools.length} tools)`,
 		);
-		// 75_300 (2026-10-31, measured 74,790; B338/B340/B343/B344): native tool text re-authored, `<tools>`/`<mcps>` from one
-		// section registry, the flat `agent` tool and the `models` tool. 79_500 (2026-10-31, measured 78,252; B327): down from 88_300 (measured 88,140) after re-authoring the stale
+		// 75_300 (measured 74,790): native tool text re-authored, `<tools>`/`<mcps>` from one
+		// section registry, the flat `agent` tool and the `models` tool. 79_500 (measured 78,252): down from 88_300 (measured 88,140) after re-authoring the stale
 		// `octocode-mcp` preset overrides (a drift test now fails when the linked server changes them), sharing docs and types
 		// in the contract renderer, ollama opt-in and same-fact duplicates removed from policy and
 		// tool text. The prefix includes the `mcps` section, so a stale override (raw server text) or a
 		// longer catalog in the sibling repository moves it: 88_300 had absorbed about 1,800 of such growth and the `task`
-		// tool; before that, 93,097 and 98,493 while the renderer kept full schemas (B322).
-		// 75_000 (2026-10-31, measured 74,765; B366): the sibling server's catalog had changed, so every preset override was stale
+		// tool; before that, 93,097 and 98,493 while the renderer kept full schemas.
+		// 75_000 (measured 74,765): the sibling server's catalog had changed, so every preset override was stale
 		// and the raw contract made 82,523. The overrides were rewritten (prose -46%), and `agent` shows one line per type.
-		// 88_000 (2026-11-03, measured 86,642; B6): every Octocode tool contract is resident (no cold-start index), by decision.
-		// 88_000 (2026-11-03) was the cap on the whole prefix. 92,668 on 2026-11-04 came from the external Octocode MCP text
+		// 88_000 (measured 86,642): every Octocode tool contract is resident (no cold-start index), by decision.
+		// 88_000 was the cap on the whole prefix. 92,668 came from the external Octocode MCP text
 		// growing (M14: never trim it to fit a ceiling), so the cap now covers only our own text.
-		// 43_100 (2026-11-04, own 42,457 of 92,668; MCP server text 50,212, uncapped and logged): the 88_000 headroom over
+		// 43_100 (own 42,457 of 92,668; MCP server text 50,212, uncapped and logged): the 88_000 headroom over
 		// 86,642 (about 1.6%), applied to our own text.
-		// 45_700 (2026-11-05, B55): the bash description's CLI guide with the probed host, requested by the user, measured
+		// 45_700: the bash description's CLI guide with the probed host, requested by the user, measured
 		// +2,569 chars (42,919 -> 45,488 in the same run setup).
-		// 46_100 (2026-11-05, B59): the octocode CLI research line, fallback clause and CLI-guide Scope clause, requested by
-		// the user, measured +410 in main; the rest from concurrent B60/B61 edits.
-		// 48_700 (2026-11-06, measured 48,667): the same user-requested growth `prompt-size.test.ts` itemizes for main:
-		// B150 `reason` rule +96, B156 backlog `updates` batch +1,508, B157 close instead of delete +about 820, B29 the agent
+		// 46_100: the octocode CLI research line, fallback clause and CLI-guide Scope clause, requested by
+		// the user, measured +410 in main; the rest from concurrent edits.
+		// 48_700 (measured 48,667): the same user-requested growth `prompt-size.test.ts` itemizes for main:
+		// `reason` rule +96, backlog `updates` batch +1,508, close instead of delete +about 820, the agent
 		// tool's `mcp` field +302 (+2,726 in all).
-		// 49_723 (2026-11-06, measured 49,690; B170): the timer tool's closed `until` list, +953 in main (see
+		// 49_723 (measured 49,690): the timer tool's closed `until` list, +953 in main (see
 		// `prompt-size.test.ts`); the other +70 since 48,667 came from concurrent edits. Slack over the measurement is 33.
-		// 50_047 (2026-11-07, measured 50,014; B218/B219, user-requested): the agent tool's `tasks` and the backlog's `items`
+		// 50_047 (measured 50,014, user-requested): the agent tool's `tasks` and the backlog's `items`
 		// arrays, +303 in main (see `prompt-size.test.ts`); the other +21 since 49,690 came from concurrent edits.
 		expect(ownChars, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
 			50_047,

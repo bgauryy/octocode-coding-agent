@@ -12,7 +12,7 @@ import type { BudgetStanding } from "../team/model.ts";
 import { sessionChildren } from "../child-sessions/session-children.ts";
 import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
-import { landChild } from "./merge-child.ts";
+import { discardChild, landChild } from "./merge-child.ts";
 import { pendingRefs } from "./worktree.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
@@ -24,7 +24,7 @@ export interface BackgroundRun {
 export type Background = Map<string, BackgroundRun>;
 
 const AGENTS_USAGE =
-	"Usage: /agents [tell <agent|all> [#<message to answer>] <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history | external ...]";
+	"Usage: /agents [tell <agent|all> [#<message to answer>] <message> | interrupt <id> <message> | kill <id> | merge <id> | discard <id> | stats | history | external ...]";
 const AGENTS_SUBCOMMANDS: Array<[string, string]> = [
 	[
 		"tell",
@@ -33,6 +33,7 @@ const AGENTS_SUBCOMMANDS: Array<[string, string]> = [
 	["interrupt", "interrupt <id> <message> — stop a subagent's current step and continue it with the message"],
 	["kill", "kill <id> — stop a running subagent"],
 	["merge", "merge <id> — merge an isolated subagent into this tree"],
+	["discard", "discard <id> — delete an isolated subagent's unmerged result"],
 	["stats", "stats — this session's subagent runs per profile: outcomes, tokens, cost, asks, compactions"],
 	["history", "history — every subagent this session started: profile, goal, status, transcript and report"],
 ];
@@ -143,6 +144,30 @@ export function agentsCommand(
 			say(ctx, errorMessage(error), "error");
 		}
 	};
+	const discard = async (id: string, ctx: ExtensionCommandContext) => {
+		if (!id) {
+			const ids = await pendingRefs(ctx.cwd);
+			return say(
+				ctx,
+				`Usage: /agents discard <id>. ${ids.length ? `Unmerged: ${ids.join(", ")}` : "No isolated results to discard."}`,
+				"warning",
+			);
+		}
+		try {
+			// The work cannot be recovered, so without someone to ask nothing is deleted.
+			const result = await discardChild(team, id, ctx, (ref, files) =>
+				ctx.hasUI
+					? ctx.ui.confirm(
+							`Discard ${ref}?`,
+							`Its ${files.length} changed file${files.length === 1 ? "" : "s"} are lost:\n${files.slice(0, 10).join("\n")}${files.length > 10 ? `\n(${files.length - 10} more)` : ""}`,
+						)
+					: Promise.resolve(false),
+			);
+			say(ctx, result.text, result.ok ? "info" : "warning");
+		} catch (error) {
+			say(ctx, errorMessage(error), "error");
+		}
+	};
 	// Completions are synchronous: unmerged refs come from the last lookup, refreshed on every completion request.
 	let cwd = process.cwd();
 	let refs: string[] = [];
@@ -165,7 +190,7 @@ export function agentsCommand(
 	};
 	const ids = (sub: string): string[] => {
 		if (sub === "kill") return running();
-		if (sub === "merge") {
+		if (sub === "merge" || sub === "discard") {
 			refreshRefs();
 			return refs;
 		}
@@ -176,7 +201,8 @@ export function agentsCommand(
 	};
 	return {
 		description: "List, message or stop subagents",
-		argumentHint: "[tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats | history]",
+		argumentHint:
+			"[tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | discard <id> | stats | history]",
 		complete: (prefix) => {
 			const space = prefix.indexOf(" ");
 			if (space === -1)
@@ -204,6 +230,7 @@ export function agentsCommand(
 			if (sub === "interrupt") return tell(rest, ctx, true);
 			if (sub === "kill") return kill(rest, ctx);
 			if (sub === "merge") return merge(rest, ctx);
+			if (sub === "discard") return discard(rest, ctx);
 			if (sub === "stats") return say(ctx, renderStats(agentStats(ctx.sessionManager.getEntries())));
 			if (sub === "history") {
 				const children = sessionChildren(ctx.sessionManager.getEntries());

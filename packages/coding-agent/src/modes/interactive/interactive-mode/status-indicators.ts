@@ -149,7 +149,6 @@ export function setHiddenThinkingLabel(host: StatusIndicatorsHost, label?: strin
 	host.ui.requestRender();
 }
 
-/** Show a managed-tool status update in the chat. */
 export function showManagedToolStatus(host: StatusIndicatorsHost, status: ToolStatus): void {
 	if (!host.managedToolStatusStarted) {
 		host.chatContainer.addChild(new Spacer(1));

@@ -27,8 +27,9 @@ export function buildChatPayload(
 	};
 
 	const currentTools = getCurrentTools(context.messages);
-	if (currentTools.length > 0) payload.tools = toFunctionTools(currentTools);
-	if (options?.temperature !== undefined) payload.temperature = options.temperature;
+	if (currentTools.length > 0) payload.tools = toFunctionTools(currentTools, model.compat?.supportsStrictMode ?? true);
+	if (options?.temperature !== undefined && model.compat?.supportsTemperature !== false)
+		payload.temperature = options.temperature;
 	if (options?.maxTokens !== undefined) payload.maxTokens = options.maxTokens;
 	if (options?.toolChoice) payload.toolChoice = mapToolChoice(options.toolChoice);
 	if (options?.promptMode) payload.promptMode = options.promptMode;
@@ -43,9 +44,9 @@ export function shouldUsePromptCaching(options?: MistralOptions): options is Mis
 	return resolveCacheRetention(options?.cacheRetention, options?.env) !== "none" && !!options?.sessionId;
 }
 
-function toFunctionTools(tools: Tool[]): MistralFunctionTool[] {
+function toFunctionTools(tools: Tool[], supportsStrictMode: boolean): MistralFunctionTool[] {
 	return tools.map((tool) => {
-		const strict = resolveJsonSchemaStrictSampling(tool, true);
+		const strict = resolveJsonSchemaStrictSampling(tool, supportsStrictMode);
 		return {
 			type: "function",
 			function: {

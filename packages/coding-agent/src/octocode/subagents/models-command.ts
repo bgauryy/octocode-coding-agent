@@ -1,3 +1,4 @@
+import { getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
 import { builtinDescription } from "../../core/slash-commands.ts";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
@@ -32,6 +33,7 @@ import {
 	taskBlocker,
 	usableModels,
 } from "./model.ts";
+import { type ConfiguredModels, configuredSubagentModels } from "./configured-models.ts";
 import type { AgentProfile } from "./profiles.ts";
 import {
 	checkCandidates,
@@ -86,15 +88,27 @@ export const priceText = (cost: { input: number; output: number } | undefined): 
 export const priceRank = (cost: { input: number; output: number } | undefined): number =>
 	cost ? 3 * cost.input + cost.output : Infinity;
 
+/** Thinking levels a plain reasoning model supports; only a model that differs lists its own (` · thinking low/medium/high`). */
+const COMMON_LEVELS = "off/minimal/low/medium/high";
+
+/** ` · thinking …` with the levels `clampThinkingLevel` would accept, or "" for a model without reasoning or with the usual ones. */
+function thinkingLevelsText(model: ModelRef): string {
+	// The registry's model carries `reasoning` and `thinkingLevelMap`; `ModelRef` names only what routing reads.
+	if (!(model as { reasoning?: boolean }).reasoning) return "";
+	const levels = getSupportedThinkingLevels(model as Parameters<typeof getSupportedThinkingLevels>[0]).join("/");
+	return levels === COMMON_LEVELS ? "" : ` · thinking ${levels}`;
+}
+
 /** One model's line: price, context window and abilities, the parent's marked. */
 function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog: Catalog | undefined): string {
 	const known = lookup(catalog, model.provider, model.id);
 	const abilities = modelAbilities(model, catalog);
 	const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
 	const mark = parent && name(model) === name(parent) ? "● " : "  ";
+	const levels = thinkingLevelsText(model);
 	const description = known?.description ? ` — ${describe(known.description)}` : "";
 	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
-	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${description}`;
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${description}`;
 }
 
 /**
@@ -129,7 +143,8 @@ export function describeModels(
 	catalog: Catalog | undefined,
 	health: (provider: string) => ProviderStatus | undefined = () => undefined,
 	shown: (model: ModelRef) => boolean = () => true,
-	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
+	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
+	configured: ConfiguredModels = configuredSubagentModels(),
 ): string {
 	if (available.length === 0) return "No models are configured.";
 	const rows = available
@@ -148,7 +163,7 @@ export function describeModels(
 				: [row.line],
 		),
 		"",
-		describeRoutes(available, parent, profiles, catalog, refused),
+		describeRoutes(available, parent, profiles, catalog, refused, configured),
 	].join("\n");
 }
 
@@ -158,7 +173,8 @@ export function describeRoutes(
 	parent: ModelRef | undefined,
 	profiles: Map<string, AgentProfile>,
 	catalog: Catalog | undefined,
-	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
+	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
+	configured: ConfiguredModels = configuredSubagentModels(),
 ): string {
 	const own = parent && (available.find((model) => name(model) === name(parent)) ?? parent);
 	const parentPriced =
@@ -173,23 +189,24 @@ export function describeRoutes(
 					? " (no capable model at 15–80% of its price)"
 					: " (no cheaper capable model)";
 	const tiers = MODEL_TIERS.map((tier) => {
-		const chosen = tierModel(tier, available, parent, catalog, refused);
+		const choice = tierChoice(tier, available, parent, catalog, refused, configured);
 		const fallback = parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model";
 		const usedBy = tier === SUBAGENT_DEFAULT_TIER ? "; also a task with no profile or model" : "";
-		return `  ${tier}: ${chosen ? name(chosen) : fallback}${usedBy}`;
+		return `  ${tier}: ${choice.model ?? fallback}${choice.note ? ` (${choice.note})` : ""}${usedBy}`;
 	});
 	const thinking = subagentThinking();
 	const set = thinking !== SUBAGENT_DEFAULT_THINKING || process.env[SUBAGENT_THINKING_ENV] !== undefined;
 	const unsuffixed = `  thinking when the call and profile name none: ${thinking} (${set ? SUBAGENT_THINKING_ENV : `built in; ${SUBAGENT_THINKING_ENV} sets another`}), never this session's level`;
 	// Each profile as it would route now: the model it runs on, and what it asked for.
 	const routed = [...profiles.values()].map((profile) => {
-		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking });
+		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking, configured });
 		const runs = profileRuns(route, available);
+		const source = "setting" in route && route.setting ? `; setting ${route.setting}` : "";
 		const asked = !profile.model
 			? ""
 			: "fallback" in route && route.fallback
 				? ` (${fallbackNote(route.fallback, route.refusedBy)})`
-				: ` (${profile.model}${isModelTier(profile.model.split(":")[0]) ? ", a purpose" : ""})`;
+				: ` (${profile.model}${isModelTier(profile.model.split(":")[0]) ? `, a purpose${source}` : ""})`;
 		return `  ${profile.name}: ${runs}${asked}`;
 	});
 	return ["Subagent purposes:", ...tiers, unsuffixed, ...(routed.length > 0 ? ["", "Profiles:", ...routed] : [])].join(
@@ -205,6 +222,29 @@ const tierModel = (
 	catalog: Catalog | undefined,
 	refused: Refused,
 ) => resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
+
+/**
+ * What a purpose runs on now and where that came from: the user's `subagents.models` setting (`note` names it), else the
+ * automatic choice, which says why a set model was skipped. No `model`: the automatic choice found none, so the parent's runs.
+ */
+function tierChoice(
+	tier: (typeof MODEL_TIERS)[number],
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	catalog: Catalog | undefined,
+	refused: Refused,
+	configured: ConfiguredModels,
+): { model?: string; note?: string } {
+	const route = routeModel({ preferred: tier, available, parent, catalog, refused, configured });
+	if ("error" in route) return {};
+	if (route.setting && route.model)
+		return { model: supportedThinking(route.model, available), note: `setting ${route.setting}` };
+	const chosen = tierModel(tier, available, parent, catalog, refused);
+	return {
+		...(chosen ? { model: name(chosen) } : {}),
+		...(route.skipped ? { note: `automatic; ${route.skipped}` } : {}),
+	};
+}
 
 /** What a profile's route runs on: `provider/id:level`, the routing error, or the parent's model. */
 const profileRuns = (route: ReturnType<typeof routeModel>, available: readonly ModelRef[]) =>
@@ -230,17 +270,24 @@ export function routingFacts(
 	parent: ModelRef | undefined,
 	profiles: Iterable<AgentProfile>,
 	catalog: Catalog | undefined,
-	refused: Refused = (provider, id, proven) => providerHealth.refused(provider, id, proven),
+	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
+	configured: ConfiguredModels = configuredSubagentModels(),
 ): RoutingFacts | undefined {
 	if (!parent || available.length === 0) return undefined;
 	const thinking = subagentThinking();
 	const purpose = (tier: (typeof MODEL_TIERS)[number]) => {
-		const chosen = tierModel(tier, available, parent, catalog, refused);
-		return name(chosen ?? parent);
+		const choice = tierChoice(tier, available, parent, catalog, refused, configured);
+		return `${choice.model ?? name(parent)}${choice.note ? ` (${choice.note})` : ""}`;
 	};
 	return {
 		sessionModel: name(parent),
-		providers: [...new Set(available.filter((model) => !refused(model.provider)).map((model) => model.provider))]
+		providers: [
+			...new Set(
+				available
+					.filter((model) => !refused(model.provider, undefined, false, model.cost))
+					.map((model) => model.provider),
+			),
+		]
 			.sort()
 			.map((id) => ({
 				id,
@@ -251,7 +298,10 @@ export function routingFacts(
 		profiles: Object.fromEntries(
 			[...profiles].map((profile) => [
 				profile.name,
-				profileRuns(routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking }), available),
+				profileRuns(
+					routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking, configured }),
+					available,
+				),
 			]),
 		),
 	};

@@ -1,4 +1,4 @@
-// B136: the research MCP server (the octocode-mcp launcher and its native child, in their own process group) must not
+// The research MCP server (the octocode-mcp launcher and its native child, in their own process group) must not
 // outlive a SIGKILLed owner. Nothing in the owner runs after SIGKILL, so the servers have to end on stdin EOF.
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";

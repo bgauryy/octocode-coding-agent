@@ -1,6 +1,7 @@
 /** The `/mcp` slash command: its subcommands, argument completions, and the TUI manager entry. */
 
 import { firstLine } from "../../common/src/clip.ts";
+import { CATALOG_ACTIONS, CATALOG_USAGE, catalogCommand } from "./catalog-command.ts";
 import type { McpCommandContext } from "./host/types.ts";
 import { say } from "./notice.ts";
 import type { McpExposure } from "./config.ts";
@@ -23,7 +24,7 @@ const ASSIGNMENTS = ["all", "selected"] as const;
 const enableMoved = (action: string, name: string, extra: readonly string[]): string =>
 	`/mcp ${action} moved to /configuration: run /configuration ${action} mcp:${name || "<server>"}${extra.some((word) => word === "--local" || word === "-l") ? " --local" : ""}`;
 
-const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [--local], /mcp assign <server> <all|selected> [--local], /mcp login|logout [server], /mcp reconnect [server|all]`;
+const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [--local], /mcp assign <server> <all|selected> [--local], /mcp login|logout [server], /mcp reconnect [server|all], ${CATALOG_USAGE}`;
 
 /** Resolve the server for a subcommand, asking when the name is omitted and ambiguous. */
 async function pickServer(
@@ -100,7 +101,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 	const words = prefix.trimStart().split(/\s+/);
 	const [action = "", name = "", value = ""] = words;
 	if (words.length === 1)
-		return ["list", "tools", "config", "exposure", "assign", "login", "logout", "reconnect"]
+		return ["list", "tools", "config", "exposure", "assign", "login", "logout", "reconnect", ...CATALOG_ACTIONS]
 			.filter((item) => item.startsWith(action))
 			.map((item) => ({ value: `${item} `, label: item }));
 	if (action === "exposure" && words.length === 3)
@@ -141,7 +142,6 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 		}));
 }
 
-/** `/mcp tools [server] [tool]`. */
 function showToolsCommand(state: McpExtensionState, name: string, extra: string[], ctx: McpCommandContext): void {
 	if (extra.length > 1) {
 		say(ctx, MCP_USAGE, "warning");
@@ -228,7 +228,6 @@ async function configureCommand(
 	}
 }
 
-/** `/mcp reconnect [server|all]`. */
 async function reconnectCommand(state: McpExtensionState, name: string, ctx: McpCommandContext): Promise<void> {
 	if (name === "all") {
 		const targets = state.servers
@@ -296,6 +295,7 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				await configureCommand(state, action, name, extra, ctx);
 				return;
 			}
+			if ((CATALOG_ACTIONS as readonly string[]).includes(action)) return catalogCommand(state, args, ctx);
 			if (extra.length > 0) {
 				say(ctx, MCP_USAGE, "warning");
 				return;

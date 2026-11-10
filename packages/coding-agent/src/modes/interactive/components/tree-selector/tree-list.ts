@@ -210,7 +210,6 @@ export class TreeList implements Component {
 				const level = Math.floor(i / 3);
 				const posInLevel = i % 3;
 
-				// Check if there's a gutter at this level
 				const gutter = flatNode.gutters.find((g) => g.position === level);
 				if (gutter) {
 					if (posInLevel === 0) {
@@ -293,10 +292,8 @@ export class TreeList implements Component {
 				this.selectedIndex = this.findBranchSegmentStart("down");
 			}
 		} else if (kb.matches(keyData, "tui.editor.cursorLeft") || kb.matches(keyData, "tui.select.pageUp")) {
-			// Page up
 			this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisibleLines);
 		} else if (kb.matches(keyData, "tui.editor.cursorRight") || kb.matches(keyData, "tui.select.pageDown")) {
-			// Page down
 			this.selectedIndex = Math.min(this.filteredNodes.length - 1, this.selectedIndex + this.maxVisibleLines);
 		} else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selected = this.filteredNodes[this.selectedIndex];
@@ -314,7 +311,6 @@ export class TreeList implements Component {
 				this.onCancel?.();
 			}
 		} else if (kb.matches(keyData, "app.tree.filter.default")) {
-			// Direct filter: default
 			this.filterMode = "default";
 			this.foldedNodes.clear();
 			this.applyFilter();

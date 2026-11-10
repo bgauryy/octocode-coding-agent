@@ -65,6 +65,32 @@ test("accepts the host importing its hosted workspace within one compilation", (
 	);
 });
 
+test("a hosted workspace imports a hosted sibling by package name, not by relative path", () => {
+	const packages = {
+		host: { name: "@app/host", devDependencies: { "@app/acp": "workspace:*", "@app/common": "workspace:*" } },
+		common: { name: "@app/common", private: true, octocodeSource: { host: "host", mount: "common" } },
+		acp: {
+			name: "@app/acp",
+			private: true,
+			devDependencies: { "@app/common": "workspace:*" },
+			octocodeSource: { host: "host", mount: "acp" },
+		},
+	};
+	const policy = { host: [], common: [], acp: ["common"] };
+	assert.deepEqual(
+		checkPackageBoundaries(packages, [{ package: "acp", path: "src/a.ts", imports: ["@app/common/text"] }], policy),
+		[],
+	);
+	const issues = checkPackageBoundaries(
+		packages,
+		[{ package: "acp", path: "src/a.ts", imports: ["../../common/src/text.ts"] }],
+		policy,
+	);
+	assert.deepEqual(issues, [
+		"relative sibling import: acp/src/a.ts -> ../../common/src/text.ts (import it by package name and declare it)",
+	]);
+});
+
 test("a hosted workspace cannot import any host file", () => {
 	const sources = [
 		{ package: "mcp", path: "src/index.ts", imports: ["../../host/src/config.ts", "../../host/src/core/secret.ts"] },

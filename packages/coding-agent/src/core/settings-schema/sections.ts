@@ -44,6 +44,13 @@ export const RetrySettingsSchema = Type.Object({
 	),
 	maxAgentDelayMs: Type.Optional(Type.Number({ default: SETTINGS_DEFAULTS.retry.maxAgentDelayMs })),
 	provider: Type.Optional(ProviderRetrySettingsSchema),
+	fallbackModels: Type.Optional(
+		Type.Array(Type.String(), {
+			description:
+				'Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), tried in order, each as `provider/id` with an optional `:thinking` level, for example `["openrouter/some-model", "openai/other-model:high"]`. The first one with credentials becomes the session model with a notice and stays selected; `/model` switches back. Empty: such a failure ends the turn.',
+			default: SETTINGS_DEFAULTS.retry.fallbackModels,
+		}),
+	),
 	maxDelayMs: Type.Optional(
 		Type.Number({
 			description: "Legacy retry delay setting. Use provider.maxRetryDelayMs instead.",
@@ -51,6 +58,19 @@ export const RetrySettingsSchema = Type.Object({
 		}),
 	),
 });
+
+export const ToolExecutionSettingsSchema = Type.Object(
+	{
+		earlyStart: Type.Optional(
+			Type.Boolean({
+				description:
+					"Start read-only tool calls that need no approval while the model is still writing its message, instead of after it ends.",
+				default: SETTINGS_DEFAULTS.toolExecution.earlyStart,
+			}),
+		),
+	},
+	{ description: "When tool calls start." },
+);
 
 export const TerminalSettingsSchema = Type.Object({
 	showImages: Type.Optional(

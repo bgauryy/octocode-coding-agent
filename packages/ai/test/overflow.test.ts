@@ -239,3 +239,14 @@ describe("isContextOverflow", () => {
 		expect(isContextOverflow(message, 200000)).toBe(false);
 	});
 });
+
+describe("Anthropic model_context_window_exceeded stop reason", () => {
+	it("is a context overflow error by design", async () => {
+		const { streamAnthropic } = await import("./anthropic-stop-reason-fixtures.ts");
+		const result = await streamAnthropic("model_context_window_exceeded");
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("model_context_window_exceeded");
+		expect(result.errorMessage).toContain("context window");
+		expect(isContextOverflow(result, 200000)).toBe(true);
+	});
+});

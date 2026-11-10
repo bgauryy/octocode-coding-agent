@@ -12,7 +12,7 @@ import { ModelSelectorComponent } from "../components/model-selector.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
 import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
-import { ANTHROPIC_SUBSCRIPTION_AUTH_WARNING, isAnthropicSubscriptionAuthKey } from "./helpers.ts";
+import { ANTHROPIC_SUBSCRIPTION_AUTH_WARNING } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -65,6 +65,9 @@ export async function cycleModel(host: ModelControlsHost, direction: "forward" |
 export function handleThinkingCommand(host: ModelControlsHost, searchTerm?: string): void {
 	const availableLevels = host.session.getAvailableThinkingLevels();
 	if (!searchTerm) {
+		const saved = host.settingsManager.getDefaultThinkingLevel();
+		if (saved && saved !== host.session.thinkingLevel)
+			host.showStatus(`Saved default thinking level: ${saved}; this session runs at ${host.session.thinkingLevel}`);
 		showThinkingSelector(host);
 		return;
 	}
@@ -83,7 +86,9 @@ function selectThinkingLevel(host: ModelControlsHost, level: ThinkingLevel, pers
 	try {
 		getApplicationPort(host.session).invoke("setThinkingLevel", level, { persist });
 		host.updateEditorBorderColor();
-		host.showStatus(persist ? `Default thinking level: ${level}` : `Thinking level: ${level}`);
+		const effective = host.session.thinkingLevel;
+		const clamped = effective !== level ? ` (this model runs at ${effective})` : "";
+		host.showStatus(`${persist ? "Default thinking level" : "Thinking level"}: ${level}${clamped}`);
 	} catch (error) {
 		host.showError(errorMessage(error));
 	}
@@ -184,13 +189,7 @@ export async function maybeWarnAboutAnthropicSubscriptionAuth(
 	}
 
 	try {
-		if ((await host.session.modelRuntime.checkAuth("anthropic"))?.type === "oauth") {
-			host.anthropicSubscriptionWarningShown = true;
-			host.showWarning(ANTHROPIC_SUBSCRIPTION_AUTH_WARNING);
-			return;
-		}
-		const apiKey = (await host.session.modelRuntime.getAuth(model.provider))?.auth.apiKey;
-		if (!isAnthropicSubscriptionAuthKey(apiKey)) {
+		if ((await host.session.modelRuntime.getCredentialKind(model.provider)) !== "subscription") {
 			return;
 		}
 		host.anthropicSubscriptionWarningShown = true;

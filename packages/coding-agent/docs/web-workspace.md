@@ -37,13 +37,14 @@ With `OCTOCODE_WEB_DAEMON=1`, `/web` opens a page served by one detached, user-l
 | One server per session; closes with it        | One daemon for every session; keeps running after the launching session closes                                                  |
 | Shows that session and its repository's board | Lists live sessions (blocked ones first), opens the current one, shows every repository's board and reports                     |
 | Board edits from the launch page              | Board edits from the launch page and control links, never view links                                                            |
+| Settings view for this repository             | Settings view with a workspace choice for every repository                                                                      |
 | (not available)                               | [`/remote`](remote.md) publishes it to another device. If the daemon cannot start, `/web` falls back to the per-session server. |
 
 The daemon exits after ten idle minutes (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
 
 ### Settings page
 
-The daemon page has a Settings view. Choose a workspace at the bottom to see its trust and its own settings.
+Both the per-session page and the daemon page have a Settings view. The per-session page offers only its own repository; the daemon page lists every repository. Choose a workspace at the bottom to see its trust and its own settings. Writes work from the page `/web` opened, not from a [published link](remote.md).
 
 | Panel                | Shows                                                                                  | Change it here                                     |
 | -------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -52,7 +53,7 @@ The daemon page has a Settings view. Choose a workspace at the bottom to see its
 | Settings             | Default provider and model, with the file that sets them                               | Global or workspace value                          |
 | Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions | Turn each on or off, globally or for the workspace |
 
-The Harness panel writes the same settings and MCP files as `/configuration enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a [published link](remote.md) cannot read or change it, because its rows name your files.
+The Harness panel writes the same settings and MCP files as `/configuration enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
 
 ## Activity
 
@@ -61,7 +62,7 @@ The Harness panel writes the same settings and MCP files as `/configuration enab
 - **Approvals and questions:** the page and the terminal race for the first answer, and the page says why an answer was not taken (for example, already answered in the terminal). The permission gate still decides. Every permission prompt shows as an approval; editor and custom dialogs stay terminal-only. A background subagent's approval relayed to the session also shows as needing you.
 - Requests time out after 15 seconds. A timeout does not prove a write failed: check the item or activity before retrying. Retries keep their request id, so an accepted request is not repeated.
 
-Other views: **Agents** (the same structured reports as the terminal, a bounded recent feed; the transcript keeps full output) and **Audit** ([below](#audit-and-comments)). The header holds the repository, the tabs, what needs you, connection state, the command palette (`Ctrl+K` or `⌘K`), **New item**, and a **⋯** menu with theme, notifications, terminal and board statistics. The window title names the view and is prefixed by the number of items waiting for you.
+Other views: **Profiler** (its Agents panel holds the same structured reports as the terminal, a bounded recent feed; the transcript keeps full output), **Settings** ([below](#settings-page)) and **Audit** ([below](#audit-and-comments)). The header holds the repository, the tabs, what needs you, connection state, the command palette (`Ctrl+K` or `⌘K`), **New item**, and a **⋯** menu with theme, notifications, terminal and board statistics. The window title names the view and is prefixed by the number of items waiting for you.
 
 ## Backlog board
 

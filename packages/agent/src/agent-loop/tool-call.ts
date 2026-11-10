@@ -11,7 +11,7 @@ import type {
 import type { ToolUpdateSink } from "./events.ts";
 import { AgentToolExecutionError } from "../tool-error.ts";
 
-type PreparedToolCall = {
+export type PreparedToolCall = {
 	kind: "prepared";
 	toolCall: AgentToolCall;
 	tool: AgentTool<any>;
@@ -19,13 +19,16 @@ type PreparedToolCall = {
 	revalidate?: BeforeToolCallResult["revalidate"];
 };
 
-type ImmediateToolCallOutcome = {
+export type ImmediateToolCallOutcome = {
 	kind: "immediate";
 	result: AgentToolResult<any>;
 	isError: boolean;
 };
 
-type ExecutedToolCallOutcome = {
+/** An early attempt whose `beforeToolCall` answered `defer`: nothing ran and nothing is reported. */
+export type DeferredToolCall = { kind: "deferred" };
+
+export type ExecutedToolCallOutcome = {
 	result: AgentToolResult<any>;
 	isError: boolean;
 	durationMs: number;
@@ -56,6 +59,31 @@ export async function prepareToolCall(
 	signal: AbortSignal | undefined,
 	tools: readonly AgentTool<any>[] = currentContext.tools ?? [],
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
+	const prepared = await prepareCall(currentContext, assistantMessage, toolCall, config, signal, tools, false);
+	if (prepared.kind === "deferred") throw new Error("Only an early call can be deferred");
+	return prepared;
+}
+
+/** As {@link prepareToolCall} for a call started while its message streams: `beforeToolCall` may `defer` it. */
+export function prepareEarlyToolCall(
+	currentContext: AgentContext,
+	assistantMessage: AssistantMessage,
+	toolCall: AgentToolCall,
+	config: ToolCallHooks,
+	signal: AbortSignal | undefined,
+): Promise<PreparedToolCall | ImmediateToolCallOutcome | DeferredToolCall> {
+	return prepareCall(currentContext, assistantMessage, toolCall, config, signal, currentContext.tools ?? [], true);
+}
+
+async function prepareCall(
+	currentContext: AgentContext,
+	assistantMessage: AssistantMessage,
+	toolCall: AgentToolCall,
+	config: ToolCallHooks,
+	signal: AbortSignal | undefined,
+	tools: readonly AgentTool<any>[],
+	early: boolean,
+): Promise<PreparedToolCall | ImmediateToolCallOutcome | DeferredToolCall> {
 	const tool = tools.find((t) => t.name === toolCall.name);
 	if (!tool) {
 		return {
@@ -76,9 +104,11 @@ export async function prepareToolCall(
 					toolCall,
 					args: validatedArgs,
 					context: currentContext,
+					...(early ? { early: true as const } : {}),
 				},
 				signal,
 			);
+			if (early && beforeResult?.defer) return { kind: "deferred" };
 			if (signal?.aborted) {
 				return {
 					kind: "immediate",
@@ -123,7 +153,6 @@ export async function prepareToolCall(
 	}
 }
 
-/** Options for {@link runToolCall}. */
 export interface RunToolCallOptions extends ToolCallHooks {
 	/** Tools the call resolves against. */
 	tools: readonly AgentTool<any>[];

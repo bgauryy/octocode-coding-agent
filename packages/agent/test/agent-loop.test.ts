@@ -908,7 +908,7 @@ describe("agentLoop with AgentMessage", () => {
 		expect(sawInterruptInContext).toBe(true);
 	});
 
-	it("should force sequential execution when a tool has executionMode=sequential even with default parallel config", async () => {
+	it("runs the calls of an executionMode=sequential tool one at a time (exclusive) under the default parallel config", async () => {
 		const toolSchema = Type.Object({ value: Type.String() });
 		let firstResolved = false;
 		let parallelObserved = false;
@@ -990,7 +990,7 @@ describe("agentLoop with AgentMessage", () => {
 		expect(toolResultIds).toEqual(["tool-1", "tool-2"]);
 	});
 
-	it("should force sequential execution when one of multiple tools has executionMode=sequential", async () => {
+	it("starts a shared call only after an earlier exclusive (executionMode=sequential) call ended", async () => {
 		const toolSchema = Type.Object({ value: Type.String() });
 		const executionOrder: string[] = [];
 		let releaseSlow: (() => void) | undefined;
@@ -1071,9 +1071,8 @@ describe("agentLoop with AgentMessage", () => {
 			events.push(event);
 		}
 
-		// Fast tool should NOT run before slow tool finishes
-		expect(executionOrder[0]).toBe("slow:a");
-		expect(executionOrder).toContain("fast:b");
+		// The shared fast call waits for the exclusive slow call before it.
+		expect(executionOrder).toEqual(["slow:a", "fast:b"]);
 	});
 
 	it("should allow parallel execution when all tools have executionMode=parallel", async () => {

@@ -222,7 +222,6 @@ function ansiToHtml(text: string): string {
 			inSpan = false;
 		}
 
-		// Apply the codes
 		applySgrCode(params, style);
 
 		// Open new span if we have any styling
@@ -235,7 +234,6 @@ function ansiToHtml(text: string): string {
 		match = ANSI_REGEX.exec(text);
 	}
 
-	// Add remaining text
 	const remainingText = text.slice(lastIndex);
 	if (remainingText) {
 		result += escapeHtml(remainingText);

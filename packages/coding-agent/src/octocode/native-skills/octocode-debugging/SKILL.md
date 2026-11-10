@@ -1,6 +1,6 @@
 ---
 name: octocode-debugging
-description: "Debug and profile running programs from the shell: stop at a line with lldb, gdb, pdb, dlv or a Node inspector script, read stack and locals, catch crashes, hangs and deadlocks, and find CPU or memory hotspots. Use when a program crashes, hangs, leaks or runs slow and logs and test output cannot explain why."
+description: "Debug and profile running programs from the shell: breakpoints with lldb, gdb, pdb, dlv or a Node inspector, stack and locals, crashes, hangs, deadlocks, CPU and memory hotspots. Use when a program crashes, hangs, leaks or runs slow and logs and tests cannot explain why."
 ---
 
 # Octocode Debugging

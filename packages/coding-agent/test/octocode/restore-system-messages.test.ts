@@ -1,5 +1,5 @@
 /**
- * `context` handlers see the conversation only; Octocode puts the system messages back (B321). The leading message must
+ * `context` handlers see the conversation only; Octocode puts the system messages back. The leading message must
  * stay as it was sent and later updates must stay between the same neighbours, so a handler that edits a result does not
  * fold the updates into the head and rewrite the provider's cached prefix.
  */

@@ -4,8 +4,7 @@ import { OCTOCODE_DIR } from "../shared/home.ts";
 
 /**
  * Hints a main session can receive: enough to reach the model, too few to become noise beside the user's own steering.
- * A subagent has no user steering it, and after a capped hint it went back to bash for three reads in four
- * (2026-11-05 transcript audit), so its hints are unlimited.
+ * A subagent has no user steering it, and after a capped hint it went back to bash for three reads in four, so its hints are unlimited.
  */
 export const READ_HINT_LIMIT = 3;
 

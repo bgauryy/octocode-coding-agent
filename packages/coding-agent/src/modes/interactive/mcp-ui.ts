@@ -25,9 +25,12 @@ const ui: McpHostPorts["ui"] = {
 			notes: options.notes,
 			sections: [{ heading: options.heading, rows: options.rows, empty: options.empty }],
 			initialId: options.initialId,
+			keys: options.keys?.map(({ key }) => key),
+			onKey: options.onKey,
 			hints: [
 				...(options.rows.length ? ([[keyText("tui.select.confirm"), options.confirmLabel, 0]] as const) : []),
-				[keyText("tui.select.cancel"), options.cancelLabel, 1],
+				...(options.rows.length ? (options.keys ?? []).map(({ key, label }) => [key, label, 1] as const) : []),
+				[keyText("tui.select.cancel"), options.cancelLabel, 2],
 			],
 			onSelect: options.onSelect,
 			onHighlight: options.onHighlight,

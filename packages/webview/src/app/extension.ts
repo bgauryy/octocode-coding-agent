@@ -80,6 +80,8 @@ export interface LiveExtension {
 	views: readonly ViewDefinition[];
 	Provider: ComponentType<{ access: string; backlog: BacklogStore; children: ReactNode }>;
 	ConnectionStatus: ComponentType;
+	/** What a view shows before its first data: a skeleton while connecting, an error with a way forward once it failed. Inside `Provider`. */
+	Unavailable?: ComponentType<{ hint: string; label?: string }>;
 	/** Reads and saves the theme on the host; the offline page has no such capability and keeps the choice for the visit. */
 	themePrefs: ThemePrefs;
 	/** The header's notification permission and sound controls; also raises the notifications. Inside `Provider`. */

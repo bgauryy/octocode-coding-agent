@@ -7,8 +7,8 @@ import { isPluginMcpServerName } from "../../common/src/mcp-names.ts";
 const MAX_TOOL_NAME_LENGTH = 64;
 
 /**
- * `mcp__<server>__<tool>`, sanitized and shortened with a hash suffix when too long. Like Codex,
- * everything but `[A-Za-z0-9_]` becomes `_`, so the name is also the identifier programmatic tool callers
+ * `mcp__<server>__<tool>`, sanitized and shortened with a hash suffix when too long.
+ * Everything but `[A-Za-z0-9_]` becomes `_`, so the name is also the identifier programmatic tool callers
  * call it by. `isTaken` reports names used by a different MCP tool: sanitizing can map two tools to
  * one name (`a-b` and `a_b`), which then get the hash suffix.
  */
@@ -27,7 +27,7 @@ export function createMcpToolName(
 }
 
 /**
- * The name of each of a server's tools, by MCP tool name. Like Codex, all tools whose names sanitize to the same name
+ * The name of each of a server's tools, by MCP tool name. All tools whose names sanitize to the same name
  * get the hash suffix, so which one would keep the plain name does not depend on the order of the list. `isTaken`
  * reports names that another server's tool already holds.
  */

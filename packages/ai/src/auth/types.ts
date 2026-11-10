@@ -165,6 +165,9 @@ export interface AuthInteraction {
 /** Normalized interaction passed to provider login implementations. */
 export type ProviderAuthInteraction = AuthInteraction & { signal: AbortSignal };
 
+/** What a provider said about a key: accepted, refused (401/403), not reachable or answered otherwise, or not checkable. */
+export type ApiKeyVerdict = "valid" | "rejected" | "unreachable" | "unchecked";
+
 /**
  * Api-key auth: stored key/provider env plus ambient sources (env vars, AWS
  * profiles, ADC files). Ambient-only providers omit `login`.
@@ -175,6 +178,18 @@ export interface ApiKeyAuth {
 
 	/** The provider's page that issues keys; `login` opens it before asking, and other hosts can link it. */
 	keyPage?: string;
+
+	/**
+	 * Whether a resolved key is a subscription token, not a metered API key. Only for providers whose one key field
+	 * takes both; hosts use it to say so and never keep the key.
+	 */
+	isSubscriptionKey?(apiKey: string): boolean;
+
+	/**
+	 * Asks the provider whether it accepts a key, through a free call such as its model list, before a login saves
+	 * it. `unchecked` means this kind of key has no such call. Absent = keys are saved without a check.
+	 */
+	verify?(input: { key: string; signal: AbortSignal }): Promise<ApiKeyVerdict>;
 
 	/** Interactive setup (prompt for key/provider env). Absent = ambient-only. */
 	login?(interaction: ProviderAuthInteraction): Promise<ApiKeyCredential>;

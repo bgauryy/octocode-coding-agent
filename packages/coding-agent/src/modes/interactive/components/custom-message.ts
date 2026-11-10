@@ -70,7 +70,6 @@ export class CustomMessageComponent extends Container {
 	}
 
 	private rebuild(): void {
-		// Remove previous content component
 		if (this.customComponent) {
 			this.removeChild(this.customComponent);
 			this.customComponent = undefined;
@@ -86,7 +85,6 @@ export class CustomMessageComponent extends Container {
 					theme,
 				);
 				if (component) {
-					// Custom renderer provides its own styled component
 					this.customComponent = component;
 					this.addChild(component);
 					return;
@@ -111,7 +109,6 @@ export class CustomMessageComponent extends Container {
 		this.box.addChild(new Text(label, 0, 0));
 		this.box.addChild(new Spacer(1));
 
-		// Extract text content
 		let text: string;
 		if (typeof this.message.content === "string") {
 			text = this.message.content;

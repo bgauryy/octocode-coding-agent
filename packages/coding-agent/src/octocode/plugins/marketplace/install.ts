@@ -60,7 +60,6 @@ const findInstalled = (host: MarketplaceHost, plugin: string, marketplace: strin
 
 const pluginId = (entry: InstalledEntry): string => `${entry.source.plugin}@${entry.source.marketplace}`;
 
-/** Plugins installed from a marketplace. */
 export function listInstalled(host: MarketplaceHost): { id: string; sha: string; enabled: boolean; path: string }[] {
 	return installedEntries(host).map((entry) => ({
 		id: pluginId(entry),

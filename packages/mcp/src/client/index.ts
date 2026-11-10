@@ -1,6 +1,13 @@
 export type { AuthProvider, McpFetch, UnauthorizedContext } from "./auth-provider.ts";
 export type { McpClientOptions, McpRequestOptions } from "./client/types.ts";
 export { McpClient } from "./client.ts";
+export type {
+	McpPrompt,
+	McpPromptArgument,
+	McpPromptMessage,
+	McpResource,
+	McpResourceTemplate,
+} from "./client/catalog.ts";
 export {
 	type AudioContent,
 	type CallToolResult,

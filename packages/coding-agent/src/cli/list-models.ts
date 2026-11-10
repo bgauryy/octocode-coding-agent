@@ -29,7 +29,6 @@ export async function listModels(
 		return;
 	}
 
-	// Apply fuzzy filter if search pattern provided
 	let filteredModels: Model<Api>[] = models;
 	if (searchPattern) {
 		filteredModels = fuzzyFilter(models, searchPattern, (m) => `${m.provider} ${m.id}`);
@@ -40,14 +39,12 @@ export async function listModels(
 		return;
 	}
 
-	// Sort by provider, then by model id
 	filteredModels.sort((a, b) => {
 		const providerCmp = a.provider.localeCompare(b.provider);
 		if (providerCmp !== 0) return providerCmp;
 		return a.id.localeCompare(b.id);
 	});
 
-	// Calculate column widths
 	const rows = filteredModels.map((m) => ({
 		provider: m.provider,
 		model: m.id,
@@ -75,7 +72,6 @@ export async function listModels(
 		images: Math.max(headers.images.length, ...rows.map((r) => r.images.length)),
 	};
 
-	// Print header
 	const headerLine = [
 		headers.provider.padEnd(widths.provider),
 		headers.model.padEnd(widths.model),
@@ -86,7 +82,6 @@ export async function listModels(
 	].join("  ");
 	console.log(headerLine);
 
-	// Print rows
 	for (const row of rows) {
 		const line = [
 			row.provider.padEnd(widths.provider),

@@ -35,7 +35,6 @@ export interface McpOAuthSettings {
 	clientName?: string;
 	/** See `McpOAuthConfig.clientRegistration`. */
 	clientRegistration?: "dcr" | "cimd";
-	/** See `McpOAuthConfig.authServerMetadataUrl`. */
 	authServerMetadataUrl?: URL;
 }
 
@@ -90,7 +89,7 @@ export function registeredRedirectUrls(client: OAuthClientInformationMixed | und
 	return client && "redirect_uris" in client ? client.redirect_uris : [];
 }
 
-/** 12 characters identifying an MCP server URL in callback paths, computed like Codex does. */
+/** 12 characters identifying an MCP server URL in callback paths. */
 export function callbackId(serverUrl: string): string {
 	const url = new URL(serverUrl);
 	url.hash = "";

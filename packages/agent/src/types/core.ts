@@ -40,11 +40,18 @@ export type StreamFn = (
  * Configuration for how tool calls from a single assistant message are executed.
  *
  * - "sequential": each tool call is prepared, executed, and finalized before the next one starts.
- * - "parallel": tool calls are prepared sequentially, then allowed tools execute concurrently.
- *   `tool_execution_end` is emitted in tool completion order after each tool is finalized,
- *   while tool-result message artifacts are emitted later in assistant source order.
+ * - "parallel": tool calls are prepared sequentially, and each allowed call starts as soon as its own preparation
+ *   ends, ordered by its {@link ToolConcurrency}. `tool_execution_end` is emitted in tool completion order after each
+ *   tool is finalized, while tool-result message artifacts are emitted later in assistant source order.
  */
 export type ToolExecutionMode = "sequential" | "parallel";
+
+/**
+ * How one call orders against the other calls of its assistant message in a parallel batch.
+ * - "shared": runs beside other shared calls, after the last exclusive call before it ended.
+ * - "exclusive": runs alone: after every earlier call ended, and every later call waits for it.
+ */
+export type ToolConcurrency = "shared" | "exclusive";
 
 /**
  * Controls how many queued user messages are injected when the agent loop reaches a queue drain point.
@@ -54,7 +61,6 @@ export type ToolExecutionMode = "sequential" | "parallel";
  */
 export type QueueMode = "all" | "one-at-a-time";
 
-/** A single tool call content block emitted by an assistant message. */
 export type AgentToolCall = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
 
 /**
@@ -144,7 +150,6 @@ export interface AgentToolProgress {
 
 /** Final or partial result produced by a tool. */
 export interface AgentToolResult<T = JsonValue | undefined> {
-	/** Text or image content returned to the model. */
 	content: (TextContent | ImageContent)[];
 	/** Arbitrary structured details for logs or UI rendering. */
 	details: T;
@@ -214,12 +219,17 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any
 	replay?: "never" | "safe";
 	/**
 	 * Per-tool execution mode override.
-	 * - "sequential": this tool must execute one at a time with other tool calls.
+	 * - "sequential": this tool must execute one at a time with other tool calls: an exclusive call (see `concurrency`).
 	 * - "parallel": this tool can execute concurrently with other tool calls.
 	 *
 	 * If omitted, the default execution mode applies.
 	 */
 	executionMode?: ToolExecutionMode;
+	/**
+	 * The call's {@link ToolConcurrency}, fixed or from its validated arguments; a resolver that throws makes the call
+	 * exclusive. Takes precedence over `executionMode`; omitted, a "sequential" tool is exclusive and any other shared.
+	 */
+	concurrency?: ToolConcurrency | ((args: Record<string, unknown>) => ToolConcurrency);
 	/**
 	 * How long a call may keep running after an abort before the loop abandons it, in ms. For a tool whose stop takes
 	 * longer than the short default (a command given time to clean up after SIGTERM) and that then returns what it has.

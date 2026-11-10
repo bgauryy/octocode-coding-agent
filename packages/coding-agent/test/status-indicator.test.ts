@@ -9,7 +9,7 @@ import {
 	RetryStatusIndicator,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
-import { setRunClock } from "../src/utils/run-clock.ts";
+import { beginRun, resetRun } from "../src/utils/run-clock.ts";
 import { getEditorTheme, initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -52,7 +52,7 @@ describe("status indicators", () => {
 		setKeybindings(new KeybindingsManager());
 		vi.useFakeTimers({ now: 1_000_000 });
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
-		setRunClock(1_000_000 - 62_000);
+		beginRun(1_000_000 - 62_000);
 		const indicator = new WorkingStatusIndicator(tui, `Running subagent ${"goal ".repeat(40)}`);
 		try {
 			expect(stripAnsi(indicator.render(120)[1])).toMatch(/^ \S Running subagent goal .*… \(1m02s · esc interrupt\)$/);
@@ -67,7 +67,7 @@ describe("status indicators", () => {
 			expect(tui.requestRender).toHaveBeenCalled();
 		} finally {
 			indicator.dispose();
-			setRunClock(undefined);
+			resetRun();
 			setKeybindings(previousKeybindings);
 		}
 		expect(vi.getTimerCount()).toBe(0);

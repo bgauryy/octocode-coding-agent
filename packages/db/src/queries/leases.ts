@@ -92,7 +92,6 @@ export function insert(
 	).run(workspaceId, lease.path, lease.pathKey, lease.kind, owner, lease.reason, now, expiresAt);
 }
 
-/** Renews lease `id` with a new reason and expiry. */
 export function renew(db: DatabaseSync, id: number, reason: string, expiresAt: number): void {
 	db.prepare("UPDATE leases SET reason = ?, expires_at = ? WHERE id = ?").run(reason, expiresAt, id);
 }
@@ -113,7 +112,6 @@ export function releaseKey(db: DatabaseSync, workspace: string, owner: string, k
 	);
 }
 
-/** Deletes the leases of `owner` that lapsed by `now`. */
 export function dropLapsed(db: DatabaseSync, owner: string, now: number): void {
 	db.prepare("DELETE FROM leases WHERE owner = ? AND expires_at <= ?").run(owner, now);
 }

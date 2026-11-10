@@ -11,7 +11,7 @@ import {
 } from "./e2e-real-process-harness.ts";
 
 /**
- * B125: a message to a child that already finished its run reaches it again. The child is a real process that left the team
+ * A message to a child that already finished its run reaches it again. The child is a real process that left the team
  * after its report and lingers; the parent's message resumes it, and the resumed run reads the message framed as its
  * parent's, in its own database row (a stored message a reply can name), not as a lost dead letter.
  */
@@ -24,9 +24,9 @@ beforeAll(async () => {
 afterAll(async () => {
 	await endpoint.close();
 });
-afterEach((context) => {
+afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	killEverything();
+	await killEverything();
 	endpoint.requests.length = 0;
 });
 

@@ -15,7 +15,6 @@ interface PathInputOptions {
 	homeDir?: string;
 	/** Strip a leading `@`, used for CLI @file paths. */
 	stripAtPrefix?: boolean;
-	/** Normalize unicode space variants to regular spaces. */
 	normalizeUnicodeSpaces?: boolean;
 }
 

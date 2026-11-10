@@ -1,4 +1,4 @@
-// B114: a fork copies the branch up to its point, and the session opened on it restores that point's model, thinking
+// A fork copies the branch up to its point, and the session opened on it restores that point's model, thinking
 // level and history. A switch made after the fork point stays on the source branch.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -35,9 +35,7 @@ export function setRegisteredThemes(themes: Theme[]): void {
 	}
 }
 
-// ============================================================================
 // Theme Loading
-// ============================================================================
 
 let BUILTIN_THEMES: Record<string, ValidatedThemeJson> | undefined;
 
@@ -81,7 +79,6 @@ export function getAvailableThemesWithPaths(): ThemeInfo[] {
 		addTheme({ name, path: path.join(themesDir, `${name}.json`) });
 	}
 
-	// Custom themes
 	for (const themeInfo of getCustomThemeInfos()) {
 		addTheme(themeInfo);
 	}

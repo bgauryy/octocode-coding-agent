@@ -175,7 +175,7 @@ describe("stable prompt head without mid-conversation system messages", () => {
 	});
 
 	// The Mistral adapter keeps a user message from following a tool result (compatibility policy, not a verified
-	// hosted rejection), so an update there is folded into the head (B431).
+	// hosted rejection), so an update there is folded into the head.
 	it("folds Mistral updates up to one that follows a tool result into the head and keeps the turns", async () => {
 		const run = (context: TranscriptContext) =>
 			capture((options) =>

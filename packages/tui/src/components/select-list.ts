@@ -108,7 +108,6 @@ export class SelectList implements Component {
 
 	setFilter(filter: string): void {
 		this.filteredItems = this.items.filter((item) => item.value.toLowerCase().startsWith(filter.toLowerCase()));
-		// Reset selection when filter changes
 		this.selectedIndex = 0;
 	}
 
@@ -131,10 +130,8 @@ export class SelectList implements Component {
 
 		const primaryColumnWidth = this.getPrimaryColumnWidth();
 
-		// Calculate visible range with scrolling
 		const { startIndex, endIndex } = this.getVisibleRange();
 
-		// Render visible items
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredItems[i];
 			if (!item) continue;
@@ -144,7 +141,6 @@ export class SelectList implements Component {
 			lines.push(this.renderItem(item, isSelected, width, descriptionSingleLine, primaryColumnWidth));
 		}
 
-		// Add scroll indicators if needed
 		const scrolls = startIndex > 0 || endIndex < this.filteredItems.length;
 		const scrollText = scrolls ? `  (${this.selectedIndex + 1}/${this.filteredItems.length})` : "";
 		const hint = this.options.hint;
@@ -200,15 +196,12 @@ export class SelectList implements Component {
 		if (this.filteredItems.length === 0 && !kb.matches(keyData, "tui.select.cancel")) return;
 		if (kb.matches(keyData, "tui.select.up")) this.moveSelection(-1);
 		else if (kb.matches(keyData, "tui.select.down")) this.moveSelection(1);
-		// Enter
 		else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selectedItem = this.filteredItems[this.selectedIndex];
 			if (selectedItem && this.onSelect) {
 				this.onSelect(selectedItem);
 			}
-		}
-		// Escape or Ctrl+C
-		else if (kb.matches(keyData, "tui.select.cancel")) {
+		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			if (this.onCancel) {
 				this.onCancel();
 			}

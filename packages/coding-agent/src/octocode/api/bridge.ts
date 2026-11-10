@@ -50,7 +50,7 @@ const HISTORY_MAX_PAGE = 100;
 /**
  * An external API for one running Octocode session: other programs discover it, send it messages, follow what it does and
  * ask it to stop. JSON-RPC 2.0 over a private Unix socket (and optionally authenticated loopback HTTP + SSE), the
- * shape Codex's app-server and ACP use, scoped to this extension's needs.
+ * shape ACP uses, scoped to this extension's needs.
  */
 export class OctocodeApi {
 	readonly log = new EventLog();

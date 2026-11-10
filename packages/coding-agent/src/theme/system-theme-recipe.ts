@@ -5,9 +5,7 @@
 
 import type { ThemeAppearance, ThemeBg, ThemeColor, ThemeToken } from "./theme-types.ts";
 
-// ============================================================================
 // Recipe: color families and their tokens
-// ============================================================================
 
 /** A family's OKHSL hue and saturation: `max` at mid lightness, falling toward `min` at black and white. */
 export interface Family {
@@ -102,9 +100,7 @@ export const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 /** Palette slots for tokens that would otherwise share a hue with a similar token. */
 export const TOKEN_SLOTS: Partial<Record<ThemeToken, number>> = { syntaxString: 2, syntaxNumber: 5, searchMatchBg: 3 };
 
-// ============================================================================
 // Contrast levels and rules
-// ============================================================================
 
 /**
  * Target-lightness curves: a polynomial in the surface's OKLab lightness giving the OKLab lightness a token

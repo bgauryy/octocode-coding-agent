@@ -1,6 +1,6 @@
 ---
 name: octocode-context-optimization
-description: "Rewrite what agents read about skills and MCP tools without losing meaning: skill listing descriptions through `octocode context`, an MCP server's generated tool file through checked overrides, and which agents get each server. Use when that listing or a tool file is too large, stale or unoptimized, or after adding a skill or MCP server."
+description: "Shrink what agents read about skills and MCP tools without losing meaning: skill descriptions via `octocode context`, MCP tool files via checked overrides, and which agents get each server. Use when the listing or a tool file is too large or stale, or after adding a skill or MCP server."
 ---
 
 # Octocode Context Optimization
