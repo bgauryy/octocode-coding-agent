@@ -25,7 +25,7 @@ import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 import { createBashTool } from "../src/core/tools/bash.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
-const API_KEY = process.env.ANTHROPIC_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
+const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 	let session: AgentSession;

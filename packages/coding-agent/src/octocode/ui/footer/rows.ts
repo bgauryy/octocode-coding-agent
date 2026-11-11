@@ -1,7 +1,8 @@
 import path from "node:path";
-import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText, styledLine } from "../../../../../common/src/sanitize.ts";
 import type { StatusEntry } from "../../../core/footer-data-provider.ts";
+import type { ProviderKind } from "../../../core/model-runtime/catalog.ts";
 import { paintStatus } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { CHIPS, type ChipParts, chipLabel, chipShortLabel, PERMISSION_ID } from "../../permission/mode.ts";
@@ -23,6 +24,8 @@ export interface FooterState {
 	provider?: string | undefined;
 	/** The model's provider is paid by subscription: the cost shown is an estimate, not a bill. */
 	subscription?: boolean;
+	/** What the model's provider is (subscription, API key, account, CLI, local): shown beside the model. */
+	kind?: ProviderKind | undefined;
 	/** Thinking level, only for models that reason. */
 	thinking?: string | undefined;
 	/**
@@ -182,6 +185,8 @@ export function footerLines(
 				keep: true,
 				...(shortModel !== model ? { short: theme.fg("accent", shortModel) } : {}),
 			},
+			// The provider's kind beside the model: the first part to go on a narrow terminal.
+			{ text: state.kind ? theme.fg("muted", state.kind) : "", priority: 5 },
 			// The one home of the permission mode, with its shortcut: kept on a narrow terminal, shortened after the model.
 			chipPart(state.chip, theme),
 			// Kept ahead of the status counters (90): a short form first, then the counters give way.

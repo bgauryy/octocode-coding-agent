@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findMostRecentSession, loadEntriesFromFile, SessionManager } from "../../src/core/session-manager.ts";
 import { assistantMsg, readSessionFileRoles, userMsg } from "../utilities.ts";
 
@@ -78,6 +78,32 @@ describe("loadEntriesFromFile", () => {
 		expect(entries).toHaveLength(2);
 		expect(entries[0].type).toBe("session");
 		expect(entries[1].type).toBe("message");
+	});
+
+	it("scans large transcript records once and preserves UTF-8 across read buffers", () => {
+		const file = join(tempDir, "large-record.jsonl");
+		const text = "界".repeat(4 * 1024 * 1024);
+		const records = [
+			{ type: "session", id: "large", version: 3, timestamp: "2025-01-01T00:00:00Z", cwd: tempDir },
+			{ type: "message", id: "m1", message: { role: "user", content: text } },
+			{ type: "message", id: "m2", message: { role: "user", content: "tail" } },
+		];
+		const content = records.map((record) => JSON.stringify(record)).join("\n");
+		writeFileSync(file, content);
+		let scanned = 0;
+		const original = String.prototype.indexOf;
+		const spy = vi.spyOn(String.prototype, "indexOf").mockImplementation(function (this: string, search, start) {
+			if (search === "\n") scanned += this.length - (start ?? 0);
+			return original.call(this, search, start);
+		});
+		let entries;
+		try {
+			entries = loadEntriesFromFile(file);
+		} finally {
+			spy.mockRestore();
+		}
+		expect(entries).toEqual(records);
+		expect(scanned).toBeLessThanOrEqual(content.length * 3);
 	});
 
 	it("skips malformed lines but keeps valid ones", () => {

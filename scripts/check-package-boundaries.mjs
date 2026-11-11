@@ -16,6 +16,7 @@ export const PACKAGE_POLICY = {
 	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "webview"],
 	contracts: [],
 	telemetry: [],
+	terminal: [],
 	tui: [],
 	webview: ["contracts"],
 };

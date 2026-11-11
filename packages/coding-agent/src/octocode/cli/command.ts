@@ -63,7 +63,7 @@ export const createOctocodeCommand = (
 	record?: (command: string, cwd: string) => void,
 	send?: SendPrompt,
 ): Subcommand => ({
-	description: "Run the octocode research CLI",
+	description: "Run the Octocode research CLI",
 	argumentHint: "[octocode arguments]",
 	dialog: "interaction",
 	complete: completeCliArgs,

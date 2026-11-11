@@ -145,7 +145,13 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 	private checkSession(): void {
 		const changedSession = this.currentSession !== this.session.sessionId;
-		if (!changedSession && this.source.unchanged(this.session, this.transcript)) return;
+		const unseen = changedSession ? undefined : this.source.adopt(this.session, this.transcript);
+		if (unseen) {
+			// The context grew by messages nothing announced (a boundary draft): show them without rebuilding the rest.
+			for (const message of unseen)
+				this.safely(() => this.transcript.message({ type: "message_end", message }, this.publish.bind(this)));
+			return;
+		}
 		this.state.setState({ sessionId: this.session.sessionId, model: applicationModel(this.session) });
 		this.source.reset(this.session);
 		this.stream.restart(true);

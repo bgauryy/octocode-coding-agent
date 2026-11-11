@@ -51,6 +51,15 @@ describe("renderDiff", () => {
 				.filter((row) => /^[+-]/.test(plain(row))))
 				expect(new Set(backgrounds(line)).size).toBe(1);
 		});
+
+		it("preserves long rewritten lines with line tint when word emphasis is skipped", () => {
+			const old = Array.from({ length: 3000 }, (_, i) => `old${i}`).join(" ");
+			const next = Array.from({ length: 3000 }, (_, i) => `new${i}`).join(" ");
+			const { diff } = generateDiffString(old, next);
+			const rendered = renderDiff(diff).split("\n");
+			expect(rendered.map(plain)).toEqual(diff.split("\n"));
+			for (const line of rendered) expect(new Set(backgrounds(line)).size).toBe(1);
+		});
 	});
 
 	describe("syntax colour", () => {

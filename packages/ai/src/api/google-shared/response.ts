@@ -32,8 +32,11 @@ export function mapStopReason(reason: FinishReason): StopReason {
 		case FinishReason.NO_IMAGE:
 			return "error";
 		default: {
-			const _exhaustive: never = reason;
-			throw new Error(`Unhandled stop reason: ${String(_exhaustive)}`);
+			// The API adds reasons before the SDK's enum knows them (MISSING_THOUGHT_SIGNATURE, MALFORMED_RESPONSE): the
+			// raw reason is kept on the message, so an unknown one ends the turn as an error instead of throwing.
+			const _known: never = reason;
+			void _known;
+			return "error";
 		}
 	}
 }

@@ -8,10 +8,12 @@ import { killTrackedDetachedChildren, signalTrackedDetachedChildren } from "../.
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { disposeLoadedResources } from "./loaded-resources.ts";
+import { disposeTranscript } from "./transcript-dispose.ts";
 
 /** Interactive-mode members used by shutdown and signal handling. */
 type LifecycleHost = Pick<
 	InteractiveModeHost,
+	| "chatContainer"
 	| "clearEditor"
 	| "clearExtensionTerminalInputListeners"
 	| "clearStatusIndicator"
@@ -78,6 +80,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		host.themeController.disableAutoSync();
 		await host.ui.terminal.drainInput(1000);
 		host.stop();
+		await host.ui.terminal.drainOutput?.();
 		process.exit(0);
 	}
 
@@ -97,6 +100,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
 	}
 
+	await host.ui.terminal.drainOutput?.();
 	process.exit(0);
 }
 
@@ -175,7 +179,8 @@ export function unregisterSignalHandlers(host: LifecycleHost): void {
 	host.signalCleanupHandlers = [];
 }
 
-export function handleCtrlZ(host: LifecycleHost): void {
+export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): void {
+	const ui = host.ui;
 	if (process.platform === "win32") {
 		host.showStatus("Suspend to background is not supported on Windows");
 		return;
@@ -196,28 +201,39 @@ export function handleCtrlZ(host: LifecycleHost): void {
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		signalTrackedDetachedChildren("SIGCONT");
-		host.ui.start();
-		host.ui.requestRender(true);
+		ui.start();
+		ui.requestRender(true);
 	};
 	process.once("SIGCONT", onResume);
+	const recover = () => {
+		signalTrackedDetachedChildren("SIGCONT");
+		suspended = false;
+		clearInterval(suspendKeepAlive);
+		process.removeListener("SIGINT", ignoreSigint);
+		process.removeListener("SIGCONT", onResume);
+	};
+	const suspend = () => {
+		if (!suspended) return;
+		signalTrackedDetachedChildren("SIGSTOP");
+		process.kill(0, "SIGTSTP");
+	};
 
 	try {
 		// Stop the TUI (restore terminal to normal mode). A suspend is not an exit: the fullscreen UI leaves the
 		// alternate screen without writing the transcript into the shell, and enters it again on resume.
 		suspended = true;
-		host.ui.stop({ preserveScreen: host.ui.mode === "fullscreen" });
+		ui.stop({ preserveScreen: ui.mode === "fullscreen" });
 
-		// Children lead their own process groups, so the group stop below misses them: stop them too, and continue them on resume.
-		signalTrackedDetachedChildren("SIGSTOP");
-		// Send SIGTSTP to process group (pid=0 means all processes in group)
-		process.kill(0, "SIGTSTP");
+		// Let queued terminal restore sequences reach the shell before stopping this process group.
+		const draining = ui.terminal?.drainOutput?.();
+		if (draining)
+			void draining.then(suspend).catch((error: unknown) => {
+				recover();
+				void Promise.reject(error);
+			});
+		else suspend();
 	} catch (error) {
-		signalTrackedDetachedChildren("SIGCONT");
-		suspended = false;
-		clearInterval(suspendKeepAlive);
-		process.removeListener("SIGINT", ignoreSigint);
-		// Never suspended: a later SIGCONT must not restart the TUI.
-		process.removeListener("SIGCONT", onResume);
+		recover();
 		throw error;
 	}
 }
@@ -239,5 +255,7 @@ export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsMa
 		host.stopInteractiveTui(fullscreenExitOutput);
 		host.isInitialized = false;
 	}
+	// Final transcript output still needs live rows; release their clocks only after the renderer stops.
+	disposeTranscript(host.chatContainer);
 	host.unregisterSignalHandlers();
 }

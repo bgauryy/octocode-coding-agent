@@ -142,7 +142,8 @@ export type RpcResponse =
 			type: "response";
 			command: "get_available_models";
 			success: true;
-			data: { models: Model<any>[] };
+			/** `interactiveOnly`: the model's plan allows interactive use only (`ModelRuntime.allowsUnattendedUse`). */
+			data: { models: Array<Model<any> & { interactiveOnly?: true }> };
 	  }
 	| { id?: string; type: "response"; command: "set_thinking_level"; success: true }
 	| {

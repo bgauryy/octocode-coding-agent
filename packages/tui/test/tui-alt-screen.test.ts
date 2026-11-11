@@ -95,8 +95,12 @@ describe("TuiAltScreen", () => {
 
 	it("shows a clickable jump-to-end indicator on the transcript's last row while scrolled up", async () => {
 		const terminal = new VirtualTerminal(30, 6);
+		const rowsBelow: number[] = [];
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
-			scrollToEndIndicator: () => "\x1b[7m ↓ Jump to end \x1b[27m",
+			scrollToEndIndicator: (count) => {
+				rowsBelow.push(count);
+				return "\x1b[7m ↓ Jump to end \x1b[27m";
+			},
 		});
 		const transcript = new ScrollView(
 			new Text(Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
@@ -116,6 +120,7 @@ describe("TuiAltScreen", () => {
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.isFollowingEnd, false);
 		assert.strictEqual(terminal.getViewport()[3]?.trimEnd(), "line 7  ↓ Jump to end");
+		assert.equal(rowsBelow.at(-1), 1);
 		assert.strictEqual(terminal.getViewport()[4]?.trimEnd(), "editor");
 
 		// Pressing next to the label starts a selection instead of jumping.
@@ -640,7 +645,7 @@ describe("TuiAltScreen", () => {
 
 		assert.strictEqual(lines.length, 3);
 		assert.ok(lines.every((line) => visibleWidth(line) === 48));
-		assert.match(lines[0] ?? "", /^┌─+┐$/);
+		assert.match(lines[0] ?? "", /^┌ Loaded transcript ─+┐$/);
 		assert.match(lines[1] ?? "", /^│ Find in transcript +│$/);
 		assert.ok(rendered[1]?.includes("\x1b[2m"));
 		assert.match(lines[2] ?? "", /^└─+ ↑ Shift\+Enter · ↓ Enter ─┘$/);
@@ -1481,6 +1486,32 @@ describe("TuiAltScreen", () => {
 		);
 
 		tui.stop();
+	});
+
+	it("contains a rejected automatic copy and keeps selection and input usable", async () => {
+		const terminal = new RecordingTerminal(40, 4);
+		let fail = true;
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async () => {
+				if (fail) throw new Error("Clipboard disconnected");
+				return true;
+			},
+		});
+		tui.addChild(new Text("alpha\nbeta\ngamma\ndelta", 0, 0));
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			terminal.sendInput("\x1b[<0;1;1M");
+			terminal.sendInput("\x1b[<32;4;2M");
+			terminal.sendInput("\x1b[<0;4;2m");
+			await terminal.waitForRender();
+			assert.ok(terminal.getViewport().some((line) => line.includes("Clipboard disconnected")));
+			assert.equal(tui.hasActiveSelection(), true);
+			fail = false;
+			assert.equal(await tui.copyActiveSelectionToClipboard(), true);
+		} finally {
+			tui.stop();
+		}
 	});
 
 	it("flashes a specific error returned by the injected copySelection handler", async () => {

@@ -47,8 +47,6 @@ describe("usage of a dropped stream", () => {
 			model,
 			output: message,
 			stream: new AssistantMessageEventStream(),
-			isOAuth: false,
-			currentTools: [],
 			usageModel: model,
 			inputTransformations: undefined,
 		});

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -38,6 +39,34 @@ describe("database mirror failures", () => {
 			expect(readFileSync(session.getSessionFile()!, "utf8")).toContain("kept");
 		} finally {
 			remove();
+		}
+	});
+
+	it("do not hold up a save while another process holds the database", async () => {
+		const notices: string[] = [];
+		const remove = setMirrorNoticeHandler((message) => notices.push(message));
+		const session = SessionManager.create(cwd);
+		session.appendMessage({ role: "user", content: "before", timestamp: Date.now() });
+		const holder = spawn(
+			process.execPath,
+			[
+				"-e",
+				`const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(${JSON.stringify(dbFile)});
+				 db.exec("BEGIN IMMEDIATE"); process.stdout.write("held\\n"); setTimeout(() => db.exec("COMMIT"), 2000);`,
+			],
+			{ stdio: ["ignore", "pipe", "inherit"] },
+		);
+		try {
+			await new Promise<void>((resolve) => holder.stdout.once("data", () => resolve()));
+			const started = performance.now();
+			session.appendMessage({ role: "user", content: "while held", timestamp: Date.now() });
+			expect(performance.now() - started).toBeLessThan(1000);
+			expect(notices.some((line) => line.includes("database is locked"))).toBe(true);
+			expect(readFileSync(session.getSessionFile()!, "utf8")).toContain("while held");
+		} finally {
+			remove();
+			holder.kill();
+			await new Promise((resolve) => holder.once("exit", resolve));
 		}
 	});
 });

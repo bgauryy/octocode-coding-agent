@@ -4,8 +4,8 @@ import type { Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 const model: Model<"openai-responses"> = {
-	id: "gpt-5-mini",
-	name: "GPT-5 Mini",
+	id: "gpt-5",
+	name: "GPT-5",
 	api: "openai-responses",
 	provider: "openai",
 	baseUrl: "https://api.openai.com/v1",

@@ -13,7 +13,7 @@ import {
 import chalk from "chalk";
 import { minimatch } from "minimatch";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
-import { defaultModelPerProvider } from "./model-resolver/default-models.ts";
+import { defaultModelPerProvider, ownProviderDefault } from "./model-resolver/default-models.ts";
 import { buildFallbackModel, resolveModelReference, splitThinkingSuffix } from "./model-resolver/reference.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 
@@ -259,7 +259,12 @@ export interface InitialModelResult {
  * 1. First model from scoped models (if not continuing/resuming)
  * 2. Saved default from settings
  * 3. The default provider's model: the user's `providerModels` entry, then the built-in default
- * 4. The first connected provider's model, in the same order, then the first available model
+ * 4. The first connected provider's model, in the same order, a plan-billed provider (`getProviderBilling`) before a
+ *    metered one, then the first available model
+ *
+ * An `unattended` run (print mode, an ACP server's session) skips, in step 4, providers whose plan allows interactive use
+ * only (`ModelRuntime.allowsUnattendedUse`), and takes one of them only when no other model is available. Steps 1 to 3
+ * are models the user named, so they still apply; `unattendedUseNotice` is the line that says so.
  */
 export async function findInitialModel(options: {
 	scopedModels: ScopedModel[];
@@ -270,6 +275,8 @@ export async function findInitialModel(options: {
 	modelThinkingLevels?: Record<string, ThinkingLevel>;
 	/** The user's default model id per provider (`providerModels`). */
 	providerModels?: Record<string, string>;
+	/** No one watches the run (print mode, an ACP server): automatic choice skips interactive-only plans. */
+	unattended?: boolean;
 	modelRuntime: ModelRuntime;
 }): Promise<InitialModelResult> {
 	const {
@@ -280,6 +287,7 @@ export async function findInitialModel(options: {
 		defaultThinkingLevel,
 		modelThinkingLevels,
 		providerModels = {},
+		unattended = false,
 		modelRuntime,
 	} = options;
 
@@ -324,22 +332,48 @@ export async function findInitialModel(options: {
 			.map((id) => availableModels.find((m) => m.provider === provider && m.id === id))
 			.find((match) => match !== undefined);
 
-	// 3. The default provider's model when no default model applies.
-	const defaultProviderMatch = defaultProvider ? providerDefault(defaultProvider) : undefined;
+	// 3. The default provider's model when no default model applies. A provider with no built-in default (a gateway in
+	// models.json) uses its model that is some vendor's default, else its first: never another provider's model.
+	const defaultProviderMatch = defaultProvider
+		? (providerDefault(defaultProvider) ?? ownProviderDefault(availableModels, defaultProvider))
+		: undefined;
 	if (defaultProviderMatch) return withLevel(defaultProviderMatch);
 
-	// 4. Try first available model with valid API key
-	if (availableModels.length > 0) {
-		// The user's per-provider defaults first, then the built-in ones
-		for (const provider of [...Object.keys(providerModels), ...Object.keys(defaultModelPerProvider)]) {
-			const match = providerDefault(provider);
-			if (match) return withLevel(match);
+	// 4. Try first available model with valid API key. An unattended run tries the providers that allow it first.
+	const allowed = (provider: string) => !unattended || modelRuntime.allowsUnattendedUse(provider);
+	for (const pass of unattended ? [true, false] : [true]) {
+		const candidates = availableModels.filter((m) => allowed(m.provider) === pass);
+		if (candidates.length === 0) continue;
+		// The user's per-provider defaults first, then the built-in ones; a provider a subscription pays for comes before a
+		// metered one, so a first message does not spend per-token credit while a plan is signed in.
+		const providers = [...Object.keys(providerModels), ...Object.keys(defaultModelPerProvider)];
+		for (const billing of ["plan", "metered"] as const) {
+			for (const provider of providers) {
+				if (allowed(provider) !== pass || modelRuntime.getProviderBilling(provider) !== billing) continue;
+				const match = providerDefault(provider);
+				if (match) return withLevel(match);
+			}
 		}
 
 		// If no default found, use first available
-		return { model: availableModels[0], thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
+		return withLevel(candidates[0]);
 	}
 
 	// 5. No model found
 	return { model: undefined, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
+}
+
+/** What a vendor whose plan forbids unattended use allows. */
+const INTERACTIVE_ONLY = "the vendor's plan allows interactive use only";
+
+/**
+ * The one-line notice for an unattended run on `model` when its provider's plan allows interactive use only. It is a
+ * notice, not a refusal: the model the user named (or the only one available) still runs.
+ */
+export function unattendedUseNotice(
+	model: Pick<Model<Api>, "provider" | "id">,
+	modelRuntime: Pick<ModelRuntime, "allowsUnattendedUse">,
+): string | undefined {
+	if (modelRuntime.allowsUnattendedUse(model.provider)) return undefined;
+	return `${model.provider}/${model.id}: ${INTERACTIVE_ONLY}, not unattended runs like this one.`;
 }

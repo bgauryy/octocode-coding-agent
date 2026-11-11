@@ -13,7 +13,7 @@ import {
 	textStreamKey,
 	textUpdate,
 } from "./redaction.ts";
-import type { ExternalReply } from "@octocodeai/octocode-contracts/external";
+import type { ExternalReply, ExternalUsage } from "@octocodeai/octocode-contracts/external";
 import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 const MAX_UPDATES_BYTES = 1024 * 1024;
@@ -173,9 +173,11 @@ export class AcpOutput {
 		for (const stream of this.streams.values()) stream.finish();
 		if (terminal) this.archive?.appendRecord(terminal);
 		const status = this.redactionStatus(!response);
+		const usage = responseUsage(response);
 		this.result = {
 			text: this.archive ? `${text}${text ? "\n" : ""}${this.archive.note(status)}` : text,
 			...(response ? { stopReason: response.stopReason } : {}),
+			...(usage ? { usage } : {}),
 			updates: [
 				...redactedUpdates(this.updates, !!this.archive),
 				...(this.archive ? [this.archive.metadata(status)] : []),
@@ -235,6 +237,27 @@ export class AcpOutput {
 		}
 		return { bufferedBytes, redactionOmittedBytes, captureIncomplete, untrackedStreamBytes: this.excessStreamBytes };
 	}
+}
+
+const count = (value: unknown): number | undefined =>
+	typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+
+/**
+ * The token totals a prompt response carries (ACP's unstable `usage`, which Claude Code's adapter sends): the input and
+ * output counts are required, the others kept when they are counts. Anything else in the field is dropped.
+ */
+function responseUsage(response: PromptResponse | undefined): ExternalUsage | undefined {
+	const raw = (response as { usage?: unknown } | undefined)?.usage;
+	if (!raw || typeof raw !== "object") return undefined;
+	const field = raw as Record<string, unknown>;
+	const inputTokens = count(field.inputTokens);
+	const outputTokens = count(field.outputTokens);
+	if (inputTokens === undefined || outputTokens === undefined) return undefined;
+	const optional = (["cachedReadTokens", "cachedWriteTokens", "totalTokens"] as const).flatMap((key) => {
+		const value = count(field[key]);
+		return value === undefined ? [] : [[key, value] as const];
+	});
+	return { inputTokens, outputTokens, ...Object.fromEntries(optional) };
 }
 
 /** Metadata and annotations must agree before adjacent textual notifications can merge. */

@@ -3,7 +3,7 @@ import { delimiter, join, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { getAgentDir, getBinDir } from "../config.ts";
+import { getAgentDir, getBinDir, getLegacyProviderDirs } from "../config.ts";
 import { modelsEnvKeyNames } from "../core/models-json-keys.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
 
@@ -255,13 +255,23 @@ export function getShellEnv(): NodeJS.ProcessEnv {
 	const updatedPath = [...missing, currentPath].filter(Boolean).join(delimiter);
 
 	const env: NodeJS.ProcessEnv = { ...process.env, [pathKey]: updatedPath };
-	if (!keepProviderKeys) {
-		for (const provider of builtinProviders())
-			for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) delete env[name];
-		// A custom provider's key comes from the variable its `apiKey` names (`$NAME`).
-		for (const name of modelsEnvKeyNames(join(getAgentDir(), "models.json"))) delete env[name];
-	}
+	if (!keepProviderKeys) for (const name of providerKeyNames(env)) delete env[name];
 	return env;
+}
+
+/**
+ * The provider API-key variables set in `env`: every built-in provider's, and those custom providers in `models.json`
+ * name. The one list behind the shell's removal above and the environment an external ACP agent starts with.
+ */
+export function providerKeyNames(env: NodeJS.ProcessEnv): string[] {
+	const names = new Set<string>();
+	for (const provider of builtinProviders())
+		for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) names.add(name);
+	// A custom provider's key comes from the variable its `apiKey` or a header names (`$NAME`), in every models.json
+	// the session merges: Octocode's own, then the read-only legacy and Pi folders.
+	for (const dir of [getAgentDir(), ...getLegacyProviderDirs()])
+		for (const name of modelsEnvKeyNames(join(dir, "models.json"))) names.add(name);
+	return [...names];
 }
 
 /**

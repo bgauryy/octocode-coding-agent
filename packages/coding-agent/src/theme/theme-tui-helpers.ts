@@ -16,6 +16,7 @@ import { highlight, isHighlightable, resolveLanguage } from "../utils/syntax-hig
 import type { Theme } from "./theme-class.ts";
 import type { ThemeColor } from "./theme-types.ts";
 import { theme } from "./theme-global.ts";
+import { HighlightCache } from "./highlight-cache.ts";
 
 /** The GitHub alert kinds a `MarkdownTheme` styles. */
 type MarkdownAlertKind = Parameters<NonNullable<MarkdownTheme["alert"]>>[0];
@@ -82,9 +83,8 @@ function getCliHighlightTheme(t: Theme): CliHighlightTheme {
 	return cachedCliHighlightTheme;
 }
 
-const HIGHLIGHT_CACHE_ENTRIES = 64;
 const HIGHLIGHT_CACHE_MAX_CHARS = 64 * 1024;
-const highlightCaches = new WeakMap<Theme, Map<string, string[]>>();
+const highlightCaches = new WeakMap<Theme, HighlightCache>();
 
 /**
  * Highlight code with syntax coloring based on file extension or language, in `source` (the active theme by default).
@@ -101,9 +101,6 @@ export function highlightCode(code: string, lang?: string, source: Theme = theme
 		let cache = highlightCaches.get(source);
 		const hit = cacheable ? cache?.get(key) : undefined;
 		if (hit) {
-			// Refresh recency: Map iterates in insertion order.
-			cache?.delete(key);
-			cache?.set(key, hit);
 			return hit.slice();
 		}
 		try {
@@ -114,13 +111,10 @@ export function highlightCode(code: string, lang?: string, source: Theme = theme
 			}).split("\n");
 			if (cacheable) {
 				if (!cache) {
-					cache = new Map();
+					cache = new HighlightCache();
 					highlightCaches.set(source, cache);
 				}
 				cache.set(key, lines);
-				if (cache.size > HIGHLIGHT_CACHE_ENTRIES) {
-					cache.delete(cache.keys().next().value as string);
-				}
 			}
 			return lines.slice();
 		} catch {
@@ -242,6 +236,7 @@ export function getEditorTheme(): EditorTheme {
 	return {
 		borderColor: (text: string) => theme.fg("borderMuted", text),
 		selectList: getSelectListTheme(),
+		ghostText: (text: string) => theme.fg("dim", text),
 	};
 }
 

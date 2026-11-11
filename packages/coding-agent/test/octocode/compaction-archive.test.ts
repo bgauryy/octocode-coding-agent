@@ -676,7 +676,7 @@ describe("/archive", () => {
 		registerArchiveCommand(commands);
 		expect(commands.help()).toMatch(/archive \[<n>\]/);
 		expect(commands.get("archive")).toMatchObject({
-			description: "Browse compacted session history",
+			description: "Browse the history that compaction summarized",
 			argumentHint: "[<n>]",
 		});
 	});

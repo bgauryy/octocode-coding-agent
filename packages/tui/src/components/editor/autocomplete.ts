@@ -8,6 +8,7 @@ import {
 	getBestAutocompleteMatchIndex,
 	SLASH_COMMAND_SELECT_LIST_LAYOUT,
 } from "./autocomplete-patterns.ts";
+import { untilAutocompleteAborted } from "./autocomplete-request.ts";
 import {
 	findAtQuery,
 	findTokenStart,
@@ -244,13 +245,13 @@ export class EditorAutocomplete {
 			{ signal: controller.signal, force: options.force },
 		);
 		this.showIndexingProgress();
-		const suggestions = await request;
-		this.stopIndexingProgress();
+		const suggestions = await untilAutocompleteAborted(request, controller.signal);
 
 		if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) {
 			return;
 		}
 
+		this.stopIndexingProgress();
 		this.autocompleteAbort = undefined;
 
 		if (!suggestions || !Array.isArray(suggestions.items) || suggestions.items.length === 0) {

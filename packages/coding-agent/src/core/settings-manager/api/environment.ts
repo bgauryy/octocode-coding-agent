@@ -22,6 +22,8 @@ export interface EnvironmentSettingsApi {
 	getBashSpillMaxBytes(): number;
 	/** Whether the agent tool may declare its `external` type; off unless set. */
 	getExternalAgents(): boolean;
+	/** Turns external agents and runners on or off in the global settings (`/providers`, External agents). */
+	setExternalAgents(enabled: boolean): void;
 	getNpmCommand(): string[] | undefined;
 	setNpmCommand(command: string[] | undefined): void;
 	getCollapseChangelog(): boolean;

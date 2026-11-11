@@ -31,6 +31,34 @@ describe("1h cache write pricing when the vendor omits the TTL breakdown", () =>
 		expect(requestsLongCache({ system: [{ type: "text", text: "x" }] })).toBe(false);
 	});
 
+	it("prices later writes at the 1h rate when an earlier breakdown no longer covers them", async () => {
+		// Proxies that report usage at the end can send a zeroed breakdown on message_start.
+		const result = await streamAnthropic("end_turn", {
+			startUsage: {
+				cache_creation_input_tokens: 0,
+				cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 },
+			},
+			deltaUsage: write,
+			longRetention: true,
+		});
+		expect(result.usage.cacheWrite).toBe(20_000);
+		expect(result.usage.cacheWrite1h).toBe(20_000);
+		expect(result.usage.cost.cacheWrite).toBeCloseTo(0.12, 10);
+	});
+
+	it("keeps a breakdown when message_delta repeats the same aggregate", async () => {
+		const result = await streamAnthropic("end_turn", {
+			startUsage: {
+				...write,
+				cache_creation: { ephemeral_5m_input_tokens: 20_000, ephemeral_1h_input_tokens: 0 },
+			},
+			deltaUsage: write,
+			longRetention: true,
+		});
+		expect(result.usage.cacheWrite1h).toBe(0);
+		expect(result.usage.cost.cacheWrite).toBeCloseTo(0.075, 10);
+	});
+
 	it("trusts a reported breakdown over the request", async () => {
 		const result = await streamAnthropic("end_turn", {
 			startUsage: {

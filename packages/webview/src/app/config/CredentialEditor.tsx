@@ -12,9 +12,6 @@ interface CredentialEditorProps {
 	keychainAvailable: boolean;
 }
 
-/** The provider whose keys include a Claude subscription token (`claude setup-token`); it is saved as this provider's key. */
-export const CLAUDE_TOKEN_PROVIDER = "anthropic";
-
 /** A key the host stored can be replaced or cleared; a provider variable or custom command cannot be cleared here. */
 const STORED = new Set(["keychain", "auth-json", "oauth"]);
 
@@ -27,12 +24,11 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	const id = useId();
 	const title = row.name ?? row.provider;
 	const stored = row.sources.some((source) => STORED.has(source.kind));
-	const [open, setOpen] = useState<"key" | "token" | false>(false);
+	const [open, setOpen] = useState(false);
 	const [key, setKey] = useState("");
 	const [plaintext, setPlaintext] = useState(false);
 	const [busy, setBusy] = useState<"save" | "clear" | undefined>();
 	const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | undefined>();
-	const noun = open === "token" ? "token" : "key";
 	const ready = key.trim().length > 0 && (keychainAvailable || plaintext) && !busy;
 
 	async function apply(command: ConfigCredentialCommand) {
@@ -72,14 +68,9 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	if (!open) {
 		return (
 			<div className="config-edit">
-				<Button size="sm" aria-label={`${stored ? "Replace" : "Set"} key for ${title}`} onClick={() => setOpen("key")}>
+				<Button size="sm" aria-label={`${stored ? "Replace" : "Set"} key for ${title}`} onClick={() => setOpen(true)}>
 					{stored ? "Replace key" : "Set key"}
 				</Button>
-				{row.provider === CLAUDE_TOKEN_PROVIDER && (
-					<Button size="sm" aria-label="Use Claude subscription token" onClick={() => setOpen("token")}>
-						Claude subscription token
-					</Button>
-				)}
 				{stored && (
 					<Button
 						size="sm"
@@ -96,16 +87,10 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 		);
 	}
 	return (
-		<form className="config-edit" onSubmit={submit} aria-label={`Edit ${noun} for ${title}`}>
-			{open === "token" && (
-				<p className="muted">
-					Run <code>claude setup-token</code> in a terminal; it opens Anthropic's sign-in in your browser and prints a
-					token starting with <code>sk-ant-oat</code>. Paste it here.
-				</p>
-			)}
+		<form className="config-edit" onSubmit={submit} aria-label={`Edit key for ${title}`}>
 			<input
 				type="password"
-				aria-label={open === "token" ? "Claude subscription token" : `API key for ${title}`}
+				aria-label={`API key for ${title}`}
 				value={key}
 				maxLength={8192}
 				autoComplete="off"
@@ -113,7 +98,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 				onChange={(event) => setKey(event.target.value)}
 			/>
 			<Button type="submit" size="sm" variant="primary" loading={busy === "save"} disabled={!ready}>
-				{open === "token" ? (stored ? "Replace token" : "Save token") : stored ? "Replace" : "Save"}
+				{stored ? "Replace" : "Save"}
 			</Button>
 			<Button
 				size="sm"
@@ -128,7 +113,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 				Cancel
 			</Button>
 			{keychainAvailable ? (
-				<p className="muted">The {noun} goes to the OS keychain. It is not shown again.</p>
+				<p className="muted">The key goes to the OS keychain. It is not shown again.</p>
 			) : (
 				<label className="config-ack" htmlFor={`${id}-ack`}>
 					<input
@@ -137,7 +122,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 						checked={plaintext}
 						onChange={(event) => setPlaintext(event.target.checked)}
 					/>
-					This computer has no OS keychain. Save the {noun} as plain text in auth.json. The {noun} is not encrypted, and
+					This computer has no OS keychain. Save the key as plain text in auth.json. The key is not encrypted, and
 					auth.json is made readable by your user account only.
 				</label>
 			)}

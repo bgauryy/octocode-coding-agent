@@ -2,12 +2,6 @@ import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { OAuthSelectorComponent, type AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
-import {
-	CLAUDE_SUBSCRIPTION_ACTION,
-	CLAUDE_SUBSCRIPTION_PROVIDER,
-	findClaudeCli,
-	signInWithClaudeSubscription,
-} from "./claude-subscription.ts";
 
 /** What the page modules need to move between pages: the host, and a way back after a dialog closes. */
 export interface PageContext {
@@ -50,9 +44,6 @@ export function signInActions(
 			);
 		}
 	}
-	// Last, so each provider method keeps its index for `signInToProvider`'s `prefer`.
-	const claude = id === CLAUDE_SUBSCRIPTION_PROVIDER && actions.size > 0 ? findClaudeCli() : undefined;
-	if (claude) actions.set(CLAUDE_SUBSCRIPTION_ACTION, () => signInWithClaudeSubscription(host, claude, name, back));
 	return actions;
 }
 
@@ -94,19 +85,14 @@ export async function showSignIn(ctx: PageContext, saved: readonly CredentialInf
 	const methods = new Map<string, AuthSelectorProvider[]>();
 	for (const option of host.getLoginProviderOptions())
 		methods.set(option.id, [...(methods.get(option.id) ?? []), option]);
-	const claudeInstalled = findClaudeCli() !== undefined;
 	const signIns = new Set<string>();
 	const providers: AuthSelectorProvider[] = [...methods].map(([id, options]) => {
-		const viaClaude = claudeInstalled && id === CLAUDE_SUBSCRIPTION_PROVIDER;
-		const kinds = [
-			...(viaClaude ? ["Claude subscription sign-in (through Claude Code)"] : []),
-			...options.map((option) =>
-				option.authType === "api_key" ? "API key" : option.subscription ? "subscription sign-in" : "account sign-in",
-			),
-		];
+		const kinds = options.map((option) =>
+			option.authType === "api_key" ? "API key" : option.subscription ? "subscription sign-in" : "account sign-in",
+		);
 		// The sign-in's own name ("OpenAI (ChatGPT subscription)") makes it findable by what the user pays for.
 		const oauth = options.find((option) => option.authType === "oauth");
-		if (oauth || viaClaude) signIns.add(id);
+		if (oauth) signIns.add(id);
 		return {
 			id,
 			name: runtime.getProvider(id)?.name ?? id,

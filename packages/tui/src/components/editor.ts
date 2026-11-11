@@ -8,8 +8,10 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 } from "../tui.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { insertTextAtCursorInternal } from "./editor/editing.ts";
+import { dimGhost, ghostSuffix } from "./editor/ghost.ts";
 import { addToHistory } from "./editor/history.ts";
 import { handleEditorInput } from "./editor/input.ts";
 import { createScrollBorder } from "./editor/layout.ts";
@@ -39,6 +41,8 @@ export class Editor implements Component, Focusable {
 	public onChange?: (text: string) => void;
 	public disableSubmit: boolean = false;
 
+	private readonly ghostStyle: (str: string) => string;
+
 	constructor(tui: TUI, theme: EditorTheme, options: EditorOptions = {}) {
 		this.model = new EditorModel(
 			{
@@ -58,6 +62,7 @@ export class Editor implements Component, Focusable {
 		);
 		this.tui = tui;
 		this.borderColor = theme.borderColor;
+		this.ghostStyle = theme.ghostText ?? dimGhost;
 		const paddingX = options.paddingX ?? 0;
 		this.model.paddingX = Number.isFinite(paddingX) ? Math.max(0, Math.floor(paddingX)) : 0;
 		const maxVisible = options.autocompleteMaxVisible ?? 5;
@@ -108,6 +113,20 @@ export class Editor implements Component, Focusable {
 	 */
 	addToHistory(text: string): void {
 		addToHistory(this.model, text);
+	}
+
+	/**
+	 * Sets the whole suggested input (or clears it): while the typed text is a prefix of it and the cursor is at the end,
+	 * the rest shows dimmed after the cursor, and Right or End accepts it (`tui.editor.cursorWordRight` its next word).
+	 */
+	setInlineSuggestion(text: string | undefined): void {
+		if (this.model.inlineSuggestion === text) return;
+		this.model.inlineSuggestion = text;
+		this.tui.requestRender();
+	}
+
+	getInlineSuggestion(): string | undefined {
+		return this.model.inlineSuggestion;
 	}
 
 	invalidate(): void {
@@ -199,10 +218,13 @@ export class Editor implements Component, Focusable {
 					displayText = before + marker + cursor + restAfter;
 					// lineVisibleWidth stays the same - we're replacing, not adding
 				} else {
-					// Cursor is at the end - add highlighted space
-					const cursor = renderFakeCursor(" ");
-					displayText = before + marker + cursor;
-					lineVisibleWidth = lineVisibleWidth + 1;
+					// Cursor is at the end: a highlighted space, or the first character of the ghost text and its dimmed rest
+					const ghost = ghostSuffix(this.model);
+					const shown = ghost ? truncateToWidth(ghost, Math.max(0, contentWidth - lineVisibleWidth), "") : "";
+					const first = shown ? ([...this.model.segment(shown, "grapheme")][0]?.segment ?? "") : "";
+					const cursor = renderFakeCursor(first || " ");
+					displayText = before + marker + cursor + (first ? this.ghostStyle(shown.slice(first.length)) : "");
+					lineVisibleWidth = lineVisibleWidth + (first ? visibleWidth(shown) : 1);
 					// If cursor overflows content width into the padding, flag it
 					if (lineVisibleWidth > contentWidth && paddingX > 0) {
 						cursorInPadding = true;
@@ -266,6 +288,7 @@ export class Editor implements Component, Focusable {
 
 	setText(text: string): void {
 		this.model.autocomplete.cancelAutocomplete();
+		this.model.inlineSuggestion = undefined;
 		this.model.lastAction = null;
 		this.model.exitHistoryBrowsing();
 		const normalized = this.model.normalizeText(text);

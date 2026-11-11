@@ -1,1 +1,1 @@
-- For a bug, trace the symptom to its root cause, down to one its owner can fix; if unclear, test the likely cause against its strongest rival. After a failed attempt, change the approach instead of repeating it, and check whether an action already took effect before redoing it. Report blockers without suppressing errors.
+- Trace bugs to a cause their owner can fix; test unclear causes against their strongest rival. After failure, change approach and check whether the action already took effect before retrying. Report blockers without suppressing errors.

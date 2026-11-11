@@ -42,6 +42,8 @@ export interface MarkdownTheme {
 }
 
 export interface MarkdownOptions {
+	/** Resolve relative references against the message's original directory. */
+	cwd?: string;
 	/** Preserve source list markers instead of normalizing them. */
 	preserveOrderedListMarkers?: boolean;
 	/** Preserve source backslash escapes instead of normalizing escaped punctuation. */
@@ -61,6 +63,7 @@ export interface InlineStyleContext {
 export interface MarkdownRenderHost {
 	theme: MarkdownTheme;
 	options: MarkdownOptions;
+	linkId(token: object, index?: number): string;
 	applyDefaultStyle(text: string): string;
 	getDefaultInlineStyleContext(): InlineStyleContext;
 }

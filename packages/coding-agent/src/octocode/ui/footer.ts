@@ -62,6 +62,7 @@ export function registerFooter(api: ExtensionAPI): void {
 			model: model?.id,
 			provider: model?.provider,
 			subscription: model ? ctx.modelRegistry.billedBySubscription(model.provider) : false,
+			kind: model ? ctx.modelRegistry.getProviderKind(model.provider) : undefined,
 			thinking: model?.reasoning ? api.getThinkingLevel() : undefined,
 			context: limit
 				? { percent: typeof usage?.tokens === "number" ? (usage.tokens / limit) * 100 : null, limit }

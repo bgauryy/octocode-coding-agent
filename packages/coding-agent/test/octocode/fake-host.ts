@@ -12,6 +12,12 @@ export const fakeCachePolicy: ModelRegistry["getCachePolicy"] = (model, settings
 	resolveConfiguredCache(model, undefined, options, settings);
 
 /** Identity theme: colours and styles pass text through, so rendered components read as plain text. */
+/** The billing facts a registry gives subagent routing: every provider metered, unattended use allowed. */
+export const meteredBilling = {
+	getProviderBilling: (): "plan" | "metered" => "metered",
+	allowsUnattendedUse: (): boolean => true,
+};
+
 export const theme = {
 	fg: (_color: string, text: string) => text,
 	bg: (_color: string, text: string) => text,
@@ -234,9 +240,19 @@ export function fakeCtx(options: {
 			getCachePolicy: fakeCachePolicy,
 			getProviderAuthStatus: () => ({ configured: true, source: "stored" }),
 			billedBySubscription: () => false,
+			getProviderKind: () => "API key",
+			...meteredBilling,
 		} satisfies Pick<
 			ModelRegistry,
-			"getAvailable" | "getAll" | "find" | "getCachePolicy" | "getProviderAuthStatus" | "billedBySubscription"
+			| "getAvailable"
+			| "getAll"
+			| "find"
+			| "getCachePolicy"
+			| "getProviderAuthStatus"
+			| "billedBySubscription"
+			| "getProviderKind"
+			| "getProviderBilling"
+			| "allowsUnattendedUse"
 		>,
 		getContextUsage: () => undefined,
 	} as never;

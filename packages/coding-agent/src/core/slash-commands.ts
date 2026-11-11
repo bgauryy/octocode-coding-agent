@@ -1,4 +1,4 @@
-import { APP_NAME } from "../config.ts";
+import { APP_TITLE } from "../config.ts";
 import type { SourceInfo } from "./source-info.ts";
 
 type SlashCommandSource = "extension" | "prompt" | "skill";
@@ -18,6 +18,8 @@ export interface BuiltinSlashCommand {
 	argumentHint?: string;
 	argumentValues?: readonly string[];
 	argumentKind?: "path";
+	/** An alias typed from habit: it runs, but the `/` menu and the /help picker leave it out. */
+	menuHidden?: true;
 }
 
 export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
@@ -41,53 +43,53 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{
 		name: "btw",
-		description: "Ask a quick side question without using tools",
+		description: "Ask a side question without tools",
 		argumentHint: "[question|--cancel|--clear]",
 	},
 	{
 		name: "context",
-		description: "Show or set how much conversation the model sees",
+		description: "Show or set how much history the model sees",
 		argumentHint: "[all|size|reset|full|tokens]",
 		argumentValues: ["all", "size", "reset", "full"],
 	},
 	{
 		name: "diff",
 		description: "Show repository changes",
-		argumentHint: "[path]",
+		argumentHint: "[path|--editor <before> <after>]",
 		argumentKind: "path",
 	},
-	{ name: "help", description: "Find commands", argumentHint: "[search]" },
+	{ name: "help", description: "Find a command, or show one's usage", argumentHint: "[command|search]" },
 	{
 		name: "configuration",
-		description: "Enable, disable, set and add configuration",
+		description: "View and change settings",
 		argumentHint: "[list|get|enable|disable|set|unset|add|remove] [--local]",
 		argumentValues: ["list", "get", "enable", "disable", "set", "unset", "add", "remove"],
 	},
 	{
 		name: "model",
-		description: "Choose the AI model",
+		description: "Switch this chat's model",
 		argumentHint: "[provider/model]",
 	},
-	{ name: "tree", description: "Navigate the session tree" },
+	{ name: "tree", description: "Browse session branches and jump to a message" },
 	{
 		name: "effort",
-		description: "Set reasoning effort",
+		description: "Set reasoning effort: how hard the model thinks",
 		argumentHint: "[level]",
 	},
 	{
 		name: "modelsettings",
-		description: "Models, prices and subagent routing",
+		description: "Model shortcuts, prices and subagent routing",
 		argumentHint: "[check]",
 	},
 	{
 		name: "export",
-		description: "Export session to HTML or JSONL",
+		description: "Save this session as an HTML or JSONL file",
 		argumentHint: "[path]",
 		argumentKind: "path",
 	},
 	{
 		name: "import",
-		description: "Open a saved session from a file",
+		description: "Open a session from an exported file",
 		argumentHint: "<path>",
 		argumentKind: "path",
 	},
@@ -97,21 +99,32 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Report a bug to the developers",
 		argumentHint: "[description]",
 	},
-	{ name: "copy", description: "Copy last agent message" },
+	{
+		name: "copy",
+		description: "Copy an answer, code or file location",
+		argumentHint: "[message|markdown|references|code|location]",
+		argumentValues: ["message", "markdown", "references", "code", "location"],
+	},
+	{
+		name: "links",
+		description: "Find, inspect, open or copy references",
+		argumentHint: "[message|all] [query]",
+		argumentValues: ["message", "all"],
+	},
 	{ name: "rename", description: "Rename this session", argumentHint: "<name>" },
 	{
 		name: "status",
-		description: "Session usage, skills and MCP status",
+		description: "Show session usage, skills and MCP status",
 	},
-	{ name: "changelog", description: "Show the changelog" },
+	{ name: "changelog", description: "Show what's new" },
 	{ name: "keys", description: "Show keyboard shortcuts" },
 	{
 		name: "fork",
-		description: "Fork from a previous message",
+		description: "Start a new session from an earlier message",
 		argumentHint: "[pane [right|down]|window]",
 		argumentValues: ["pane", "window"],
 	},
-	{ name: "clone", description: "Duplicate this session" },
+	{ name: "clone", description: "Copy this whole session into a new one" },
 	{ name: "queue", description: "Edit queued messages" },
 	{
 		name: "providers",
@@ -129,17 +142,81 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "clear",
 		description: "Start a new session (same as /new)",
 		argumentHint: "[name-for-current-session]",
+		menuHidden: true,
 	},
 	{
 		name: "reset",
 		description: "Start a new session (same as /new)",
 		argumentHint: "[name-for-current-session]",
+		menuHidden: true,
 	},
-	{ name: "compact", description: "Compact the session context", argumentHint: "[instructions]" },
-	{ name: "resume", description: "Resume a recent session of this directory", argumentHint: "[all] [<query>|B<n>]" },
-	{ name: "debug", description: "Save a diagnostics file (secrets redacted)" },
-	{ name: "reload", description: "Reload config, skills and themes" },
-	{ name: "quit", description: `Quit ${APP_NAME}` },
+	{ name: "compact", description: "Summarize older turns to free context", argumentHint: "[instructions]" },
+	{ name: "resume", description: "Reopen a recent session in this folder", argumentHint: "[all] [<query>|B<n>]" },
+	{
+		name: "debug",
+		description: "Show terminal health or save redacted diagnostics",
+		argumentHint: "[terminal]",
+		argumentValues: ["terminal"],
+	},
+	{ name: "reload", description: "Reload settings, skills and themes" },
+	{ name: "quit", description: `Quit ${APP_TITLE}` },
+];
+
+/**
+ * The `/` menu's order, by what a user is doing: get started, work in the session, run agents, configure, then
+ * leave or report. Commands not listed follow in registration order, and skills come last.
+ */
+export const SLASH_MENU_ORDER: readonly string[] = [
+	"help",
+	"model",
+	"providers",
+	"effort",
+	"new",
+	"resume",
+	"compact",
+	"context",
+	"status",
+	"btw",
+	"plan",
+	"diff",
+	"rewind",
+	"tree",
+	"fork",
+	"clone",
+	"rename",
+	"queue",
+	"copy",
+	"links",
+	"agents",
+	"jobs",
+	"worktree",
+	"backlog",
+	"processes",
+	"memory",
+	"archive",
+	"permissions",
+	"configuration",
+	"modelsettings",
+	"harness",
+	"mcp",
+	"trust",
+	"keys",
+	"optimize",
+	"llama",
+	"reload",
+	"web",
+	"remote",
+	"api",
+	"octocode",
+	"export",
+	"import",
+	"share",
+	"changelog",
+	"debug",
+	"bug",
+	"logout",
+	"purge",
+	"quit",
 ];
 
 /** A command whose name prompt and skill commands must not take. */

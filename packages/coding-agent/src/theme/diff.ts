@@ -69,8 +69,12 @@ function changedRanges(oldContent: string, newContent: string): { removed: Range
 	let oldAt = 0;
 	let newAt = 0;
 	let shared = 0;
+	// Word emphasis is optional; long rewritten lines must not hold up painting an otherwise complete diff.
+	if (oldContent.length + newContent.length > 16 * 1024) return undefined;
+	const changes = Diff.diffWordsWithSpace(oldContent, newContent, { timeout: 5, maxEditLength: 200 });
+	if (!changes) return undefined;
 	// With whitespace kept exact, an unchanged part has the same text, and length, on both sides.
-	for (const part of Diff.diffWordsWithSpace(oldContent, newContent)) {
+	for (const part of changes) {
 		const length = part.value.length;
 		// Leading whitespace of a change is indentation, not part of the edit.
 		const lead = part.value.match(/^\s*/)?.[0].length ?? 0;

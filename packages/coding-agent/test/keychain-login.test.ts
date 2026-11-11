@@ -1,13 +1,13 @@
 import { InMemoryModelsStore, type AuthPrompt, type Credential } from "@octocodeai/octocode-ai";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { AuthStorageBackend } from "../src/core/auth-storage/backends.ts";
-import type { KeychainBackend } from "../src/core/auth-storage/keychain.ts";
+import { type KeychainBackend, KeychainSecretTooLargeError } from "../src/core/auth-storage/keychain.ts";
 import { type KeychainChoice, KeychainLoginSession } from "../src/core/auth-storage/keychain-login.ts";
 import { CredentialSynchronizationError, ModelRuntime } from "../src/core/model-runtime.ts";
 import { clearConfigValueCache, resolveConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 
-function fakeKeychain(options: { failStore?: boolean } = {}): KeychainBackend & {
+function fakeKeychain(options: { failStore?: boolean; tooLarge?: boolean } = {}): KeychainBackend & {
 	stored: Map<string, string>;
 	removed: string[];
 } {
@@ -19,6 +19,7 @@ function fakeKeychain(options: { failStore?: boolean } = {}): KeychainBackend & 
 		removed,
 		store: async (provider, secret) => {
 			if (options.failStore) throw new Error("keychain locked");
+			if (options.tooLarge) throw new KeychainSecretTooLargeError("fake keychain");
 			stored.set(provider, secret);
 		},
 		remove: async (provider) => {
@@ -29,6 +30,15 @@ function fakeKeychain(options: { failStore?: boolean } = {}): KeychainBackend & 
 		isOwnReference: (key, provider) => key === `!fake lookup ${provider}`,
 	};
 }
+
+// OpenCode checks a key against its model list at sign-in; these tests never reach the network.
+beforeEach(() =>
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => new Response("{}", { status: 200 })),
+	),
+);
+afterEach(() => vi.unstubAllGlobals());
 
 const secretPrompt: AuthPrompt = { type: "secret", message: "Enter API key" };
 
@@ -331,5 +341,35 @@ describe("AuthStorage logout cleanup", () => {
 		const storage = AuthStorage.inMemory({ opencode: { type: "api_key", key: "!fake lookup opencode" } }, { keychain });
 		await expect(storage.delete("opencode")).resolves.toBeUndefined();
 		expect(await storage.list()).toEqual([]);
+	});
+});
+
+describe("an account sign-in and the keychain", () => {
+	const oauth: Credential = { type: "oauth", access: "access-token", refresh: "refresh-token", expires: 1 };
+
+	test("asks once before the sign-in and stores the sign-in as a keychain blob, leaving a reference", async () => {
+		const keychain = fakeKeychain();
+		const ask = vi.fn(async (): Promise<KeychainChoice> => "keychain");
+		const session = new KeychainLoginSession(keychain, "openai", ask);
+		await session.chooseForSignIn();
+		await session.chooseForSignIn();
+		expect(ask).toHaveBeenCalledTimes(1);
+		const saved = await session.transformCredential(oauth);
+		expect([...keychain.stored.values()].join("")).toContain("refresh-token");
+		expect(JSON.stringify(saved)).not.toContain("refresh-token");
+	});
+
+	test("keeps a sign-in too large for the keychain in auth.json instead of failing it", async () => {
+		const session = new KeychainLoginSession(fakeKeychain({ tooLarge: true }), "openai", async () => "keychain");
+		await session.chooseForSignIn();
+		await expect(session.transformCredential(oauth)).resolves.toEqual(oauth);
+	});
+
+	test("passes a sign-in through when the user picks the file", async () => {
+		const keychain = fakeKeychain();
+		const session = new KeychainLoginSession(keychain, "openai", async () => "file");
+		await session.chooseForSignIn();
+		await expect(session.transformCredential(oauth)).resolves.toEqual(oauth);
+		expect(keychain.stored.size).toBe(0);
 	});
 });

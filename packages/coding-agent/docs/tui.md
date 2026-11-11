@@ -29,6 +29,40 @@ Fullscreen-only settings (see [settings](settings.md)):
 
 Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen).
 
+Typing or dismissing completion cancels its pending lookup, so a stalled lookup cannot block later completions. Shell completion limits retained output and stops stalled helper processes. Model command suggestions release canceled requests and discard results from an earlier session context.
+
+Scrolling away from the end keeps your reading position while output arrives. The jump-to-latest row reports how many rendered rows are below the viewport; it is not a count of unread messages. Search covers the loaded transcript. On a resumed long session, load earlier entries to search their rendered text. `/links all` searches assistant text in the current session context without rendering hidden history; compacted-away text requires the archive.
+
+## References and copying
+
+`/links [query]` opens a searchable reference picker for the last answer. `/links message [query]` first chooses an answer, newest first; `/links all [query]` searches the session. Enter chooses a reference and then an action; Escape cancels. Full destinations remain available to inspect or copy even when the picker clips a long label.
+
+| Action | Result |
+| --- | --- |
+| Open | Web URLs use the platform handler; local files use the configured editor; backlog links retain their item handler |
+| Inspect destination | Show the full destination in the transcript |
+| Copy destination / Markdown link | Preserve the complete target |
+| Copy location / path | Preserve the absolute file path and available line and column |
+| Reveal parent folder | Ask the platform file handler to show its parent directory |
+
+References retain their session directory, including worktree paths. `src/a.ts:12:3` keeps line 12 and column 3. In fullscreen, activation routes through Octocode; in regular mode, the terminal's native link handler controls clicks, so use `/links` for exact editor handoff. No mouse, OSC 8, VS Code or GUI is required for the picker or copy commands. If a clipboard writer fails, Octocode reports it and the source remains in the transcript. Remote OSC 52 clipboard delivery cannot be acknowledged by the application.
+
+`/copy` keeps the original full-answer copy. Add `message` for plain text, `markdown` for source, `references` for text with full destinations, `code` for literal fenced code (choose a block when several exist), or `location` for a file location. These copies use source content, so line wrapping, folding, borders and code labels do not enter the copied value. Mouse selection copying remains available.
+
+## Editor and VS Code workflows
+
+File opening and `/diff --editor "before file" "after file"` reuse `externalEditor`, then `VISUAL`, then `EDITOR`, then the platform default. Code, Code Insiders, Codium and Cursor receive separate `--reuse-window --goto` arguments for file positions. Vim, Neovim, Nano and Emacs receive their own location syntax; unknown editors receive the path. Diff handoff supports Code-family editors, Vim/Neovim, Meld and Beyond Compare. Unsupported editors can use the existing `/diff [path]` terminal view. The compared files remain on disk; no temporary snapshots expire while a GUI is open.
+
+For VS Code, set `externalEditor` to `code --wait` to edit long prompts with Ctrl+G and return after closing the editor tab. On Windows, use the editor executable if a command-shell wrapper cannot launch. In SSH, WSL or containers, configure an editor in that environment: Octocode does not infer a remote URI from a local path. You can always copy the location for another application.
+
+VS Code also offers **Terminal: Open Detected Link**, **Open Accessible View**, and accessible terminal navigation. Native detection depends on the current buffer; `/links` reads message source in either display mode. If VS Code intercepts a shortcut, inspect its terminal keybinding routing and use the narrow [Shift+Enter recipe](keybindings.md#shiftenter-and-new-lines), or rebind the Octocode action. Avoid routing every IDE shortcut to the shell. Terminal-tab progress uses the existing progress integration when supported by the host. Ordinary terminals keep the same working line and cancellation controls.
+
+## Highlighting and activity
+
+Known fence languages get syntax colors; unknown languages and oversized blocks use readable code text. Large growing blocks reuse completed highlighted lines between bounded full passes; new text remains visible in the code-block color, and completion runs the exact final highlighter. Repeated scrolling reuses rendered blocks. `NO_COLOR` and `TERM=dumb` retain plain output, and reduced motion stops decorative animation without stopping elapsed time.
+
+The working line distinguishes model activity, tools and user prompts. After 30 seconds without a model event during a model wait, it also reports that quiet interval. Tools and user prompts have their own activity; a new model wait starts a fresh interval. This is separate from total run time and does not declare a failure or trigger a retry. Escape remains the interrupt action.
+
 ## Screen parts
 
 | Part         | Shows                                                                                                                                                        |
@@ -54,6 +88,8 @@ Scroll, jump between prompts and search the transcript with the [fullscreen keys
 All variables: [environment variables](environment-variables.md).
 
 ## When the screen misbehaves
+
+Run `/debug terminal` to see the selected mode, colors, links, images, keyboard protocol, explicit overrides, motion, clipboard limitations and output queue. It enables aggregate rendering counters until exit; run it again after reproducing the problem. A zero counter can mean that no sample has been collected. It does not read the conversation or probe the clipboard. `/debug` retains the redacted diagnostics-file workflow.
 
 | Symptom                                                         | Try                                                                                                                   |
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |

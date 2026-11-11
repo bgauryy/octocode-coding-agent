@@ -7,7 +7,15 @@ import {
 	type TextContent,
 	toToolDeclaration,
 } from "@octocodeai/octocode-ai";
-import type { AgentEvent, AgentMessage, AgentState, AgentTool, QueueMode } from "../types.ts";
+import type { AgentContext, AgentEvent, AgentMessage, AgentState, AgentTool, QueueMode } from "../types.ts";
+
+/** A run snapshots the transcript and tools while pending tool discovery stays live. */
+export function createAgentContext(
+	state: Pick<AgentState, "messages" | "tools">,
+	pendingToolNames?: AgentContext["pendingToolNames"],
+): AgentContext {
+	return { messages: state.messages.slice(), tools: state.tools.slice(), pendingToolNames };
+}
 
 export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.filter(

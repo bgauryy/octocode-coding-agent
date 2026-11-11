@@ -2,11 +2,13 @@ import { AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../.
 import type { AcpClientHost } from "../../../../acp/src/host.ts";
 import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
 import { saveTimestamped } from "../shared/spill.ts";
+import { agentEnv } from "./runner-env.ts";
 
-/** What the ACP workspace's outbound client takes from this application: private output files and process-tree control. */
+/** What the ACP workspace's outbound client takes from this application: private output files, process-tree control and a cleaned environment. */
 export const acpClientHost: AcpClientHost = {
 	saveOutput: saveTimestamped,
 	processTree: { graceMs: KILL_GRACE_MS, prepare: prepareTree, adopt: adoptTree, stop: (pid) => stopTree(pid) },
+	childEnv: (vendor) => agentEnv(vendor),
 };
 
 /** The one place the outbound client is installed with its host. */

@@ -15,8 +15,7 @@ import type { AgentEventsHost } from "./agent-events.ts";
 import {
 	type AgentHooksHost,
 	installAgentInputPreparation,
-	installAgentNextTurnRefresh,
-	installAgentRequestProjection,
+	installAgentContextPreparation,
 	installForcedPromptProjection,
 	installHiddenDeclarationsProjection,
 } from "./agent-hooks.ts";
@@ -215,9 +214,8 @@ export function createSessionCollaborators(
 /** Install the session's hooks on its Agent, in the order each wraps the previous one. */
 export function installSessionAgentHooks(c: SessionCollaborators): void {
 	c.toolCalls.install();
-	installAgentNextTurnRefresh(c.hooks);
+	installAgentContextPreparation(c.hooks);
 	installAgentInputPreparation(c.hooks);
-	installAgentRequestProjection(c.hooks);
 	c.boundaries.installFinishTurn();
 	installHiddenDeclarationsProjection(c.hooks);
 	installForcedPromptProjection(c.hooks);

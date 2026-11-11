@@ -310,6 +310,15 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 		// Autocomplete provider composition is not supported in RPC mode
 	},
 
+	onEditorChange(): () => void {
+		// The RPC client owns its editor; no change events reach the host.
+		return () => {};
+	},
+
+	setEditorSuggestion(): void {
+		// Ghost text is drawn by the terminal editor only.
+	},
+
 	setEditorComponent(): void {
 		// Custom editor components not supported in RPC mode
 	},

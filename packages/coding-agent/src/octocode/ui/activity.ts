@@ -39,10 +39,16 @@ export function registerActivity(
 	let reported: string | undefined;
 	/** Repaints when interactions queue behind an open dialog; held per session. */
 	let unsubscribe: (() => void) | undefined;
+	let heartbeat: ReturnType<typeof setInterval> | undefined;
+	const clearHeartbeat = () => {
+		clearInterval(heartbeat);
+		heartbeat = undefined;
+	};
 
 	const paint = () => {
 		// The queue is process-wide: a session disposed without `session_shutdown` leaves this listener with a stale ctx.
 		if (ctx && !isLive(ctx)) {
+			clearHeartbeat();
 			unsubscribe?.();
 			[unsubscribe, ctx] = [undefined, undefined];
 			return;
@@ -54,7 +60,10 @@ export function registerActivity(
 		}
 		// Only the TUI draws a working line (its indicator counts the run's time itself): RPC's setWorkingMessage is a no-op.
 		if (!options.workingLine || !ctx?.hasUI || ctx.mode !== "tui") return;
-		const working = activity.ticking() ? activity.working(dialogsWaiting()) : undefined;
+		let working = activity.ticking() ? activity.working(dialogsWaiting()) : undefined;
+		const silence = activity.modelSilenceMs(Date.now());
+		if (working && silence !== undefined && silence >= 30_000)
+			working += ` · no model event for ${Math.floor(silence / 1000)}s`;
 		setRowsAnimate(ctx, activity.toolsRunning());
 		if (working !== shown) {
 			shown = working;
@@ -66,6 +75,7 @@ export function registerActivity(
 		}
 	};
 	const stop = () => {
+		clearHeartbeat();
 		activity.end();
 		paint();
 	};
@@ -90,6 +100,11 @@ export function registerActivity(
 
 		const now = Date.now();
 		activity.start(now);
+		clearHeartbeat();
+		if (options.workingLine && next.hasUI && next.mode === "tui") {
+			heartbeat = setInterval(paint, 1000);
+			heartbeat.unref();
+		}
 		if (options.workingLine) beginRun(now);
 		paint();
 	});

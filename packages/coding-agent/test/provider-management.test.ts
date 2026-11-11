@@ -2,12 +2,15 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GLYPH, Input, setKeybindings } from "@octocodeai/octocode-tui";
+import type { ProviderPlan } from "@octocodeai/octocode-ai";
+import { CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL } from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { getBuiltinCommand } from "../src/core/slash-commands.ts";
 import { getLoginProviderOptions, showOAuthSelector } from "../src/modes/interactive/interactive-mode/login-flow.ts";
 import { removeProviderCredential } from "../src/modes/interactive/interactive-mode/provider-actions.ts";
 import { showProviderManager } from "../src/modes/interactive/interactive-mode/provider-manager.ts";
+import type { ProviderKind } from "../src/core/model-runtime/catalog.ts";
 import { providerHealth, type ProviderHealth } from "../src/octocode/subagents/provider-health.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -60,7 +63,10 @@ function manager() {
 			label: "OPENAI_API_KEY",
 		}),
 		isUsingOAuth: () => false,
+		getProviderPlan: vi.fn((_id: string): ProviderPlan | undefined => undefined),
+		getPlanDisabledReason: (id: string) => runtime.getProviderPlan(id)?.disabled,
 		getCredentialKind: vi.fn(async (): Promise<"account" | "subscription" | "key"> => "key"),
+		getProviderKind: vi.fn((_id: string): ProviderKind => "API key"),
 		hasConfiguredAuth: (id: string) => id === "openai",
 		listCredentials: vi.fn(async () => [{ providerId: "openai", type: "api_key" }]),
 		logout: vi.fn(async () => {}),
@@ -72,6 +78,7 @@ function manager() {
 			settingsManager: {
 				getProviderSources: () => ({}),
 				getDisabledProviders: () => disabled,
+				getExternalAgents: () => false,
 				setDisabledProviders: vi.fn((ids: string[]) => {
 					disabled = ids;
 				}),
@@ -150,64 +157,31 @@ describe("provider setup flow", () => {
 		rmSync(home, { recursive: true, force: true });
 	});
 
-	/** A stand-in `claude` on PATH whose `setup-token` exits with `code`. */
-	const installClaude = (code: number) => {
+	/** A stand-in `claude` on PATH; Octocode must not offer to run it. */
+	const installClaude = () => {
 		const file = join(home, "bin", "claude");
-		writeFileSync(file, `#!/bin/sh\n[ "$1" = setup-token ] || exit 9\nexit ${code}\n`);
+		writeFileSync(file, "#!/bin/sh\nexit 9\n");
 		chmodSync(file, 0o755);
 	};
 
-	it("signs in with a Claude subscription by handing the terminal to `claude setup-token`, then asks for its token", async () => {
-		installClaude(0);
-		const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
-		try {
-			const { host, value } = manager();
-			const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
-			choose(await pageAt(value, 0), "+ Add a provider");
-			const picker = await pageAt(value, 1);
-			for (const key of "claude") picker.handleInput(key);
-			expect(rows(picker).filter((line) => line.includes("Anthropic"))).toEqual([
-				expect.stringContaining("Anthropic · Claude subscription sign-in (through Claude Code) or API key"),
-			]);
-			picker.handleInput(ENTER);
-			await vi.waitFor(() => expect(value.showExtensionSelector).toHaveBeenCalled());
-			const [title, labels] = value.showExtensionSelector.mock.calls[0];
-			expect(title).toBe("Sign in to Anthropic");
-			expect(labels).toEqual(["Add API key", "Sign in with your Claude subscription — browser, through Claude Code"]);
-			// Choosing nothing returns to the main page.
-			(await pageAt(value, 2)).handleInput(ESC);
-			await run;
-		} finally {
-			stdout.mockRestore();
-		}
-	});
-
-	it("runs `claude setup-token` from the Anthropic page and saves nothing when it fails", async () => {
-		const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
-		try {
-			for (const [code, opened] of [
-				[0, true],
-				[3, false],
-			] as const) {
-				installClaude(code);
-				const { host, value } = manager();
-				const run = showProviderManager(host, "anthropic", { sourceEnvironment: sourceEnvironment() });
-				choose(await pageAt(value, 0), "Sign in with your Claude subscription");
-				await run;
-				await vi.waitFor(() => expect(opened ? value.showApiKeyLoginDialog : value.showError).toHaveBeenCalled());
-				// The terminal went to the child and came back.
-				expect(value.ui.stop).toHaveBeenCalledOnce();
-				expect(value.ui.start).toHaveBeenCalledOnce();
-				if (opened) {
-					expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("anthropic", "Anthropic", expect.any(Function));
-				} else {
-					expect(value.showError).toHaveBeenCalledWith("claude setup-token exited with code 3; nothing was saved.");
-					expect(value.showApiKeyLoginDialog).not.toHaveBeenCalled();
-				}
-			}
-		} finally {
-			stdout.mockRestore();
-		}
+	it("offers only an API key for Anthropic, even with the Claude Code CLI installed", async () => {
+		installClaude();
+		const { host, value } = manager();
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "+ Add a provider");
+		const picker = await pageAt(value, 1);
+		for (const key of "anthropic") picker.handleInput(key);
+		const anthropicRows = rows(picker).filter((line) => line.includes("Anthropic"));
+		expect(anthropicRows).toEqual([expect.stringContaining("Anthropic · API key")]);
+		expect(anthropicRows.join("\n")).not.toMatch(/subscription/i);
+		picker.handleInput(ENTER);
+		await run;
+		// One method: the API key dialog opens directly, with no menu that could offer `claude setup-token`.
+		await vi.waitFor(() =>
+			expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("anthropic", "Anthropic", expect.any(Function)),
+		);
+		expect(value.showExtensionSelector).not.toHaveBeenCalled();
+		expect(value.ui.stop).not.toHaveBeenCalled();
 	});
 
 	it("names provider access /providers and keeps each command under one name", () => {
@@ -231,7 +205,7 @@ describe("provider setup flow", () => {
 		expect(at).toEqual([...at].sort((a, b) => a - b));
 		expect(output).not.toMatch(/^ Disabled$/m);
 		expect(output.match(/OpenAI\b/g)?.length).toBeGreaterThanOrEqual(1);
-		expect(output).toMatch(/OpenAI +key · OPENAI_API_KEY · 1 model +enabled/);
+		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · 1 model +enabled/);
 		expect(output).toContain("+ Add a provider");
 		expect(output).toMatch(/Octocode .*auth\.json.* on/);
 		expect(output).toMatch(/Pi .*auth\.json.* on/);
@@ -300,21 +274,15 @@ describe("provider setup flow", () => {
 		await claudeRun;
 		expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("anthropic", "Anthropic", expect.any(Function));
 
-		// With the Claude Code CLI installed, the row offers its subscription sign-in beside the API key.
-		installClaude(0);
-		const subscriptionRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
-		const subscriptionPage = await pageAt(value, 2);
-		expect(textOf(subscriptionPage)).toMatch(
-			/Claude Code +~\/\.claude → sign in with your Claude subscription or an API key/,
-		);
-		choose(subscriptionPage, "Claude Code");
-		await vi.waitFor(() => expect(value.showExtensionSelector).toHaveBeenCalled());
-		const [title, labels] = value.showExtensionSelector.mock.calls.at(-1) ?? [];
-		expect(title).toBe("Sign in to Anthropic");
-		expect(labels).toEqual(["Add API key", "Sign in with your Claude subscription — browser, through Claude Code"]);
-		// Choosing nothing returns to the main page.
-		(await pageAt(value, 3)).handleInput(ESC);
-		await subscriptionRun;
+		// An installed Claude Code CLI changes nothing: the row still offers the API key only.
+		installClaude();
+		const installedRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const installedPage = await pageAt(value, 2);
+		expect(textOf(installedPage)).toMatch(/Claude Code +~\/\.claude → add an API key for Anthropic/);
+		choose(installedPage, "Claude Code");
+		await installedRun;
+		expect(value.showApiKeyLoginDialog).toHaveBeenCalledTimes(2);
+		expect(value.showExtensionSelector).not.toHaveBeenCalled();
 	});
 
 	it("a source's page toggles Pi through settings and reapplies the sources; Octocode has no toggle", async () => {
@@ -347,6 +315,7 @@ describe("provider setup flow", () => {
 	it("shows a stored key that is a subscription token as subscription, in the list and on the page", async () => {
 		const { host, value, runtime } = manager();
 		runtime.getCredentialKind.mockResolvedValue("subscription");
+		runtime.getProviderKind.mockReturnValue("subscription");
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
 		expect(textOf(list)).toMatch(/OpenAI +subscription · OPENAI_API_KEY · 1 model/);
@@ -359,14 +328,52 @@ describe("provider setup flow", () => {
 		await run;
 	});
 
-	it("shows a plain key as key, in the list and on the page", async () => {
+	it("shows a plain key as API key, in the list and on the page", async () => {
 		const { host, value } = manager();
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
-		expect(textOf(list)).toMatch(/OpenAI +key · OPENAI_API_KEY/);
+		expect(textOf(list)).toMatch(/OpenAI +API key · OPENAI_API_KEY/);
 		list.handleInput(ENTER);
 		const detail = await pageAt(value, 1);
 		expect(textOf(detail)).toMatch(/Status +API key configured/);
+		detail.handleInput(ESC);
+		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await run;
+	});
+
+	it("shows a plan's billing, terms, deprecation and pause on the provider page", async () => {
+		const { host, value, runtime } = manager();
+		runtime.getProviderPlan.mockImplementation((id: string) =>
+			id === "openai"
+				? {
+						billing: "plan",
+						access: "direct",
+						terms: "https://example.test/plan-terms",
+						deprecated: "Use the new route instead.",
+						disabled: "The vendor paused this route.",
+					}
+				: undefined,
+		);
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const list = await pageAt(value, 0);
+		list.handleInput(ENTER);
+		const detail = textOf(await pageAt(value, 1));
+		expect(detail).toMatch(/Billing +Billed by plan/);
+		expect(detail).toMatch(/Plan terms +https:\/\/example\.test\/plan-terms/);
+		expect(detail).toMatch(/Deprecated +Use the new route instead\./);
+		expect(detail).toMatch(/Paused +The vendor paused this route\./);
+		(await pageAt(value, 1)).handleInput(ESC);
+		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await run;
+	});
+
+	it("shows no plan facts for a provider without a plan", async () => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const list = await pageAt(value, 0);
+		list.handleInput(ENTER);
+		const detail = await pageAt(value, 1);
+		expect(textOf(detail)).not.toMatch(/Billing|Plan terms/);
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
@@ -577,6 +584,154 @@ describe("provider setup flow", () => {
 		expect(output).toContain("Remove saved and session credentials");
 		expect(output).not.toMatch(/Remove saved credential/);
 		page.handleInput(ESC);
+		await run;
+	});
+
+	it("External agents: a row per runner; Sign in hands the terminal to the vendor's own login, then checks again", async () => {
+		// A stand-in Claude Code: its status reads a file that its own login writes; Octocode reads neither.
+		const marker = join(home, "signed-in");
+		writeFileSync(
+			join(home, "bin", "claude"),
+			[
+				"#!/bin/sh",
+				'if [ "$1" = "--version" ]; then echo "2.1.400 (Claude Code)"; exit 0; fi',
+				`if [ "$1 $2" = "auth login" ]; then : > "${marker}"; exit 0; fi`,
+				`if [ -f "${marker}" ]; then echo '{"loggedIn": true, "authMethod": "claude.ai"}'; exit 0; fi`,
+				`echo '{"loggedIn": false}'; exit 1`,
+			].join("\n"),
+			{ mode: 0o755 },
+		);
+		writeFileSync(join(home, "bin", "claude-agent-acp"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+		mkdirSync(sourceEnvironment().agentDir, { recursive: true });
+		const { host, value } = manager();
+		const setExternalAgents = vi.fn();
+		// The user turned the setting off before: connecting the runner leaves that choice alone.
+		Object.assign(value.session.settingsManager, {
+			getExternalAgents: () => false,
+			getGlobalSettings: () => ({ externalAgents: false }),
+			setExternalAgents,
+		});
+		const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
+		const run = showProviderManager(host, "", { sourceEnvironment: environment });
+		const page = await pageAt(value, 0);
+		// The section is the page's last: its rows show once the selection reaches them.
+		for (let step = 0; step < 40 && !selectedLine(page).includes("Claude Code"); step++) page.handleInput(DOWN);
+		const output = textOf(page);
+		expect(output).toMatch(/^ External agents$/m);
+		// The list starts nothing: the runner is checked when its own page opens.
+		expect(output).toMatch(/Claude Code +CLI · not checked · open to check +not ready/);
+		expect(output).toMatch(/Codex CLI +CLI · not installed · codex not on PATH +absent/);
+		page.handleInput(ENTER);
+		await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
+		const detail = await pageAt(value, 1);
+		expect(textOf(detail)).toContain("never reads its credentials");
+		expect(textOf(detail)).toMatch(/Sign-in +signed out/);
+		choose(detail, "Sign in with Claude Code's own login (claude auth login)");
+		await vi.waitFor(
+			() => expect(value.showStatus).toHaveBeenCalledWith("Claude Code: signed in · claude.ai · plan."),
+			{
+				timeout: 15_000,
+			},
+		);
+		expect(value.ui.stop).toHaveBeenCalled();
+		expect(value.ui.start).toHaveBeenCalled();
+		const again = await pageAt(value, 2);
+		for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
+		expect(textOf(again)).toMatch(
+			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/,
+		);
+		expect(setExternalAgents).not.toHaveBeenCalled();
+		again.handleInput(ENTER);
+		choose(await pageAt(value, 3), "Run agent tasks in connected external agents");
+		await vi.waitFor(() => expect(setExternalAgents).toHaveBeenCalledWith(true));
+		(await pageAt(value, 4)).handleInput(ESC);
+		await run;
+	});
+
+	/** A stand-in Claude Code already signed in, with its ACP adapter: connected once checked. */
+	const installSignedInClaude = () => {
+		writeFileSync(
+			join(home, "bin", "claude"),
+			[
+				"#!/bin/sh",
+				'if [ "$1" = "--version" ]; then echo "2.1.400 (Claude Code)"; exit 0; fi',
+				`echo '{"loggedIn": true, "authMethod": "claude.ai"}'; exit 0`,
+			].join("\n"),
+			{ mode: 0o755 },
+		);
+		writeFileSync(join(home, "bin", "claude-agent-acp"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+		mkdirSync(sourceEnvironment().agentDir, { recursive: true });
+	};
+
+	it("External agents: Check again on a connected runner turns externalAgents on when it was never set", async () => {
+		installSignedInClaude();
+		const { host, value } = manager();
+		let externalAgents: boolean | undefined;
+		const setExternalAgents = vi.fn((enabled: boolean) => {
+			externalAgents = enabled;
+		});
+		Object.assign(value.session.settingsManager, {
+			getExternalAgents: () => externalAgents === true,
+			getGlobalSettings: () => (externalAgents === undefined ? {} : { externalAgents }),
+			setExternalAgents,
+		});
+		const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
+		const run = showProviderManager(host, "", { sourceEnvironment: environment });
+		choose(await pageAt(value, 0), "Claude Code");
+		await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
+		choose(await pageAt(value, 1), "Check again");
+		await vi.waitFor(() => expect(setExternalAgents).toHaveBeenCalledWith(true), { timeout: 15_000 });
+		expect(setExternalAgents).toHaveBeenCalledTimes(1);
+		expect(value.showStatus).toHaveBeenCalledWith(
+			"Claude Code: signed in · claude.ai · plan. External agents turned on: new sessions can run agent tasks in it (externalAgents).",
+		);
+		const again = await pageAt(value, 2);
+		for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
+		expect(textOf(again)).toMatch(/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected$/m);
+		again.handleInput(ESC);
+		await run;
+	});
+
+	it("External agents: a connected runner with externalAgents off says so on the main page", async () => {
+		installSignedInClaude();
+		const { host, value } = manager();
+		const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
+		// The first visit checks the runner; the list shows that answer from then on.
+		const first = showProviderManager(host, "", { sourceEnvironment: environment });
+		choose(await pageAt(value, 0), "Claude Code");
+		await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
+		(await pageAt(value, 1)).handleInput(ESC);
+		const list = await pageAt(value, 2);
+		for (let step = 0; step < 40 && !selectedLine(list).includes("Claude Code"); step++) list.handleInput(DOWN);
+		expect(textOf(list)).toMatch(
+			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/,
+		);
+		list.handleInput(ESC);
+		await first;
+	});
+
+	it("a saved Claude subscription token lists Anthropic as refused, and its page says why", async () => {
+		const { host, value, runtime } = manager();
+		runtime.listCredentials.mockResolvedValue([
+			{ providerId: "openai", type: "api_key" },
+			{ providerId: "anthropic", type: "api_key" },
+		]);
+		Object.assign(runtime, {
+			getAuth: vi.fn(async (id: string) =>
+				id === "anthropic" ? { auth: { apiKey: "sk-ant-oat01-test" }, source: "stored credential" } : undefined,
+			),
+		});
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const list = await pageAt(value, 0);
+		expect(textOf(list, 220)).toMatch(
+			/Anthropic +Claude subscription token · refused: Anthropic allows it only in Claude Code \(External agents\) · 0 models/,
+		);
+		expect(textOf(list, 220)).not.toContain("sk-ant-oat01-test");
+		choose(list, "Anthropic");
+		const detail = await pageAt(value, 1);
+		expect(textOf(detail, 260)).toContain(`Not configured: ${CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL}`);
+		detail.handleInput(ESC);
+		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
 	});
 

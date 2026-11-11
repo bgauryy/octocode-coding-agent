@@ -13,18 +13,21 @@ describe("#8935 parallel preflight abort", () => {
 		}
 	});
 
-	it("does not start prepared tools after a later preflight aborts", async () => {
+	it.each(["shared", "exclusive"] as const)("aborts queued and later tools with %s scheduling", async (concurrency) => {
 		const executions: string[] = [];
 		const preflights: string[] = [];
 		const resultHooks: string[] = [];
+		const release = Promise.withResolvers<void>();
 		const externalWrite: AgentTool = {
 			name: "external_write",
 			label: "External write",
 			description: "Perform an external write",
 			parameters: Type.Object({ value: Type.String() }),
+			concurrency,
 			execute: async (_toolCallId, params) => {
 				const value = typeof params === "object" && params !== null && "value" in params ? String(params.value) : "";
 				executions.push(value);
+				if (concurrency === "exclusive" && value === "first") await release.promise;
 				return { content: [{ type: "text", text: value }], details: { value } };
 			},
 		};
@@ -35,7 +38,10 @@ describe("#8935 parallel preflight abort", () => {
 					api.on("tool_call", async (event, ctx) => {
 						const value = "value" in event.input ? String(event.input.value) : "";
 						preflights.push(value);
-						if (value === "second") ctx.abort();
+						if (value === "second") {
+							ctx.abort();
+							release.resolve();
+						}
 					});
 					api.on("tool_result", async (event) => {
 						resultHooks.push(event.toolCallId);
@@ -46,26 +52,35 @@ describe("#8935 parallel preflight abort", () => {
 		harnesses.push(harness);
 		harness.setResponses([
 			fauxAssistantMessage(
-				[fauxToolCall("external_write", { value: "first" }), fauxToolCall("external_write", { value: "second" })],
+				["first", "queued", "second", "later"].map((value) => fauxToolCall("external_write", { value })),
 				{ stopReason: "toolUse" },
 			),
 		]);
 
 		await harness.session.prompt("run both writes");
 
-		expect(preflights).toEqual(["first", "second"]);
-		expect(executions).toEqual([]);
-		expect(resultHooks).toEqual([]);
+		expect(preflights).toEqual(["first", "queued", "second"]);
+		// Shared calls already approved may finish while a later approval is pending.
+		// An exclusive call still queued when abort arrives must never execute.
+		const completed = concurrency === "shared" ? ["first", "queued"] : ["first"];
+		expect(executions).toEqual(completed);
 
 		const starts = harness.eventsOfType("tool_execution_start");
 		const ends = harness.eventsOfType("tool_execution_end");
-		expect(starts).toHaveLength(2);
-		expect(ends).toHaveLength(2);
+		expect(starts).toHaveLength(4);
+		expect(ends).toHaveLength(4);
 		expect(new Set(ends.map((event) => event.toolCallId))).toEqual(new Set(starts.map((event) => event.toolCallId)));
-		expect(ends.every((event) => event.isError)).toBe(true);
+		expect(resultHooks).toEqual(starts.slice(0, completed.length).map((event) => event.toolCallId));
+		for (const start of starts) {
+			expect(ends.find((event) => event.toolCallId === start.toolCallId)?.isError).toBe(
+				!completed.includes(String(start.args.value)),
+			);
+		}
 
 		const toolResults = harness.session.messages.filter((message) => message.role === "toolResult");
 		expect(toolResults.map((message) => message.toolCallId)).toEqual(starts.map((event) => event.toolCallId));
-		expect(toolResults.map(getMessageText)).toEqual(["Operation aborted", "Operation aborted"]);
+		expect(toolResults.map(getMessageText)).toEqual(
+			["first", "queued", "second", "later"].map((value) => (completed.includes(value) ? value : "Operation aborted")),
+		);
 	});
 });

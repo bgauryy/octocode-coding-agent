@@ -1,5 +1,17 @@
 import { TRANSCRIPTS_SCHEMA } from "./queries/transcripts.ts";
 
+/**
+ * `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions.
+ * Migration 9 creates it; a new file gets the same statement. `IF NOT EXISTS` keeps the step a no-op on a file that has
+ * the table already (SQLite leaves the clause out of the stored schema, so both shapes compare equal).
+ */
+export const SHELL_HISTORY_SCHEMA_V9 = `
+CREATE TABLE IF NOT EXISTS shell_history (
+  cwd TEXT NOT NULL, command TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_at INTEGER NOT NULL, last_exit INTEGER,
+  PRIMARY KEY (cwd, command));
+CREATE INDEX IF NOT EXISTS shell_history_recent ON shell_history(last_at);
+`;
+
 /** The audit table as migration 3 created it, before `cache_write` (migration 8 adds that column). */
 export const AGENT_RUNS_SCHEMA_V3 = `
 CREATE TABLE agent_runs (
@@ -355,6 +367,7 @@ CREATE TABLE trusted_folders (
   from_path TEXT, revoked_at INTEGER, revoked_by TEXT);
 CREATE UNIQUE INDEX trusted_folders_live ON trusted_folders(dev, ino) WHERE revoked_at IS NULL;
 ${TRANSCRIPTS_SCHEMA}
+${SHELL_HISTORY_SCHEMA_V9}
 `;
 
 /** Optional full-text index over memories and its synchronization triggers. */

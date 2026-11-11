@@ -24,7 +24,7 @@ export interface SessionStats {
 		total: number;
 	};
 	cost: number;
-	/** Usage entries whose stream ended before the provider's final count, which makes `tokens` and `cost` lower bounds. */
+	/** Usage entries without the provider's final count, which makes `tokens` and `cost` lower bounds. */
 	lowerBoundEntries: number;
 	contextUsage?: ContextUsage;
 	cache: CacheMetrics;

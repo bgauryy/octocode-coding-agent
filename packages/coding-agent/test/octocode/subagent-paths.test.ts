@@ -16,7 +16,7 @@ import { AGENT_ID_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../src/octocode/
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const FIXTURE = path.join(import.meta.dirname, "subagent-fake-host.cjs");
@@ -89,6 +89,7 @@ function setup(cwd = fs.realpathSync(tmp("octocode-paths-cwd-"))) {
 	Object.assign(ctx, {
 		model,
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => [model],
 			find: () => model,
 			getCachePolicy: fakeCachePolicy,

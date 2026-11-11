@@ -22,6 +22,7 @@ import {
 	applyModelsJson,
 	getAllProviderModels,
 } from "./provider-composer/models.ts";
+import type { KnownModelLookup } from "./provider-composer/known-models.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
 import {
 	getConfigValueEnvVarNames,
@@ -71,6 +72,7 @@ export function composeModelProvider(
 	base: Provider | undefined,
 	modelConfig: ModelConfig,
 	extension: ProviderConfigInput | undefined,
+	known?: KnownModelLookup,
 ): Provider {
 	const config = modelConfig.getProvider(providerId);
 	let extensionOAuthCredential: OAuthCredentials | undefined;
@@ -82,7 +84,7 @@ export function composeModelProvider(
 	const getAllModels = (): AnyModel[] => {
 		let models = applyExtension(
 			providerId,
-			applyModelsJson(providerId, getAllProviderModels(base), config),
+			applyModelsJson(providerId, getAllProviderModels(base), config, known),
 			currentExtension(),
 		);
 		if (extensionOAuthCredential && extension?.oauth?.modifyModels) {
@@ -145,7 +147,7 @@ export function composeModelProvider(
 							update: () => {
 								if (refreshed) {
 									// Validate before publishing the new synchronous list.
-									applyExtension(providerId, applyModelsJson(providerId, getAllProviderModels(base), config), {
+									applyExtension(providerId, applyModelsJson(providerId, getAllProviderModels(base), config, known), {
 										...extension,
 										models: refreshed,
 									});

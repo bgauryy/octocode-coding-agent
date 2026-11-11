@@ -53,7 +53,7 @@ describe("thin MCP declarations of fields named after Object.prototype members",
 			parameters: thinParameters(rootAlternatives()),
 		} as Tool;
 		const propertiesOf = (schema: unknown) => (schema as { properties?: unknown } | undefined)?.properties;
-		const [anthropic] = convertAnthropicTools([tool], false, false, false);
+		const [anthropic] = convertAnthropicTools([tool], false, false);
 		expectOwnTypedFields(propertiesOf(anthropic?.input_schema));
 		const [gemini] = convertGoogleTools([tool]) ?? [];
 		expectOwnTypedFields(propertiesOf(gemini?.functionDeclarations[0]?.parametersJsonSchema));

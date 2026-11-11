@@ -3,6 +3,8 @@ import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clip } from "../shared/text.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import type { ExtensionContext } from "../../core/features/index.ts";
+import type { ExternalAgents } from "./manager.ts";
 
 const asRecords = (value: unknown): Array<Record<string, unknown>> =>
 	Array.isArray(value) ? value.filter(isRecord) : [];
@@ -93,4 +95,18 @@ export function describeExternalFailure(failure: Record<string, unknown>): strin
 		partial ? `Partial output:\n${partial}` : "",
 	];
 	return capOutputToFile(redactSecrets(lines.filter(Boolean).join("\n")), { label: "external-agent" });
+}
+
+/** The `models` block for external agents (connections, instances, installed adapters); empty when off or failing. */
+export async function externalListing(
+	agents: Pick<ExternalAgents, "call"> | undefined,
+	ctx: ExtensionContext,
+): Promise<string[]> {
+	if (!agents) return [];
+	try {
+		const rows = externalRows(await agents.call({ action: "list" }, ctx));
+		return rows.length ? [rows.join("\n")] : [];
+	} catch {
+		return [];
+	}
 }

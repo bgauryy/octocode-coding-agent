@@ -13,10 +13,11 @@ import type { InteractiveModeHost } from "./host.ts";
 /** Entries rendered by a rebuild, and added by each "load earlier". */
 export const RESUME_WINDOW_ENTRIES = 200;
 
-type SessionWindowHost = Pick<
-	InteractiveModeHost,
-	"chatContainer" | "pendingTools" | "renderSessionEntries" | "showStatus" | "ui"
->;
+type SessionWindowHost = Pick<InteractiveModeHost, "chatContainer" | "renderSessionEntries">;
+
+/** Loading earlier history also keeps the reader's place in the fullscreen transcript. */
+type LoadEarlierHost = SessionWindowHost &
+	Pick<InteractiveModeHost, "pendingTools" | "showStatus" | "transcriptScrollView" | "ui">;
 
 interface WindowState {
 	/** Entries not rendered yet, oldest first. */
@@ -71,7 +72,7 @@ export function renderWindowedEntries(
 }
 
 /** Prepends the previous window below the "load earlier" row. Returns false when nothing is hidden. */
-export function loadEarlierMessages(host: SessionWindowHost): boolean {
+export function loadEarlierMessages(host: LoadEarlierHost): boolean {
 	const state = windows.get(host.chatContainer);
 	const rowIndex = state ? host.chatContainer.children.indexOf(state.row) : -1;
 	if (!state || rowIndex < 0) return false;
@@ -92,11 +93,13 @@ export function loadEarlierMessages(host: SessionWindowHost): boolean {
 		host.chatContainer.removeChild(state.row);
 		windows.delete(host.chatContainer);
 	} else state.row.invalidate?.();
+	// The rows land above the reader's position: keep what they were reading in view instead of the absolute offset.
+	host.transcriptScrollView?.keepRowsInView();
 	host.ui.requestRender();
 	return true;
 }
 
 /** Key handler: loads the previous window, or says there is nothing earlier. */
-export function loadEarlierFromKey(host: SessionWindowHost): void {
+export function loadEarlierFromKey(host: LoadEarlierHost): void {
 	if (!loadEarlierMessages(host)) host.showStatus("No earlier messages to load");
 }

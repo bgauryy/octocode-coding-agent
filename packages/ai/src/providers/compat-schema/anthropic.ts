@@ -21,8 +21,8 @@ export const AnthropicMessagesCompatSchema = Type.Object(
 			}),
 		),
 		supportsLongCacheRetention: optionalCompatBoolean({
-			description: "Whether the provider supports Anthropic long cache retention through cache_control.ttl.",
-			default: true,
+			description:
+				"Whether the provider supports Anthropic long cache retention (the 1h tier) through cache_control.ttl. Default: true on api.anthropic.com and OpenCode, whose documentation verifies the 1h tier; false for gateways (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax and others) and for a models.json model on its own host, which use the 5-minute tier unless this is set to true.",
 		}),
 		sendSessionAffinityHeaders: optionalCompatBoolean({
 			description:

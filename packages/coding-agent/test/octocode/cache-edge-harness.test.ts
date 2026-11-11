@@ -149,8 +149,17 @@ describe("retention with no settings", () => {
 				}
 			}
 		}
-		// Not vacuous: Bedrock Claude, OpenAI Responses and Azure extended models declare no `promptCache`.
-		expect(withLong).toBeGreaterThan(500);
+		// Not vacuous: Bedrock Claude, OpenAI Responses and Azure extended models declare no `promptCache`. Claude on
+		// Anthropic-protocol gateways (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax) has no long tier by default.
+		expect(withLong).toBeGreaterThan(150);
+		// The gateway default, pinned both ways: Claude through a gateway has no long tier, Claude on api.anthropic.com
+		// has the one-hour tier.
+		const gateway = getBuiltinModel("openrouter", "anthropic/claude-haiku-4.5") as Model<Api>;
+		expect(gateway.api).toBe("anthropic-messages");
+		expect(resolveModelCapabilities(gateway).cache.lifetimes.long).toBeUndefined();
+		const direct = getBuiltinModel("anthropic", "claude-haiku-4-5") as Model<Api>;
+		expect(direct.baseUrl).toBe("https://api.anthropic.com");
+		expect(resolveModelCapabilities(direct).cache.lifetimes.long).toBe(3600);
 	});
 
 	// A marker adapter sends long history on a model with no long tier at the 5m short lifetime, so the warmer and

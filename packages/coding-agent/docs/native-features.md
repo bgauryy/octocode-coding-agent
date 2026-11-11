@@ -40,6 +40,8 @@ The native runtime loads automatically. User code extensions are not supported: 
 
 [Commands](commands.md) lists every built-in and native command, its arguments and its one name (no aliases; `/clear` and `/reset` both run `/new`). Switches (`/configuration`, `octocode configuration`, `--enable`, `--disable`, `--set`) are in [Changing configuration](configuration.md#changing-configuration). `/trust` is in [permissions](permissions.md#project-trust).
 
+`/links`, semantic `/copy` modes, `/debug terminal` and `/diff --editor` are terminal presentation actions: they make no model request and are not agent tools or MCP tools. Both terminal display modes use them. RPC and ACP retain their own command inventories. See [terminal references and editor workflows](tui.md#references-and-copying).
+
 ### Session workflow commands
 
 `/compact`, `/btw`, `/context`, `/diff`, `/plan`, `/resume`, `/purge` and `/optimize` are in [commands](commands.md#session). Behavior they share:
@@ -48,7 +50,9 @@ The native runtime loads automatically. User code extensions are not supported: 
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/btw`     | Question of 1–8,000 characters; keeps the last 20 exchanges (trimmed to fit the model); runs while the main turn continues; text never enters history, compaction, archives or exports (only usage receipts persist); cleared on session replacement, tree navigation, reload and disposal; rejected while compaction runs; terminal only |
 | `/context` | No model request; sizes are estimates of the committed projection                                                                                                                                                                                                                                                                         |
-| `/diff`    | No model request; bounded Git output with external diff, textconv and filters off; each output and each untracked file capped at 128,000 bytes with visible truncation; paths outside the repository rejected; untracked symlink content never read                                                                                       |
+| `/diff [path]` | No model request; bounded Git output with external diff, textconv and filters off; each output and each untracked file capped at 128,000 bytes with visible truncation; paths outside the repository rejected; untracked symlink content never read. `/diff --editor <before> <after>` instead passes the two explicitly selected files to the configured editor. |
+
+Long assistant replies remain fully visible while streaming. After completion, replies longer than 120 rendered rows show their beginning and end with an expansion hint. Use the output expansion shortcut to read the middle; folding does not remove stored content, and copying the last assistant message copies its full text.
 
 ### Opening a fork in a tmux pane or window
 
@@ -168,6 +172,8 @@ Old sessions and exports still show calls of removed names. Sessions started wit
 
 `file` refuses to overwrite an existing file the model has not read completely, and a file changed since its read must be read again.
 
+Follow a reader's returned continuation to collect the remaining pages. Pages count toward the same complete read while the file stays unchanged. A changed file or expired continuation needs a fresh read.
+
 | Read                                               | Counts as a complete read                                                                                                                                                                                                                                                                                              |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Octocode MCP local source read                     | A successful, untransformed, numbered read (separate line windows included) while the file stays unchanged during retrieval. Filtered, minified, byte-window, failed or truncated results do not count; fetch the original ranges first                                                                                |
@@ -208,18 +214,31 @@ flowchart TD
 
 The tool description ends with a ten-line CLI guide. Its first line names the host: OS and architecture, which of `git`, `rg`, `fd`, `jq`, `ast-grep`, `yq`, `gh`, `python3`, `lsof` are on the shell's PATH (Octocode's own `bin` included) and whether `gh` is logged in (read from `GH_TOKEN`, `GITHUB_TOKEN` or gh's `hosts.yml`, never over the network); the second gives platform flag notes. The probe only stats files and runs when the tool registers, so the description stays stable for the session and its prompt cache.
 
+### Shell mode completion
+
+In the terminal, a line starting with `!` is completed like a shell prompt. Tab asks your own shell (zsh, bash, fish or PowerShell, started once per session in a trusted folder) and shows its matches with descriptions; with no shell answer it offers program names, git branches and paths. Ghost text suggests the rest of the command from the agent's last reply, then your `!` history, then, after a pause, one call to the cheapest connected model. Right or End accepts it. Settings, trust and costs: [shell completion](configuration.md#shell-completion).
+
+| Source              | Runs when                                                                       | What it completes                                                          |
+| ------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Your shell          | Tab, trusted folder                                                             | Everything your shell completes, including plugins from your startup files |
+| PATH                | Tab on the command name                                                         | Programs on `PATH`                                                         |
+| git refs            | Tab after `git checkout`, `switch`, `merge`, `rebase` and other branch commands | Local branches, read from `.git` without running git                       |
+| carapace            | Tab, trusted folder, `carapace` on `PATH`, nothing else matched                 | carapace's completers                                                      |
+| Last reply, history | Typing                                                                          | Ghost text; nothing is sent anywhere                                       |
+| Small model         | Typing paused and nothing else matched                                          | Ghost text; one small call per prefix, recorded in usage                   |
+
 ### Agent operations
 
 `agent({ type, ...fields, reason })` takes flat fields. A call with another type's field, or the old `input` envelope, is refused before dispatch (recorded old sessions still render). Only `paths` is shared (by `task` and `coordinate`).
 
 | Type         | Does                                                                                                                                                                                                                                                 |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task`       | Launch a native child: `goal`, `task`, `skills`, `paths`, profile, model, `headless`, `background`, `isolate`, `resume`, `mcp`, `tasks`, `resultSchema`                                                                                              |
+| `task`       | Launch a native child: `goal`, `task`, `skills`, `paths`, profile, model, `headless`, `background`, `isolate`, `resume`, `mcp`, `tasks`, `resultSchema`; `runner` while a [runner](#external-runners) is connected                                   |
 | `external`   | `externalAction` `list`, `connect`, `prompt`, `cancel`, `disconnect` to reach ACP or other Octocode hosts; present only when the global `externalAgents` setting is `true` (default off) and a known ACP agent is on `PATH` or another Octocode runs |
 | `coordinate` | `action` `list`, `join`, `leave`, `lock`, `unlock`, `stop`, `merge`, `grant`, `changes`: membership, reservations, isolated results, [worktree landing](#finishing-a-worktree), a child's [request budget](#subagent-request-budget)                 |
 | `message`    | Reach a teammate, another Octocode process or the coordinator: [who to address](#communication-and-results)                                                                                                                                          |
 
-Child sessions expose only the coordination and message modes, with their usual restrictions.
+Child sessions expose only the coordination and message modes, with their usual restrictions. While a runner is connected, a child also gets a `task` type that starts runner tasks only, in the foreground ([external runners](#external-runners)).
 
 ## Subagents
 
@@ -334,28 +353,29 @@ Every route starts from a credential. A provider you turn off in `/providers` dr
 flowchart LR
   subgraph Credentials
     K[API key]
-    S["Subscription token<br/>(Claude: claude setup-token)"]
-    O[Account sign-in]
+    O["Account sign-in<br/>(ChatGPT, Copilot, other plans)"]
     J[models.json gateway]
   end
-  K & S & O & J --> P{"Provider on?<br/>/providers"}
+  K & O & J --> P{"Provider on?<br/>/providers"}
   P -->|yes| C[Model catalog]
   C --> MAIN["Main chat model<br/>/model, --model"]
   C --> SUB{"Subagent route<br/>(next section)"}
   SUB --> T1["model in the call<br/>any provider/id"]
   SUB --> T2["profile model"]
   SUB --> T3["small / medium<br/>parent's provider first"]
-  V["Vendor CLI signed in on its own<br/>Claude Code, Codex, Gemini, opencode"] --> X{"externalAgents on?"}
+  V["Vendor CLI signed in on its own<br/>Claude Code (the only route for Claude Pro/Max),<br/>Codex, Gemini, opencode"] --> X{"externalAgents on?"}
   X -->|yes| EA["agent type external:<br/>the agent starts it"]
   V --> EU["/agents external connect:<br/>you start it"]
+  X -->|yes, signed in| RT["agent task with runner:<br/>a child on the vendor's plan"]
 ```
 
-| Route                                                 | Who starts it                                     | What it needs                                                    | What it costs                                                              |
-| ----------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Subagent on a provider model                          | The agent (`agent` task)                          | The provider on, with a working credential                       | API price per token, or your plan's usage limits with a subscription token |
-| Subagent on a named model                             | The agent, or you by asking for that model        | As above; `models` lists what can run a task                     | As above; free models cost nothing                                         |
-| External agent (Claude Code, Codex, Gemini, opencode) | The agent, with `agent` type `external`           | `externalAgents: true`, the vendor's CLI on `PATH` and signed in | The vendor account's own billing or plan                                   |
-| External agent from the terminal                      | You, with `/agents external connect` and `prompt` | The vendor's CLI on `PATH` and signed in                         | The vendor account's own billing or plan                                   |
+| Route                                                 | Who starts it                                     | What it needs                                                    | What it costs                                                                                                                         |
+| ----------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Subagent on a provider model                          | The agent (`agent` task)                          | The provider on, with a working credential                       | API price per token, or your plan's usage limits with a plan sign-in; Claude Pro/Max runs only through the Claude Code external agent |
+| Subagent on a named model                             | The agent, or you by asking for that model        | As above; `models` lists what can run a task                     | As above; free models cost nothing                                                                                                    |
+| Runner task (Claude Code, Codex, Gemini, opencode)    | The agent, with `agent` task `runner`             | `externalAgents: true`, the CLI and its ACP adapter, signed in   | The vendor's plan; Octocode counts its tokens, not its cost                                                                           |
+| External agent (Claude Code, Codex, Gemini, opencode) | The agent, with `agent` type `external`           | `externalAgents: true`, the vendor's CLI on `PATH` and signed in | The vendor account's own billing or plan                                                                                              |
+| External agent from the terminal                      | You, with `/agents external connect` and `prompt` | The vendor's CLI on `PATH` and signed in                         | The vendor account's own billing or plan                                                                                              |
 
 A listed provider or external agent is not proof that it works. A connected opencode peer, for example, starts on its own default model, which may need funds. Check with `/modelsettings` → Credential check, or connect and send one short prompt.
 
@@ -386,7 +406,7 @@ flowchart TD
 | `medium`                 | The model set in `subagents.models.medium`, else the dearest capable model priced between 15% and 80% of the parent's                                      |
 | any of these `:level`    | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, e.g. `small:high`                                                                               |
 
-`small` and `medium` prefer the parent's provider and lab. A candidate must support tool calls, have a context window of at least 100,000 tokens, take images when the parent does, not be deprecated and be its family's current generation; with none, or an unknown parent price, the child runs on the parent's model. The thinking level is the call's suffix, else the profile's (kept on whichever model is picked, and on the parent's model after a fallback), else `OCTOCODE_SUBAGENT_THINKING`, else `medium`; a child never takes the parent's level or `defaultThinkingLevel`; a level the model lacks is clamped to the nearest one it supports, and the route says so (`low thinking (model argument: p/m:off; asked off; this model does not support off)`). The `models` tool lists the thinking levels of a reasoning model that supports others than `off`, `minimal`, `low`, `medium` and `high` (` · thinking low/medium/high`).
+`small` and `medium` first take a capable model your plan pays for (a coding plan, a subscription sign-in): it costs nothing more per request, so it qualifies whatever its list price, and its list price still places it in a tier. Without one they prefer the parent's provider and lab. A background child is never routed automatically to a plan whose vendor forbids unattended use (Qwen, Xiaomi and Z.ai coding plans); name the model to run it there anyway. A candidate must support tool calls, have a context window of at least 100,000 tokens, take images when the parent does, not be deprecated and be its family's current generation; with none, or an unknown parent price, the child runs on the parent's model. The thinking level is the call's suffix, else the profile's (kept on whichever model is picked, and on the parent's model after a fallback), else `OCTOCODE_SUBAGENT_THINKING`, else `medium`; a child never takes the parent's level or `defaultThinkingLevel`; a level the model lacks is clamped to the nearest one it supports, and the route says so (`low thinking (model argument: p/m:off; asked off; this model does not support off)`). The `models` tool lists the thinking levels of a reasoning model that supports others than `off`, `minimal`, `low`, `medium` and `high` (` · thinking low/medium/high`).
 
 What the `models` tool returns:
 
@@ -490,6 +510,66 @@ Long and unattended runs keep going through what would otherwise end them:
 
 At most eight external-agent connections can be open or starting at once. An ACP prompt timeout reports uncertain execution and retains the peer's active request; another prompt is refused until it settles; explicit cancellation closes the owned connection. The [ACP guide](acp.md#connect-from-octocode-to-another-agent) explains timeout recovery, retained evidence and process ownership.
 
+### External runners
+
+A subscription its vendor reserves for its own CLI (Claude Pro and Max) runs as an external runner: the vendor's CLI does the turns over ACP, signed in through its own login, while Octocode owns the task like any child. Example: "have Claude Code review the parser in its own worktree".
+
+```mermaid
+sequenceDiagram
+  participant P as /providers
+  participant C as vendor CLI
+  participant O as Octocode
+  participant A as ACP adapter
+  P->>C: --version, its own status command
+  P-->>C: Sign in: the terminal goes to its own login
+  O->>A: agent task with runner: start in the task's folder, cleaned environment
+  A-->>O: tool calls stream to the child's row
+  A-->>O: answer and token totals: the child's report
+```
+
+| Topic       | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runners     | `claude-code` (`claude` and `claude-agent-acp`), `codex` (`codex` and `codex-acp`), `opencode` (`opencode acp`), `gemini` (`gemini --acp`)                                                                                                                                                                                                                                                                                                                        |
+| Connect     | `/providers` → External agents: one row per runner with the CLI and adapter found, the version against the one checked, and the sign-in from the CLI's own status command (`claude auth status`, `codex login status`, `opencode auth list`; Gemini by opening an ACP session). Only the method and the signed-in state are kept                                                                                                                                  |
+| Cache       | The list starts nothing: a runner is checked when its own page opens, and that answer is reused until the CLI, its adapter or its sign-in files change; Check again runs it now                                                                                                                                                                                                                                                                                   |
+| Sign in     | Hands the terminal to the vendor's own login (`claude auth login`, `codex login`, `opencode auth login`, `gemini`). Octocode reads nothing back and stores no credential                                                                                                                                                                                                                                                                                          |
+| Enable      | The page's last action turns the global `externalAgents` setting on or off. Connecting a runner (Sign in, or Check again finding it signed in) turns it on while you never set it, and the status line says so; a value you set stays. A connected runner while it is off shows `connected · off for tasks`. New sessions declare `runner` only for a runner that is enabled, installed and signed in at its last check, so the default prompt carries none of it |
+| Task        | `runner` with `goal` and `task`, optionally `model` (the runner's own model option), `background`, `isolate`, `item`, `paths`, `resultSchema`. `skills`, `mcp`, `profile`, `resume` and `headless` are refused. The child gets a name, a worktree when isolated, the report contract and a normal report                                                                                                                                                          |
+| Environment | The adapter starts without provider API keys, any `ANTHROPIC_` variable, `CODEX_API_KEY` or Octocode's own variables, so a key cannot bill in place of the plan. `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and a `CLAUDE_CODE_OAUTH_TOKEN` you exported pass                                                                                                                                                                                                              |
+| Billing     | A Claude Code signed in with an API key runs with `--hide-claude-auth`, so it never falls back to the subscription. Plan-billed runs record tokens and no cost (`billing: plan` on the report); a metered run records the cost the runner reports                                                                                                                                                                                                                 |
+| Stop        | A stop cancels the turn and ends the adapter's process tree; a runner silent for 15 minutes is stopped. One that answers `auth_required` is reported signed out and checked again on the next `/providers`                                                                                                                                                                                                                                                        |
+| Subagents   | A child's `task` type takes runner tasks only and waits for the report; the runner's process belongs to that child, and the spawn approval reaches you through the parent                                                                                                                                                                                                                                                                                         |
+| `models`    | Lists the session's runners under "Connected runners (plan-billed)"                                                                                                                                                                                                                                                                                                                                                                                               |
+
+### Claude Code as the session's model
+
+With Claude Code connected as a runner on its plan, `/model` also lists `claude-code/opus`, `claude-code/sonnet` and `claude-code/haiku`. Choosing one makes Claude Code the model behind your Octocode session: Claude Code runs each turn with its own harness and login, and every tool it calls is an Octocode tool. Example: pick `claude-code/sonnet`, then ask "find why the parser test fails"; Claude Code reads and runs commands through Octocode's `bash` and `file`, and the calls show in your transcript as usual.
+
+```mermaid
+sequenceDiagram
+  participant L as Octocode session
+  participant C as Claude Code (claude-agent-acp)
+  participant M as Octocode MCP server
+  L->>C: the new message
+  C->>M: a tool call
+  M-->>L: the call, as this turn's tool call
+  L->>L: permission mode, hooks, approval, run once
+  L-->>M: the result
+  M-->>C: the result
+  C-->>L: the answer and the turn's tokens
+```
+
+| Topic       | Behaviour                                                                                                                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Offered     | While `externalAgents` is on and Claude Code is installed with `claude-agent-acp` and signed in with its plan at its last check. A Claude Code on an API key offers none: use the `anthropic` provider                                    |
+| Session     | One Claude Code process and session per Octocode session, reused every turn and resumed after a restart, a stop or a model change. Claude Code keeps and compacts its own context; Octocode sends it only what it has not seen            |
+| Tools       | Claude Code's own tools, settings, hooks and MCP servers are off. Octocode lists the session's tools over a loopback MCP server that admits only a token made for that session; the loop runs each call once, as for any other model      |
+| Prompt      | Claude Code's own system prompt, plus one short Octocode instruction and the project's `AGENTS.md` files                                                                                                                                  |
+| Environment | The same cleaned environment as a runner, plus your installed `claude` as the binary the adapter runs, the model alias and MCP tool search off                                                                                            |
+| Billing     | Your plan: the footer shows the model's kind as `CLI` and its usage as `(sub)` at no cost. Claude Code makes every model call with its own login; Octocode never reads, stores or sends the Claude token                                  |
+| Stop        | Esc cancels Claude Code's turn and ends its process tree; the next message resumes the session                                                                                                                                            |
+| Not covered | Images in your messages (a placeholder is sent), thinking levels (Claude Code chooses its own effort), usage per model call (a turn reports its totals). A summary or other side request runs once in a Claude Code session without tools |
+
 ## Browser and web access
 
 `web({ query })` or `web({ url })` (kept enabled in the main agent) does public search and retrieval. Search providers share a 30-second deadline across the fallback chain; failures name the providers tried and cancellation stops the chain. Fetch warnings come from transport metadata, so page text that resembles an error stays ordinary content.
@@ -555,6 +635,8 @@ It reuses saved captures, skips classification when URL, title and DOM digest ar
 | Not excluded | Atomic replacement prevents torn files but not unrelated editors, shell commands or processes that ignore the lock                                                                                                                                                                                                                                                                                                   |
 | Reservations | Enforced for `file` and for `bash` write targets the parser can name. While another agent holds any reservation, shell commands whose writes no parse can name (PowerShell outside the read-only list, inline interpreter code, unreadable code) are refused, and a `node -e` that only lacks Node's permission flags runs with them added ([reservations and the shell](permissions.md#reservations-and-the-shell)) |
 | Lapse        | A reservation lapses 90 s after its owner's last heartbeat and is not fenced: an owner stalled longer that resumes can overwrite a peer that took the file                                                                                                                                                                                                                                                           |
+
+File edit and write previews bound the search for a minimal line diff. A large rewrite can show a wider replacement hunk with its shared leading and trailing lines retained. Long lines keep line colouring when detailed word emphasis would delay rendering.
 
 ### Canonical patch mode
 

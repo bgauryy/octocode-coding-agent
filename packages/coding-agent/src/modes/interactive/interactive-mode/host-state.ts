@@ -50,6 +50,8 @@ export interface InteractiveModeState {
 	autoCompactionEscapeHandler: (() => void) | undefined;
 	autocompleteProvider: AutocompleteProvider | undefined;
 	autocompleteProviderWrappers: AutocompleteProviderFactory[];
+	/** Extension listeners for editor text changes (`ui.onEditorChange`), called after Octocode's own handler. */
+	editorChangeListeners: Set<(text: string) => void>;
 	bashComponent: BashExecutionComponent | undefined;
 	bugReportHintShown: boolean;
 	builtInHeader: Component | undefined;

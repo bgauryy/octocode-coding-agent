@@ -209,8 +209,6 @@ it("assembles native Anthropic tool input deltas in order and keeps scratch buff
 		model: selected,
 		output,
 		stream: new AssistantMessageEventStream(),
-		isOAuth: false,
-		currentTools: [],
 		usageModel: selected,
 		inputTransformations: undefined,
 	};
@@ -276,8 +274,6 @@ it("retains visible Anthropic compaction deltas without encrypted compaction met
 		model: selected,
 		output,
 		stream: new AssistantMessageEventStream(),
-		isOAuth: false,
-		currentTools: [],
 		usageModel: selected,
 		inputTransformations: undefined,
 	};

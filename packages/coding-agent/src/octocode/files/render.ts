@@ -124,6 +124,20 @@ export function renderJobMessage(text: string, expanded: boolean, theme: Theme, 
 /** Diff lines shown per file before expanding. */
 const DIFF_PREVIEW_LINES = 6;
 
+/** Diff lines rendered for a collapsed change: enough for the preview, or for a diff short enough to show whole. */
+const DIFF_HEAD_LINES = SHOW_ALL_LINES + DIFF_PREVIEW_LINES;
+/** A change block is rendered whole, so its lines pair up for word emphasis as they do expanded; up to this many more. */
+const DIFF_HEAD_BLOCK_LINES = 200;
+
+/** The start of `diff`, cut after a whole change block. */
+function diffHead(diff: string): string {
+	const lines = diff.split("\n");
+	if (lines.length <= DIFF_HEAD_LINES) return diff;
+	let end = DIFF_HEAD_LINES;
+	while (end < lines.length && end < DIFF_HEAD_LINES + DIFF_HEAD_BLOCK_LINES && /^[+-]/.test(lines[end])) end++;
+	return lines.slice(0, end).join("\n");
+}
+
 type FileArgs = {
 	patch?: string;
 	reason?: string;
@@ -195,9 +209,13 @@ export function renderFileResult(
 		heads.push(head);
 		details.push(head);
 		if (outcome.ok && outcome.diff) {
-			const diff = renderDiff(sanitizeTerminalText(outcome.diff), { filePath: outcome.path }).split("\n");
-			diffLines += diff.length;
-			details.push(...diff);
+			// A rendered diff has one row per diff line, so the count needs no rendering. Collapsed, several changes show
+			// no diff rows and one change shows only its first: colouring the rest would be work nobody sees.
+			const source = sanitizeTerminalText(outcome.diff);
+			diffLines += source.split("\n").length;
+			if (expanded) details.push(...renderDiff(source, { filePath: outcome.path }).split("\n"));
+			else if (outcomes.length === 1)
+				details.push(...renderDiff(diffHead(source), { filePath: outcome.path }).split("\n"));
 		}
 	}
 	const applied = outcomes.filter((outcome) => outcome.ok).length;
@@ -213,6 +231,7 @@ export function renderFileResult(
 		return resultBlock(theme, context, {
 			summary: "",
 			lines: details,
+			totalLines: 1 + diffLines,
 			max: DIFF_PREVIEW_LINES + 1,
 			error: false,
 			expanded,

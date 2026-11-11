@@ -92,9 +92,6 @@ export function formatCrashExtensionHint(extensionMatches: readonly string[] | u
 	return `A stack frame came from loaded ${noun} ${labels}, which may be involved. Try disabling ${pronoun} with \`${APP_NAME} config\`, or run \`${APP_NAME} -ne\` to confirm.`;
 }
 
-export const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING =
-	"A Claude subscription token is in use: requests draw on your Claude plan's usage limits (https://claude.ai/settings/usage). Anthropic's terms reserve plan credentials for ordinary individual use and let Anthropic restrict their use outside its own apps: https://code.claude.com/docs/en/legal-and-compliance. Disable this warning in /settings.";
-
 export function quoteIfNeeded(value: string): string {
 	if (value.length > 0 && !/[^a-zA-Z0-9_\-./~:@]/.test(value)) {
 		return value;

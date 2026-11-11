@@ -1,5 +1,5 @@
 import type { ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { transcriptHistory, transcriptWindow } from "../src/core/application/transcript-history.ts";
 
 /** `count` tool calls: a tool row (even order) whose output is `size` characters, and its result message (odd order). */
@@ -41,6 +41,24 @@ function reachableTools(messages: Map<string, ApplicationMessage>, tools: Map<st
 }
 
 describe("application snapshot transcript window", () => {
+	it("bounds the work of trimming a long tool-only history and keeps the newest tools in order", () => {
+		const { tools } = transcript(5000, 10);
+		const original = Array.prototype.shift;
+		let moved = 0;
+		const shift = vi.spyOn(Array.prototype, "shift").mockImplementation(function (this: unknown[]) {
+			moved += this.length;
+			return original.call(this);
+		});
+		let window;
+		try {
+			window = transcriptWindow([], tools.values());
+		} finally {
+			shift.mockRestore();
+		}
+		expect(window.tools.map((tool) => tool.toolCallId)).toEqual([...tools.keys()].slice(-50));
+		expect(tools.size).toBe(5000);
+		expect(moved).toBeLessThanOrEqual(tools.size * 3);
+	});
 	it("carries every tool at or after its first message and leaves the older ones to the history pages", () => {
 		// 40 calls with 5 KB outputs: 40 messages fit the message window, but not 40 tools in the old 50 KB tool budget.
 		const { messages, tools } = transcript(40, 5000);

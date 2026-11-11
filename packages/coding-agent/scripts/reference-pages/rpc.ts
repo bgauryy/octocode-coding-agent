@@ -44,7 +44,8 @@ export const rpcCommandDescriptions: Readonly<Record<string, string>> = {
 		"Protocol and Octocode versions, model, thinking level, streaming and compaction flags, queue modes, session identity and message counts.",
 	set_model: "Select a model by provider and ID from the available models; fails if it is not available.",
 	cycle_model: "Switch to the next model; `data` is `null` when there is nothing to cycle.",
-	get_available_models: "List the available models.",
+	get_available_models:
+		"List the available models. A model whose plan allows interactive use only carries `interactiveOnly: true`.",
 	set_thinking_level: "Set the thinking level.",
 	cycle_thinking_level: "Switch to the next thinking level the model supports.",
 	get_available_thinking_levels: "List the levels the current model supports.",

@@ -180,12 +180,6 @@ export interface ApiKeyAuth {
 	keyPage?: string;
 
 	/**
-	 * Whether a resolved key is a subscription token, not a metered API key. Only for providers whose one key field
-	 * takes both; hosts use it to say so and never keep the key.
-	 */
-	isSubscriptionKey?(apiKey: string): boolean;
-
-	/**
 	 * Asks the provider whether it accepts a key, through a free call such as its model list, before a login saves
 	 * it. `unchecked` means this kind of key has no such call. Absent = keys are saved without a check.
 	 */
@@ -270,6 +264,27 @@ export interface OAuthAuth {
 }
 
 /**
+ * What access through a provider costs and what its vendor allows, for subscription and coding plans. Absent means a
+ * metered provider with nothing to say; an OAuth login's own `isSubscription` still marks that login as a plan.
+ */
+export interface ProviderPlan {
+	/** `plan`: every request draws on a flat subscription, so a cost figure is an estimate, not a bill. */
+	billing: "plan" | "metered";
+	/** `direct`: the vendor allows this client; `external-only`: only the vendor's own client; `unclear`: not settled. */
+	access: "direct" | "external-only" | "unclear";
+	/** The vendor's page on which clients and uses its plan allows; hosts show it before sign-in. */
+	terms: string;
+	/** `false`: the vendor forbids scripts, backends and other non-interactive use of the plan. */
+	unattended?: false;
+	/** Kill switch: the reason this route is paused. Its models are unavailable; stored logins are kept. */
+	disabled?: string;
+	/** Why this route is being retired and what replaces it. Its models stay usable. */
+	deprecated?: string;
+	/** `cli`: requests run through the vendor's own installed CLI, signed in by its own login. */
+	transport?: "cli";
+}
+
+/**
  * Provider auth. At least one of `apiKey`/`oauth` must be present: even
  * ambient-credential providers and keyless local servers provide `apiKey`
  * auth whose `resolve()` reports whether the provider is configured.
@@ -277,4 +292,6 @@ export interface OAuthAuth {
 export interface ProviderAuth {
 	apiKey?: ApiKeyAuth;
 	oauth?: OAuthAuth;
+	/** Plan facts shared by every credential of this provider. */
+	plan?: ProviderPlan;
 }

@@ -1,4 +1,5 @@
 import * as Diff from "diff";
+import { lineChanges } from "./line-changes.ts";
 
 export function generateUnifiedPatch(path: string, oldContent: string, newContent: string, contextLines = 4): string {
 	return Diff.createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
@@ -16,7 +17,7 @@ export function generateDiffString(
 	newContent: string,
 	contextLines = 4,
 ): { diff: string; firstChangedLine: number | undefined } {
-	const parts = Diff.diffLines(oldContent, newContent);
+	const parts = lineChanges(oldContent, newContent);
 	const output: string[] = [];
 
 	const oldLines = oldContent.split("\n");

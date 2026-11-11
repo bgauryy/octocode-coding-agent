@@ -38,6 +38,24 @@ describe("getShellEnv with custom providers", () => {
 		expect(env.UNRELATED_SETTING).toBe("kept");
 	});
 
+	it("drops the variables a header names, and those of the legacy and Pi models.json files the session merges", () => {
+		const home = fs.realpathSync(tmp("octocode-shell-env-home-"));
+		process.env.HOME = home;
+		delete process.env.OCTOCODE_HOME;
+		delete process.env.OCTOCODE_CODING_AGENT_DIR;
+		const write = (dir: string, providers: unknown) => {
+			fs.mkdirSync(path.join(home, dir), { recursive: true });
+			fs.writeFileSync(path.join(home, dir, "models.json"), JSON.stringify({ providers }));
+		};
+		write(".octocode/octocodecode", { own: { apiKey: "$OWN_KEY", headers: { "x-token": "$HEADER_TOKEN" } } });
+		write(".octocode/agent", { legacy: { apiKey: "$LEGACY_KEY" } });
+		write(".pi/agent", { pi: { apiKey: "$PI_KEY" } });
+		for (const name of ["OWN_KEY", "HEADER_TOKEN", "LEGACY_KEY", "PI_KEY"]) process.env[name] = `synthetic-${name}`;
+		const env = getShellEnv();
+		for (const name of ["OWN_KEY", "HEADER_TOKEN", "LEGACY_KEY", "PI_KEY"]) expect(env[name]).toBeUndefined();
+		expect(env.UNRELATED_SETTING).toBe("kept");
+	});
+
 	it("keeps them when bash.inheritProviderKeys is on", () => {
 		setShellKeepsProviderKeys(true);
 		const env = getShellEnv();

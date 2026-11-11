@@ -1,7 +1,7 @@
 import type { AgentEnd } from "../team/panel-state.ts";
 import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { formatCost, formatDuration, toolCallCount } from "../shared/format.ts";
+import { formatDuration, formatSpend, toolCallCount } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { reportRef } from "../child-sessions/references.ts";
@@ -124,7 +124,7 @@ export function startBackground(
 				toolCallCount(details.toolCalls),
 				deniedLabel(details),
 				compactionLabel(details),
-				formatCost(details),
+				formatSpend(details, details.billing),
 			]
 				.filter(Boolean)
 				.join(" · ");

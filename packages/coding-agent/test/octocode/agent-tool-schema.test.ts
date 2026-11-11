@@ -179,7 +179,7 @@ describe("flat agent schema", () => {
 			responses.parameters,
 			completions.function.parameters,
 			googleTools([tool])![0].functionDeclarations[0].parametersJsonSchema,
-			anthropicTools([tool], false, false, false)[0].input_schema,
+			anthropicTools([tool], false, false)[0].input_schema,
 			convertToolConfig([tool], "auto", false)!.tools![0].toolSpec!.inputSchema!.json,
 		] as TSchema[];
 		for (const schema of schemas) {

@@ -80,7 +80,7 @@ describe("root composition in tool schemas", () => {
 	});
 
 	it("shows Anthropic the lifted properties instead of an empty object", () => {
-		const [converted] = convertAnthropicTools([tool], false, false, false);
+		const [converted] = convertAnthropicTools([tool], false, false);
 		expect(converted.input_schema).toEqual({ ...lifted, required: [] });
 	});
 

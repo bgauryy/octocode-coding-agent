@@ -25,6 +25,7 @@ import {
 	type Refused,
 	resolveTier,
 	routeModel,
+	type TierBilling,
 	SUBAGENT_DEFAULT_THINKING,
 	SUBAGENT_DEFAULT_TIER,
 	SUBAGENT_THINKING_ENV,
@@ -145,6 +146,7 @@ export function describeModels(
 	shown: (model: ModelRef) => boolean = () => true,
 	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
 	configured: ConfiguredModels = configuredSubagentModels(),
+	billing?: TierBilling,
 ): string {
 	if (available.length === 0) return "No models are configured.";
 	const rows = available
@@ -163,7 +165,7 @@ export function describeModels(
 				: [row.line],
 		),
 		"",
-		describeRoutes(available, parent, profiles, catalog, refused, configured),
+		describeRoutes(available, parent, profiles, catalog, refused, configured, billing),
 	].join("\n");
 }
 
@@ -175,6 +177,7 @@ export function describeRoutes(
 	catalog: Catalog | undefined,
 	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
 	configured: ConfiguredModels = configuredSubagentModels(),
+	billing?: TierBilling,
 ): string {
 	const own = parent && (available.find((model) => name(model) === name(parent)) ?? parent);
 	const parentPriced =
@@ -189,7 +192,7 @@ export function describeRoutes(
 					? " (no capable model at 15–80% of its price)"
 					: " (no cheaper capable model)";
 	const tiers = MODEL_TIERS.map((tier) => {
-		const choice = tierChoice(tier, available, parent, catalog, refused, configured);
+		const choice = tierChoice(tier, available, parent, catalog, refused, configured, billing);
 		const fallback = parent ? `${name(parent)}, this session's${why(tier)}` : "this session's model";
 		const usedBy = tier === SUBAGENT_DEFAULT_TIER ? "; also a task with no profile or model" : "";
 		return `  ${tier}: ${choice.model ?? fallback}${choice.note ? ` (${choice.note})` : ""}${usedBy}`;
@@ -199,7 +202,16 @@ export function describeRoutes(
 	const unsuffixed = `  thinking when the call and profile name none: ${thinking} (${set ? SUBAGENT_THINKING_ENV : `built in; ${SUBAGENT_THINKING_ENV} sets another`}), never this session's level`;
 	// Each profile as it would route now: the model it runs on, and what it asked for.
 	const routed = [...profiles.values()].map((profile) => {
-		const route = routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking, configured });
+		const route = routeModel({
+			preferred: profile.model,
+			available,
+			parent,
+			catalog,
+			refused,
+			thinking,
+			configured,
+			billing,
+		});
 		const runs = profileRuns(route, available);
 		const source = "setting" in route && route.setting ? `; setting ${route.setting}` : "";
 		const asked = !profile.model
@@ -221,7 +233,8 @@ const tierModel = (
 	parent: ModelRef | undefined,
 	catalog: Catalog | undefined,
 	refused: Refused,
-) => resolveTier(tier, usableModels(available, parent, refused), parent, catalog);
+	billing?: TierBilling,
+) => resolveTier(tier, usableModels(available, parent, refused), parent, catalog, billing);
 
 /**
  * What a purpose runs on now and where that came from: the user's `subagents.models` setting (`note` names it), else the
@@ -234,12 +247,13 @@ function tierChoice(
 	catalog: Catalog | undefined,
 	refused: Refused,
 	configured: ConfiguredModels,
+	billing?: TierBilling,
 ): { model?: string; note?: string } {
-	const route = routeModel({ preferred: tier, available, parent, catalog, refused, configured });
+	const route = routeModel({ preferred: tier, available, parent, catalog, refused, configured, billing });
 	if ("error" in route) return {};
 	if (route.setting && route.model)
 		return { model: supportedThinking(route.model, available), note: `setting ${route.setting}` };
-	const chosen = tierModel(tier, available, parent, catalog, refused);
+	const chosen = tierModel(tier, available, parent, catalog, refused, billing);
 	return {
 		...(chosen ? { model: name(chosen) } : {}),
 		...(route.skipped ? { note: `automatic; ${route.skipped}` } : {}),
@@ -272,11 +286,12 @@ export function routingFacts(
 	catalog: Catalog | undefined,
 	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
 	configured: ConfiguredModels = configuredSubagentModels(),
+	billing?: TierBilling,
 ): RoutingFacts | undefined {
 	if (!parent || available.length === 0) return undefined;
 	const thinking = subagentThinking();
 	const purpose = (tier: (typeof MODEL_TIERS)[number]) => {
-		const choice = tierChoice(tier, available, parent, catalog, refused, configured);
+		const choice = tierChoice(tier, available, parent, catalog, refused, configured, billing);
 		return `${choice.model ?? name(parent)}${choice.note ? ` (${choice.note})` : ""}`;
 	};
 	return {
@@ -299,7 +314,7 @@ export function routingFacts(
 			[...profiles].map((profile) => [
 				profile.name,
 				profileRuns(
-					routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking, configured }),
+					routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking, configured, billing }),
 					available,
 				),
 			]),

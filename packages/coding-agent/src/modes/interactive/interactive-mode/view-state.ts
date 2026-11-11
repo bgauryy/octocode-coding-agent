@@ -11,6 +11,7 @@ import { forEachAssistantMessage } from "../state/assistant-messages.ts";
 import { applyEditorBorder } from "../state/bind-editor.ts";
 import { selectEditorBorder } from "../state/editor-slice.ts";
 import { createInteractiveTui } from "../tui-renderer.ts";
+import { openReference } from "../reference-opener.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the view controls. */
@@ -34,6 +35,9 @@ type ViewStateHost = Pick<
 	| "session"
 	| "setToolsExpanded"
 	| "settingsManager"
+	| "showError"
+	| "showStatus"
+	| "showWarning"
 	| "switchTuiMode"
 	| "themeController"
 	| "ui"
@@ -66,6 +70,7 @@ export function switchTuiMode(
 	restoreProgress = true,
 	startRenderer = true,
 ): boolean {
+	const { settingsManager } = host;
 	const previousUi = host.renderer;
 	if (mode === previousUi.mode) return true;
 	if (previousUi.hasOverlayEntries) return false;
@@ -91,9 +96,12 @@ export function switchTuiMode(
 		showHardwareCursor,
 		logDirectory: getAgentDir(),
 		terminal,
+		openReference: (url) => {
+			void openReference(host, url);
+		},
 		onRightClickPaste: host.onRightClickPaste,
-		fullscreenCopyOnSelect: host.settingsManager.getFullscreenCopyOnSelect(),
-		fullscreenWheelScrollLines: host.settingsManager.getFullscreenWheelScrollLines(),
+		fullscreenCopyOnSelect: settingsManager.getFullscreenCopyOnSelect(),
+		fullscreenWheelScrollLines: settingsManager.getFullscreenWheelScrollLines(),
 	});
 	nextUi.setClearOnShrink(clearOnShrink);
 	nextUi.onDebug = onDebug;
@@ -113,7 +121,7 @@ export function switchTuiMode(
 	host.rebindExtensionTerminalInputListeners();
 	if (
 		restoreProgress &&
-		host.settingsManager.getShowTerminalProgress() &&
+		settingsManager.getShowTerminalProgress() &&
 		(host.session.isStreaming || host.session.isCompacting)
 	) {
 		terminal.setProgress(true);

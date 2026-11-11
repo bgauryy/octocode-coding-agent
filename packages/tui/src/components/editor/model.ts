@@ -5,6 +5,7 @@ import { EditorAutocomplete, type EditorAutocompleteHost } from "./autocomplete.
 import { buildVisualLineMap, findVisualLineAt, layoutText } from "./layout.ts";
 import { expandPasteMarkers, graphemeSegmenter, segmentWithMarkers, wordSegmenter } from "./segmentation.ts";
 import type { EditorLastAction, EditorSnapshot, EditorState, EditorTheme, LayoutLine } from "./types.ts";
+import { EditorWrapCache } from "./wrap-cache.ts";
 
 /** Public `Editor` members the internal editor model reads live, including members subclasses override. */
 interface EditorHost {
@@ -52,6 +53,9 @@ export class EditorModel implements EditorAutocompleteHost {
 
 	jumpMode: "forward" | "backward" | null = null;
 
+	/** The whole suggested input the app set; its untyped rest shows as ghost text (`ghost.ts`). */
+	inlineSuggestion: string | undefined;
+
 	// Preferred visual column for vertical cursor movement (sticky column)
 	preferredVisualCol: number | null = null;
 
@@ -71,6 +75,7 @@ export class EditorModel implements EditorAutocompleteHost {
 	readonly autocomplete: EditorAutocomplete;
 
 	readonly host: EditorHost;
+	private readonly wrapCache = new EditorWrapCache();
 
 	constructor(host: EditorHost, theme: EditorTheme) {
 		this.host = host;
@@ -121,7 +126,13 @@ export class EditorModel implements EditorAutocompleteHost {
 	}
 
 	layoutText(contentWidth: number): LayoutLine[] {
-		return layoutText(this.state, contentWidth, (line) => [...this.segment(line, "grapheme")]);
+		return layoutText(this.state, this.wrappedLines(contentWidth));
+	}
+
+	private wrappedLines(width: number) {
+		return this.wrapCache.forLines(this.state.lines, width, this.pastes.keys(), (line) => [
+			...this.segment(line, "grapheme"),
+		]);
 	}
 
 	expandPasteMarkers(text: string): string {
@@ -148,7 +159,7 @@ export class EditorModel implements EditorAutocompleteHost {
 	}
 
 	buildVisualLineMap(width: number): Array<{ logicalLine: number; startCol: number; length: number }> {
-		return buildVisualLineMap(this.state.lines, width, (line) => [...this.segment(line, "grapheme")]);
+		return buildVisualLineMap(this.state.lines, this.wrappedLines(width));
 	}
 
 	/**

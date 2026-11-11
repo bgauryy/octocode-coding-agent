@@ -13,6 +13,7 @@ import { theme } from "../../../theme/theme.ts";
 
 type AssetReader = (id: string) => ApplicationAssetPayload | undefined;
 export interface ContentOptions {
+	cwd?: string;
 	readAsset?: AssetReader;
 	showImages?: boolean;
 	imageWidthCells?: number;

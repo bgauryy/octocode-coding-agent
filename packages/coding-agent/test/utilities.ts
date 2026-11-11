@@ -22,7 +22,7 @@ import { createBashTool } from "../src/core/tools/index.ts";
  * API key for authenticated tests. Tests using this should be wrapped in
  * describe.skipIf(!API_KEY)
  */
-export const API_KEY = process.env.ANTHROPIC_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
+export const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 /**
  * Create a minimal user message for testing.

@@ -16,7 +16,7 @@ function host(): RpcCommandHost {
 		session: {
 			model,
 			messages: [],
-			modelRuntime: { getAvailableSnapshot: () => [model] },
+			modelRuntime: { getAvailableSnapshot: () => [model], allowsUnattendedUse: () => true },
 			setModel: async () => {},
 			cycleModel: async () => ({ model, thinkingLevel: "off", isScoped: false }),
 		},

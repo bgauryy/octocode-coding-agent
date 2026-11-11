@@ -7,9 +7,14 @@
  * quotes the key, a `!` reference or a parser message, and the audit entry carries kinds and codes only.
  */
 
+import {
+	CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL,
+	isClaudeSubscriptionToken,
+} from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import fs from "node:fs";
 import { join } from "node:path";
 import type { Credential } from "@octocodeai/octocode-ai";
+import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import type { ConfigCredentialCommand } from "@octocodeai/octocode-contracts/config";
 import { AuthStorage, KeychainReleaseError } from "../../core/auth-storage.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
@@ -116,6 +121,23 @@ async function currentKind(options: CredentialWriteOptions, keychain: KeychainBa
 	return classify(provider, entry, referenceMatchers(keychain), options.env ?? process.env)[0]?.kind ?? "env";
 }
 
+/**
+ * Asks the built-in provider's own key check, as a terminal sign-in does. A refusal (HTTP 401 or 403) saves nothing; a
+ * key that could not be checked (network or service problem, no check, a custom provider) is saved. The key is not quoted.
+ */
+async function verifyKey(provider: string, key: string): Promise<void> {
+	const definition = builtinProviders().find((each) => each.id === provider);
+	const verify = definition?.auth.apiKey?.verify;
+	if (!definition || !verify) return;
+	const verdict = await verify({ key, signal: AbortSignal.timeout(15_000) }).catch(() => "unchecked" as const);
+	if (verdict === "rejected")
+		throw new ConfigWriteError(
+			400,
+			`${definition.name} rejected this key (HTTP 401 or 403). Nothing was saved.`,
+			"rejected",
+		);
+}
+
 async function setKey(
 	command: Extract<ConfigCredentialCommand, { action: "set" }>,
 	openStorage: () => AuthStorage,
@@ -125,9 +147,12 @@ async function setKey(
 ): Promise<void> {
 	const secret = command.key.trim();
 	if (!secret) throw new ConfigWriteError(400, "Enter a key.", "invalid");
+	// Anthropic allows a Claude subscription token only in Claude Code: refused here as at every other save and request.
+	if (isClaudeSubscriptionToken(secret)) throw new ConfigWriteError(400, CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL, "invalid");
 	if (before === "oauth") throw new ConfigWriteError(409, OAUTH_NOTICE, "oauth");
 	if (!keychain && command.acknowledgePlaintext !== true)
 		throw new ConfigWriteError(409, PLAINTEXT_NOTICE, "plaintext");
+	await verifyKey(command.provider, secret);
 	// Opened only now: creating the storage creates auth.json, which a refused request must not do.
 	const storage = openStorage();
 	if (!keychain) restrictAuthFile(authPath);

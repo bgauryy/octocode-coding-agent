@@ -4,6 +4,7 @@ import { credentialSourceLabel } from "../../src/core/provider-composer/types.ts
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import { canRunTask, type ModelRef, routeModel } from "../../src/octocode/subagents/model.ts";
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
+import { meteredBilling } from "./fake-host.ts";
 
 const m = (provider: string, id: string, input: number, output: number, context = 200_000): ModelRef => ({
 	provider,
@@ -68,6 +69,8 @@ function modelsTool(available: ModelRef[] = refs) {
 			model: sessionModel,
 			thinkingLevel: "low",
 			modelRegistry: {
+				...meteredBilling,
+				getProviderKind: () => "API key",
 				getAvailable: () => available,
 				getAll: () => available,
 				find: () => undefined,
@@ -94,8 +97,8 @@ describe("models tool listings", () => {
 
 	it("without a filter gives one row per provider with credential labels and counts, and no model rows", async () => {
 		const text = await modelsTool()({});
-		expect(text).toContain("  openai · models.json · 2 runnable of 3 · cheapest openai/gpt-5-mini");
-		expect(text).toContain("  opencode-go · saved credential · 1 runnable · priced opencode-go/qwen-coder");
+		expect(text).toContain("  openai · API key · models.json · 2 runnable of 3 · cheapest openai/gpt-5-mini");
+		expect(text).toContain("  opencode-go · API key · saved credential · 1 runnable · priced opencode-go/qwen-coder");
 		expect(text).not.toMatch(/per M in\/out · \d+k/);
 		expect(text).not.toContain("Models this session can use");
 		expect(text).toContain("Set `provider` to list one provider's models.");
@@ -119,8 +122,8 @@ describe("models tool listings", () => {
 		expect(await tool({ query: "gpt-5" })).toContain("openai/gpt-5-mini · ");
 		const text = await tool({ query: "model-" });
 		expect(text).toContain("45 models match; too many to list.");
-		expect(text).toContain("gateway · saved credential · 45 runnable · 45 match");
-		expect(text).toContain("openai · models.json · 2 runnable of 3 · 0 match");
+		expect(text).toContain("gateway · API key · saved credential · 45 runnable · 45 match");
+		expect(text).toContain("openai · API key · models.json · 2 runnable of 3 · 0 match");
 		expect(text).not.toMatch(/gateway\/model-1 · /);
 	});
 });

@@ -30,9 +30,9 @@ describe("/model", () => {
 		t.press(KEY.down);
 		await t.until(shows(/›\s+faux-2/), "cursor on faux-2");
 		t.press(KEY.enter);
-		await t.until(shows(/faux\/faux-2 · permission/), "footer shows faux-2");
+		await t.until(shows(/faux\/faux-2 · local · permission/), "footer shows faux-2 and its kind");
 		expect(t.host.session.model?.id).toBe("faux-2");
-		expect(await t.text()).toMatch(/faux\/faux-2 · permission/);
+		expect(await t.text()).toMatch(/faux\/faux-2 · local · permission/);
 		expect(t.host.sessionManager.getEntries().some((e) => e.type === "model_change" && e.modelId === "faux-2")).toBe(
 			true,
 		);

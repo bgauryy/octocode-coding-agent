@@ -13,7 +13,7 @@ const schema = {
 describe("Anthropic non-strict tool conversion", () => {
 	it("keeps $defs and additionalProperties so a $ref does not dangle", () => {
 		const tool = { name: "search", description: "Search", parameters: schema } as unknown as Tool;
-		const [converted] = convertTools([tool], false, false, false);
+		const [converted] = convertTools([tool], false, false);
 		expect(converted.input_schema).toEqual({
 			type: "object",
 			properties: schema.properties,
@@ -35,7 +35,6 @@ describe("Anthropic non-strict tool conversion", () => {
 				{ name: "one", description: "One", parameters: legacy },
 				{ name: "two", description: "Two", parameters: plain },
 			] as Tool[],
-			false,
 			false,
 			false,
 		);

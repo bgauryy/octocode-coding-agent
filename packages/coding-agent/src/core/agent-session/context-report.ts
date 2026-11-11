@@ -100,9 +100,9 @@ function totalLines(report: ContextReport, number: (value: number | null) => str
 	];
 	if (report.threshold !== null)
 		lines.push(
-			used >= report.threshold
-				? `Past the compaction point (${number(report.threshold)} tokens): the next request compacts first.`
-				: `Compaction starts at ${number(report.threshold)} tokens, ${number(report.threshold - used)} from now.`,
+			used > report.threshold
+				? `Above the compaction threshold (${number(report.threshold)} tokens): the next request may compact eligible history first.`
+				: `Automatic compaction is eligible above ${number(report.threshold)} tokens, ${number(report.threshold - used)} from now.`,
 		);
 	return lines.join("\n");
 }

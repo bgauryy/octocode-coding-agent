@@ -8,6 +8,9 @@ export type GoogleApiType = "google-generative-ai" | "google-vertex";
  * the token-based `thinkingBudget` control. Supported levels come from the
  * model's `thinkingLevelMap`; this only selects the Google wire format.
  */
+/** The `-latest` aliases Google moves to its newest stable models, all Gemini 3 or later since 3 shipped. */
+export const GEMINI_LATEST_ALIAS = /^gemini-(?:pro|flash|flash-lite)-latest$/;
+
 export function usesGoogleThinkingLevel<T extends GoogleApiType>(model: Model<T>): boolean {
 	const id = model.id.toLowerCase();
 	return (
@@ -16,8 +19,7 @@ export function usesGoogleThinkingLevel<T extends GoogleApiType>(model: Model<T>
 		/gemini-3(?:\.\d+)?-(?:pro|flash)/.test(id) ||
 		// Match Gemini 4 and later, such as gemini-4-argon (#10890).
 		/gemini-(?:[4-9]|[1-9]\d)/.test(id) ||
-		id === "gemini-flash-latest" ||
-		id === "gemini-flash-lite-latest" ||
+		GEMINI_LATEST_ALIAS.test(id) ||
 		// Match both hosted Gemma 4 naming forms: gemma-4-* and gemma4-*.
 		/gemma-?4/.test(id)
 	);

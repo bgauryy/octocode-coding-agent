@@ -37,6 +37,21 @@ function createAssistantMessage(
 }
 
 describe("AssistantMessageComponent", () => {
+	test("keeps a long live reply visible and folds only after completion", () => {
+		initTheme("dark");
+		const text = Array.from({ length: 150 }, (_, index) => `line ${index}`).join("\n\n");
+		const message = createAssistantMessage([{ type: "text", text }]);
+		const component = new AssistantMessageComponent();
+		component.updateContent(message, true);
+		const live = stripAnsi(component.render(80).join("\n"));
+		expect(live).toContain("line 75");
+		expect(live).not.toContain("lines hidden");
+		component.updateContent(message, false);
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("lines hidden");
+		component.setExpanded(true);
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("line 75");
+		expect(message.content).toEqual([{ type: "text", text }]);
+	});
 	const previousKeybindings = getKeybindings();
 	beforeEach(() => {
 		setKeybindings(new KeybindingsManager());
@@ -505,6 +520,39 @@ describe("AssistantMessageComponent", () => {
 			{ type: "text", text: "answer" },
 			{ type: "thinking", thinking: "reasoning" },
 		]);
+	});
+
+	test("folds completed Markdown reversibly and leaves streaming wrapped text visible", () => {
+		initTheme("dark");
+		const code = Array.from({ length: 140 }, (_, i) => `const item${i} = ${i};`).join("\n");
+		const hostile = "\x1b]52;c;SECRET\x07";
+		const text = `Start ${hostile}\n\n\`\`\`js\n${code}\n\`\`\`\n\nEnd`;
+		const component = new AssistantMessageComponent();
+		const message = createAssistantMessage([{ type: "text", text }]);
+		component.updateContent(message, true);
+		expect(stripAnsi(component.render(60).join("\n"))).not.toContain("lines hidden");
+		component.updateContent(message, false);
+		const folded = component.render(60);
+		expect(folded.join("\n")).not.toContain(hostile);
+		expect(stripAnsi(folded.join("\n"))).toContain("lines hidden");
+		expect(stripAnsi(folded.join("\n"))).toContain("item0");
+		expect(stripAnsi(folded.join("\n"))).toContain("item139");
+		component.setExpanded(true);
+		const full = component.render(60);
+		expect(full.join("\n")).not.toContain(hostile);
+		expect(stripAnsi(full.join("\n"))).toContain("item70");
+		expect(full.find((line) => stripAnsi(line).includes("item0"))).toBe(
+			folded.find((line) => stripAnsi(line).includes("item0")),
+		);
+		component.setExpanded(false);
+		expect(component.render(60)).toEqual(folded);
+		const longLine = "abcdefghij ".repeat(400) + "LATEST";
+		component.updateContent(createAssistantMessage([{ type: "text", text: longLine }]), true);
+		expect(stripAnsi(component.render(20).join("\n"))).toContain("LATEST");
+		component.setExpanded(true);
+		expect(stripAnsi(component.render(20).join("\n"))).not.toContain("lines hidden");
+		component.updateContent(createAssistantMessage([{ type: "text", text: longLine + " FINAL" }]), false);
+		expect(stripAnsi(component.render(20).join("\n"))).toContain("FINAL");
 	});
 
 	test("uses configured output padding for user messages", () => {

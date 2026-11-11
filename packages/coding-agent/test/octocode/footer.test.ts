@@ -55,6 +55,16 @@ describe("footer", () => {
 		expect(visibleWidth(top)).toBe(170);
 	});
 
+	it("names the provider's kind beside the model, keeps (sub) on cost, and drops the kind first", () => {
+		const sub: FooterState = { ...state, kind: "subscription", subscription: true };
+		const [wide] = footerLines(sub, "main", statuses, theme, 200);
+		expect(wide).toMatch(/^claude-opus-5-5 · subscription · ⏸ permission: manual/);
+		expect(wide).toContain("≈$0.84 (sub)");
+		const [narrow] = footerLines(sub, "main", statuses, theme, 150);
+		expect(narrow).toMatch(/^claude-opus-5-5 · ⏸ permission: manual/);
+		expect(narrow).toContain("ctx ▰▰▰▱▱▱▱▱ 42%");
+	});
+
 	it("colours context by how full it is", () => {
 		expect(contextBar(30)).toEqual({ bar: "▰▰▱▱▱▱▱▱", color: "success" });
 		// Any use shows: 3% is not an empty gauge.
@@ -310,7 +320,7 @@ describe("footer wiring", () => {
 			data,
 		);
 		const [initialTop, bottom] = component.render(120) as string[];
-		expect(initialTop).toMatch(/^model-x · thinking medium · ctx ▰▱{7} 12% of 83\.3k +≈\$0\.15$/);
+		expect(initialTop).toMatch(/^model-x · API key · thinking medium · ctx ▰▱{7} 12% of 83\.3k +≈\$0\.15$/);
 		// ↑ is the whole prompt (uncached, cache reads and writes), with the share read from cache.
 		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · mcp 1/1");
 		percent = 64;
@@ -458,6 +468,7 @@ describe("footer wiring", () => {
 		const rates = (rate: number) => ({ cost: { input: rate, output: rate, cacheRead: rate, cacheWrite: rate } });
 		ctx.modelRegistry = {
 			billedBySubscription: () => false,
+			getProviderKind: () => "local",
 			find: (provider: string) => (provider === "local" ? rates(0) : rates(3)),
 		};
 		ctx.model = { id: "llama", reasoning: false, contextWindow: 100_000 };
@@ -512,7 +523,12 @@ describe("footer wiring", () => {
 		(fake.api as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
 		registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
-		ctx.modelRegistry = { billedBySubscription: () => false, getAll: () => [copy, builtIn], find: () => undefined };
+		ctx.modelRegistry = {
+			billedBySubscription: () => false,
+			getProviderKind: () => "API key",
+			getAll: () => [copy, builtIn],
+			find: () => undefined,
+		};
 		ctx.model = { ...copy, contextWindow: 200_000 };
 		ctx.getContextUsage = () => undefined;
 		await fake.emit("session_start", {}, ctx);

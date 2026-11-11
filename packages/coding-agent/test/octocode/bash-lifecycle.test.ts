@@ -657,7 +657,11 @@ describe.runIf(posix)("the saved output of a very chatty foreground command", ()
 		const result = await tools
 			.get("bash")
 			.execute("t1", { command: "seq 1 200000" }, undefined, undefined, fakeCtx({ cwd: tmp() }));
-		return { text: result.content[0].text as string, path: result.details.fullOutputPath as string };
+		return {
+			text: result.content[0].text as string,
+			path: result.details.fullOutputPath as string,
+			structured: result.structuredContent,
+		};
 	};
 
 	it("is capped at bash.spillMaxBytes with the header naming what was dropped, and the model's view is unchanged", async () => {
@@ -674,6 +678,8 @@ describe.runIf(posix)("the saved output of a very chatty foreground command", ()
 			/· 200,000 lines · 1\.\d+ MB · trimmed: .* · saved output: .* \([\d.]+ [KM]B dropped from its middle by the bash\.spillMaxBytes cap, so later line numbers shift\)\]$/,
 		);
 		expect(header).toContain(capped.path);
+		expect(capped.structured).toMatchObject({ truncated: true, full_output_path: capped.path });
+		expect(capped.structured?.output).toContain("dropped here");
 		const saved = fs.readFileSync(capped.path, "utf8");
 		expect(saved.length).toBeLessThan(100_300);
 		expect(saved.startsWith("1\n2\n3\n")).toBe(true);

@@ -12,6 +12,36 @@ import {
 import type { ModelsJsonProvider } from "./model-config.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 
+/** Anthropic's own API: the one host whose long cache tier needs no declaration. */
+const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
+
+function onAnthropicHost(model: Model<Api>): boolean {
+	try {
+		return new URL(model.baseUrl).origin === ANTHROPIC_ORIGIN;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * The long tier is the default only where the endpoint is known to honour it. An Anthropic-style model that
+ * `models.json` defines or moves to a host other than Anthropic's starts at the short tier unless it declares
+ * `compat.supportsLongCacheRetention: true`; an explicit preference still wins. Re-declaring a model on Anthropic's own
+ * host keeps the long default.
+ */
+function defaultCachePreferences(model: Model<Api>, provider: ModelsJsonProvider | undefined) {
+	if (model.api !== "anthropic-messages" || !provider || onAnthropicHost(model)) return SETTINGS_DEFAULTS;
+	const configured = provider.baseUrl !== undefined || provider.models?.some((entry) => entry.id === model.id);
+	const declared = (model as Model<"anthropic-messages">).compat?.supportsLongCacheRetention === true;
+	if (!configured || declared) return SETTINGS_DEFAULTS;
+	const short = (retention: NonNullable<StreamOptions["cacheRetention"]>) =>
+		retention === "long" ? "short" : retention;
+	return {
+		cacheRetention: short(SETTINGS_DEFAULTS.cacheRetention),
+		instructionCacheRetention: short(SETTINGS_DEFAULTS.instructionCacheRetention),
+	};
+}
+
 export function resolveConfiguredCache(
 	model: Model<Api>,
 	provider: ModelsJsonProvider | undefined,
@@ -19,7 +49,7 @@ export function resolveConfiguredCache(
 	settings: readonly CachePreferenceLayer[] = [],
 ) {
 	return mergeCachePreferences([
-		{ source: "defaults", values: SETTINGS_DEFAULTS },
+		{ source: "defaults", values: defaultCachePreferences(model, provider) },
 		...settings,
 		{ source: "provider", values: provider ?? {} },
 		{ source: "model", values: provider?.models?.find((entry) => entry.id === model.id) ?? {} },

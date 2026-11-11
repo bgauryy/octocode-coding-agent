@@ -119,7 +119,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 	// The entry's own timestamp is its save time; `startedAt` makes the run's wall time measurable.
 	const details =
 		finalized.details === undefined || isRecord(finalized.details)
-			? { ...(finalized.details as Record<string, unknown> | undefined), startedAt }
+			? { ...finalized.details, startedAt }
 			: finalized.details;
 
 	const compactionId = host.sessionManager.appendCompaction(

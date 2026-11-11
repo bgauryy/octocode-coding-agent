@@ -85,3 +85,42 @@ it("still resets when the content changes or the branch was replaced rather than
 	navigated.emit({ type: "session_context_changed" });
 	expect((await navigated.frames.next()).value).toMatchObject({ type: "resync" });
 });
+
+it("keeps the transcript when the context grows by a custom message that was announced first", async () => {
+	const f = fixture();
+	await f.frames.next();
+	const ids = f.service.getSnapshot().messages.map((message) => message.id);
+	const notice = { role: "custom", customType: "note", content: "peer notice", display: true, timestamp: 3 };
+	f.emit({ type: "message_start", message: notice });
+	f.emit({ type: "message_end", message: notice });
+	const shown = f.service.getSnapshot().messages.map((message) => message.id);
+	expect(shown).toHaveLength(3);
+
+	// The refresh rebuilds the context from the session file: equal copies, one message longer.
+	f.session.messages = [...f.session.messages.map((message) => structuredClone(message)), structuredClone(notice)];
+	f.session.branch = [...f.session.branch, { id: "e3", type: "custom_message" }];
+	f.emit({ type: "session_context_changed" });
+	const next = { role: "user", content: "follow-up", timestamp: 4 };
+	f.session.messages.push(next);
+	f.emit({ type: "message_end", message: next });
+
+	expect(f.events.map((event) => event.type)).not.toContain("session.reset");
+	const snapshot = f.service.getSnapshot();
+	expect(snapshot.messages.map((message) => message.id).slice(0, 3)).toEqual(shown);
+	expect(shown.slice(0, 2)).toEqual(ids);
+	expect(snapshot.messages.map((message) => message.text)).toEqual(["question", "answer", "peer notice", "follow-up"]);
+});
+
+it("shows a message the context grew by without rebuilding the rest", async () => {
+	const f = fixture();
+	await f.frames.next();
+	const ids = f.service.getSnapshot().messages.map((message) => message.id);
+	f.session.messages = [...f.session.messages, { role: "custom", customType: "note", content: "silent", timestamp: 3 }];
+	f.session.branch = [...f.session.branch, { id: "e3", type: "custom_message" }];
+	f.emit({ type: "session_context_changed" });
+	expect(f.events.map((event) => event.type)).not.toContain("session.reset");
+	expect(f.events.at(-1)).toMatchObject({ type: "message.completed", message: { text: "silent" } });
+	const snapshot = f.service.getSnapshot();
+	expect(snapshot.messages.map((message) => message.id).slice(0, 2)).toEqual(ids);
+	expect(snapshot.messages.map((message) => message.text)).toEqual(["question", "answer", "silent"]);
+});

@@ -11,4 +11,11 @@ describe("Gemini finish reason mapping", () => {
 		expect(mapStopReason(FinishReason.MAX_TOKENS)).toBe("length");
 		expect(mapStopReason(FinishReason.STOP)).toBe("stop");
 	});
+
+	it.each(["MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "SOME_FUTURE_REASON"])(
+		"maps %s, a reason the SDK enum does not know, to error instead of throwing",
+		(reason) => {
+			expect(mapStopReason(reason as FinishReason)).toBe("error");
+		},
+	);
 });

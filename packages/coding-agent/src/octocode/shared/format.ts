@@ -59,6 +59,11 @@ export function formatCost(usage: Pick<UsageTotals, "cost" | "unpriced">): strin
 	return money ? `${money} + n/a` : "cost n/a";
 }
 
+/** A run's cost as `formatCost` writes it, or `(sub)` when a plan paid for its tokens: a plan shows no fake $0. */
+export function formatSpend(usage: Pick<UsageTotals, "cost" | "unpriced">, billing: string | undefined): string {
+	return billing === "plan" ? "(sub)" : formatCost(usage);
+}
+
 export { formatDuration };
 
 /**

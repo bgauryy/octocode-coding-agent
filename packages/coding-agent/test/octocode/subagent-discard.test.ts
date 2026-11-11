@@ -65,7 +65,7 @@ describe("the merge prompt", () => {
 	it("names the ref and the changed files", async () => {
 		const dir = repository();
 		const check = vi.fn(async () => ({ allowed: false as const, message: "declined" }));
-		await mergeChild(team, { check } as unknown as Permission, ID, fakeCtx({ cwd: dir }) as never);
+		await mergeChild(team, { check } as unknown as Permission, ID, fakeCtx({ cwd: dir }));
 		const asked = (check.mock.calls[0] as unknown as [unknown, { what: string[] }])[1];
 		expect(asked.what.join("\n")).toContain(`refs/octocode/${ID}`);
 		expect(asked.what).toContain("child.txt");

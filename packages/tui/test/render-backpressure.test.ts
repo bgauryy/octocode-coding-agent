@@ -10,6 +10,8 @@ class PressureTerminal implements Terminal {
 	columns = 40;
 	rows = 10;
 	kittyProtocolActive = false;
+	pressureThreshold: number | undefined;
+	telemetryEnabled = false;
 	readonly writes: string[] = [];
 	start(): void {}
 	stop(): void {}
@@ -26,6 +28,12 @@ class PressureTerminal implements Terminal {
 	setTitle(): void {}
 	setProgress(): void {}
 	setProgramStatus(): void {}
+	setDecorativeOutputPressureThreshold(bytes: number | undefined): void {
+		this.pressureThreshold = bytes;
+	}
+	setOutputTelemetryEnabled(enabled: boolean): void {
+		this.telemetryEnabled = enabled;
+	}
 }
 
 class CountingTui extends TuiBase {
@@ -68,7 +76,38 @@ afterEach(() => {
 	for (const tui of running.splice(0)) tui.stop();
 });
 
-describe("opt-in render pacing", () => {
+describe("render pacing", () => {
+	it("keeps terminal pacing disabled when settings change while stopped", () => {
+		const terminal = new PressureTerminal();
+		const tui = track(new CountingTui(terminal));
+		tui.setRenderPacing({ outputGate: true, metrics: true });
+		assert.equal(terminal.pressureThreshold, undefined);
+		assert.equal(terminal.telemetryEnabled, false);
+		tui.start();
+		assert.equal(typeof terminal.pressureThreshold, "number");
+		assert.equal(terminal.telemetryEnabled, true);
+		tui.stop();
+		tui.setRenderPacing({ highWaterBytes: 512 * 1024 });
+		assert.equal(terminal.pressureThreshold, undefined);
+		assert.equal(terminal.telemetryEnabled, false);
+	});
+	it("gates frames by default and coalesces keyboard repaints while the terminal is blocked", async () => {
+		const terminal = new PressureTerminal();
+		const tui = track(new CountingTui(terminal));
+		tui.start();
+		tui.renderNow();
+		terminal.pendingOutputBytes = 300 * 1024;
+		for (let i = 0; i < 50; i++) {
+			tui.content = `input-${i}`;
+			tui.requestRender(true);
+			await new Promise<void>((resolve) => process.nextTick(resolve));
+		}
+		await pause(60);
+		assert.deepEqual(tui.painted, ["initial"]);
+		terminal.pendingOutputBytes = 0;
+		await until(() => tui.painted.length === 2, "latest input repaint");
+		assert.deepEqual(tui.painted, ["initial", "input-49"]);
+	});
 	it("counts output bytes and refused writes only when telemetry is enabled", () => {
 		const terminal = new ProcessTerminal();
 		const originalWrite = process.stdout.write;
@@ -163,7 +202,7 @@ describe("opt-in render pacing", () => {
 		}
 	});
 
-	it("lets explicit paints bypass pressure and discards old retry callbacks on stop/restart", async () => {
+	it("lets explicit synchronous paints bypass pressure and discards retries on stop/restart", async () => {
 		const terminal = new PressureTerminal();
 		const tui = track(new CountingTui(terminal));
 		tui.setRenderPacing({ outputGate: true, retryMs: 10 });
@@ -176,7 +215,7 @@ describe("opt-in render pacing", () => {
 		tui.content = "forced";
 		tui.requestRender(true);
 		await new Promise<void>((resolve) => process.nextTick(resolve));
-		assert.equal(tui.painted.at(-1), "forced");
+		assert.equal(tui.painted.at(-1), "initial");
 		tui.content = "now";
 		tui.renderNow();
 		assert.equal(tui.painted.at(-1), "now");

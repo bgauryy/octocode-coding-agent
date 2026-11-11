@@ -64,24 +64,6 @@ function exceedsCompactionThreshold(
 	return shouldCompact(tokens, model.contextWindow, settings);
 }
 
-async function compactBeforeNextAssistantResponse(host: AgentHooksHost, context: AgentContext): Promise<AgentContext> {
-	const { session } = host;
-	const projection = session.sessionManager.buildSessionProjection();
-	// A virtual selection is checked in prepareRequest, against the model the request is routed to.
-	const model = session.model;
-	if (!model || isVirtualModel(model) || !exceedsCompactionThreshold(host, model, projection)) {
-		return { ...context, messages: projection.messages };
-	}
-	await host.runAutoCompaction("threshold", false);
-	// What compaction handlers just sent (a child's assignment, the note of running work) belongs in this request, not
-	// after its turn. Every tool call of the last turn has its result here, so nothing can split a pair.
-	host.inputs.flushDuringRun(host.run.outcome);
-	return {
-		...context,
-		messages: session.sessionManager.buildSessionProjection().messages,
-	};
-}
-
 export function installAgentInputPreparation(host: AgentHooksHost): void {
 	const { session, run, inputs } = host;
 	const agent = session.agent;
@@ -145,7 +127,13 @@ export function installAgentInputPreparation(host: AgentHooksHost): void {
 	};
 }
 
-export function installAgentRequestProjection(host: AgentHooksHost): void {
+export function installAgentContextPreparation(host: AgentHooksHost): void {
+	const attempted = new WeakSet<AgentContext>();
+	installAgentNextTurnRefresh(host, attempted);
+	installAgentRequestProjection(host, attempted);
+}
+
+function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<AgentContext>): void {
 	const { session, run } = host;
 	const agent = session.agent;
 	const previousPrepareRequest = agent.prepareRequest;
@@ -181,8 +169,21 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 		const model = previous?.model ?? agent.state.model;
 		const thinkingLevel = previous?.thinkingLevel ?? agent.state.thinkingLevel;
 		if (!isVirtualModel(model)) {
+			let thresholdAttempted = attempted.has(request.context);
+			let refreshInput = previous?.refreshInput;
+			// Input gates and turn_prompt updates have committed. A late update can cross the threshold,
+			// but a declined or insufficient early compaction must not be retried in the same request.
+			if (!thresholdAttempted && exceedsCompactionThreshold(host, model, projection, thinkingLevel)) {
+				thresholdAttempted = true;
+				refreshInput = true;
+				await host.runAutoCompaction("threshold", false, model, thinkingLevel);
+				// Compaction handlers can queue input that belongs in this same request.
+				host.inputs.flushDuringRun(host.run.outcome);
+				({ previous, context } = await prepare());
+			}
+			if (thresholdAttempted) attempted.add(context);
 			assertImageRequestContext(model, convertToLlm(context.messages));
-			return { ...previous, context, model, thinkingLevel };
+			return { ...previous, context, model, thinkingLevel, refreshInput };
 		}
 
 		// The selection stays in agent state; only this request uses the routed model. A routing
@@ -230,7 +231,7 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 	};
 }
 
-export function installAgentNextTurnRefresh(host: AgentHooksHost): void {
+function installAgentNextTurnRefresh(host: AgentHooksHost, attempted: WeakSet<AgentContext>): void {
 	const { session, tools } = host;
 	const agent = session.agent;
 	const previousPrepareNextTurnWithContext =
@@ -239,7 +240,15 @@ export function installAgentNextTurnRefresh(host: AgentHooksHost): void {
 			? async (_turn: PrepareNextTurnContext, signal?: AbortSignal) => agent.prepareNextTurn?.(signal)
 			: undefined);
 	agent.prepareNextTurnWithContext = async (turn, signal) => {
-		const context = await compactBeforeNextAssistantResponse(host, turn.context);
+		let projection = session.sessionManager.buildSessionProjection();
+		const model = session.model;
+		const compactEarly = model && !isVirtualModel(model) && exceedsCompactionThreshold(host, model, projection);
+		if (compactEarly) {
+			await host.runAutoCompaction("threshold", false);
+			host.inputs.flushDuringRun(host.run.outcome);
+			projection = session.sessionManager.buildSessionProjection();
+		}
+		const context = { ...turn.context, messages: projection.messages };
 		const previousSnapshot = await previousPrepareNextTurnWithContext?.({ ...turn, context }, signal);
 		const nextContext = previousSnapshot?.context ?? context;
 		const runOptions = tools.runSystemPromptOptions ?? tools.baseSystemPromptOptions;
@@ -261,12 +270,11 @@ export function installAgentNextTurnRefresh(host: AgentHooksHost): void {
 		// Keep session.systemPrompt and ctx.getSystemPrompt() in step with what the provider sees.
 		tools.runSystemPromptOptions = options;
 
+		const refreshedContext = { ...nextContext, tools: agent.state.tools.slice() };
+		if (compactEarly) attempted.add(refreshedContext);
 		return {
 			...previousSnapshot,
-			context: {
-				...nextContext,
-				tools: agent.state.tools.slice(),
-			},
+			context: refreshedContext,
 			messages: updateMessage ? [...(previousSnapshot?.messages ?? []), updateMessage] : previousSnapshot?.messages,
 			model: agent.state.model,
 			thinkingLevel: agent.state.thinkingLevel,

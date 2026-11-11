@@ -166,5 +166,6 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 	"markdown.codeBlockIndent": "Indent prepended to code blocks in rendered Markdown.",
 	"markdown.mermaid":
 		"Render Mermaid code blocks as Unicode diagrams: `off`, `final` (after a response completes) or `streaming` (also while it streams).",
-	"warnings.anthropicExtraUsage": "Warn once per run when an Anthropic model is used with subscription authentication.",
+	"warnings.anthropicExtraUsage":
+		"Show the once-per-run notice that a saved Claude subscription token is refused; `false` turns it off. The token is refused either way.",
 };

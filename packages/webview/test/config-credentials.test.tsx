@@ -140,29 +140,16 @@ describe("ConfigView sign-in", () => {
 		...extra,
 	});
 
-	it("names the sign-ins, links the key page and offers the Claude token", async () => {
+	it("names the sign-ins, links the key page and offers no Claude subscription token", async () => {
 		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={vi.fn()} />);
 		expect(await screen.findByText(/Subscription sign-in · API key/)).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Get key for OpenAI" })).toHaveAttribute(
 			"href",
 			"https://platform.openai.com/api-keys",
 		);
-		await openEditor("Use Claude subscription token");
-		expect(screen.getByText(/claude setup-token/)).toBeInTheDocument();
-		expect(screen.getByText(/sk-ant-oat/)).toBeInTheDocument();
-	});
-
-	it("saves a Claude subscription token through the key write for anthropic", async () => {
-		const save = vi.fn(async (_command: ConfigCredentialCommand) => base);
-		render(<ConfigView load={async () => withAuth} saveCredential={save} signIn={vi.fn()} />);
-		await openEditor("Use Claude subscription token");
-		await userEvent.type(screen.getByLabelText("Claude subscription token"), "sk-ant-oat01-abc");
-		expect(screen.getByRole("form", { name: "Edit token for Anthropic" })).toBeInTheDocument();
-		expect(screen.getByText(/The token goes to the OS keychain/)).toBeInTheDocument();
-		await userEvent.click(screen.getByRole("button", { name: /^(Save|Replace) token$/ }));
-		await waitFor(() =>
-			expect(save).toHaveBeenCalledWith({ action: "set", provider: "anthropic", key: "sk-ant-oat01-abc" }, undefined),
-		);
+		// Anthropic allows a Claude subscription token only in Claude Code, so the page offers none.
+		expect(screen.queryByRole("button", { name: "Use Claude subscription token" })).toBeNull();
+		expect(screen.queryByText(/sk-ant-oat|claude setup-token/)).toBeNull();
 	});
 
 	it("shows the link, answers a question, then reloads the snapshot on success", async () => {

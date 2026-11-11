@@ -66,6 +66,19 @@ describe("SelectList", () => {
 		assert.equal(visibleIndexOf(rendered[0], "short description"), visibleIndexOf(rendered[1], "long description"));
 	});
 
+	it("sizes the primary column from the rows in view, not a long label further down", () => {
+		const items = [
+			{ value: "a", label: "a", description: "first" },
+			{ value: "b", label: "b", description: "second" },
+			{ value: "long", label: "a-very-long-skill-name-label", description: "third" },
+		];
+		const list = new SelectList(items, 2, testTheme, { minPrimaryColumnWidth: 4, maxPrimaryColumnWidth: 32 });
+
+		assert.equal(visibleIndexOf(list.render(80)[0], "first"), 6);
+		list.setSelectedIndex(2);
+		assert.ok(visibleIndexOf(list.render(80)[1], "third") > 28);
+	});
+
 	it("uses the configured minimum primary column width", () => {
 		const items = [
 			{ value: "a", label: "a", description: "first" },

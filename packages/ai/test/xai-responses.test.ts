@@ -9,7 +9,7 @@ import { xaiProvider } from "../src/providers/xai.ts";
 import type { Context, Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
-const OCTOCODE_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
+const OCTOCODE_USER_AGENT = `octocode (${platform()} ${release()}; ${arch()})`;
 
 type CapturedRequest = {
 	url: string;

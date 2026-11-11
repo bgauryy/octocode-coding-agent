@@ -313,8 +313,9 @@ export class AltScreenSearchComponent implements Component, Focusable {
 		this.nextButtonEnd = showButtons ? this.nextButtonStart + visibleWidth(nextButton) : -1;
 
 		if (safeWidth === 1) return ["┌", "│", "└"];
+		const scope = innerWidth >= 19 ? " Loaded transcript " : "";
 		return [
-			`┌${"─".repeat(innerWidth)}┐`,
+			`┌${scope}${"─".repeat(innerWidth - scope.length)}┐`,
 			`│${content}│`,
 			`└${"─".repeat(leftRuleWidth)}${renderedButtons ? " " : ""}${renderedButtons}${renderedButtons ? " " : ""}${"─".repeat(rightRuleWidth)}┘`,
 		];

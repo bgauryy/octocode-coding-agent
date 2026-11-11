@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { hasControlCharacter } from "../utils/chars.ts";
@@ -16,10 +16,10 @@ function expandHomePath(path: string): string {
 	return path;
 }
 
-export function resolveScopedFuzzyQuery(
+export async function resolveScopedFuzzyQuery(
 	basePath: string,
 	rawQuery: string,
-): { baseDir: string; query: string; displayBase: string } | null {
+): Promise<{ baseDir: string; query: string; displayBase: string } | null> {
 	const normalizedQuery = toDisplayPath(rawQuery);
 	const slashIndex = normalizedQuery.lastIndexOf("/");
 	if (slashIndex === -1) {
@@ -39,7 +39,7 @@ export function resolveScopedFuzzyQuery(
 	}
 
 	try {
-		if (!statSync(baseDir).isDirectory()) {
+		if (!(await stat(baseDir)).isDirectory()) {
 			return null;
 		}
 	} catch {
@@ -57,8 +57,8 @@ export function scopedPathForDisplay(displayBase: string, relativePath: string):
 	return `${toDisplayPath(displayBase)}${normalizedRelativePath}`;
 }
 
-// Get file/directory suggestions for a given path prefix
-export function getFileSuggestions(basePath: string, prefix: string): AutocompleteItem[] {
+/** File and directory suggestions for a path prefix. Reads are asynchronous: a slow or network folder must not hold up key handling. */
+export async function getFileSuggestions(basePath: string, prefix: string): Promise<AutocompleteItem[]> {
 	try {
 		let searchDir: string;
 		let searchPrefix: string;
@@ -106,7 +106,7 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 			searchPrefix = file;
 		}
 
-		const entries = readdirSync(searchDir, { withFileTypes: true });
+		const entries = await readdir(searchDir, { withFileTypes: true });
 		const suggestions: AutocompleteItem[] = [];
 
 		for (const entry of entries) {
@@ -121,7 +121,7 @@ export function getFileSuggestions(basePath: string, prefix: string): Autocomple
 			if (!isDirectory && entry.isSymbolicLink()) {
 				try {
 					const fullPath = join(searchDir, entry.name);
-					isDirectory = statSync(fullPath).isDirectory();
+					isDirectory = (await stat(fullPath)).isDirectory();
 				} catch {
 					// Broken symlink or permission error - treat as file
 				}

@@ -10,7 +10,7 @@ function branchIds(session: Source): string[] {
 /**
  * The session messages and branch the projection was built from. A turn boundary rebuilds the context array from the
  * session file after every turn; that is a refresh, not a change, when the branch only grew and every message is the
- * same or equal. Anything else (navigation, an edit, compaction) needs a full rebuild.
+ * same or equal, with any new messages at the end. Anything else (navigation, an edit, compaction) needs a full rebuild.
  */
 export class ContextSource {
 	private messages: readonly unknown[] = [];
@@ -26,14 +26,18 @@ export class ContextSource {
 		this.branch = [];
 	}
 
-	/** Whether the projection still matches `session`; an equal rebuilt array is adopted in place. */
-	unchanged(session: Source, transcript: ApplicationTranscript): boolean {
-		if (this.messages === session.messages) return true;
+	/**
+	 * Whether the projection still matches `session`: an equal rebuilt array is adopted in place. Returns the messages
+	 * the rebuild added that no view has seen, for the caller to show; undefined when the projection must be rebuilt.
+	 */
+	adopt(session: Source, transcript: ApplicationTranscript): Source["messages"] | undefined {
+		if (this.messages === session.messages) return [];
 		const branch = branchIds(session);
 		const grew = branch.length >= this.branch.length && this.branch.every((id, index) => branch[index] === id);
-		if (!grew || !transcript.adopt(this.messages, session.messages)) return false;
+		const unseen = grew ? transcript.adopt(this.messages, session.messages) : undefined;
+		if (!unseen) return undefined;
 		this.messages = session.messages;
 		this.branch = branch;
-		return true;
+		return unseen;
 	}
 }

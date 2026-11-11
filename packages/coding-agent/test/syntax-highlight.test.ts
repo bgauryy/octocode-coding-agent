@@ -1,5 +1,7 @@
 import { resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import hljs from "highlight.js/lib/core";
+import { HighlightCache } from "../src/theme/highlight-cache.ts";
 import { getMarkdownTheme, highlightCode, initTheme, theme } from "../src/theme/theme.ts";
 import {
 	highlight,
@@ -98,6 +100,19 @@ describe("syntax highlight renderer", () => {
 });
 
 describe("theme syntax highlighting", () => {
+	it("reuses a conversation's small code blocks across width changes", () => {
+		const spy = vi.spyOn(hljs, "highlight");
+		try {
+			const codes = Array.from({ length: 1000 }, (_, i) => `const conversation_${i} = ${i};`);
+			for (const code of codes) highlightCode(code, "typescript");
+			const cold = spy.mock.calls.length;
+			for (const code of codes) highlightCode(code, "typescript");
+			expect(cold).toBe(1000);
+			expect(spy.mock.calls.length).toBe(cold);
+		} finally {
+			spy.mockRestore();
+		}
+	});
 	beforeEach(() => {
 		setCapabilities({ images: null, trueColor: true, hyperlinks: false });
 		initTheme("dark");
@@ -137,6 +152,31 @@ describe("theme syntax highlighting", () => {
 		);
 		expect(highlightCode("@decorator", "python")[0]).toBe(`${theme.getFgAnsi("muted")}@decorator\x1b[39m`);
 		expect(highlightCode("<div></div>", "html")[0]).toContain(`${theme.getFgAnsi("syntaxKeyword")}div\x1b[39m`);
+	});
+});
+
+describe("highlight cache limits", () => {
+	it("evicts by output size and keeps a recently used block", () => {
+		const cache = new HighlightCache(10, 40);
+		cache.set("a", ["1234567890"]);
+		cache.set("b", ["1234567890"]);
+		expect(cache.get("a")).toEqual(["1234567890"]);
+		cache.set("c", ["1234567890"]);
+		expect(cache.get("b")).toBeUndefined();
+		expect(cache.get("a")).toEqual(["1234567890"]);
+		cache.set("large", ["x".repeat(100)]);
+		expect(cache.get("large")).toBeUndefined();
+	});
+	it("bounds the number of small blocks and accounts for replaced entries", () => {
+		const cache = new HighlightCache(2, 60);
+		cache.set("a", ["x".repeat(20)]);
+		cache.set("a", ["x"]);
+		cache.set("b", ["x".repeat(20)]);
+		expect(cache.get("a")).toEqual(["x"]);
+		cache.set("c", ["x"]);
+		expect(cache.get("b")).toBeUndefined();
+		expect(cache.get("a")).toEqual(["x"]);
+		expect(cache.get("c")).toEqual(["x"]);
 	});
 });
 

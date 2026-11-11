@@ -5,6 +5,8 @@ import { envApiKeyAuth, lazyOAuth } from "../auth/helpers.ts";
 import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { loadGitHubCopilotOAuth } from "../auth/oauth/load.ts";
 import { createProvider, type Provider } from "../models.ts";
+import { withCopilotIdentity } from "./github-copilot-identity.ts";
+import { GITHUB_COPILOT_PLAN } from "./plans.ts";
 import { GITHUB_COPILOT_MODELS } from "./github-copilot.models.ts";
 
 export function githubCopilotProvider(): Provider<"anthropic-messages" | "openai-completions" | "openai-responses"> {
@@ -15,6 +17,7 @@ export function githubCopilotProvider(): Provider<"anthropic-messages" | "openai
 		auth: {
 			apiKey: envApiKeyAuth("GitHub Copilot token", apiKeyEnvVars("github-copilot")),
 			oauth: lazyOAuth({ name: "GitHub Copilot", isSubscription: true, load: loadGitHubCopilotOAuth }),
+			plan: GITHUB_COPILOT_PLAN,
 		},
 		models: Object.values(GITHUB_COPILOT_MODELS),
 		filterModels: (models, credential) => {
@@ -27,9 +30,9 @@ export function githubCopilotProvider(): Provider<"anthropic-messages" | "openai
 			return models.filter((model) => available.has(model.id));
 		},
 		api: {
-			"anthropic-messages": anthropicMessagesApi(),
-			"openai-completions": openAICompletionsApi(),
-			"openai-responses": openAIResponsesApi(),
+			"anthropic-messages": withCopilotIdentity(anthropicMessagesApi()),
+			"openai-completions": withCopilotIdentity(openAICompletionsApi()),
+			"openai-responses": withCopilotIdentity(openAIResponsesApi()),
 		},
 	});
 }

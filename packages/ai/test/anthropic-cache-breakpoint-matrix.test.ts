@@ -99,7 +99,7 @@ const retentions: { name: string; options: StreamOptions; instructionTtl?: strin
 ];
 
 const cases = [collapse, native].flatMap((model) =>
-	["sk-ant-api-test", "sk-ant-oat01-test"].flatMap((apiKey) =>
+	["sk-ant-api-test"].flatMap((apiKey) =>
 		[undefined, "project_context"].flatMap((boundary) =>
 			retentions.flatMap((retention) => histories.map((history) => ({ model, apiKey, boundary, retention, history }))),
 		),
@@ -145,8 +145,6 @@ describe("Anthropic cache breakpoint matrix", () => {
 			for (const { block } of instructions) expect(block.cache_control?.ttl).toBe(retention.instructionTtl);
 			for (const { block } of historyMarkers) expect(block.cache_control?.ttl).toBe(retention.historyTtl);
 			if (boundary) expect(found.filter(({ section }) => section === "system")).toHaveLength(2);
-			// OAuth: the identity block precedes the prompt and stays unmarked.
-			if (apiKey.includes("oat")) expect(payload.system?.[0].cache_control).toBeUndefined();
 		},
 	);
 

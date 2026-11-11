@@ -14,7 +14,7 @@ const model: Model<"anthropic-messages"> = {
 	name: "Test Claude",
 	api: "anthropic-messages",
 	provider: "anthropic",
-	baseUrl: "https://anthropic.example",
+	baseUrl: "https://api.anthropic.com",
 	reasoning: false,
 	input: ["text"],
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -139,7 +139,7 @@ describe("Anthropic preferred strict tool fallback", () => {
 				compat: { ...model.compat, supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true },
 			},
 			transcript,
-			{ ...options, apiKey: "sk-ant-oat-test" },
+			options,
 		).result();
 		expect(result.stopReason).toBe("stop");
 		expect(payloads).toHaveLength(2);

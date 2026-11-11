@@ -134,4 +134,28 @@ describe("strict strikethrough", () => {
 		const elapsed = performance.now() - start;
 		assert.ok(elapsed < 1000, `took ${elapsed.toFixed(0)} ms`);
 	});
+
+	it("keeps block math starts identical in nested blocks and at paragraph boundaries", () => {
+		const cases = [
+			"before\n\n$$\nx^2\n$$\n\nafter",
+			"before\n  \\[x^2\\]\n\nafter",
+			"> before\n>\n> $$\n> x^2\n> $$\n> after",
+			"- before\n\n  $$\n  x^2\n  $$\n\n- after",
+			"a\n\n    $$not block$$\n\n  $$yes$$\n\nend",
+			"paragraph $$inline$$\n\n```text\n$$not math$$\n```\n\nend",
+		];
+		for (const source of cases)
+			assert.strictEqual(
+				JSON.stringify(markdownParser.lexer(source)),
+				JSON.stringify(Lexer.lex(source, markdownParser.defaults)),
+			);
+	});
+
+	it("does not rescan the remaining document for block math at every paragraph", () => {
+		const source = "A short paragraph without math.\n\n".repeat(40_000);
+		const start = performance.now();
+		const tokens = markdownParser.lexer(source);
+		assert.ok(performance.now() - start < 1500, "block math lookup must stay linear across paragraphs");
+		assert.equal(tokens.filter((token) => token.type === "paragraph").length, 40_000);
+	});
 });

@@ -117,8 +117,15 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		}
 
 		case "get_available_models": {
-			const models = host.session.modelRuntime.getAvailableSnapshot();
-			return success(id, "get_available_models", { models: models.map(publicModel) });
+			const { modelRuntime } = host.session;
+			const models = modelRuntime
+				.getAvailableSnapshot()
+				.map((model) =>
+					modelRuntime.allowsUnattendedUse(model.provider)
+						? publicModel(model)
+						: { ...publicModel(model), interactiveOnly: true as const },
+				);
+			return success(id, "get_available_models", { models });
 		}
 
 		case "set_thinking_level": {

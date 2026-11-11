@@ -42,7 +42,7 @@ describe("/session and a stream that dropped before the provider's final count",
 	};
 
 	it("marks the cost as a lower bound and counts the responses", async () => {
-		expect(await shown(true, false, true)).toContain("(at least: 2 responses ended before the provider's final count)");
+		expect(await shown(true, false, true)).toContain("(at least: 2 responses without the provider's final count)");
 	});
 
 	it("says nothing when every count is complete", async () => {

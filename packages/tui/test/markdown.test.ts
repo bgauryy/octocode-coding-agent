@@ -1693,7 +1693,7 @@ bar`,
 			const joined = lines.join("");
 
 			// OSC 8 open: ESC ] 8 ; ; <url> ESC \
-			assert.ok(joined.includes("\x1b]8;;https://example.com\x1b\\"), "Should contain OSC 8 open sequence");
+			assert.ok(/\x1b\]8;id=[^;]+;https:\/\/example\.com\/\x1b\\/.test(joined), "Should contain OSC 8 open sequence");
 			// OSC 8 close: ESC ] 8 ; ; ESC \
 			assert.ok(joined.includes("\x1b]8;;\x1b\\"), "Should contain OSC 8 close sequence");
 			// Visible text is present
@@ -1711,7 +1711,10 @@ bar`,
 			const lines = markdown.render(80);
 			const joined = lines.join("");
 
-			assert.ok(joined.includes("\x1b]8;;mailto:test@example.com\x1b\\"), "Should contain OSC 8 open with mailto URL");
+			assert.ok(
+				/\x1b\]8;id=[^;]+;mailto:test@example\.com\x1b\\/.test(joined),
+				"Should contain OSC 8 open with mailto URL",
+			);
 			assert.ok(joined.includes("\x1b]8;;\x1b\\"), "Should contain OSC 8 close sequence");
 		});
 
@@ -1722,7 +1725,7 @@ bar`,
 			const lines = markdown.render(80);
 			const joined = lines.join("");
 
-			assert.ok(joined.includes("\x1b]8;;https://example.com\x1b\\"), "Should contain OSC 8 hyperlink");
+			assert.ok(/\x1b\]8;id=[^;]+;https:\/\/example\.com\/\x1b\\/.test(joined), "Should contain OSC 8 hyperlink");
 			// URL should not also appear as raw parenthetical text
 			const rawPlain = lines.map((line) => line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""));
 			assert.ok(!rawPlain.join("").includes("(https://example.com)"), "URL should not appear twice");

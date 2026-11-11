@@ -9,6 +9,7 @@ import { streamAssistantResponse } from "./agent-loop/assistant-stream.ts";
 import { EarlyToolCalls } from "./agent-loop/early-start.ts";
 import type { AgentEventSink } from "./agent-loop/events.ts";
 import { inputCommitter } from "./agent-loop/input.ts";
+import { prepareProviderRequest, withModelUpdate } from "./agent-loop/request.ts";
 import { executeToolCalls, failToolCallsFromTruncatedMessage } from "./agent-loop/tool-batch.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
@@ -16,7 +17,6 @@ import type {
 	AgentEvent,
 	AgentLoopConfig,
 	AgentMessage,
-	AgentRequestUpdate,
 	PrepareNextTurnContext,
 	StreamFn,
 } from "./types.ts";
@@ -184,20 +184,6 @@ function createAgentStream(): EventStream<AgentEvent, AgentMessage[]> {
 	);
 }
 
-/** The config with the model and thinking level an update replaces; `"off"` clears reasoning. */
-function withModelUpdate(config: AgentLoopConfig, update: AgentRequestUpdate): AgentLoopConfig {
-	return {
-		...config,
-		model: update.model ?? config.model,
-		reasoning:
-			update.thinkingLevel === undefined
-				? config.reasoning
-				: update.thinkingLevel === "off"
-					? undefined
-					: update.thinkingLevel,
-	};
-}
-
 /**
  * Main loop logic shared by agentLoop and agentLoopContinue.
  */
@@ -244,6 +230,7 @@ async function runLoop(
 
 			if (!selected && pendingMessages.length)
 				config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
+			const inputSelected = pendingMessages.length > 0;
 			const commit = inputCommitter(currentContext, newMessages, emit);
 			if (config.prepareInput && pendingMessages.length > 0) {
 				await commit(preparedMessages);
@@ -261,18 +248,21 @@ async function runLoop(
 				return;
 			}
 
-			const requestUpdate = await config.prepareRequest?.(
-				{
-					context: currentContext,
-					model: config.model,
-					thinkingLevel: config.reasoning ?? "off",
-				},
+			const preparedRequest = await prepareProviderRequest(
+				currentContext,
+				config,
+				newMessages,
+				emit,
+				inputSelected,
 				signal,
 			);
-			if (requestUpdate) {
-				currentContext = requestUpdate.context ?? currentContext;
-				config = withModelUpdate(config, requestUpdate);
+			currentContext = preparedRequest.context;
+			config = preparedRequest.config;
+			if (preparedRequest.stop) {
+				await emit({ type: "agent_end", messages: newMessages });
+				return;
 			}
+			const requestUpdate = preparedRequest.update;
 
 			// Stream assistant response
 			// Early starts (opt-in, parallel only): settled calls the host allows run while the message still streams.

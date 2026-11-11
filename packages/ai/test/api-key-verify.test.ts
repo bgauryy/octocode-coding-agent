@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL } from "../src/api/anthropic-messages/token.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { loginProvider } from "../src/models/auth.ts";
 import { anthropicProvider } from "../src/providers/anthropic.ts";
+import { opencodeGoProvider } from "../src/providers/opencode-go.ts";
+import { opencodeProvider } from "../src/providers/opencode.ts";
 import { openaiProvider } from "../src/providers/openai.ts";
 import type { AuthEvent } from "../src/auth/types.ts";
 
@@ -13,7 +16,12 @@ async function signIn(id: string, key: string, status: number | Error) {
 	vi.stubGlobal("fetch", fetchMock);
 	const store = new InMemoryCredentialStore();
 	const events: AuthEvent[] = [];
-	const providers = new Map([[id, id === "anthropic" ? anthropicProvider() : openaiProvider()]]);
+	const factories: Record<string, () => unknown> = {
+		anthropic: anthropicProvider,
+		opencode: opencodeProvider,
+		"opencode-go": opencodeGoProvider,
+	};
+	const providers = new Map([[id, (factories[id] ?? openaiProvider)()]]);
 	const outcome = await loginProvider(providers as never, store, id, "api_key", {
 		prompt: async () => key,
 		notify: (event) => events.push(event),
@@ -62,9 +70,42 @@ describe("API key verification at sign-in", () => {
 		expect(events).toContainEqual(expect.objectContaining({ message: expect.stringContaining("saved anyway") }));
 	});
 
-	it("does not check an Anthropic subscription token", async () => {
-		const { outcome, fetchMock } = await signIn("anthropic", "sk-ant-oat01-token", 401);
-		expect(outcome).toBe("saved");
+	it("refuses a Claude subscription token without a network call, saves nothing and names the external agent", async () => {
+		const { outcome, saved, fetchMock } = await signIn("anthropic", "sk-ant-oat01-token", 200);
+		expect(outcome).toBe(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
+		expect(outcome).not.toContain("sk-ant-oat01-token");
+		expect(saved).toBeUndefined();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["opencode", "https://opencode.ai/inference/v1/models"],
+		["opencode-go", "https://opencode.ai/inference/go/v1/models"],
+	])("checks a %s key against its free model list and refuses a 401", async (id, url) => {
+		const bad = await signIn(id, "oc-bad", 401);
+		expect(bad.outcome).toContain("rejected this key");
+		expect(bad.saved).toBeUndefined();
+		const good = await signIn(id, "  oc-good\n", 200);
+		expect(good.saved).toMatchObject({ type: "api_key", key: "oc-good" });
+		expect(good.fetchMock).toHaveBeenCalledWith(
+			url,
+			expect.objectContaining({ headers: { Authorization: "Bearer oc-good" } }),
+		);
+	});
+
+	it("trims a pasted Anthropic key and saves nothing for an empty one", async () => {
+		const good = await signIn("anthropic", "  sk-ant-api03-good\n", 200);
+		expect(good.saved).toMatchObject({ type: "api_key", key: "sk-ant-api03-good" });
+		const empty = await signIn("anthropic", " \n", 200);
+		expect(empty.outcome).toBe("No Anthropic API key was entered. Nothing was saved.");
+		expect(empty.saved).toBeUndefined();
+		expect(empty.fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("saves nothing when the key prompt is answered empty", async () => {
+		const { outcome, saved, fetchMock } = await signIn("opencode", "   ", 200);
+		expect(outcome).toContain("Nothing was saved");
+		expect(saved).toBeUndefined();
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

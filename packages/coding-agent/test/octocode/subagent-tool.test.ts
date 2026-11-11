@@ -22,7 +22,7 @@ import { itemDetail } from "../../src/octocode/backlog/format.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost, rendered, theme, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { exitReason, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
@@ -127,6 +127,7 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 	Object.assign(ctx, {
 		model: models[0],
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => models,
 			find: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 			getCachePolicy: fakeCachePolicy,
@@ -860,6 +861,7 @@ describe("agent tool with a scripted child", () => {
 			// Inside claimRun, after the name is taken: the child model's cache policy cannot be read.
 			Object.assign(s.ctx, {
 				modelRegistry: {
+					...meteredBilling,
 					...registry,
 					getCachePolicy: () => {
 						throw new Error("settings broke");

@@ -26,6 +26,8 @@ export interface LayoutLine {
 export interface EditorTheme {
 	borderColor: (str: string) => string;
 	selectList: SelectListTheme;
+	/** Style of an inline suggestion after the cursor; dim when unset. */
+	ghostText?: (str: string) => string;
 }
 
 export interface EditorOptions {

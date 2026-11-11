@@ -75,9 +75,10 @@ export function openDatabase(
 		depth += 1;
 		let result: T;
 		// The write lock is held from here to the commit, so the events between the two reads are this transaction's own.
-		const before = appended.size > 0 ? agentEvents.head(db) : undefined;
-		let after = before;
+		let before: number | undefined;
+		let after: number | undefined;
 		try {
+			before = appended.size > 0 ? agentEvents.head(db) : undefined;
 			result = fn();
 			if (before !== undefined) after = agentEvents.head(db);
 			db.exec("COMMIT");
@@ -182,7 +183,7 @@ const refused = new Map<string, AgentDbError>();
 export function sharedDatabase(locations: DatabaseLocations): AgentDb {
 	const key = canonicalPath(locations.file);
 	const current = shared.get(key);
-	if (current) return current;
+	if (current?.db.isOpen) return current;
 	const problem = refused.get(key);
 	if (problem) throw problem;
 	try {

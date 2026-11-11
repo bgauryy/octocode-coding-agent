@@ -103,8 +103,12 @@ Then `{"type":"external","externalAction":"prompt","connection":"peer","promptTe
 | Cancel           | Stops active work and, for an ACP peer, the owned process tree; connect again before another prompt.                                                                                                                                                                                                                                                                                  |
 | Capture bounds   | Each turn keeps up to 1 MiB of updates and a 64 KiB text tail; stderr keeps 64 KiB. Overflow is archived privately (32 MiB cap) with pattern-based credential redaction; this cannot recognize arbitrary secrets.                                                                                                                                                                     |
 | Direction        | The peer cannot send unprompted mail; to reach this session it needs the enabled local API. Octocode advertises no filesystem, terminal or elicitation capability to peers.                                                                                                                                                                                                           |
+| Environment      | The peer starts with Octocode's environment minus provider API keys, every `ANTHROPIC_` variable, `CODEX_API_KEY` and Octocode's own variables, so it bills through its own sign-in. A runner's configuration (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, a `CLAUDE_CODE_OAUTH_TOKEN` you exported) and `OCTOCODE_HOME` pass.                                                                 |
+| Sign-in          | An `auth_required` answer is authenticated only with a method that needs no person; otherwise the error names the methods. The sign-in check that `/providers` runs for a CLI without a status command opens a session in an empty folder and never authenticates.                                                                                                                    |
 
 Tool policy and process ownership: [external-agent lifecycle](native-features.md#external-agent-lifecycle).
+
+To hand a whole task to a vendor CLI on its own plan, with a worktree, report and stop like any child, use an `agent` task with `runner` instead: [external runners](native-features.md#external-runners).
 
 ### Connect to Codex
 

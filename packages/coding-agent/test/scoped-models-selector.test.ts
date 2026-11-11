@@ -58,6 +58,20 @@ describe("scoped models selector", () => {
 		return selector;
 	}
 
+	it("names each provider's kind on its badge", async () => {
+		harness = await createHarness({ models: [{ id: "one", name: "One" }] });
+		const provider = harness.models[0].provider;
+		const selector = new ScopedModelsSelectorComponent(
+			{
+				allModels: [...harness.models],
+				enabledModelIds: null,
+				providerKind: (id) => harness!.session.modelRuntime.getProviderKind(id),
+			},
+			{ onChange: () => {}, onPersist: () => {}, onCancel: () => {} },
+		);
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain(`one [${provider} · local]`);
+	});
+
 	it("marks every model after enabling all", async () => {
 		const models = [
 			{ id: "model-a", name: "Model A", enabled: true },

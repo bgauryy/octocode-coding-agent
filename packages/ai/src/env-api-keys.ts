@@ -36,6 +36,11 @@ export const ANTHROPIC_ORGANIZATION_ID_ENV = "ANTHROPIC_ORGANIZATION_ID";
 export const ANTHROPIC_SERVICE_ACCOUNT_ID_ENV = "ANTHROPIC_SERVICE_ACCOUNT_ID";
 export const ANTHROPIC_IDENTITY_TOKEN_FILE_ENV = "ANTHROPIC_IDENTITY_TOKEN_FILE";
 export const ANTHROPIC_WORKSPACE_ID_ENV = "ANTHROPIC_WORKSPACE_ID";
+/**
+ * The Anthropic variables sent as an API key, in the order they win; ANTHROPIC_AUTH_TOKEN, a bearer token, wins over
+ * both. An API key wins over ANTHROPIC_OAUTH_TOKEN, which only holds a Claude subscription token that requests refuse.
+ */
+export const ANTHROPIC_API_KEY_ENV_ORDER = [ANTHROPIC_API_KEY_ENV, ANTHROPIC_OAUTH_TOKEN_ENV] as const;
 
 let cachedVertexAdcCredentialsExists: boolean | null = null;
 
@@ -76,7 +81,7 @@ function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
 	// ANTHROPIC_AUTH_TOKEN participates in env discovery/status, but
 	// getEnvApiKey() skips it because requests must pass it as Authorization: Bearer.
 	if (provider === "anthropic") {
-		return [ANTHROPIC_AUTH_TOKEN_ENV, ANTHROPIC_OAUTH_TOKEN_ENV, ANTHROPIC_API_KEY_ENV];
+		return [ANTHROPIC_AUTH_TOKEN_ENV, ...ANTHROPIC_API_KEY_ENV_ORDER];
 	}
 	return findApiKeyEnvVars(provider);
 }

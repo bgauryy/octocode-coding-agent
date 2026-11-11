@@ -123,6 +123,24 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		this.availability.updateModelSnapshot();
 	}
 
+	/**
+	 * A built-in provider as shipped, before models.json and extensions: the models a `models.json` entry can inherit
+	 * from (see `provider-composer/known-models.ts`).
+	 */
+	getBuiltinProvider(providerId: string): Provider | undefined {
+		return this.layers.builtins.get(providerId);
+	}
+
+	/** The providers the merged models.json files define (Octocode's, the legacy `~/.octocode` folders' and Pi's). */
+	getDefinedProviderIds(): readonly string[] {
+		return this.layers.config.getProviderIds();
+	}
+
+	/** models.json fields that load but do nothing (a misspelled key, an `api` no built-in serves), each naming its file. */
+	getConfigWarnings(): readonly string[] {
+		return this.layers.config.getWarnings();
+	}
+
 	getError(): string | undefined {
 		const errors = this.layers.getErrors();
 		const availabilityError = this.availability.availabilityError;

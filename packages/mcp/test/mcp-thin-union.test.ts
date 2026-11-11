@@ -177,7 +177,7 @@ describe("provider serialization of a thin union field", () => {
 	});
 
 	it("Anthropic sends it in input_schema", () => {
-		const [declared] = convertAnthropicTools([tool], false, false, false);
+		const [declared] = convertAnthropicTools([tool], false, false);
 		expect(declared?.input_schema).toEqual({
 			type: "object",
 			properties: { value: stringOrNumber },

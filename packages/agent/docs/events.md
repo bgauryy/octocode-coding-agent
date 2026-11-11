@@ -47,6 +47,8 @@ sequenceDiagram
 
 ## Request preparation and turn finalization
 
+During tool execution, aborting also releases a stalled revalidation or progress listener after a short grace period. An unfinished revalidation never permits execution. Normal completion waits for outstanding progress delivery; completed deliveries are released as they settle. If execution has already finished when progress delivery is interrupted, its result is retained.
+
 `prepareRequest` runs before every provider request, including the first, to install canonical persisted context. It does not poll queues; steering queued meanwhile waits for the next poll. A wrapped hook can run twice for one request when a virtual model's routing triggers an automatic compaction in between, so keep it free of side effects that cannot repeat.
 
 ```typescript

@@ -1,5 +1,6 @@
 import type { Model } from "../../types.ts";
-import { isOpenRouterModel, matchesDomain } from "../../utils/provider-host.ts";
+import { isOpenAIExtendedRetentionModel } from "../../utils/cache-capabilities.ts";
+import { isOpenRouterModel, matchesDomain, matchesHost } from "../../utils/provider-host.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 /**
@@ -123,14 +124,19 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		// OpenCode Go streams `reasoning` but expects it back as `reasoning_content`.
 		reasoningReplayField: provider === "opencode-go" ? "reasoning_content" : undefined,
 		toolCallIdMaxLength: provider === "openai" ? 40 : undefined,
-		supportsLongCacheRetention: !(
-			isOpenRouterAlibabaExplicitCache ||
-			isTogether ||
-			isCloudflareWorkersAI ||
-			isCloudflareAiGateway ||
-			isNvidia ||
-			isAntLing
-		),
+		// Without markers the long tier is `prompt_cache_retention: "24h"`, which api.openai.com takes only for the models
+		// OpenAI lists; Chat Completions has no 12h tier for GPT-5.6 and later.
+		supportsLongCacheRetention:
+			cacheControlFormat !== "anthropic" && matchesHost(baseUrl, "api.openai.com")
+				? isOpenAIExtendedRetentionModel(model.id)
+				: !(
+						isOpenRouterAlibabaExplicitCache ||
+						isTogether ||
+						isCloudflareWorkersAI ||
+						isCloudflareAiGateway ||
+						isNvidia ||
+						isAntLing
+					),
 		toolSchemaFlavor: isMoonshot || isMoonshotModelId(model.id) ? "moonshot" : undefined,
 	};
 }

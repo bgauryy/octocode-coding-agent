@@ -7,6 +7,7 @@ export type ProviderManagerHost = Pick<
 	| "getLoginProviderOptions"
 	| "showSelector"
 	| "showExtensionSelector"
+	| "showExtensionInput"
 	| "showLoginDialog"
 	| "showApiKeyLoginDialog"
 	| "showAmbientAuthDialog"

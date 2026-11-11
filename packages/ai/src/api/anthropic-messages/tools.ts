@@ -9,7 +9,6 @@ import {
 	type UnsupportedStrictSchemaKeywordCheck,
 } from "../constrained-sampling.ts";
 import { liftRootComposition } from "../../utils/json-schema-shape.ts";
-import { toClaudeCodeName } from "./claude-code.ts";
 
 /**
  * Stable deferred tool declared whenever native tool changes are in use. Anthropic adds
@@ -62,7 +61,6 @@ const isAnthropicStrictUnsupportedKeyword: UnsupportedStrictSchemaKeywordCheck =
 
 export function convertTools(
 	tools: Tool[],
-	isOAuthToken: boolean,
 	supportsEagerToolInputStreaming: boolean,
 	supportsStrictTools: boolean,
 	cacheControl?: CacheControlEphemeral,
@@ -104,7 +102,7 @@ export function convertTools(
 				: legacyInputSchema;
 
 		return {
-			name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
+			name: tool.name,
 			description: tool.description,
 			...(supportsEagerToolInputStreaming ? { eager_input_streaming: true } : {}),
 			...(strict === true ? { strict: true } : {}),

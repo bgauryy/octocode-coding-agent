@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { getAgentDir, getLegacyConfigDirs, getOctocodeHome } from "../../config.ts";
+import { getAgentDir, getLegacyProviderDirs, getOctocodeHome } from "../../config.ts";
 import { shellPath, homeSpelling } from "./file-access.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
@@ -9,13 +9,24 @@ import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { optionalString } from "../shared/util.ts";
 import { modelsFileHoldsLiteralKey } from "../../core/models-json-keys.ts";
+import type { AskReason } from "./mode.ts";
+import type { SourceGrant } from "./request.ts";
+import {
+	expandVendorVariable,
+	vendorGrant,
+	vendorPrint,
+	vendorStores,
+	type VendorStore,
+} from "./vendor-credentials.ts";
 
 /**
  * Reads of Octocode's credential store: the `auth.json` files a session loads keys from (the agent directory's, the
  * Octocode home's, and Pi's when Pi's roots are a read-only fallback), a `models.json` that holds a literal `apiKey`, the
  * MCP OAuth tokens in `mcp-auth.json`, the credential files of other command-line tools under the home (`~/.aws/credentials`,
- * `~/.netrc`, …), and the OS keychain commands that read an entry back (`security find-generic-password … -w`, `secret-tool lookup`). What they print enters the model context, so a
- * read is a `credential.read` reason: it asks in `manual` and `workspace`, and `full` runs it and records it. Writes are
+ * `~/.netrc`, …), the OS keychain commands that read an entry back (`security find-generic-password … -w`, `secret-tool lookup`),
+ * and `octocode auth print-api-key` / `print-bearer-token`. What they print enters the model context, so a
+ * read is a `credential.read` reason: it asks in `manual` and `workspace`, and `full` runs it and records it. A read of
+ * another coding agent's store (`vendor-credentials.ts`) also carries `credential.vendor`, which asks in `full` too. Writes are
  * not decided here: `stateFolderRefusal` refuses those in every mode. Best effort, not a sandbox: a path the call does
  * not spell (`cat $X`, a glob, a program that computes it) is not seen.
  */
@@ -48,7 +59,7 @@ const key = (file: string): string => canonicalPath(file).toLowerCase();
 
 /** The `auth.json` paths a session reads, and the folders whose read can reach one: each store's folder, and its parent when that is an Octocode or Pi root folder. */
 function credentialPaths(): { files: Set<string>; models: Set<string>; folders: Set<string> } {
-	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getLegacyConfigDirs()]);
+	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getLegacyProviderDirs()]);
 	const files = new Set<string>();
 	const models = new Set<string>();
 	const folders = new Set<string>();
@@ -63,11 +74,24 @@ function credentialPaths(): { files: Set<string>; models: Set<string>; folders: 
 	return { files, models, folders };
 }
 
-/** Whether reading `file` (an absolute path) can read a credential store: it is one, or a folder that holds one. */
-function touchesCredentialStore(file: string): boolean {
+/** What a read of a credential store found: the path or command that reads it, and the vendor store when it is another tool's. */
+export interface CredentialHit {
+	found: string;
+	store?: VendorStore;
+}
+
+/** Whether reading a file (an absolute path) can read a credential store: it is one, or a folder that holds one. Paths are resolved once per check. */
+function storeLookup(): (file: string) => { store?: VendorStore } | undefined {
 	const { files, models, folders } = credentialPaths();
-	const at = key(file);
-	return files.has(at) || folders.has(at) || (models.has(at) && modelsFileHoldsLiteralKey(canonicalPath(file)));
+	const vendor = vendorStores();
+	return (file) => {
+		const store = vendor(file);
+		if (store) return { store };
+		const at = key(file);
+		return files.has(at) || folders.has(at) || (models.has(at) && modelsFileHoldsLiteralKey(canonicalPath(file)))
+			? {}
+			: undefined;
+	};
 }
 
 /** The programs and subcommands that print a keychain entry (or the keychain's contents), anywhere in a command line. */
@@ -77,38 +101,84 @@ const KEYCHAIN_READ =
 /** A word a command line spells that cannot be resolved before it runs, and still names the store file. */
 const UNRESOLVED_STORE = /[$*?[`]/;
 
-/** What a shell command reads of the store: the first word naming it, or the keychain read; undefined when it names none. */
-function shellCredentialRead(command: string, cwd: string): string | undefined {
-	if (KEYCHAIN_READ.test(command)) return "the keychain read command";
+/** `octocode auth print-api-key` and `print-bearer-token`, which print a stored key or token, anywhere in a command line. */
+const OCTOCODE_PRINT = /(?:^|[\s;|&(`'"])(?:\S*\/)?octocode\s+auth\s+print-(?:api-key|bearer-token)\b/;
+
+/** What a shell command reads of a store: a command that prints one, else the first word naming one; undefined when it names none. */
+function shellCredentialRead(command: string, cwd: string): CredentialHit | undefined {
+	const printed = vendorPrint(command);
+	if (printed) return printed;
+	if (OCTOCODE_PRINT.test(command)) return { found: "octocode auth print-*" };
+	if (KEYCHAIN_READ.test(command)) return { found: "the keychain read command" };
 	// Quotes only group words (`"$HOME"/x`, `bash -c "cat ~/x"`): dropped, the words of an inner script are read like the rest.
 	const words = command
 		.replace(/["'`]/g, "")
 		.split(/[\s;|&()<>=,]+/)
 		.filter(Boolean)
 		.slice(0, WORD_LIMIT);
+	// Built on the first word that may name a store: most commands name none.
+	let built: ReturnType<typeof storeLookup> | undefined;
+	const lookup = (file: string) => (built ??= storeLookup())(file);
 	for (const word of words) {
 		const base = path.basename(word).toLowerCase();
 		const storeName = STORE_FILES.find((name) => base === name);
 		if (!storeName && base !== MODELS_FILE && !/[/\\~$.]/.test(word[0] ?? "") && !word.includes("/")) continue;
-		if (storeName && UNRESOLVED_STORE.test(word)) return storeName;
-		const spelled = homeSpelling(word) ?? word;
-		if (touchesCredentialStore(shellPath(cwd, spelled))) return word;
+		const vendorPath = expandVendorVariable(word);
+		const vendor = vendorPath === undefined ? undefined : lookup(vendorPath)?.store;
+		if (vendor) return { found: word, store: vendor };
+		if (storeName && UNRESOLVED_STORE.test(word)) return { found: storeName };
+		const hit = lookup(shellPath(cwd, homeSpelling(word) ?? word));
+		if (hit) return { found: word, ...hit };
 	}
 	return undefined;
 }
 
 /**
- * What `toolName` called with `input` reads of Octocode's credential store, for the `credential.read` reason: the path or
- * command that does, or undefined. Covers `bash` and `powershell` commands and the locations an MCP
+ * What `toolName` called with `input` reads of a credential store (Octocode's, another tool's, or another coding
+ * agent's: `store`), for the `credential.read` reason: the path or command that does, or undefined. Covers `bash` and `powershell` commands and the locations an MCP
  * tool's input names (`path`, `workspaceRoot`, … : the research tools' queries).
  */
-export function credentialRead(toolName: string, input: Record<string, unknown>, cwd: string): string | undefined {
+export function credentialHit(
+	toolName: string,
+	input: Record<string, unknown>,
+	cwd: string,
+): CredentialHit | undefined {
 	if (SHELL_TOOLS.has(toolName)) return shellCredentialRead(optionalString(input.command) ?? "", cwd);
 	if (!isMcpToolName(toolName)) return undefined;
 	const { files } = readerLocations(input);
-	return files.find((file) => touchesCredentialStore(resolveToolPath(cwd, file)));
+	if (files.length === 0) return undefined;
+	const lookup = storeLookup();
+	for (const file of files) {
+		const hit = lookup(resolveToolPath(cwd, file));
+		if (hit) return { found: file, ...hit };
+	}
+	return undefined;
 }
 
+/** `credentialHit`'s path or command alone. */
+export const credentialRead = (toolName: string, input: Record<string, unknown>, cwd: string): string | undefined =>
+	credentialHit(toolName, input, cwd)?.found;
+
 /** The system line a `credential.read` request carries, from what `credentialRead` found. */
-export const credentialReason = (found: string): string =>
+const credentialReason = (found: string): string =>
 	`reads a credential file or store (${found}): API keys and tokens in it would enter the model context`;
+
+/**
+ * The reasons, reason line and session answer a credential read adds to its request. A vendor store read adds
+ * `credential.vendor` (asks in every mode) until the user allows that store for the session (`granted`); after that it
+ * is an ordinary `credential.read`.
+ */
+export function credentialAsk(
+	hit: CredentialHit | undefined,
+	granted: (grant: SourceGrant) => boolean,
+): { reasons: AskReason[]; reason: string; grant?: SourceGrant } | undefined {
+	if (!hit) return undefined;
+	const { store } = hit;
+	const grant = store && vendorGrant(store);
+	if (!store || !grant || granted(grant)) return { reasons: ["credential.read"], reason: credentialReason(hit.found) };
+	return {
+		reasons: ["credential.read", "credential.vendor"],
+		reason: `reads ${store.name} (${hit.found}): another program's sign-in tokens would enter the model context, so this asks in every mode`,
+		grant,
+	};
+}

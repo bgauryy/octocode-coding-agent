@@ -16,9 +16,12 @@ import type { AcpClientHost } from "../host.ts";
 import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { withAuthentication } from "./auth.ts";
+import { AcpError, AcpRefusal, timeoutSignal } from "./errors.ts";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
 import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
 import { untilAborted } from "@octocodeai/octocode-common/abort";
+
+export { AcpError } from "./errors.ts";
 
 export interface AcpConnectInput {
 	command: string;
@@ -30,46 +33,26 @@ export interface AcpConnectInput {
 	model?: string;
 	/** MCP servers the agent's session starts with; none by default. */
 	mcpServers?: McpServer[];
+	/** The agent's own session options, sent as `_meta` when the session is created, resumed or loaded. */
+	sessionMeta?: Record<string, unknown>;
 	timeoutMs?: number;
+	/** false: an `auth_required` answer fails the connect instead of authenticating (a sign-in probe changes nothing). */
+	authenticate?: boolean;
 }
+
+/** One session update of the turn in flight, as it arrives: thoughts and other sessions' updates never reach it. */
+export type AcpTurnUpdate = (update: SessionNotification["update"]) => void;
 
 export type AcpPermission = (
 	request: RequestPermissionRequest,
 	signal: AbortSignal,
 ) => Promise<RequestPermissionResponse>;
 
-export class AcpError extends Error {
-	readonly execution = "uncertain";
-	readonly partial: ExternalReply;
-	readonly stderr: string;
-	constructor(message: string, partial: ExternalReply, stderr: string, cause: unknown) {
-		super(`${message}; external execution may have occurred. The prompt was not replayed.`, { cause });
-		this.partial = partial;
-		this.stderr = stderr;
-
-		this.name = "AcpError";
-	}
-}
-
-/** A prompt refused before anything reached the agent: the model may retry once the cause is gone. */
-class AcpRefusal extends Error {
-	readonly execution = "not-sent";
-	constructor(message: string) {
-		super(message);
-		this.name = "AcpRefusal";
-	}
-}
-
-function timeoutSignal(timeoutMs: number): AbortSignal {
-	if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2 ** 31 - 1)
-		throw new Error("ACP timeoutMs must be a positive timer duration.");
-	return AbortSignal.timeout(timeoutMs);
-}
-
 interface Turn {
 	controller: AbortController;
 	signal: AbortSignal;
 	output: AcpOutput;
+	onUpdate?: AcpTurnUpdate;
 }
 
 export class AcpBackend implements ExternalBackend {
@@ -135,6 +118,11 @@ export class AcpBackend implements ExternalBackend {
 		return this.active !== undefined && !this.isClosed;
 	}
 
+	/** The agent process this connection owns (its process tree is stopped on close). */
+	get pid(): number | undefined {
+		return this.child.pid;
+	}
+
 	static async connect(
 		host: AcpClientHost,
 		input: AcpConnectInput,
@@ -151,6 +139,8 @@ export class AcpBackend implements ExternalBackend {
 		startup.throwIfAborted();
 		const child = spawn(input.command, input.args ?? [], {
 			cwd,
+			// Never this process's own environment as is: the host removes its credentials and internal variables.
+			env: host.childEnv(input.vendor),
 			stdio: ["pipe", "pipe", "pipe"],
 			detached: process.platform !== "win32",
 			windowsHide: true,
@@ -185,9 +175,10 @@ export class AcpBackend implements ExternalBackend {
 			if (initialization.protocolVersion !== PROTOCOL_VERSION)
 				throw new Error(`Unsupported ACP protocol version ${initialization.protocolVersion}.`);
 			const mcpServers = input.mcpServers ?? [];
+			const meta = input.sessionMeta ? { _meta: input.sessionMeta } : {};
 			const capabilities = initialization.agentCapabilities;
 			const authenticated = <T>(request: () => Promise<T>) =>
-				withAuthentication(connection, initialization.authMethods, startup, request);
+				withAuthentication(connection, initialization.authMethods, startup, request, input.authenticate !== false);
 			if (input.sessionId) {
 				const resume = capabilities?.sessionCapabilities?.resume != null;
 				phase = resume ? "session/resume" : "session/load";
@@ -201,6 +192,7 @@ export class AcpBackend implements ExternalBackend {
 							sessionId: input.sessionId!,
 							cwd,
 							mcpServers,
+							...meta,
 						}),
 						startup,
 					),
@@ -209,7 +201,7 @@ export class AcpBackend implements ExternalBackend {
 			} else {
 				phase = "session/new";
 				const session = await authenticated(() =>
-					untilAborted(connection.agent.request(methods.agent.session.new, { cwd, mcpServers }), startup),
+					untilAborted(connection.agent.request(methods.agent.session.new, { cwd, mcpServers, ...meta }), startup),
 				);
 				if (!session.sessionId) throw new Error("ACP agent returned an empty session ID.");
 				backend.currentSessionId = session.sessionId;
@@ -241,7 +233,7 @@ export class AcpBackend implements ExternalBackend {
 
 	async prompt(
 		text: string,
-		options: { timeoutMs: number; signal?: AbortSignal; key?: string },
+		options: { timeoutMs: number; signal?: AbortSignal; key?: string; onUpdate?: AcpTurnUpdate },
 	): Promise<ExternalReply> {
 		if (this.active) throw new AcpRefusal("ACP session already has an active prompt.");
 		if (!this.connection || this.closing)
@@ -255,7 +247,7 @@ export class AcpBackend implements ExternalBackend {
 		const deadline = timeoutSignal(options.timeoutMs);
 		const signal = AbortSignal.any([requestSignal, deadline]);
 		if (signal.aborted) throw new AcpRefusal("ACP prompt aborted before it was sent.");
-		const turn: Turn = { controller, signal, output: new AcpOutput(this.host.saveOutput) };
+		const turn: Turn = { controller, signal, output: new AcpOutput(this.host.saveOutput), onUpdate: options.onUpdate };
 		this.active = turn;
 		// A timed-out request can still emit session-scoped updates. Keep its slot until the peer
 		// settles it so a new turn cannot receive those updates. Cancellation still closes the process.
@@ -303,6 +295,11 @@ export class AcpBackend implements ExternalBackend {
 		const turn = this.active;
 		if (!turn || turn.signal.aborted || update.sessionUpdate === "agent_thought_chunk") return;
 		turn.output.append(notification);
+		try {
+			turn.onUpdate?.(update);
+		} catch {
+			// The listener only displays progress: its failure must not end the turn.
+		}
 	}
 
 	private async requestPermission(

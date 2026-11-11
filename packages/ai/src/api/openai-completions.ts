@@ -114,8 +114,8 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				throw new Error("Stream ended without finish_reason");
 			}
 
-			// A stream that ended properly is the whole count, even from a provider that reports no usage.
-			delete output.usage.lowerBound;
+			// A reported count is whole; a stream that never reported usage keeps the lower-bound mark the first chunk set,
+			// since the provider bills for what it generated whether or not the count reached us.
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {

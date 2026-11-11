@@ -5,8 +5,60 @@
  */
 
 const SGR = /\x1b\[([0-9;:]*)m/g;
-const TOKEN = " |\\x1b\\[[0-9;:]*m|\\x1b\\]8;[^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)";
-const TAIL = new RegExp(`(?:${TOKEN})+$`);
+const ESC = "\x1b";
+const BEL = "\x07";
+
+function isSpaces(token: string): boolean {
+	return token[0] === " ";
+}
+
+function isSgrParameter(char: string): boolean {
+	return (char >= "0" && char <= "9") || char === ";" || char === ":";
+}
+
+/**
+ * Start of the token that ends at `end` (exclusive), or -1. Tokens are a space, an SGR code (`ESC [ params m`) and
+ * an OSC 8 hyperlink code (`ESC ] 8 ; ... BEL` or `... ESC \`). Each token's start is fixed by its last character,
+ * so reading tokens backwards finds the same tail as matching `(?:token)+$` from the leftmost start, in time linear
+ * in the tail instead of the whole row: rows are trimmed for every frame, so this runs thousands of times a second
+ * while scrolling.
+ */
+function tokenStart(line: string, end: number): number {
+	const last = line[end - 1];
+	if (last === " ") {
+		// A run of spaces has one style, so it is one token: rows padded to the full width cost one step.
+		let start = end - 1;
+		while (start > 0 && line[start - 1] === " ") start--;
+		return start;
+	}
+	if (last === "m") {
+		let index = end - 2;
+		while (index >= 0 && isSgrParameter(line[index] ?? "")) index--;
+		return index >= 1 && line[index] === "[" && line[index - 1] === ESC ? index - 1 : -1;
+	}
+	let bodyEnd: number;
+	if (last === BEL) bodyEnd = end - 1;
+	else if (last === "\\" && line[end - 2] === ESC) bodyEnd = end - 2;
+	else return -1;
+	const start = line.lastIndexOf(ESC, bodyEnd - 1);
+	if (start < 0 || !line.startsWith("]8;", start + 1)) return -1;
+	const body = line.slice(start + 4, bodyEnd);
+	return body.includes(BEL) || body.includes(ESC) ? -1 : start;
+}
+
+/**
+ * The tokens that end the row, in order, and where they start; no tokens when the row ends in visible text. A token
+ * is a run of spaces or one control code.
+ */
+function trailingTokens(line: string): { start: number; tokens: string[] } {
+	const tokens: string[] = [];
+	let end = line.length;
+	for (let start = tokenStart(line, end); start >= 0; start = tokenStart(line, end)) {
+		tokens.push(line.slice(start, end));
+		end = start;
+	}
+	return { start: end, tokens: tokens.reverse() };
+}
 
 /** Attributes that make a space visible. */
 interface SpaceStyle {
@@ -64,22 +116,19 @@ function scanStyle(style: SpaceStyle, text: string): void {
 
 /** Drop the plain spaces that end a row; the result paints the same cells when the row was erased first. */
 export function trimTrailingBlanks(line: string): string {
-	if (!TAIL.test(line)) return line;
-	const tailStart = TAIL.exec(line)?.index ?? line.length;
-	const tail = line.slice(tailStart);
-	if (!tail.includes(" ")) return line;
+	const { start: tailStart, tokens } = trailingTokens(line);
+	if (!tokens.some(isSpaces)) return line;
 	const style: SpaceStyle = { background: false, reverse: false, underline: false, strike: false, overline: false };
 	scanStyle(style, line.slice(0, tailStart));
-	const tokens = tail.match(new RegExp(TOKEN, "g")) ?? [];
 	let lastVisible = -1;
 	tokens.forEach((token, index) => {
-		if (token === " ") {
+		if (isSpaces(token)) {
 			if (!plain(style)) lastVisible = index;
 		} else if (token.startsWith("\x1b[")) applySgr(style, token.slice(2, -1));
 	});
 	let result = line.slice(0, tailStart);
 	tokens.forEach((token, index) => {
-		if (token !== " " || index <= lastVisible) result += token;
+		if (!isSpaces(token) || index <= lastVisible) result += token;
 	});
 	return result;
 }

@@ -26,7 +26,7 @@ Each key under `providers` is a provider ID. A built-in provider ID changes that
 
 ## Models
 
-Each `models` entry adds a model to the provider. An entry whose `id` matches an existing model replaces it.
+Each `models` entry adds a model to the provider. An entry whose `id` names a known model (the provider's own, else the built-in model of the vendor its `api` belongs to: Anthropic, OpenAI, Google, Azure, Vertex, Mistral or Bedrock; `claude-opus-5.5`, `claude-opus-5-5` and `anthropic/claude-opus-5-5` name one model) starts from that model's context window, output limit, thinking map, input types, prices, input limits and compatibility; the fields you set win. Cache lifetimes and long cache retention of a direct provider do not carry to another host: set `promptCache` and `compat.supportsLongCacheRetention` when your host honours them. The defaults listed below apply to a model Octocode does not know.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -178,7 +178,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | `supportsDeveloperRole` | boolean | `true` | Whether the provider supports the developer role instead of system. |
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts developer or system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models. |
 | `sessionAffinityFormat` | `"openai" \| "openai-nosession" \| "openrouter"` |  | Session-affinity header format. openai sends session_id and x-client-request-id; openai-nosession sends x-client-request-id; openrouter sends x-session-id. Does not affect prompt_cache_key. Default: auto-detected. |
-| `supportsLongCacheRetention` | boolean | `true` | Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models. |
+| `supportsLongCacheRetention` | boolean |  | Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models. Default: true on OpenAI's API for GPT-5.6+ in explicit cache mode and for the models OpenAI lists for 24h retention; false elsewhere. |
 | `supportsTemperature` | boolean | `true` | Whether the model accepts the temperature request field. When false, temperature is omitted. |
 | `supportsStrictMode` | boolean |  | Whether the provider supports strict JSON-schema function tools. Defaults are API-specific; generated OpenAI models enable it explicitly. |
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether to emit OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
@@ -193,7 +193,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `supportsEagerToolInputStreaming` | boolean | `true` | Whether the provider accepts per-tool eager_input_streaming. When false, the Anthropic provider omits tools[].eager_input_streaming and sends the legacy fine-grained-tool-streaming-2025-05-14 beta header for tool-enabled requests. |
-| `supportsLongCacheRetention` | boolean | `true` | Whether the provider supports Anthropic long cache retention through cache_control.ttl. |
+| `supportsLongCacheRetention` | boolean |  | Whether the provider supports Anthropic long cache retention (the 1h tier) through cache_control.ttl. Default: true on api.anthropic.com and OpenCode, whose documentation verifies the 1h tier; false for gateways (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax and others) and for a models.json model on its own host, which use the 5-minute tier unless this is set to true. |
 | `sendSessionAffinityHeaders` | boolean |  | Whether to send x-session-affinity from options.sessionId when caching is enabled. Required for providers like Fireworks that use session affinity for prompt cache routing; requests to the same replica maximize cache hits. Default: true for OpenRouter endpoints, false otherwise. |
 | `sessionAffinityFormat` | `"openrouter"` |  | Session-affinity format. openrouter sends x-session-id; when unset, sends x-session-affinity. |
 | `supportsCacheControlOnTools` | boolean | `true` | Whether the provider supports Anthropic-style cache_control markers on tool definitions. When false, cache_control is omitted from tool parameters. Some Anthropic-compatible providers, such as Fireworks, do not support this field on tools and may reject or ignore it. |

@@ -164,10 +164,16 @@ describe("hook handler fields and matchers", () => {
 		return { hooks: config.PostToolUse.flatMap((g) => g.hooks), errors };
 	};
 
-	it("reports a Claude `if` condition as unsupported and skips the hook rather than running it unfiltered", () => {
+	it("preserves a valid Claude permission rule as the hook filter", () => {
 		const { hooks, errors } = parse({ if: "Bash(git *)" });
+		expect(hooks).toMatchObject([{ command: "true", if: "Bash(git *)" }]);
+		expect(errors).toEqual([]);
+	});
+
+	it("skips an invalid Claude permission rule rather than running the hook unfiltered", () => {
+		const { hooks, errors } = parse({ if: "Bash(" });
 		expect(hooks).toEqual([]);
-		expect(errors).toContainEqual(expect.stringContaining('"if" conditions are not supported'));
+		expect(errors).toContainEqual(expect.stringContaining('"if" must be one permission rule'));
 	});
 
 	it("accepts a Claude `shell` of bash or powershell and rejects anything else", () => {

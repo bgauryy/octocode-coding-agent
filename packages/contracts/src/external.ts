@@ -10,6 +10,17 @@ export interface ExternalReply {
 	updates?: unknown[];
 	/** The reply's message id on the remote Octocode instance, when the transport reports one. */
 	remoteMessageId?: string;
+	/** The session's token totals so far, when the agent reports them with its reply (ACP's prompt response `usage`). */
+	usage?: ExternalUsage;
+}
+
+/** Token totals an external agent reports for its session; counts it leaves out are absent. */
+export interface ExternalUsage {
+	inputTokens: number;
+	outputTokens: number;
+	cachedReadTokens?: number;
+	cachedWriteTokens?: number;
+	totalTokens?: number;
 }
 
 /** One live connection to an external agent: the shape the host's `agent` `external` action drives and each transport implements. */

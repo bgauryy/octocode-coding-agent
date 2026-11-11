@@ -5,6 +5,7 @@ import { failedNext } from "../../src/octocode/subagents/report-text.ts";
 import { type ModelRef, type Refused, routeModel } from "../../src/octocode/subagents/model.ts";
 import { ProviderHealth, providerHealth } from "../../src/octocode/subagents/provider-health.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
+import { meteredBilling } from "./fake-host.ts";
 
 const parent: ModelRef = { provider: "home", id: "big", cost: { input: 10, output: 40 } };
 // Models that reason: a route's thinking level is kept as asked (a model without reasoning clamps it to off).
@@ -142,7 +143,7 @@ describe("routing and provider health (B347 P2-5)", () => {
 	});
 
 	it("planRun routes a purpose past a provider whose subagent run was refused", () => {
-		const registry = { getAvailable: () => available, getProvider: () => undefined } as never;
+		const registry = { ...meteredBilling, getAvailable: () => available, getProvider: () => undefined } as never;
 		const profiles = new Map<string, AgentProfile>();
 		const ctx = { modelRegistry: registry, model: parent as never };
 		expect(planRun(profiles, { model: "small" }, ctx).route.model).toBe("cheap/tiny:medium");
@@ -155,7 +156,7 @@ describe("routing and provider health (B347 P2-5)", () => {
 	});
 
 	it("the model listing routes as a run does after a refusal, and both say the credential was refused", () => {
-		const registry = { getAvailable: () => available, getProvider: () => undefined } as never;
+		const registry = { ...meteredBilling, getAvailable: () => available, getProvider: () => undefined } as never;
 		const scoutProfile = { name: "scout", description: "", prompt: "", model: "cheap/tiny" } as AgentProfile;
 		const profiles = new Map<string, AgentProfile>([["scout", scoutProfile]]);
 		const ctx = { modelRegistry: registry, model: parent as never };

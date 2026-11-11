@@ -63,7 +63,7 @@ export function processesCommand(options: ProcessesCommandOptions): Subcommand {
 	};
 
 	return {
-		description: "List Octocode processes, orphans and memory",
+		description: "List or stop Octocode processes and orphans",
 		argumentHint: "[stop]",
 		handler: async (args, ctx) => {
 			if (args !== "" && args !== "stop") return say(ctx, USAGE, "warning");

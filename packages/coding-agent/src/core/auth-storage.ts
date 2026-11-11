@@ -24,6 +24,7 @@ import {
 	type LockFailureState,
 } from "./auth-storage/backends.ts";
 import { detectKeychain, type KeychainBackend } from "./auth-storage/keychain.ts";
+import { keepInKeychain, keychainEntry, resolveKeychainOAuth } from "./auth-storage/keychain-oauth.ts";
 import { resolveConfigValue } from "./config-value.ts";
 
 export {
@@ -110,9 +111,14 @@ export class AuthStorage implements CredentialStore {
 		return AuthStorage.fromStorage(storage, options);
 	}
 
+	private keychain(): KeychainBackend | undefined {
+		return this.options.keychain ?? detectKeychain(process.platform);
+	}
+
 	/**
-	 * Removes the keychain entry behind `previous` when its key is our own keychain reference and `next` no longer
-	 * uses it. Failures are ignored unless `strict`: the credential change already succeeded and a leftover entry is harmless.
+	 * Removes the keychain entry behind `previous` (an API key's reference or an OAuth stub's) when it is our own
+	 * keychain reference and `next` no longer uses it. Failures are ignored unless `strict`: the credential change
+	 * already succeeded and a leftover entry is harmless.
 	 */
 	private async releaseKeychainEntry(
 		provider: string,
@@ -120,12 +126,12 @@ export class AuthStorage implements CredentialStore {
 		next?: Credential,
 		strict = false,
 	): Promise<void> {
-		if (previous?.type !== "api_key" || !previous.key?.startsWith("!")) return;
-		if (next?.type === "api_key" && next.key === previous.key) return;
-		const keychain = this.options.keychain ?? detectKeychain(process.platform);
-		if (!keychain?.isOwnReference(previous.key, provider)) return;
+		const entry = keychainEntry(provider, previous);
+		if (!entry || keychainEntry(provider, next)?.reference === entry.reference) return;
+		const keychain = this.keychain();
+		if (!keychain?.isOwnReference(entry.reference, entry.account)) return;
 		try {
-			await keychain.remove(provider);
+			await keychain.remove(entry.account);
 		} catch (error) {
 			// Leave the entry; logout must not fail because the keychain is locked or gone.
 			if (strict) throw error;
@@ -214,7 +220,7 @@ export class AuthStorage implements CredentialStore {
 	async read(provider: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		const credential = ownCredential(await this.readLatestData(options), provider);
 		options?.signal?.throwIfAborted();
-		if (credential?.type !== "api_key") return credential;
+		if (credential?.type !== "api_key") return resolveKeychainOAuth(credential);
 		if (credential.key === undefined) return credential;
 		return { ...credential, key: resolveConfigValue(credential.key, credential.env) };
 	}
@@ -239,7 +245,9 @@ export class AuthStorage implements CredentialStore {
 	): Promise<Credential | undefined> {
 		let latestData = this.readState.data;
 		let revision: string | undefined;
+		// As stored: an OAuth stub stays a stub here, and `fn` sees the credential it stands for.
 		let previous: Credential | undefined;
+		let stored: Credential | undefined;
 		const held = (state: LockFailureState): HeldCredential => {
 			if (state === "unreadable") return state;
 			try {
@@ -252,14 +260,17 @@ export class AuthStorage implements CredentialStore {
 			async (content) => {
 				const currentData = this.parseStorageData(content);
 				previous = ownCredential(currentData, provider);
-				const next = await fn(previous);
+				stored = previous;
+				const current = resolveKeychainOAuth(previous, true);
+				const next = await fn(current);
 				if (next === undefined) {
 					latestData = currentData;
 					revision = this.authPath ? getFileRevision(this.authPath) : undefined;
-					return { result: previous };
+					return { result: current };
 				}
 
-				const merged: AuthStorageData = { ...currentData, [provider]: next };
+				stored = await keepInKeychain(this.keychain(), provider, previous, next);
+				const merged: AuthStorageData = { ...currentData, [provider]: stored };
 				latestData = merged;
 				return { result: next, next: JSON.stringify(merged, null, 2) };
 			},
@@ -267,7 +278,7 @@ export class AuthStorage implements CredentialStore {
 			onFailure && ((state) => onFailure(held(state))),
 		);
 		this.updateReadState(latestData, revision);
-		if (result !== previous) await this.releaseKeychainEntry(provider, previous, result);
+		if (stored !== previous) await this.releaseKeychainEntry(provider, previous, stored);
 		return result;
 	}
 

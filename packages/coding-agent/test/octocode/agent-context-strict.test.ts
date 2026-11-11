@@ -5,7 +5,7 @@ const schema = { type: "object", properties: { a: { type: "string" } }, required
 
 describe("strictResolution", () => {
 	test("is false for a tool without constrained sampling", () => {
-		expect(strictResolution({ name: "t", description: "d", parameters: schema as never })).toBe(false);
+		expect(strictResolution({ name: "t", description: "d", parameters: schema })).toBe(false);
 	});
 
 	test("is true for a json-schema tool a strict-mode provider can send strictly", () => {

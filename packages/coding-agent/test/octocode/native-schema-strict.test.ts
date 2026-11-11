@@ -91,7 +91,7 @@ function strictViolation(name: string, description: string, parameters: Node): s
 		constrainedSampling: { type: "json_schema", strict: "require" },
 	} as unknown as Tool;
 	try {
-		const [converted] = convertTools([tool], false, false, true);
+		const [converted] = convertTools([tool], false, true);
 		return (converted as { strict?: boolean }).strict === true ? undefined : "converted without strict";
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error);

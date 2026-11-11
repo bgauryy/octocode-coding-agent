@@ -77,6 +77,12 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 		return this.settings.externalAgents === true;
 	}
 
+	setExternalAgents(enabled: boolean): void {
+		this.globalSettings.externalAgents = enabled;
+		this.markModified("externalAgents");
+		this.save();
+	}
+
 	getSessionApi(): boolean {
 		return this.settings.sessionApi !== false;
 	}

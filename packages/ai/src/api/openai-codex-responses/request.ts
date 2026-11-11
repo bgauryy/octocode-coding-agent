@@ -13,6 +13,7 @@ export { applyServiceTierPricing } from "../openai-responses-shared/service-tier
 import {
 	CODEX_TOOL_CALL_PROVIDERS,
 	DEFAULT_CODEX_BASE_URL,
+	DEFAULT_CODEX_ORIGINATOR,
 	JWT_CLAIM_PATH,
 	type OpenAICodexResponsesOptions,
 	type RequestBody,
@@ -152,8 +153,9 @@ function buildBaseCodexHeaders(
 	accountId: string,
 	token: string,
 ): Headers {
-	// Defaults first so model and caller headers can override them, matching the other providers.
-	const headers = new Headers({ originator: "pi", "User-Agent": getUserAgent() });
+	// Defaults first so model and caller headers can override them, matching the other providers. A signed-in
+	// credential carries the originator its login named (see `openaiCodexOAuth.toAuth`).
+	const headers = new Headers({ originator: DEFAULT_CODEX_ORIGINATOR, "User-Agent": getUserAgent() });
 	for (const [key, value] of Object.entries(initHeaders ?? {})) {
 		headers.set(key, value);
 	}

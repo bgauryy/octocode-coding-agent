@@ -102,7 +102,7 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 	if (!existsSync(resolvedFilePath)) return [];
 
 	const entries: FileEntry[] = [];
-	let pending = "";
+	const pending: string[] = [];
 	const fd = openSync(resolvedFilePath, "r");
 	try {
 		const decoder = new StringDecoder("utf8");
@@ -112,20 +112,22 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 			const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
 			if (bytesRead === 0) break;
 
-			pending += decoder.write(buffer.subarray(0, bytesRead));
+			const chunk = decoder.write(buffer.subarray(0, bytesRead));
 			let lineStart = 0;
-			let newlineIndex = pending.indexOf("\n", lineStart);
+			let newlineIndex = chunk.indexOf("\n", lineStart);
 			while (newlineIndex !== -1) {
-				const entry = parseSessionEntryLine(pending.slice(lineStart, newlineIndex));
+				pending.push(chunk.slice(lineStart, newlineIndex));
+				const entry = parseSessionEntryLine(pending.join(""));
+				pending.length = 0;
 				if (entry) entries.push(entry);
 				lineStart = newlineIndex + 1;
-				newlineIndex = pending.indexOf("\n", lineStart);
+				newlineIndex = chunk.indexOf("\n", lineStart);
 			}
-			pending = pending.slice(lineStart);
+			if (lineStart < chunk.length) pending.push(chunk.slice(lineStart));
 		}
 
-		pending += decoder.end();
-		const finalEntry = parseSessionEntryLine(pending);
+		pending.push(decoder.end());
+		const finalEntry = parseSessionEntryLine(pending.join(""));
 		if (finalEntry) entries.push(finalEntry);
 	} finally {
 		closeSync(fd);

@@ -21,7 +21,7 @@ Later checks, in order: read-only and isolated-tree refusals, the state-folder r
 | ---------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `manual`         | Asks for almost everything                                                                    | `OCTOCODE_PERMISSION=manual` or `--permission-mode manual`            |
 | `workspace`      | Allows work inside the repository, asks for the rest                                          | `OCTOCODE_PERMISSION=workspace` or `--permission-mode workspace`      |
-| `full` (default) | No routine asks; a few classes still ask                                                      | default; `/permissions full`                                          |
+| `full` (default) | No routine asks; a few classes still ask, and so do reads of another tool's credential store  | default; `/permissions full`                                          |
 | `bypass`         | Allows every class and ask reason, including those `full` asks about; invariants still refuse | `--dangerously-skip-permissions` or `OCTOCODE_PERMISSION=bypass` only |
 
 An invalid `OCTOCODE_PERMISSION` starts in `manual`. In a session: `/permissions manual|workspace|full`; `/permissions` shows the state; `/permissions grants` lists session grants, `/permissions grants clear` removes them, `/permissions grants clear messages` removes only external-message grants; `/permissions log` shows decisions; `/permissions plan` and `/permissions plan off` enter and leave [plan mode](#plan-mode).
@@ -33,7 +33,7 @@ An invalid `OCTOCODE_PERMISSION` starts in `manual`. In a session: `/permissions
 | A message from another process (`message.external`, [below](#external-messages))                                                                                                                                                                                                                       | asks     | asks        | allows |
 | Browser cookie access (`browser.cookies`), landing commits on the default branch of the main checkout (`worktree.merge`, [below](#worktree-merges))                                                                                                                                                    | asks     | asks        | asks   |
 
-Also asking in every mode, `full` included, and refused where nobody can be asked: source-policy asks and an agent's save of a global or pinned memory. Hook asks, provenance hits, credential-file reads and the peer-session git ask ask only in `manual` and `workspace`; in `full` they run and are recorded.
+Also asking in every mode, `full` included, and refused where nobody can be asked: source-policy asks, an agent's save of a global or pinned memory, and a read of another coding agent's credential store ([below](#credential-files)). Hook asks, provenance hits, credential-file reads and the peer-session git ask ask only in `manual` and `workspace`; in `full` they run and are recorded.
 
 ### Start mode, `bypass` and mode changes
 
@@ -55,13 +55,15 @@ flowchart LR
 | ------------------------ | ----------------------------------------------------------------------------------------- |
 | Cloud metadata addresses | `169.254.169.254`, `fd00:ec2::254`, `168.63.129.16` (or a name resolving to one): refused |
 | Credential store reads   | Ask in `manual`/`workspace`; run and recorded in `full`. Writes refused in every mode     |
+| Other agents' stores     | Reads ask in every mode, `full` included; once per store with the session answer          |
 | Browser cookies          | Ask in every mode; dialog offers "Allow all browser cookie access for this session"       |
 | Destructive shell        | Asks outside `full`; always takes a restore point. Applies to `!` commands you type       |
 | Octocode state folder    | Known writes into the Octocode home are refused                                           |
 | Reservations             | Another agent's reserved paths are refused ([below](#reservations-and-the-shell))         |
 | Provider keys            | `bash` starts without them; `bash.inheritProviderKeys` (global settings) keeps them       |
 
-- Credential store: Octocode's and Pi's `auth.json`, `mcp-auth.json`, and OS keychain print commands, read through `bash`, `powershell` or an MCP tool naming the file. A computed path is not seen.
+- Credential store: Octocode's and Pi's `auth.json`, `mcp-auth.json`, OS keychain print commands and `octocode auth print-api-key`/`print-bearer-token`, read through `bash`, `powershell` or an MCP tool naming the file. A computed path is not seen.
+- Other agents' stores: Claude Code, Codex, OpenCode and the Copilot CLI ([below](#credential-files)).
 - Destructive shell: wiping `/`, home or a system folder, `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`, forced `git push`, `rm -r` at or above the checkout root, changes under `~/.ssh`.
 - Tool output reaches the model unredacted; add a `tool_result` [hook](hooks.md) to redact.
 - `workspace` mode does not defend against code an agent hides (`python -c`, `node -e`, computed options, programs a git line names): use `manual` to review every command. Plan mode and peer reservations refuse these.
@@ -129,12 +131,23 @@ The command is read through wrappers (`env`, `timeout`, `sudo`), `git -c`, lists
 
 A shell or research-tool call that names a file holding API keys or tokens asks in `manual` and `workspace`, because what it prints enters the model context. In `full` it runs and is recorded. The check reads the paths a call spells; a path built at run time (`cat $X`, a glob) is not seen.
 
+A read of another coding agent's credential store asks in `full` too. This is a deliberate exception to "`full` asks nothing": those tokens are that program's own sign-in, and Octocode never needs to read them. In `full` the dialog offers **Allow reads of &lt;store&gt; for this session**, so each store asks once per session; `/permissions grants clear` forgets the answer. In `manual` and `workspace` every read asks, as for Octocode's own store. Only `bypass` reads them without asking.
+
 | Covered                                                                                           | Notes                                                                                                                                                                              |
 | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `auth.json` of the agent directory, the Octocode home and, when Pi's folders are a fallback, Pi's | Also the folders that hold one, and `mcp-auth.json`                                                                                                                                |
 | `models.json`                                                                                     | Only when it holds a literal `apiKey`; a `$NAME` or `!command` reference holds no secret                                                                                           |
 | Other tools' files under the home folder                                                          | `~/.aws/credentials`, `~/.config/gh/hosts.yml`, gcloud and Azure token files, `~/.docker/config.json`, `~/.kube/config`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials` |
 | Keychain read commands                                                                            | `security find-generic-password`, `secret-tool lookup` and similar                                                                                                                 |
+| Octocode's print commands                                                                         | `octocode auth print-api-key`, `octocode auth print-bearer-token`                                                                                                                  |
+
+| Another coding agent's store (asks in every mode) | Covered                                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Claude Code                                       | `~/.claude/.credentials.json` (or under `CLAUDE_CONFIG_DIR`) and its folder                            |
+| Codex                                             | `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`) and its folder                                  |
+| OpenCode                                          | `~/.local/share/opencode/auth.json` (or under `XDG_DATA_HOME`), its folder, and `opencode auth export` |
+| Copilot CLI                                       | the `~/.copilot` folder and `~/.copilot/config.json`                                                   |
+| Gemini CLI                                        | the `~/.gemini` folder and `~/.gemini/oauth_creds.json`                                                |
 
 At startup, a loose-permission or in-git-work-tree warning also covers each `auth.json` the session loads and a `models.json` with a literal key. Shell commands start without the provider keys of built-in providers and without the variables a custom provider's `apiKey` names in `models.json`; `bash.inheritProviderKeys` keeps them.
 

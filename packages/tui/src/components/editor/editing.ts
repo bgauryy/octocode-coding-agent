@@ -110,10 +110,7 @@ export function handlePaste(editor: EditorModel, pastedText: string): void {
 	const cleanText = editor.normalizeText(decodedText);
 
 	// Filter out non-printable characters except newlines
-	let filteredText = cleanText
-		.split("")
-		.filter((char) => char === "\n" || char.charCodeAt(0) >= 32)
-		.join("");
+	let filteredText = cleanText.replace(/[\x00-\x09\x0b-\x1f]/g, "");
 
 	// If pasting a file path (starts with /, ~, or .) and the character before
 	// the cursor is a word character, prepend a space for better readability

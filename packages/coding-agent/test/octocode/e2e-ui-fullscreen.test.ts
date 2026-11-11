@@ -36,6 +36,32 @@ const has = (all: string[], text: string) => all.some((row) => row.startsWith(te
 const jump = "Jump to latest message";
 
 describe("fullscreen transcript", () => {
+	it("copies literal code and opens keyboard reference actions from message source", async () => {
+		copied.length = 0;
+		t = await startUi();
+		t.script("Read [the guide](https://example.com/guide).\n\n```ts\nconst text = '**literal**';\n```");
+		await t.type("show references");
+		t.press(KEY.enter);
+		await t.until(
+			() => !t!.host.session.isStreaming && Boolean(t!.host.session.getLastAssistantText()),
+			"answer settled",
+		);
+		await t.submit("/copy code");
+		await t.until(() => copied.length === 1, "semantic code copy");
+		expect(copied[0]).toBe("const text = '**literal**';");
+		const selecting = t.host.defaultEditor.onSubmit?.("/links");
+		await t.until(async () => (await t!.text()).includes("References"), "reference picker");
+		await t.type("guide");
+		t.press(KEY.enter);
+		await t.until(async () => (await t!.text()).includes("Copy destination"), "reference actions");
+		await t.type("Copy destination");
+		t.press(KEY.enter);
+		await t.until(() => copied.length === 2, "copied destination");
+		expect(copied[1]).toBe("https://example.com/guide");
+		await t.until(async () => !(await t!.text()).includes("Copy destination"), "returned to the prompt");
+		await selecting;
+	});
+
 	it("PageUp, Ctrl+Home, wheel and Ctrl+End move the viewport; a jump hint shows while scrolled up", async () => {
 		t = await startUi();
 		await longTranscript();

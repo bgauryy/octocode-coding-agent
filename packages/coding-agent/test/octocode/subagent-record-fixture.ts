@@ -2,7 +2,7 @@ import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/oc
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakePermission, fakeHost, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 export function setup(cwd = tmp("octocode-agent-cwd-")) {
@@ -15,6 +15,7 @@ export function setup(cwd = tmp("octocode-agent-cwd-")) {
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => [],
 			find: () => undefined,
 			getCachePolicy: (_model: unknown, settings: readonly CachePreferenceLayer[] = []) =>

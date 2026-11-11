@@ -1,4 +1,4 @@
-import type { CredentialKind } from "../../core/model-runtime/catalog.ts";
+import type { ProviderKind } from "../../core/model-runtime/catalog.ts";
 import { credentialSourceLabel } from "../../core/provider-composer/types.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Catalog } from "./catalog.ts";
@@ -8,33 +8,22 @@ import { describeHealth, providerHealth } from "./provider-health.ts";
 
 type Registry = Pick<ExtensionContext, "modelRegistry">["modelRegistry"];
 
-/** Each listed provider's credential kind, resolved once; a registry that cannot say leaves the map empty. */
-export async function credentialKinds(
-	registry: Registry,
-	available: readonly ModelRef[],
-	signal?: AbortSignal,
-): Promise<ReadonlyMap<string, CredentialKind>> {
-	const kinds = new Map<string, CredentialKind>();
-	if (!registry.getCredentialKind) return kinds;
-	const getKind = registry.getCredentialKind.bind(registry);
-	await Promise.all(
-		providersOf(available).map(async (provider) => kinds.set(provider, await getKind(provider, signal))),
-	);
-	return kinds;
+/** Each listed provider's kind (`ModelRegistry.getProviderKind`); a registry that cannot say leaves the map empty. */
+export function providerKinds(registry: Registry, available: readonly ModelRef[]): ReadonlyMap<string, ProviderKind> {
+	if (!registry.getProviderKind) return new Map();
+	return new Map(providersOf(available).map((provider) => [provider, registry.getProviderKind(provider)] as const));
 }
 
-/** Where a provider's credential comes from, or undefined when the registry does not say; never a value. */
+/** The provider's kind and where its credential comes from, or undefined when the registry says neither; never a value. */
 function credentialText(
 	registry: Registry,
 	provider: string,
-	kinds: ReadonlyMap<string, CredentialKind> | undefined,
+	kinds: ReadonlyMap<string, ProviderKind> | undefined,
 ): string | undefined {
 	const auth = registry.getProviderAuthStatus?.(provider);
-	if (!auth || (!auth.label && !auth.source)) return undefined;
-	if (auth.source === "runtime") return "--api-key, this session only (tasks cannot use it)";
-	// A plain key needs no word: "subscription" and "account" are what the agent must not mistake for a metered key.
-	const kind = kinds?.get(provider);
-	return `${kind && kind !== "key" ? `${kind} · ` : ""}${credentialSourceLabel(auth)}`;
+	if (auth?.source === "runtime") return "--api-key, this session only (tasks cannot use it)";
+	const source = auth && (auth.label || auth.source) ? credentialSourceLabel(auth) : undefined;
+	return [kinds?.get(provider), source].filter(Boolean).join(" · ") || undefined;
 }
 
 const providersOf = (available: readonly ModelRef[]): string[] =>
@@ -47,12 +36,12 @@ const providersOf = (available: readonly ModelRef[]): string[] =>
 export function providerRows(
 	registry: Registry,
 	available: readonly ModelRef[],
-	kinds?: ReadonlyMap<string, CredentialKind>,
+	kinds?: ReadonlyMap<string, ProviderKind>,
 ): string {
 	const providers = providersOf(available);
 	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	return [
-		"Providers (credential source; last result):",
+		"Providers (kind · credential source; last result):",
 		...providers.map((provider) => {
 			const from = credentialText(registry, provider, kinds);
 			return `  ${provider}${from ? ` · ${from}` : ""}${describeHealth(providerHealth.get(provider))}`;
@@ -70,13 +59,13 @@ export function providerSummary(
 	available: readonly ModelRef[],
 	catalog: Catalog | undefined,
 	matched?: readonly ModelRef[],
-	kinds?: ReadonlyMap<string, CredentialKind>,
+	kinds?: ReadonlyMap<string, ProviderKind>,
 ): string {
 	const providers = providersOf(available);
 	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	const priced = (model: ModelRef) => `${model.provider}/${model.id} (${priceText(modelCost(model, catalog))})`;
 	return [
-		"Providers (credential source; last result; models that can run a task; cheapest and most capable of them, price per million tokens in/out):",
+		"Providers (kind · credential source; last result; models that can run a task; cheapest and most capable of them, price per million tokens in/out):",
 		...providers.map((provider) => {
 			const own = available.filter((model) => model.provider === provider);
 			const runnable = own.filter((model) => canRunTask(model, catalog));

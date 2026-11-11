@@ -115,7 +115,7 @@ describe("prompt", () => {
 		const without = octocodePrompt({ ...base, canReadLocal: false, canAsk: false });
 		expect(without).not.toContain("read_file");
 		expect(without).not.toContain("askUser");
-		expect(without).toContain("Ask the user before acting");
+		expect(without).toContain("Ask the user only");
 	});
 
 	it("hands results back without polling, choosing report, message or doc", () => {
@@ -213,16 +213,16 @@ describe("prompt", () => {
 			"system's architect",
 		])
 			expect(reader).not.toContain(rule);
-		expect(reader).toContain("trace the symptom to its root cause");
+		expect(reader).toContain("Trace bugs to a cause their owner can fix");
 		const writer = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false });
 		expect(writer).not.toContain("do not modify repository source");
 		expect(writer).toContain("read source you will edit with `read_file`");
 		for (const rule of [
 			"Make the smallest complete change",
 			"Never weaken or delete tests",
-			"Fix a behavior in the module that owns it",
-			"No special cases or one-call-site patches fitted to the observed input",
-			"trace the symptom to its root cause",
+			"Fix behavior in its owner",
+			"Avoid input-specific patches",
+			"Trace bugs to a cause their owner can fix",
 			// "Fix causes" is the architect rule's own point; this line adds the blocker duty.
 			"Report blockers without suppressing errors",
 		])
@@ -305,29 +305,29 @@ describe("prompt", () => {
 			const prompt = octocodePrompt(input);
 			expect(
 				prompt.match(
-					/(Read the code you change and its callers first|For code questions, read the code you rely on and its callers)/g,
+					/(Read the implementation, callers and tests before changing behavior|For code questions, read the code you rely on and its callers)/g,
 				),
 			).toHaveLength(1);
 			expect(prompt.match(/smallest complete change|[Ii]nvestigate (and report|without edits)/g)).toHaveLength(1);
-			expect(prompt.match(/test the likely cause against its strongest rival/g)).toHaveLength(1);
+			expect(prompt.match(/test unclear causes against their strongest rival/g)).toHaveLength(1);
 			// The proving check: a writer names it before acting and reruns it after its last edit; a read-only agent runs the deciding one.
 			expect(prompt).toContain(
-				"readOnly" in input && input.readOnly ? "run the deciding check" : "run the check that proves the result",
+				"readOnly" in input && input.readOnly
+					? "run the deciding check"
+					: "check each requested result using the runner",
 			);
 			// One definition per protocol, in the main session's policy; a child's report contract and role own its output.
 			const protocols = input.canDelegate ? 1 : 0;
-			expect(prompt.match(/- Be brief, to the user and in messages: lead with the result/g) ?? []).toHaveLength(
-				protocols,
-			);
-			expect(prompt.match(/Send an update only when it changes what the user knows/g) ?? []).toHaveLength(protocols);
+			expect(prompt.match(/- Lead with the result, without filler/g) ?? []).toHaveLength(protocols);
+			expect(prompt.match(/Update only for a finding/g) ?? []).toHaveLength(protocols);
 			// Every role's evidence rule owns marking what was not verified; the protocol does not repeat it.
 			expect(prompt).not.toContain("Say what you verified and what you did not");
 			expect(prompt.match(/mark what you did not verify/g) ?? []).toHaveLength(1);
 			expect(prompt.match(/Pick the form by the data's shape/g) ?? []).toHaveLength(protocols);
-			expect(prompt.match(/A finding gives location, trigger, impact, cause and fix/g) ?? []).toHaveLength(protocols);
-			expect(
-				prompt.match(/A blocker gives the situation, evidence, your assessment and what you need from whom\./g) ?? [],
-			).toHaveLength(protocols);
+			expect(prompt.match(/Findings give location, trigger, impact, cause and fix/g) ?? []).toHaveLength(protocols);
+			expect(prompt.match(/Blockers give evidence, assessment and what is needed from whom\./g) ?? []).toHaveLength(
+				protocols,
+			);
 		}
 		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
 		expect(reader).toContain("For code questions, read the code you rely on and its callers before concluding");
@@ -345,28 +345,28 @@ describe("prompt", () => {
 		expect(child).toContain("checkpoint long tasks there");
 		for (const prompt of [child, root]) {
 			// The main session leads with the result; the report contract owns a child's status word, so a child has no opening rule.
-			expect(
-				prompt.match(/- (Be brief, to the user and in messages: lead with the result|Match detail to the task)/g) ?? [],
-			).toHaveLength(prompt === root ? 1 : 0);
+			expect(prompt.match(/- (Lead with the result, without filler|Match detail to the task)/g) ?? []).toHaveLength(
+				prompt === root ? 1 : 0,
+			);
 			// Conditions, not templates: a reason when the step is not obvious, a label when a claim is not verified.
-			expect(prompt.match(/When a step's reason would not be obvious( to the user)? \(a deletion/g)).toHaveLength(1);
+			expect(prompt.match(/Explain non-obvious steps \(deletions/g)).toHaveLength(1);
 			expect(prompt.match(/mark what you did not verify\./g)).toHaveLength(1);
 			expect(prompt.match(/Cite the evidence you read or ran/g)).toHaveLength(1);
 			expect(prompt).toContain("Never invent a name, path, API, version, tool parameter or result;");
 		}
-		expect(child).toContain("(a deletion, a costly run, a change of plan), state it in one line in your report.");
-		expect(root).toContain("(a deletion, a costly run, a change of plan), state it in one line.");
+		expect(child).toContain("(deletions, costly runs, plan changes) in one line in your report.");
+		expect(root).toContain("(deletions, costly runs, plan changes) in one line.");
 		// A subagent works to its task contract; the main session to the user's request.
 		expect(
 			child.match(/Work until the Definition of Done \(the result and checks your task asks for\) or a blocker/g),
 		).toHaveLength(1);
 		expect(root).toContain(
-			"- Keep going until the request is done and checked, or you are blocked. Take the next unblocked step (verify, integrate, file follow-ups, close items) instead of offering it or asking whether to continue; end a turn only when the next step needs the user, a running child or job, or a peer session you messaged, and say which. A user message about the current task adjusts it; answer an unrelated one and continue.",
+			"- Continue until done and checked or blocked. Take the next available step: verify, integrate, file follow-ups, close items. End a turn only when it needs the user, a running child/job or a peer you messaged; say which. A related user message adjusts the task; answer unrelated messages and continue.",
 		);
 		expect(child).not.toContain("end a turn only when the next step needs the user");
 		// The team's status and the summary go to the user; a child's report contract already asks for verification.
 		expect(root).toContain(
-			"- While agents, jobs or items you started are open, end a reply with a status table (agent or job, item, state) only if their state changed since your last reply. When the work closes in a reply longer than one screen, end with a TL;DR of 2 to 4 lines: what changed, checks and results, the current state and next step; a shorter reply's first line is its summary.",
+			"- End with an agent/job, item, state table only when your open work changes state. Over one screen, close with a 2–4 line TL;DR: changes, checks, state, next step.",
 		);
 		expect(child).not.toContain("TL;DR");
 		// The backlog tool owns closing items and coordinate owns locks; the close-out names only what the session started.
@@ -374,10 +374,10 @@ describe("prompt", () => {
 		// A decision the user must make closes with askUser, not a question after the TL;DR: the askUser description owns
 		// that rule ("instead of ending a reply or report with a question"); the policy names the tool only for a missing referent.
 		expect(root).toContain(
-			"Ask with askUser before acting only when tools cannot settle an unknown that is irreversible, costs money or changes scope",
+			"Ask with askUser only when tools cannot resolve an unknown involving irreversibility, money or scope",
 		);
 		expect(child).toContain(
-			"Raise it, as `<delegation>` says, before acting only when tools cannot settle an unknown that is irreversible, costs money or changes scope",
+			"Raise it under `<delegation>` only when tools cannot resolve an unknown involving irreversibility, money or scope",
 		);
 	});
 
@@ -438,11 +438,11 @@ describe("prompt", () => {
 			canSave: true,
 		});
 		const writerOnly = [
-			"before adding a dependency the request or project instructions do not allow, ask",
-			"Leave the code clean",
-			"prefer an established solution (an existing dependency, the standard library, a well-known package) over hand-rolled code",
-			"comment only what the code cannot say (a reason, a constraint)",
-			"Comments and project docs state current behavior, never dates, item ids or evidence.",
+			"before adding an unauthorized dependency",
+			"Remove your debug output",
+			"Prefer existing dependencies, standard APIs or established packages",
+			"Comments explain reasons or constraints",
+			"comments and docs state current behavior, without dates, item ids or evidence.",
 		];
 		for (const prompt of [root, writer]) for (const rule of writerOnly) expect(prompt).toContain(rule);
 		for (const rule of writerOnly) expect(reader).not.toContain(rule);
@@ -558,9 +558,7 @@ describe("prompt", () => {
 			expect(sections.safety).toContain(cleanup);
 			expect(sections.safety).toContain(ask);
 			expect(sections.safety).not.toMatch(/\(deletion, /);
-			expect(sections.work).toContain(
-				"Leave the code clean: remove your debug output, unused code and temporary files;",
-			);
+			expect(sections.work).toContain("Remove your debug output, unused code and temporary files.");
 			expect(sections.work).not.toContain(cleanup);
 			expect(octocodePrompt({ research: undefined, profiles: [], ...input }).split(cleanup)).toHaveLength(2);
 		}
@@ -569,11 +567,9 @@ describe("prompt", () => {
 	it("bounds a child's cleanup by its assigned area and sends the main session's wider cleanup to proposals", () => {
 		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
-		expect(writer).toContain(
-			"inside the blast radius within your assigned area; report anything outside it instead of changing it",
-		);
+		expect(writer).toContain("in scope; report issues outside your assignment");
 		expect(writer).not.toContain("propose wider cleanups");
-		expect(root).toContain("inside the blast radius; propose wider cleanups.");
+		expect(root).toContain("in scope; propose wider cleanups.");
 		// The implementer's role keeps the area limit the policy now defers to.
 		expect(role("implementer")).toContain("Stay within the assigned area");
 	});
@@ -598,7 +594,7 @@ describe("prompt", () => {
 	});
 
 	it("shows the testing rule to writers and the reviewer, not to read-only roles that never write tests", () => {
-		const rule = "Tests drive the public entry point";
+		const rule = "Test public behavior";
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(rule);
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toContain(rule);
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true })).not.toContain(
@@ -613,7 +609,7 @@ describe("prompt", () => {
 		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
 		// The main session's policy owns the shape; a child's role (the reviewer) owns its severity and confirmation rules.
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
-		expect(root).toContain("A finding gives location, trigger, impact, cause and fix, most severe first.");
+		expect(root).toContain("Findings give location, trigger, impact, cause and fix, worst first.");
 		expect(reader).not.toContain("A finding gives location");
 		expect(role("reviewer")).toContain("Rate each finding critical, high, medium or low");
 		expect(role("reviewer")).toContain("Mark it confirmed only when evidence shows");

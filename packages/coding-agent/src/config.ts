@@ -232,6 +232,20 @@ export function getLegacyConfigDirs(agentDir = getAgentDir()): string[] {
 	return [join(homedir(), ".pi", "agent"), join(homedir(), ".pi")];
 }
 
+/**
+ * The Octocode Pi extension's folders, `~/.octocode/agent` then `~/.octocode`: their Pi-format `models.json` and
+ * `auth.json` back Octocode's own, read only. Nothing else is read there. Same isolation rule as Pi's roots.
+ */
+export function getLegacyOctocodeDirs(agentDir = getAgentDir()): string[] {
+	if (getLegacyConfigDirs(agentDir).length === 0) return [];
+	return [join(homedir(), CONFIG_DIR_NAME, "agent"), join(homedir(), CONFIG_DIR_NAME)];
+}
+
+/** Read-only folders whose `models.json` and `auth.json` back Octocode's own, in precedence order. */
+export function getLegacyProviderDirs(agentDir = getAgentDir()): string[] {
+	return [...getLegacyOctocodeDirs(agentDir), ...getLegacyConfigDirs(agentDir)];
+}
+
 export function getCustomThemesDir(): string {
 	return join(getAgentDir(), "themes");
 }

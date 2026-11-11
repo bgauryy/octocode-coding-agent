@@ -1,7 +1,8 @@
 /** Immutable, credential-blind models.json snapshot. */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { ProviderCompatSchema } from "@octocodeai/octocode-ai/providers/compat-schema";
 import {
 	ModelCostSchema,
@@ -13,7 +14,7 @@ import {
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
-import { getModelsPath } from "../config.ts";
+import { getLegacyOctocodeDirs, getModelsPath } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { providerSourceGate } from "./provider-sources/gate.ts";
 import { stripJsonComments } from "../../../common/src/json.ts";
@@ -22,6 +23,7 @@ import { stripBom } from "../../../common/src/text.ts";
 import { urlCredentialProblem } from "../../../common/src/url-credentials.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { modelsJsonWarnings, type ModelsJsonFieldNames } from "./model-config/warnings.ts";
 
 const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
 const SamplingParamsByThinkingLevelSchema = Type.Object(
@@ -142,6 +144,13 @@ export const ModelsJsonSchemas = {
 
 const validateModelsConfig = Compile(ModelsConfigSchema);
 
+const FIELD_NAMES: ModelsJsonFieldNames = {
+	root: Object.keys(ModelsConfigSchema.properties),
+	provider: Object.keys(ProviderConfigSchema.properties),
+	model: Object.keys(ModelDefinitionSchema.properties),
+	modelOverride: Object.keys(ModelOverrideSchema.properties),
+};
+
 export type ModelsJsonModel = Static<typeof ModelDefinitionSchema>;
 export type ModelsJsonModelOverride = Static<typeof ModelOverrideSchema>;
 export type ModelsJsonProvider = Static<typeof ProviderConfigSchema>;
@@ -173,21 +182,43 @@ function deepFreeze<T>(value: T): T {
 	return Object.freeze(value);
 }
 
+/**
+ * Where a JSON parse failed, without the text around it: the engine's message quotes the file (`Unexpected token 's',
+ * "sk-…" is not valid JSON`), and the file holds keys.
+ */
+function jsonErrorLocation(error: unknown): string {
+	const match = /at position (\d+)(?: \(line (\d+) column (\d+)\))?/.exec(errorMessage(error));
+	if (!match) return "invalid JSON";
+	return match[2] ? `invalid JSON at line ${match[2]}, column ${match[3]}` : `invalid JSON at position ${match[1]}`;
+}
+
 /** One immutable load of models.json. */
 export class ModelConfig {
 	private readonly providers: ReadonlyMap<string, ModelsJsonProvider>;
 	private readonly error: string | undefined;
+	private readonly warnings: readonly string[];
 
-	private constructor(providers: ReadonlyMap<string, ModelsJsonProvider>, error?: string) {
+	private constructor(
+		providers: ReadonlyMap<string, ModelsJsonProvider>,
+		error?: string,
+		warnings: readonly string[] = [],
+	) {
 		this.providers = providers;
 		this.error = error;
+		this.warnings = warnings;
 	}
 
 	static async load(modelsJsonPath: string | undefined): Promise<ModelConfig> {
 		if (!modelsJsonPath) return new ModelConfig(new Map());
 		const paths = [modelsJsonPath];
 		if (resolve(normalizePath(modelsJsonPath)) === resolve(getModelsPath())) {
-			// Octocode's file first, then Pi's: the first definition of a provider wins.
+			// Octocode's file first, then the Octocode Pi extension's legacy folders, then Pi's: the first definition of a
+			// provider wins.
+			if (providerSourceGate.isEnabled("pi")) {
+				for (const dir of getLegacyOctocodeDirs(dirname(getModelsPath()))) {
+					if (existsSync(join(dir, "models.json"))) paths.push(join(dir, "models.json"));
+				}
+			}
 			const input = discoveryInput({
 				cwd: process.cwd(),
 				agentDir: dirname(getModelsPath()),
@@ -200,14 +231,16 @@ export class ModelConfig {
 		}
 		const providers = new Map<string, ModelsJsonProvider>();
 		const errors: string[] = [];
+		const warnings: string[] = [];
 		for (const file of paths) {
 			const config = await ModelConfig.loadFile(file);
 			if (config.error) errors.push(config.error);
+			warnings.push(...config.warnings);
 			for (const [id, provider] of config.providers) {
 				if (!providers.has(id)) providers.set(id, provider);
 			}
 		}
-		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined);
+		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined, warnings);
 	}
 
 	/** One file alone: unlike `load`, Octocode's own file is not merged with Pi's, so its providers are its own. */
@@ -225,7 +258,7 @@ export class ModelConfig {
 		try {
 			parsed = JSON.parse(stripJsonComments(stripBom(content)));
 		} catch (error) {
-			return new ModelConfig(new Map(), `Failed to parse models.json: ${errorMessage(error)}\n\nFile: ${path}`);
+			return new ModelConfig(new Map(), `Failed to parse models.json: ${jsonErrorLocation(error)}\n\nFile: ${path}`);
 		}
 
 		if (!validateModelsConfig.Check(parsed)) {
@@ -249,7 +282,7 @@ export class ModelConfig {
 		for (const [providerId, provider] of Object.entries(parsed.providers)) {
 			providers.set(providerId, deepFreeze(structuredClone(provider)));
 		}
-		return new ModelConfig(providers);
+		return new ModelConfig(providers, undefined, modelsJsonWarnings(parsed, path, FIELD_NAMES));
 	}
 
 	getProvider(providerId: string): ModelsJsonProvider | undefined {
@@ -262,5 +295,13 @@ export class ModelConfig {
 
 	getError(): string | undefined {
 		return this.error;
+	}
+
+	/**
+	 * What the files load despite: fields the schema does not know (a misspelled `apikey`) and `api` values no built-in
+	 * API serves. Each names its file and provider. Unlike `getError`, nothing is dropped.
+	 */
+	getWarnings(): readonly string[] {
+		return this.warnings;
 	}
 }

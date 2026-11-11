@@ -14,6 +14,8 @@ if (typeof process !== "undefined" && (process.versions?.node || process.version
 	});
 }
 
+import { DEFAULT_CODEX_ORIGINATOR } from "../../api/openai-codex-responses/types.ts";
+import { OPENAI_CODEX_LEGACY_PLAN } from "../../providers/plans.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { LoginOptions, OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { startOAuthCallbackServer, waitForCallbackOrManualInput, parseAuthorizationInput } from "./callback-server.ts";
@@ -32,6 +34,18 @@ const REDIRECT_URI = "http://localhost:1455/auth/callback";
 const OPENAI_CODEX_BROWSER_LOGIN_METHOD = "browser";
 const OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD = "device_code";
 const SCOPE = "openid profile email offline_access";
+/**
+ * The originator a login names, sent on the authorize URL and kept on the credential for every request. With no name
+ * from the app it is Octocode's own, never another client's.
+ */
+function loginOriginator(options?: LoginOptions): string {
+	return options?.agentName?.trim() || DEFAULT_CODEX_ORIGINATOR;
+}
+
+/** Keeps the login's originator on the credential, so requests and refreshes name the same client. */
+function withOriginator(credential: OAuthCredential, originator: unknown): OAuthCredential {
+	return typeof originator === "string" && originator ? { ...credential, originator } : credential;
+}
 
 function getCallbackHost(): string {
 	return getProviderEnvValue("OCTOCODE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
@@ -44,9 +58,7 @@ function createState(): string {
 	return _randomBytes(16).toString("hex");
 }
 
-async function createAuthorizationFlow(
-	originator: string = "pi",
-): Promise<{ verifier: string; state: string; url: string }> {
+async function createAuthorizationFlow(originator: string): Promise<{ verifier: string; state: string; url: string }> {
 	const { verifier, challenge } = await generatePKCE();
 	const state = createState();
 
@@ -69,7 +81,7 @@ async function loginOpenAICodex(
 	interaction: ProviderAuthInteraction,
 	options?: LoginOptions,
 ): Promise<OAuthCredential> {
-	const { verifier, state, url } = await createAuthorizationFlow(options?.agentName);
+	const { verifier, state, url } = await createAuthorizationFlow(loginOriginator(options));
 	// Port 1455 is shared with the Codex CLI; when it is taken, fall back to the pasted redirect URL.
 	const callback = await startOAuthCallbackServer({
 		providerName: "OpenAI",
@@ -116,10 +128,13 @@ async function refreshOpenAICodexToken(refreshToken: string, signal: AbortSignal
 }
 
 export const openaiCodexOAuth: OAuthAuth = {
-	name: "OpenAI (ChatGPT Plus/Pro)",
+	name: "OpenAI Codex (legacy, deprecated)",
 	isSubscription: true,
 
 	async login(interaction, options) {
+		const { deprecated, terms } = OPENAI_CODEX_LEGACY_PLAN;
+		if (deprecated)
+			interaction.notify({ type: "info", message: deprecated, links: [{ url: terms, label: "Sign in with ChatGPT" }] });
 		const method = await interaction.prompt({
 			type: "select",
 			message: "Select OpenAI Codex login method:",
@@ -130,18 +145,23 @@ export const openaiCodexOAuth: OAuthAuth = {
 		});
 
 		if (method === OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD) {
-			return loginOpenAICodexDeviceCode(interaction);
+			return withOriginator(await loginOpenAICodexDeviceCode(interaction), loginOriginator(options));
 		}
 		if (method !== OPENAI_CODEX_BROWSER_LOGIN_METHOD) {
 			throw new Error(`Unknown OpenAI Codex login method: ${method}`);
 		}
 
-		return loginOpenAICodex(interaction, options);
+		return withOriginator(await loginOpenAICodex(interaction, options), loginOriginator(options));
 	},
 
-	refresh: (credential, signal) => refreshOpenAICodexToken(credential.refresh, signal),
+	refresh: async (credential, signal) =>
+		withOriginator(await refreshOpenAICodexToken(credential.refresh, signal), credential.originator),
 
 	async toAuth(credential) {
-		return { apiKey: credential.access };
+		const originator = credential.originator;
+		return {
+			apiKey: credential.access,
+			...(typeof originator === "string" && originator ? { headers: { originator } } : {}),
+		};
 	},
 };

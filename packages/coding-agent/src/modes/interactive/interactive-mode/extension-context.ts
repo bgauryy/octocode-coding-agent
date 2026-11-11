@@ -23,6 +23,7 @@ type ExtensionContextHost = Pick<
 	| "defaultEditor"
 	| "defaultWorkingMessage"
 	| "editor"
+	| "editorChangeListeners"
 	| "editorComponentFactory"
 	| "keybindings"
 	| "restoreQueuedMessagesToEditor"
@@ -148,6 +149,11 @@ export function createExtensionUIContext(host: ExtensionContextHost): ExtensionU
 			host.autocompleteProviderWrappers.push(factory);
 			host.setupAutocompleteProvider();
 		},
+		onEditorChange: (handler) => {
+			host.editorChangeListeners.add(handler);
+			return () => host.editorChangeListeners.delete(handler);
+		},
+		setEditorSuggestion: (text) => host.editor.setInlineSuggestion?.(text),
 		setEditorComponent: (factory) => host.setCustomEditorComponent(factory),
 		getEditorComponent: () => host.editorComponentFactory,
 		get theme() {

@@ -10,6 +10,7 @@ import {
 	shouldSubmitOnBackslashEnter,
 	submitValue,
 } from "./editing.ts";
+import { acceptGhost } from "./ghost.ts";
 import { isOnFirstVisualLine, isOnLastVisualLine, navigateHistory } from "./history.ts";
 import {
 	deleteToEndOfLine,
@@ -207,6 +208,17 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		moveToLineStart(editor);
 		return;
 	}
+	// Right or End at the end of the text accepts the ghost text; word-right accepts its next word.
+	const accept = kb.matches(data, "tui.editor.cursorWordRight")
+		? "word"
+		: kb.matches(data, "tui.editor.cursorLineEnd") || kb.matches(data, "tui.editor.cursorRight")
+			? "all"
+			: undefined;
+	if (accept && acceptGhost(editor, accept)) {
+		editor.autocomplete.cancelAutocomplete();
+		return;
+	}
+
 	if (kb.matches(data, "tui.editor.cursorLineEnd")) {
 		moveToLineEnd(editor);
 		return;

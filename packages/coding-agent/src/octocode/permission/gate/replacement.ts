@@ -12,7 +12,8 @@ import type { PrepareReplacement } from "../ask/types.ts";
 import type { GateVerdict } from "../judge.ts";
 import type { PermissionRequest } from "../request.ts";
 import type { AllowedSource, CheckContext } from "../provenance/ignorable.ts";
-import { credentialReason, credentialRead } from "../credential-store.ts";
+import { credentialAsk, credentialHit } from "../credential-store.ts";
+import { isGranted } from "../provenance/grant.ts";
 import { classify } from "./classify.ts";
 
 /** What validates and re-checks a command a user's answer replaced (`Permission.checkWithReplacement`). */
@@ -75,21 +76,22 @@ export function prepareReplacement(deps: ReplacementDeps): PrepareReplacement {
 		const candidateHit = provenance.check(candidate, ctx, allowedSource);
 		const nextInvocation = captureToolInvocation(candidate.toolCallId, candidate.toolName, validated, active);
 		if (!nextInvocation) throw new Error("Cannot capture replacement invocation");
-		const credential = credentialRead(candidate.toolName, validated, ctx.cwd);
+		const credential = credentialAsk(credentialHit(candidate.toolName, validated, ctx.cwd), (grant) =>
+			isGranted(permission, grant),
+		);
 		const request: PermissionRequest = {
 			...classified,
 			invocation: nextInvocation,
 			signal: ctx.signal,
-			...(candidateHit || prior?.ask || credential !== undefined
+			...(candidateHit || prior?.ask || credential
 				? {
 						reasons: [
 							...(candidateHit ? ["provenance" as const] : []),
 							...(prior?.ask ? ["hook.ask" as const] : []),
-							...(credential === undefined ? [] : ["credential.read" as const]),
+							...(credential?.reasons ?? []),
 						],
-						reason: [candidateHit?.why, prior?.ask, credential === undefined ? undefined : credentialReason(credential)]
-							.filter(Boolean)
-							.join("\n"),
+						reason: [candidateHit?.why, prior?.ask, credential?.reason].filter(Boolean).join("\n"),
+						...(!candidateHit && credential?.grant ? { sourceGrant: credential.grant } : {}),
 					}
 				: {}),
 		};

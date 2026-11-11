@@ -13,5 +13,7 @@ export function leanPromptSections(input: {
 }): {
 	lean: string;
 } {
-	return { lean: renderInstruction("sections/lean.md", { ...input, agentTool: input.agentTool !== false }) };
+	return {
+		lean: renderInstruction("sections/lean.md", { ...input, lean: true, agentTool: input.agentTool !== false }),
+	};
 }

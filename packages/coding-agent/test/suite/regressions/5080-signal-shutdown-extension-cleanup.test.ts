@@ -20,7 +20,7 @@ type ShutdownThis = {
 	isShuttingDown: boolean;
 	unregisterSignalHandlers: () => void;
 	runtimeHost: { dispose: () => Promise<void> };
-	ui: { terminal: { drainInput: (ms: number) => Promise<void> } };
+	ui: { terminal: { drainInput: (ms: number) => Promise<void>; drainOutput?: () => Promise<boolean> } };
 	themeController: { disableAutoSync: () => void };
 	stop: () => void;
 	sessionManager: SessionManager;
@@ -106,6 +106,26 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 		for (const dir of tempDirs.splice(0)) {
 			rmSync(dir, { recursive: true, force: true });
 		}
+	});
+
+	test.each([false, true])("flushes queued terminal output before explicit exit; signal: %s", async (fromSignal) => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new ProcessExitError();
+		});
+		const context = createContext([]);
+		let resolve!: (value: boolean) => void;
+		context.ui.terminal.drainOutput = vi.fn(
+			() =>
+				new Promise<boolean>((done) => {
+					resolve = done;
+				}),
+		);
+		const pending = callShutdown(context, { fromSignal });
+		await vi.waitFor(() => expect(context.ui.terminal.drainOutput).toHaveBeenCalledOnce());
+		expect(exit).not.toHaveBeenCalled();
+		resolve(true);
+		await pending;
+		expect(exit).toHaveBeenCalledWith(0);
 	});
 
 	test("signal-triggered shutdown emits session_shutdown before terminal writes", async () => {

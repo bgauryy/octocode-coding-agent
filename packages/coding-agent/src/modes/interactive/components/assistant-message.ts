@@ -18,6 +18,8 @@ import { normalizeApplicationMessage } from "../../../core/application/normalize
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
+import { LongResponse } from "./long-response.ts";
+import { streamingMarkdownTheme } from "./streaming-highlight.ts";
 import { Osc133ZoneMarker } from "./osc133-zone.ts";
 import {
 	ContentAttachmentComponent,
@@ -58,6 +60,9 @@ export class AssistantMessageComponent extends Container {
 	private readonly markdown = new Map<string, { component: Markdown; text: string }>();
 	private readonly attachments = new Map<string, ContentAttachmentComponent>();
 	private readonly fullContent = new FullContentReader();
+	private expanded = false;
+	private readonly responseOverrides = new Map<string, boolean>();
+	private readonly responses: LongResponse[] = [];
 	private hasToolCalls = false;
 	private isStreaming = false;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
@@ -86,7 +91,6 @@ export class AssistantMessageComponent extends Container {
 		this.markdownTransformers = markdownTransformers;
 		this.contentOptions = contentOptions;
 
-		// Container for text/thinking content
 		this.contentContainer = new Container();
 		this.addChild(this.contentContainer);
 
@@ -140,6 +144,9 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	setExpanded(expanded: boolean): void {
+		this.expanded = expanded;
+		this.responseOverrides.clear();
+		for (const response of this.responses) response.setExpanded(expanded);
 		for (const tool of this.tools.values()) tool.setExpanded(expanded);
 	}
 
@@ -164,9 +171,10 @@ export class AssistantMessageComponent extends Container {
 					text,
 					this.outputPad,
 					0,
-					this.markdownTheme,
+					this.isStreaming ? streamingMarkdownTheme(this.markdownTheme) : this.markdownTheme,
 					thinking ? { color: (value: string) => theme.fg("thinkingText", value), italic: true } : undefined,
 					{
+						cwd: this.contentOptions.cwd,
 						transform: createMarkdownTransform(
 							thinking ? "assistant-thinking" : "assistant",
 							this.isStreaming,
@@ -249,6 +257,7 @@ export class AssistantMessageComponent extends Container {
 		});
 
 		this.contentContainer.clear();
+		this.responses.length = 0;
 		this.liveLabel = undefined;
 
 		const hasVisibleContent = blocks.some((c) => c.type !== "toolCall" && (c.type !== "text" || c.text.trim()));
@@ -264,7 +273,15 @@ export class AssistantMessageComponent extends Container {
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const text = contentText(content, this.contentOptions.readAsset).trim();
-				this.contentContainer.addChild(this.markdownBlock(content.id, text));
+				const response = new LongResponse(
+					this.markdownBlock(content.id, text),
+					this.responseOverrides.get(content.id) ?? this.expanded,
+					this.mouseHint,
+					(expanded) => this.responseOverrides.set(content.id, expanded),
+					isStreaming,
+				);
+				this.responses.push(response);
+				this.contentContainer.addChild(response);
 				for (const annotation of content.annotations ?? []) {
 					const source = [annotation.title, annotation.url ?? annotation.fileId ?? annotation.text]
 						.filter(Boolean)

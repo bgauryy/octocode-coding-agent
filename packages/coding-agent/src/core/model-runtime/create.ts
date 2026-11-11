@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
 	InMemoryModelsStore,
@@ -7,7 +8,8 @@ import {
 } from "@octocodeai/octocode-ai";
 import * as builtinProviderCatalog from "@octocodeai/octocode-ai/providers/all";
 import { personalizeOpenRouterCatalog } from "@octocodeai/octocode-ai/providers/openrouter";
-import { getAgentDir, getLegacyConfigDirs } from "../../config.ts";
+import { setUserAgentVersion } from "@octocodeai/octocode-ai/utils/user-agent";
+import { getAgentDir, getLegacyProviderDirs, VERSION } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { AuthStorage as DefaultAuthStorage } from "../auth-storage.ts";
 import { PiFallbackCredentialStore } from "../auth-storage/pi-fallback.ts";
@@ -34,27 +36,66 @@ export interface ModelRuntimeParts {
 export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions): Promise<ModelRuntimeParts> {
 	// Every session of every mode builds its runtime here, before the first provider call can fail with a credential in its text.
 	installSecretRedaction();
-	const credentials = new RuntimeCredentials(options.credentials ?? defaultCredentialStore(options.authPath));
+	// Every provider request names this version in its User-Agent.
+	setUserAgentVersion(VERSION);
 	const modelsPath =
 		options.modelsPath === null ? undefined : (options.modelsPath ?? join(getAgentDir(), "models.json"));
+	const providers = createBuiltinProviders(options.catalogBaseUrl);
+	const credentials = new RuntimeCredentials(
+		options.credentials ?? defaultCredentialStore(options.authPath, modelsPath, providers),
+	);
 	const config = await ModelConfig.load(modelsPath);
 	const modelsStore =
 		options.modelsStore ??
 		(modelsPath
 			? new FileModelsStore(options.modelsStorePath ?? join(dirname(modelsPath), "models-store.json"))
 			: new InMemoryModelsStore());
-	const providers = createBuiltinProviders(options.catalogBaseUrl);
 	return { credentials, config, modelsPath, modelsStore, providers, modelNetworkEnabled: !isOfflineModeEnabled() };
 }
 
 /**
- * Octocode's auth.json; for Octocode's own home with Pi compatibility on, Pi's auth.json files back it read-only (the
- * same rule that layers Pi's models.json under Octocode's in `ModelConfig.load`).
+ * Octocode's auth.json; for Octocode's own home with Pi compatibility on, the legacy `~/.octocode` folders' and Pi's
+ * auth.json files back it read-only (the same rule that layers their models.json under Octocode's in `ModelConfig.load`).
+ * A provider keyed in Octocode's own models.json, or a built-in provider without an OAuth sign-in, skips their entries.
  */
-function defaultCredentialStore(authPath = join(getAgentDir(), "auth.json")) {
+function defaultCredentialStore(
+	authPathOption: string | undefined,
+	modelsPath: string | undefined,
+	providers: readonly Provider[],
+) {
+	const authPath = authPathOption ?? join(getAgentDir(), "auth.json");
 	const storage = DefaultAuthStorage.create(authPath);
-	const piDirs = getLegacyConfigDirs(dirname(authPath));
-	return piDirs.length ? new PiFallbackCredentialStore(storage, piDirs) : storage;
+	const fallbackDirs = getLegacyProviderDirs(dirname(authPath));
+	if (!fallbackDirs.length) return storage;
+	const builtin = new Map(providers.map((provider) => [provider.id, provider]));
+	return new PiFallbackCredentialStore(storage, fallbackDirs, {
+		ownsKey: modelsPath ? ownKeyedProviders(modelsPath) : undefined,
+		supportsOAuth: (providerId) => {
+			const provider = builtin.get(providerId);
+			return provider ? provider.auth.oauth !== undefined : true;
+		},
+	});
+}
+
+/** Whether Octocode's own models.json (that file alone) sets `apiKey` for a provider; re-read when the file changes. */
+function ownKeyedProviders(modelsPath: string): (providerId: string) => Promise<boolean> {
+	let cached: { stamp: string; keyed: Promise<ReadonlySet<string>> } | undefined;
+	return async (providerId) => {
+		let stamp: string;
+		try {
+			const stat = statSync(modelsPath);
+			stamp = `${stat.mtimeMs}:${stat.size}`;
+		} catch {
+			return false;
+		}
+		if (cached?.stamp !== stamp) {
+			const keyed = ModelConfig.loadFile(modelsPath).then(
+				(config) => new Set(config.getProviderIds().filter((id) => config.getProvider(id)?.apiKey !== undefined)),
+			);
+			cached = { stamp, keyed };
+		}
+		return (await cached.keyed).has(providerId);
+	};
 }
 
 /** The built-in providers, each refreshing its catalog from `catalogBaseUrl`. */

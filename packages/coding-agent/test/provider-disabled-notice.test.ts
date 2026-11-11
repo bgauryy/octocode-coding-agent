@@ -17,7 +17,7 @@ describe("noticeDisabledProvider", () => {
 	test("tells the session at its next turn, naming the provider and how to switch", () => {
 		const s = session(new Set(["anthropic"]));
 		noticeDisabledProvider(s);
-		const [message, options] = s.sendCustomMessage.mock.calls[0]!;
+		const [message, options] = s.sendCustomMessage.mock.calls[0];
 		expect(options).toEqual({ deliverAs: "nextTurn" });
 		expect(message.content).toContain("Anthropic (anthropic)");
 		expect(message.content).toContain("/model");

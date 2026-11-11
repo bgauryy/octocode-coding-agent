@@ -24,6 +24,15 @@ import { noImages, updateImageRows, type ImageRows } from "./tool-execution/imag
 import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
 
+/** Arguments as comparable text; undefined when they cannot be serialized, which always redraws. */
+function argsKey(args: unknown): string | undefined {
+	try {
+		return JSON.stringify(args);
+	} catch {
+		return undefined;
+	}
+}
+
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
 	private contentText: GenericToolContent;
@@ -39,6 +48,7 @@ export class ToolExecutionComponent extends Container {
 	private toolName: string;
 	private toolCallId: string;
 	private args: any;
+	private argsKey: string | undefined;
 	private expanded = false;
 	private showImages: boolean;
 	private imageWidthCells: number;
@@ -65,6 +75,7 @@ export class ToolExecutionComponent extends Container {
 		this.toolName = toolName;
 		this.toolCallId = toolCallId;
 		this.args = args;
+		this.argsKey = argsKey(args);
 		this.toolDefinition = displayRenderers(toolDefinition, () =>
 			rowDisplay({
 				live: this.liveDisplay,
@@ -159,9 +170,13 @@ export class ToolExecutionComponent extends Container {
 		});
 	}
 
+	/** A streamed reply repeats every call's arguments on each delta: only a call whose arguments changed is redrawn. */
 	updateArgs(args: any): void {
+		const key = argsKey(args);
+		const same = key !== undefined && key === this.argsKey;
 		this.args = args;
-		this.updateDisplay();
+		this.argsKey = key;
+		if (!same) this.updateDisplay();
 	}
 
 	markExecutionStarted(): void {

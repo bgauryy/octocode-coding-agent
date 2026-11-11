@@ -30,8 +30,18 @@ export interface ProfilerSession {
 	range: ProfileRange | undefined;
 	filter: string;
 	paused: boolean;
-	/** Live frames received while paused, applied in order on resume. */
-	held: ProfileUpdate[];
+	/** Live frames received while paused, coalesced per agent: the newest row, requests by index, events and messages by id. */
+	held: HeldFrame[];
+	/** How many live frames arrived while paused, for the toolbar's count. */
+	heldFrames: number;
+}
+
+/** Everything a pause kept for one agent; a repeated row, request, event or message replaces its earlier copy. */
+interface HeldFrame {
+	agent: ProfileUpdate["agent"];
+	requests: Map<number, ProfileRequest>;
+	events: Map<string, ProfileEvent>;
+	messages: Map<number, ProfileMessage>;
 }
 
 export const emptySession: ProfilerSession = {
@@ -43,6 +53,7 @@ export const emptySession: ProfilerSession = {
 	filter: "",
 	paused: false,
 	held: [],
+	heldFrames: 0,
 };
 
 export type SessionAction =
@@ -94,6 +105,54 @@ export function mergeTimeline(
 		),
 		until: patch.until ?? latest,
 	};
+}
+
+/** Fold a frame into the held ones: agents keep their first-seen order, so a resume adds new agents as live frames would. */
+function hold(held: readonly HeldFrame[], update: ProfileUpdate): HeldFrame[] {
+	const at = held.findIndex((frame) => frame.agent.id === update.agent.id);
+	const frame: HeldFrame =
+		at < 0
+			? { agent: update.agent, requests: new Map(), events: new Map(), messages: new Map() }
+			: { ...held[at], agent: update.agent };
+	if (update.request) frame.requests.set(update.request.index, update.request);
+	for (const event of update.events ?? []) frame.events.set(event.id, event);
+	for (const message of update.messages ?? []) frame.messages.set(message.id, message);
+	return at < 0 ? [...held, frame] : held.map((item, position) => (position === at ? frame : item));
+}
+
+/** Requests after the first, applied as live frames would (one that skips past the loaded ones is dropped) but merged once. */
+function applyRequestRun(core: ProfilerSession["core"], agentId: string, requests: ProfileRequest[]) {
+	const loaded = core.requests[agentId];
+	const more = core.more[agentId];
+	if (!requests.length || !loaded || more === undefined) return core;
+	let last = loaded.length ? loaded[loaded.length - 1].index : -1;
+	const fit: ProfileRequest[] = [];
+	for (const request of requests) {
+		if (request.index > last + 1) break;
+		last = Math.max(last, request.index);
+		fit.push(request);
+	}
+	const merged = fit.length ? applyRequests(core, { agentId, requests: fit, hasMore: more }) : core;
+	return fit.length < requests.length ? { ...merged, more: { ...merged.more, [agentId]: true } } : merged;
+}
+
+/** Resume: each agent's row and requests (ascending) reach the core; the timeline merges every event once. */
+function release(session: ProfilerSession): ProfilerSession {
+	let core = session.core;
+	const events: ProfileEvent[] = [];
+	const messages: ProfileMessage[] = [];
+	for (const frame of session.held) {
+		const requests = [...frame.requests.values()].sort((a, b) => a.index - b.index);
+		core = applyUpdate(core, { agent: frame.agent, request: requests[0] });
+		core = applyRequestRun(core, frame.agent.id, requests.slice(1));
+		events.push(...frame.events.values());
+		messages.push(...frame.messages.values());
+	}
+	const timeline =
+		session.timeline && (events.length || messages.length)
+			? mergeTimeline(session.timeline, events, messages)
+			: session.timeline;
+	return { ...session, core, timeline, paused: false, held: [], heldFrames: 0 };
 }
 
 function applyFrame(session: ProfilerSession, update: ProfileUpdate): ProfilerSession {
@@ -149,7 +208,9 @@ export function reduceSession(session: ProfilerSession, action: SessionAction): 
 		case "insights":
 			return { ...session, findings: action.value };
 		case "update":
-			return session.paused ? { ...session, held: [...session.held, action.value] } : applyFrame(session, action.value);
+			return session.paused
+				? { ...session, held: hold(session.held, action.value), heldFrames: session.heldFrames + 1 }
+				: applyFrame(session, action.value);
 		case "select":
 			return select(session, action.value);
 		case "step": {
@@ -170,9 +231,7 @@ export function reduceSession(session: ProfilerSession, action: SessionAction): 
 		case "filter":
 			return { ...session, filter: action.value };
 		case "pause":
-			return action.value
-				? { ...session, paused: true }
-				: { ...session.held.reduce(applyFrame, session), paused: false, held: [] };
+			return action.value ? { ...session, paused: true } : release(session);
 	}
 }
 

@@ -1,3 +1,4 @@
+import { ModelsError } from "../utils/models-error.ts";
 import type { ApiKeyAuth, AuthInteraction, Credential, OAuthAuth } from "./types.ts";
 
 /** Signed-out account registrations are not authentication credentials. */
@@ -24,8 +25,10 @@ export function envApiKeyAuth(
 		login: async (interaction) => {
 			interaction.signal.throwIfAborted();
 			if (keyPage) showKeyPage(interaction, keyPage, name);
-			const key = await interaction.prompt({ type: "secret", message: `Enter ${name}` });
+			// Pasted keys often carry a newline or spaces; an empty answer is no key, so nothing is saved.
+			const key = (await interaction.prompt({ type: "secret", message: `Enter ${name}` })).trim();
 			interaction.signal.throwIfAborted();
+			if (!key) throw new ModelsError("auth", `No ${name} was entered. Nothing was saved.`);
 			return { type: "api_key", key };
 		},
 		resolve: async ({ ctx, credential, signal }) => {

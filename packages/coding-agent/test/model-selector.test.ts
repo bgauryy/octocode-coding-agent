@@ -49,10 +49,46 @@ describe("model selector", () => {
 				.find((line) => line.includes(`${id} [`))
 				?.trimEnd();
 
-		expect(getModelRow("current-model")).toBe(`› ✓ current-model [${currentModel.provider}]`);
+		// The badge names the provider's kind: the faux provider serves from localhost.
+		expect(getModelRow("current-model")).toBe(`› ✓ current-model [${currentModel.provider} · local]`);
 		selector.handleInput("\x1b[B");
-		expect(getModelRow("current-model")).toBe(`  ✓ current-model [${currentModel.provider}]`);
-		expect(getModelRow("browsed-model")).toBe(`›   browsed-model [${currentModel.provider}]`);
+		expect(getModelRow("current-model")).toBe(`  ✓ current-model [${currentModel.provider} · local]`);
+		expect(getModelRow("browsed-model")).toBe(`›   browsed-model [${currentModel.provider} · local]`);
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain(
+			`Model Name: Browsed Model · Provider: ${currentModel.provider} (local)`,
+		);
+		selector.dispose();
+	});
+
+	it("switches the shown provider with left and right, then back to all", async () => {
+		harness = await createHarness({ models: [{ id: "first-model", name: "First" }] });
+		const first = harness.getModel("first-model")!;
+		const other = { ...first, provider: "other-provider", id: "other-model", name: "Other" };
+		vi.spyOn(harness.session.modelRuntime, "getAvailableSnapshot").mockReturnValue([first, other]);
+		vi.spyOn(harness.session.modelRuntime, "refresh").mockResolvedValue({ aborted: false, errors: new Map() });
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			first,
+			harness.session.modelRuntime,
+			[],
+			() => {},
+			() => {},
+		);
+		const screen = () => stripAnsi(selector.render(120).join("\n"));
+		const shows = (id: string) => screen().includes(`${id} [`);
+
+		expect(screen()).toContain("Provider: all");
+		expect([shows("first-model"), shows("other-model")]).toEqual([true, true]);
+		selector.handleInput("\x1b[C");
+		expect(screen()).toContain(`Provider: ${first.provider}`);
+		expect([shows("first-model"), shows("other-model")]).toEqual([true, false]);
+		selector.handleInput("\x1b[C");
+		expect([shows("first-model"), shows("other-model")]).toEqual([false, true]);
+		selector.handleInput("\x1b[C");
+		expect(screen()).toContain("Provider: all");
+		selector.handleInput("\x1b[D");
+		expect(screen()).toContain("Provider: other-provider");
+		expect(selector.getSearchInput().getValue()).toBe("");
 		selector.dispose();
 	});
 

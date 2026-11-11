@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type AnthropicOptions, stream, streamSimple } from "../src/api/anthropic-messages.ts";
 import { normalizeContext } from "../src/compat.ts";
+import { getAnthropicMessagesCompat } from "../scripts/generate-models/anthropic.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Context, Model } from "../src/types.ts";
 
@@ -284,6 +285,26 @@ describe("Anthropic mid-conversation effort", () => {
 		// OpenRouter rejects configuration_update on Opus 5 but accepts it on Fable 5.1.
 		expect(getBuiltinModel("openrouter", "anthropic/claude-opus-5").compat?.supportsMidConvoEffort).toBeUndefined();
 		expect(getBuiltinModel("anthropic", "claude-opus-5").compat?.allowedFallbackModels).toBeUndefined();
+	});
+
+	it("generates the mid-conversation gates for Fable 5.2 and Mythos 5.2", () => {
+		const midConvo = {
+			supportsMidConvoEffort: true,
+			supportsMidConvoSystemMessages: true,
+			supportsMidConvoToolChanges: true,
+		};
+		for (const id of ["claude-fable-5-2", "claude-mythos-5-2"]) {
+			expect(getAnthropicMessagesCompat("anthropic", id)).toEqual(midConvo);
+		}
+		expect(getAnthropicMessagesCompat("openrouter", "anthropic/claude-fable-5.2")).toEqual({
+			supportsMidConvoEffort: true,
+		});
+		expect(getAnthropicMessagesCompat("opencode", "claude-fable-5-2")).toEqual({
+			supportsMidConvoSystemMessages: true,
+		});
+		const direct = getBuiltinModel("anthropic", "claude-fable-5-2");
+		expect(direct.compat).toMatchObject(midConvo);
+		expect(direct.thinkingLevelMap?.off).toBeNull();
 	});
 
 	it("supports off only on managed models that accept disabled thinking", () => {

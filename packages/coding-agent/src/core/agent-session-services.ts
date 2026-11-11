@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getAgentDir, getLegacyConfigDirs } from "../config.ts";
+import { getAgentDir, getLegacyProviderDirs } from "../config.ts";
 import { modelsFileHoldsLiteralKey } from "./models-json-keys.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -83,7 +83,7 @@ export async function createAgentSessionServices(
 
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
 	if (!options.modelRuntime) {
-		const dirs = [agentDir, ...getLegacyConfigDirs(agentDir)];
+		const dirs = [agentDir, ...getLegacyProviderDirs(agentDir)];
 		const keyFiles = [
 			...dirs.map((dir) => join(dir, "auth.json")),
 			...dirs.map((dir) => join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),
@@ -91,6 +91,7 @@ export async function createAgentSessionServices(
 		for (const file of keyFiles) {
 			diagnostics.push(...checkAuthFileSafety(file).map((message) => ({ type: "warning" as const, message })));
 		}
+		for (const message of modelRuntime.getConfigWarnings()) diagnostics.push({ type: "warning", message });
 	}
 	const extensionsResult = resourceLoader.getExtensions();
 	for (const { name, config, extensionPath } of extensionsResult.runtime.pendingProviderRegistrations) {

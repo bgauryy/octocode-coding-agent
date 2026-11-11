@@ -71,6 +71,8 @@ function policyFlags(input: PromptInputs) {
 	return {
 		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).
 		main,
+		// A lean child renders `lean.ts` instead of these sections; shared partials read the flag.
+		lean: false,
 		requester: main ? "the user" : "your task",
 		readOnly,
 		// Tools this request holds.

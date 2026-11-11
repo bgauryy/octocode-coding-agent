@@ -29,6 +29,9 @@ import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
 import { itemLink } from "./item-link.ts";
 import { routeSummary } from "./model.ts";
+import { runRunnerChild } from "./runner-child.ts";
+import type { Runners } from "./runner-port.ts";
+import { runnerPlan } from "./runner-task.ts";
 import { runForeground, startBackground } from "./run-execution.ts";
 import type { RunDetails } from "./run-types.ts";
 import { spawnRefusal } from "./spawn-limits.ts";
@@ -52,6 +55,8 @@ export interface SpawnEnv {
 	/** Runs `work` and, once it ends, records the run's session file and its questions to this session's agent. */
 	record: <T>(run: Run, details: RunDetails, session: ChildSession, work: Promise<T>) => Promise<T>;
 	relayHost: (ctx: Pick<ExtensionContext, "hasUI" | "ui">) => RelayHost;
+	/** Connected runners: a task with `runner` runs its turns there instead of in an Octocode child (`runner-child.ts`). */
+	runners?: Runners;
 }
 
 type AgentParams = Static<ReturnType<typeof agentToolSpec>["parameters"]>;
@@ -106,12 +111,15 @@ export async function spawnAgent(
 			);
 	};
 	refuseSecondChild();
-	const plan = planRun(
-		env.getProfiles(),
-		resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
-		ctx,
-		env.getRefused?.(),
-	);
+	const runner = params.runner;
+	const plan = runner
+		? runnerPlan(params, env.runners)
+		: planRun(
+				env.getProfiles(),
+				resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
+				ctx,
+				env.getRefused?.(),
+			);
 	// An unknown or disabled server name refuses the task before it claims anything.
 	const taskServers =
 		params.mcp === undefined
@@ -236,7 +244,8 @@ export async function spawnAgent(
 		runs.live.set(run.identity.id, details);
 		const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 		// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
-		const lingers = params.background === true && !params.isolate;
+		// A runner's conversation lives in its own CLI, so a runner run never lingers for a resume.
+		const lingers = !runner && params.background === true && !params.isolate;
 		const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking, run.identity.mcpNamed);
 		const prefix = childCacheGroup(run, skillPlan, ctx.sessionManager.getSessionId());
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
@@ -260,12 +269,24 @@ export async function spawnAgent(
 					if (change.responding) warm?.();
 					tracked(change);
 				};
-				return env.record(
-					run,
-					details,
-					session,
-					runSubagent(task, args, cwd, run.profile, run.identity, runSignal, progress, onSpawn, undefined, host),
-				);
+				const work = runner
+					? runRunnerChild(env.runners!, {
+							runner,
+							model: params.model,
+							// Referenced messages and reports, and the result contract, travel in the text: the runner reads nothing here.
+							task: childTaskInput(params.task, { referenced, browserMode: undefined, skillText: "", resultContract }),
+							cwd,
+							identity: run.identity,
+							signal: runSignal,
+							onProgress: progress,
+							onSpawn,
+							ctx,
+						}).then((outcome) => {
+							details.billing = outcome.billing;
+							return outcome;
+						})
+					: runSubagent(task, args, cwd, run.profile, run.identity, runSignal, progress, onSpawn, undefined, host);
+				return env.record(run, details, session, work);
 			};
 			return {
 				staggered: staggeredLaunch(prefix, run.identity.cacheTtlMs, launch),

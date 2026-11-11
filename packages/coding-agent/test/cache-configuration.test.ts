@@ -21,6 +21,63 @@ describe("cache configuration", () => {
 		});
 		expect(process.env.OCTOCODE_CACHE_RETENTION).toBeUndefined();
 	});
+	it("keeps the long default for a model models.json re-declares on Anthropic's own host", () => {
+		environment();
+		const opus: Model<"anthropic-messages"> = {
+			id: "claude-opus-5-5",
+			name: "Claude Opus 5.5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			baseUrl: "https://api.anthropic.com",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 1000000,
+			maxTokens: 128000,
+		};
+		expect(
+			resolveConfiguredCache(opus, { models: [{ id: "claude-opus-5-5", contextWindow: 500000 }] }).options,
+		).toEqual({
+			cacheRetention: "long",
+			instructionCacheRetention: "long",
+		});
+	});
+	it("defaults a models.json Anthropic-style model to the short tier unless it declares long retention", () => {
+		environment();
+		const custom = (compat?: Model<"anthropic-messages">["compat"]): Model<"anthropic-messages"> => ({
+			id: "my-claude",
+			name: "My Claude",
+			api: "anthropic-messages",
+			provider: "gateway",
+			baseUrl: "https://gateway.example/anthropic",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200000,
+			maxTokens: 8192,
+			...(compat ? { compat } : {}),
+		});
+		const provider = { baseUrl: "https://gateway.example/anthropic", models: [{ id: "my-claude" }] };
+		expect(resolveConfiguredCache(custom(), provider)).toEqual({
+			options: { cacheRetention: "short", instructionCacheRetention: "short" },
+			sources: { cacheRetention: "defaults", instructionCacheRetention: "defaults" },
+		});
+		expect(describeCachePolicy(custom(), resolveConfiguredCache(custom(), provider))).toContain(
+			"Instructions 5m; history 5m.",
+		);
+		const declared = custom({ supportsLongCacheRetention: true });
+		expect(resolveConfiguredCache(declared, provider).options.cacheRetention).toBe("long");
+		// An explicit preference still wins over the default.
+		const settings = [{ source: "global settings", values: { cacheRetention: "long" as const } }];
+		expect(resolveConfiguredCache(custom(), provider, {}, settings).options.cacheRetention).toBe("long");
+		// Built-in models outside models.json keep the long default.
+		for (const builtin of [
+			getBuiltinModel("anthropic", "claude-opus-5-5"),
+			getBuiltinModel("openrouter", "anthropic/claude-fable-5.2"),
+		]) {
+			expect(resolveConfiguredCache(builtin, undefined).options.cacheRetention).toBe("long");
+		}
+	});
 	it("persists settings and applies session overrides without changing stored preferences", async () => {
 		const manager = SettingsManager.inMemory({}, { projectTrusted: true });
 		manager.setCachePreference("cacheRetention", "long");
@@ -148,7 +205,7 @@ describe("cache configuration", () => {
 			);
 		});
 		it("shows the 24h tier on older OpenAI models only when long and supported", () => {
-			const older = asApi("openai-responses", { compat: { supportsExplicitPromptCacheMode: false } });
+			const older = asApi("openai-responses", { id: "gpt-5.5", compat: { supportsExplicitPromptCacheMode: false } });
 			expect(describeWith(older, { cacheRetention: "long" })).toContain("24h extended retention");
 			expect(describeWith(older, { cacheRetention: "short" })).not.toContain("24h");
 			expect(describeWith(older, { cacheRetention: "none" })).toContain("No cache key is sent");
@@ -161,7 +218,7 @@ describe("cache configuration", () => {
 		});
 		it("shows 1h and 5m for Anthropic-style markers on Anthropic, Bedrock and OpenRouter Claude", () => {
 			const claude = [
-				asApi("anthropic-messages"),
+				asApi("anthropic-messages", { provider: "anthropic", baseUrl: "https://api.anthropic.com" }),
 				asApi("bedrock-converse-stream", { id: "us.anthropic.claude-sonnet-4-5" }),
 				asApi("openai-completions", { provider: "openrouter", id: "anthropic/claude-sonnet-4.5" }),
 			];

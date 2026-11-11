@@ -25,7 +25,7 @@ describe("compatibility schemas", () => {
 		expect(Compile(OpenAIResponsesCompatSchema).Default({})).toMatchObject({ supportsDeveloperRole: true });
 		const anthropicDefaults = Compile(AnthropicMessagesCompatSchema).Default({});
 		expect(anthropicDefaults).not.toHaveProperty("sendSessionAffinityHeaders");
-		expect(anthropicDefaults).toMatchObject({ supportsLongCacheRetention: true });
+		expect(anthropicDefaults).not.toHaveProperty("supportsLongCacheRetention");
 		expect(Compile(BedrockCompatSchema).Default({})).toMatchObject({ supportsStrictMode: false });
 	});
 

@@ -100,7 +100,7 @@ beforeEach(() => {
 	googleGenAiMock.streamChunks = undefined;
 });
 
-const OCTOCODE_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
+const OCTOCODE_USER_AGENT = `octocode (${platform()} ${release()}; ${arch()})`;
 
 const context = normalizeContext({
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
@@ -179,6 +179,50 @@ describe("Google raw stop reasons", () => {
 		expect(message.stopReason).toBe("length");
 		expect(message.rawStopReason).toBe("MAX_TOKENS");
 		expect(message.content.some((block) => block.type === "toolCall")).toBe(true);
+	});
+
+	it.each(adapters)(
+		"ends an unknown finish reason as an error that keeps the raw reason for $name",
+		async ({ createStream }) => {
+			googleGenAiMock.finishReason = "MISSING_THOUGHT_SIGNATURE";
+			googleGenAiMock.includeFunctionCall = false;
+
+			const message = await createStream().result();
+
+			expect(message.stopReason).toBe("error");
+			expect(message.rawStopReason).toBe("MISSING_THOUGHT_SIGNATURE");
+			expect(message.errorMessage).toBe("Provider stopped with: MISSING_THOUGHT_SIGNATURE");
+		},
+	);
+
+	it.each(adapters)("ends a blocked prompt as an error naming the block reason for $name", async ({ createStream }) => {
+		googleGenAiMock.streamChunks = [
+			{
+				responseId: "resp_blocked",
+				promptFeedback: { blockReason: "PROHIBITED_CONTENT" },
+				usageMetadata: { promptTokenCount: 4, totalTokenCount: 4 },
+			},
+		];
+
+		const message = await createStream().result();
+
+		expect(message.stopReason).toBe("error");
+		expect(message.rawStopReason).toBe("PROHIBITED_CONTENT");
+		expect(message.errorMessage).toBe("The provider blocked the prompt: PROHIBITED_CONTENT");
+		expect(message.usage.input).toBe(4);
+	});
+
+	it.each(adapters)("prefers the block reason message of a blocked prompt for $name", async ({ createStream }) => {
+		googleGenAiMock.streamChunks = [
+			{
+				promptFeedback: { blockReason: "OTHER", blockReasonMessage: "The prompt was blocked for other reasons." },
+			},
+		];
+
+		const message = await createStream().result();
+
+		expect(message.rawStopReason).toBe("OTHER");
+		expect(message.errorMessage).toBe("The provider blocked the prompt: The prompt was blocked for other reasons.");
 	});
 
 	it.each(adapters)("maps STOP with a tool call to toolUse for $name", async ({ createStream }) => {

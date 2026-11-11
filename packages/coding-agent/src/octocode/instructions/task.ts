@@ -77,3 +77,11 @@ function worktreeNote(isolation: { path: string; repo: string; cwd: string } | u
 	const shown = rebasePath(isolation.cwd, { worktree: isolation.path, root: isolation.repo });
 	return renderInstruction("subagent/worktree.md", { cwd: isolation.cwd, shown });
 }
+
+/**
+ * The message an external runner (a vendor CLI over ACP) receives: the task, where it works and the report contract.
+ * It has none of Octocode's tools or team, so the identity and worktree notes of a native child do not apply.
+ */
+export function runnerTask(task: string, cwd: string): string {
+	return renderInstruction("subagent/runner.md", { task, cwd, report: reportContract() });
+}

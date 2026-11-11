@@ -1,8 +1,8 @@
-import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { hasControlCharacter } from "../utils/chars.ts";
 import { type FdListEntry, streamFdEntries } from "./fd.ts";
+import { buildGitIndex } from "./git-index.ts";
 
 /** One file or directory below the indexed directory. `path` is `/`-separated with no trailing slash. */
 export type IndexedPath = FdListEntry;
@@ -40,6 +40,15 @@ interface CacheSlot {
 }
 
 const slots = new Map<string, CacheSlot>();
+const MAX_CACHED_DIRECTORIES = 8;
+
+function trimSlots(): void {
+	for (const [cwd, slot] of slots) {
+		if (slots.size <= MAX_CACHED_DIRECTORIES) break;
+		// In-flight requests share their build until it settles.
+		if (!slot.building) slots.delete(cwd);
+	}
+}
 
 function keepPath(path: string): boolean {
 	return path !== "" && !hasControlCharacter(path);
@@ -47,46 +56,11 @@ function keepPath(path: string): boolean {
 
 async function buildWithFd(cwd: string, fdPath: string, slot: CacheSlot): Promise<BuiltIndex | null> {
 	const entries: IndexedPath[] = [];
-	const result = await streamFdEntries(cwd, fdPath, FILE_INDEX_CAP, new AbortController().signal, (batch) => {
+	const result = await streamFdEntries(cwd, fdPath, FILE_INDEX_CAP, AbortSignal.timeout(5000), (batch) => {
 		for (const entry of batch) entries.push(entry);
 		slot.progress = entries.length;
 	});
 	return result.ok ? { entries, truncated: result.truncated, source: "fd" } : null;
-}
-
-function listGitFiles(cwd: string): Promise<string[] | null> {
-	return new Promise((resolve) => {
-		execFile(
-			"git",
-			["-C", cwd, "ls-files", "-z", "-c", "-o", "--exclude-standard"],
-			{ maxBuffer: 256 * 1024 * 1024, encoding: "utf-8" },
-			(error, stdout) => resolve(error ? null : stdout.split("\0").filter(Boolean)),
-		);
-	});
-}
-
-async function buildWithGit(cwd: string, slot: CacheSlot): Promise<BuiltIndex | null> {
-	const files = await listGitFiles(cwd);
-	if (!files) return null;
-	const entries: IndexedPath[] = [];
-	const directories = new Set<string>();
-	let truncated = false;
-	for (const file of files) {
-		if (!keepPath(file)) continue;
-		if (entries.length >= FILE_INDEX_CAP) {
-			truncated = true;
-			break;
-		}
-		entries.push({ path: file, isDirectory: false });
-		let slash = file.indexOf("/");
-		while (slash !== -1) {
-			directories.add(file.slice(0, slash));
-			slash = file.indexOf("/", slash + 1);
-		}
-	}
-	for (const directory of directories) entries.push({ path: directory, isDirectory: true });
-	slot.progress = entries.length;
-	return { entries, truncated, source: "git" };
 }
 
 async function buildWithWalk(cwd: string, slot: CacheSlot): Promise<BuiltIndex> {
@@ -126,7 +100,13 @@ async function buildWithWalk(cwd: string, slot: CacheSlot): Promise<BuiltIndex> 
 async function build(cwd: string, fdPath: string | null, slot: CacheSlot): Promise<BuiltIndex> {
 	slot.progress = 0;
 	const fromFd = fdPath ? await buildWithFd(cwd, fdPath, slot) : null;
-	return fromFd ?? (await buildWithGit(cwd, slot)) ?? (await buildWithWalk(cwd, slot));
+	return (
+		fromFd ??
+		(await buildGitIndex(cwd, FILE_INDEX_CAP, (count) => {
+			slot.progress = count;
+		})) ??
+		(await buildWithWalk(cwd, slot))
+	);
 }
 
 function startBuild(cwd: string, fdPath: string | null, slot: CacheSlot): Promise<BuiltIndex> {
@@ -135,10 +115,12 @@ function startBuild(cwd: string, fdPath: string | null, slot: CacheSlot): Promis
 			slot.built = built;
 			slot.builtAt = Date.now();
 			slot.building = null;
+			trimSlots();
 			return built;
 		},
 		(error: unknown) => {
 			slot.building = null;
+			trimSlots();
 			throw error;
 		},
 	);
@@ -157,6 +139,9 @@ export async function getFileIndex(cwd: string, fdPath: string | null): Promise<
 	let slot = slots.get(cwd);
 	if (!slot) {
 		slot = { built: null, builtAt: 0, building: null, progress: 0 };
+		slots.set(cwd, slot);
+	} else {
+		slots.delete(cwd);
 		slots.set(cwd, slot);
 	}
 

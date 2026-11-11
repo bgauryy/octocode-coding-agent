@@ -23,6 +23,7 @@ import {
 	getLoginProviderSearchText,
 	formatLoginProviderCompletionDescription,
 } from "./helpers.ts";
+import { menuCommands } from "./command-menu.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the slash-command autocomplete. */
@@ -43,8 +44,15 @@ type AutocompleteHost = Pick<
 >;
 
 function getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
-	// Built-in extension commands are untagged, like built-in commands.
-	if (!sourceInfo || sourceInfo.source === "builtin") {
+	// What the host supplies (built-in and Octocode's own commands, and skills from its inline extension) is untagged,
+	// like built-in commands: a tag only tells a user where their own or a project's addition came from.
+	if (
+		!sourceInfo ||
+		sourceInfo.owner ||
+		sourceInfo.source === "builtin" ||
+		sourceInfo.source === "inline" ||
+		sourceInfo.source.startsWith("extension:inline:")
+	) {
 		return undefined;
 	}
 
@@ -227,7 +235,11 @@ export function getSlashCommands(
 }
 
 export function createBaseAutocompleteProvider(host: AutocompleteHost): AutocompleteProvider {
-	return new CombinedAutocompleteProvider(host.getSlashCommands(), host.sessionManager.getCwd(), host.fdPath);
+	return new CombinedAutocompleteProvider(
+		menuCommands(host.getSlashCommands()),
+		host.sessionManager.getCwd(),
+		host.fdPath,
+	);
 }
 
 export function setupAutocompleteProvider(host: AutocompleteHost): void {

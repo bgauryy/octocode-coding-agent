@@ -24,14 +24,14 @@ import type {
 	ModelTypeMap,
 	Provider,
 	ProviderHeaders,
+	ProviderPlan,
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer, CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { ModelRuntime } from "./model-runtime.ts";
-import type { CredentialKind } from "./model-runtime/catalog.ts";
+import type { CredentialKind, ProviderKind } from "./model-runtime/catalog.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { billedBySubscription } from "./subscription.ts";
 
 export type { ProviderConfigInput } from "./provider-composer.ts";
 export type ResolvedRequestAuth =
@@ -127,7 +127,7 @@ export class ModelRegistry {
 
 	/** Whether usage is paid by a subscription, so a cost figure is an estimate of API value, not a bill. */
 	billedBySubscription(provider: string): boolean {
-		return billedBySubscription(this.runtime, provider);
+		return this.runtime.isUsingSubscription(provider);
 	}
 
 	/** Stream through the configured provider with request-time authentication. */
@@ -208,8 +208,23 @@ export class ModelRegistry {
 		}
 	}
 
-	getCredentialKind(provider: string, signal?: AbortSignal): Promise<CredentialKind> {
-		return this.runtime.getCredentialKind(provider, signal);
+	getCredentialKind(provider: string): Promise<CredentialKind> {
+		return this.runtime.getCredentialKind(provider);
+	}
+
+	/** The provider's kind for display: subscription, API key, account, CLI or local (see `ModelRuntime`). */
+	getProviderKind(provider: string): ProviderKind {
+		return this.runtime.getProviderKind(provider);
+	}
+
+	/** "plan" when a subscription pays for this provider's requests, else "metered" (see `ProviderPlan`). */
+	getProviderBilling(provider: string): ProviderPlan["billing"] {
+		return this.runtime.getProviderBilling(provider);
+	}
+
+	/** False for a plan whose vendor allows only interactive use: automatic background routing skips it. */
+	allowsUnattendedUse(provider: string): boolean {
+		return this.runtime.allowsUnattendedUse(provider);
 	}
 
 	isUsingOAuth(model: Model<Api>): boolean {

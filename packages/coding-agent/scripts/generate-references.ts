@@ -98,7 +98,7 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 			{
 				heading: "Models",
 				intro:
-					"Each `models` entry adds a model to the provider. An entry whose `id` matches an existing model replaces it.",
+					"Each `models` entry adds a model to the provider. An entry whose `id` names a known model (the provider's own, else the built-in model of the vendor its `api` belongs to: Anthropic, OpenAI, Google, Azure, Vertex, Mistral or Bedrock; `claude-opus-5.5`, `claude-opus-5-5` and `anthropic/claude-opus-5-5` name one model) starts from that model's context window, output limit, thinking map, input types, prices, input limits and compatibility; the fields you set win. Cache lifetimes and long cache retention of a direct provider do not carry to another host: set `promptCache` and `compat.supportsLongCacheRetention` when your host honours them. The defaults listed below apply to a model Octocode does not know.",
 				schema: ModelsJsonSchemas.model,
 				links: { inputLimits: "#input-limits", compat: "#compatibility" },
 			},

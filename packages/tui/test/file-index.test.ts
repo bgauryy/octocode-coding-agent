@@ -46,6 +46,59 @@ describe("file index", { skip }, () => {
 		resetFileIndexCache();
 	});
 
+	it("evicts older directories while retaining recently used indexes", async () => {
+		mock.method(Date, "now", () => 1_000_000);
+		const fd = fakeFd(`printf 'a.ts\\n'`);
+		await getFileIndex(cwd, fd);
+		for (let i = 0; i < 12; i++) {
+			await getFileIndex(join(root, `directory-${i}`), fd);
+			await getFileIndex(cwd, fd);
+		}
+		assert.strictEqual(getFileIndexStatus(join(root, "directory-0")).state, "none");
+		assert.strictEqual(getFileIndexStatus(cwd).state, "ready");
+		assert.strictEqual(spawns(), 13);
+	});
+
+	it("counts Git-derived directories toward the entry cap", async () => {
+		// Exercise the cap independently of the command deadline under a busy full-suite runner.
+		mock.timers.enable({ apis: ["setTimeout"] });
+		const bin = join(root, "bin");
+		mkdirSync(bin);
+		const git = join(bin, "git");
+		writeFileSync(git, `#!/bin/sh\nawk 'BEGIN { for(i=0;i<${FILE_INDEX_CAP};i++) printf "d%d/file%c", i, 0 }'\n`);
+		chmodSync(git, 0o755);
+		const previous = process.env.PATH;
+		process.env.PATH = `${bin}:${previous}`;
+		try {
+			const entries = await getFileIndex(cwd, null);
+			assert.strictEqual(getFileIndexStatus(cwd).source, "git");
+			assert.strictEqual(entries.length, FILE_INDEX_CAP);
+			assert.strictEqual(getFileIndexStatus(cwd).truncated, true);
+		} finally {
+			process.env.PATH = previous;
+		}
+	});
+
+	it("falls back to a bounded walk when Git stalls", async () => {
+		const bin = join(root, "bin");
+		mkdirSync(bin);
+		const git = join(bin, "git");
+		writeFileSync(git, "#!/bin/sh\nexec sleep 60\n");
+		chmodSync(git, 0o755);
+		write("local.txt");
+		const previous = process.env.PATH;
+		process.env.PATH = `${bin}:${previous}`;
+		mock.timers.enable({ apis: ["setTimeout"] });
+		try {
+			const building = getFileIndex(cwd, null);
+			mock.timers.tick(5000);
+			assert.deepStrictEqual(await building, [{ path: "local.txt", isDirectory: false }]);
+			assert.strictEqual(getFileIndexStatus(cwd).source, "walk");
+		} finally {
+			process.env.PATH = previous;
+		}
+	});
+
 	afterEach(() => {
 		mock.timers.reset();
 		mock.restoreAll();

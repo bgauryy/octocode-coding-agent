@@ -254,7 +254,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 	}
 
 	commands.add("harness", {
-		description: "Switch plugins, hooks, skills, MCPs, extensions",
+		description: "Choose which agents' skills, MCPs and hooks load; manage plugins",
 		argumentHint: "[list|install|update|remove|hooks|config]",
 		dialog: "interaction",
 		complete: (prefix): AutocompleteItem[] | null => {

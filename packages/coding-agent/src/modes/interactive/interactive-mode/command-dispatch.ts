@@ -6,8 +6,10 @@ import { handleWorkflowCommand } from "./workflow-commands.ts";
 
 import { getBuiltinCommand, parseSlashCommand } from "../../../core/slash-commands.ts";
 import { CommandSelectorComponent } from "../components/command-selector.ts";
+import { findCommand, menuCommands, showCommandUsage } from "./command-menu.ts";
 import { type ConfigurationHost, handleConfigurationCommand } from "./configuration-command.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { runTerminalAction } from "../terminal-actions.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
@@ -87,8 +89,11 @@ async function runNativeCommand(host: CommandDispatchHost, name: string, args = 
 	return true;
 }
 
-function showCommandPicker(host: CommandDispatchHost, query = ""): void {
-	const commands = host.getSlashCommands(true);
+async function showCommandPicker(host: CommandDispatchHost, query = ""): Promise<void> {
+	const all = host.getSlashCommands(true);
+	const named = findCommand(all, query);
+	if (named) return showCommandUsage(host, named);
+	const commands = menuCommands(all);
 	host.showSelector((done) => {
 		const selector = new CommandSelectorComponent(
 			"Commands",
@@ -130,6 +135,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 		host.showWarning(`/${name} does not take arguments.`);
 		return;
 	}
+	if (await runTerminalAction(host, name, args)) return;
 	switch (name) {
 		case "btw":
 		case "context":
@@ -137,7 +143,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			await handleWorkflowCommand(host, name, args);
 			return;
 		case "help":
-			showCommandPicker(host, args);
+			await showCommandPicker(host, args);
 			return;
 		case "configuration":
 			await handleConfigurationCommand(host, args);

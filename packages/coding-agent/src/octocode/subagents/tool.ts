@@ -33,6 +33,7 @@ import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from
 import { registerIdleItems } from "./idle-items.ts";
 import { startNotices } from "./start-notices.ts";
 import { agentToolSpec } from "./agent-tool.ts";
+import type { Runners } from "./runner-port.ts";
 import { FORK_NOTE_TYPE, forkNote, resumeNote } from "./children.ts";
 import { type MergeResult, mergeChild } from "./merge-child.ts";
 import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenance/exposure.ts";
@@ -88,6 +89,7 @@ export function registerAgentTool(
 	permission: Permission,
 	getRefused?: () => ReadonlyMap<string, string>,
 	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
+	runners?: Runners,
 ): AgentControl {
 	registerAgentMessageRenderer(api);
 	// Per registration, not per module: a replaced session starts clean.
@@ -325,10 +327,11 @@ export function registerAgentTool(
 		withLaunch,
 		record,
 		relayHost,
+		...(runners ? { runners } : {}),
 	};
 	registerTool(
 		timedTool({
-			...agentToolSpec(),
+			...agentToolSpec(runners?.ids),
 			execute: (id, params, signal, onUpdate, ctx) => spawnAgent(spawnEnv, id, params, signal, onUpdate, ctx),
 			display: agentTaskDisplay,
 			renderCall: renderAgentCall,

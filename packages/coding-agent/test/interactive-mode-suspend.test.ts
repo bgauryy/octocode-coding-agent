@@ -6,6 +6,7 @@ type FakeUi = {
 	start: () => void;
 	stop: () => void;
 	requestRender: (force?: boolean) => void;
+	terminal?: { drainOutput(): Promise<boolean> };
 };
 
 type HandleCtrlZThis = {
@@ -21,6 +22,33 @@ function callHandleCtrlZ(context: HandleCtrlZThis): void {
 describe("InteractiveMode.handleCtrlZ", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	test.each([false, true])("waits for terminal output before suspend; resumed early: %s", async (resumedEarly) => {
+		let drained!: (value: boolean) => void;
+		const ui: FakeUi = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			requestRender: vi.fn(),
+			terminal: {
+				drainOutput: () =>
+					new Promise((resolve) => {
+						drained = resolve;
+					}),
+			},
+		};
+		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+		callHandleCtrlZ({ ui });
+		try {
+			expect(kill).not.toHaveBeenCalled();
+			if (resumedEarly) process.emit("SIGCONT");
+			drained(true);
+			await Promise.resolve();
+			if (resumedEarly) expect(kill).not.toHaveBeenCalled();
+			else expect(kill).toHaveBeenCalledWith(0, "SIGTSTP");
+		} finally {
+			if (!resumedEarly) process.emit("SIGCONT");
+		}
 	});
 
 	test("shows a status message and skips suspend on Windows", () => {

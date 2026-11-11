@@ -4,6 +4,8 @@ import { visibleWidth } from "../utils/width.ts";
 import { flattenLines } from "../utils/wrap.ts";
 
 type RenderCache = {
+	/** Each child's returned array, to recognize an unchanged frame without comparing its lines. */
+	arrays: string[][];
 	childLines: string[];
 	width: number;
 	bgSample: string | undefined;
@@ -120,25 +122,40 @@ export class Box implements Component {
 		// Render all children. Keep the child lines unpadded: children usually return the same string
 		// objects every frame, so the cache check below is a cheap identity comparison per line.
 		// Padding here would create new strings that must be compared character by character.
-		const childLines: string[] = [];
+		const arrays: string[][] = [];
 		const mouseChildren: Array<{ component: Component; height: number }> = [];
 		for (const child of this.children) {
 			const lines = renderIsolated(child, contentWidth);
 			mouseChildren.push({ component: child, height: lines.length });
-			for (const line of lines) {
-				childLines.push(line);
-			}
+			arrays.push(lines);
 		}
 		this.mouseLayout = { width: contentWidth, children: mouseChildren };
-
-		if (childLines.length === 0) {
-			return [];
-		}
 
 		// Check if bgFn output changed by sampling
 		const bgSample = this.bgFn ? this.bgFn("test") : undefined;
 
+		// Children that return the arrays of the last frame have the same lines: nothing to join or compare.
+		const cache = this.cache;
+		if (
+			cache &&
+			cache.width === width &&
+			cache.bgSample === bgSample &&
+			cache.arrays.length === arrays.length &&
+			cache.arrays.every((lines, index) => lines === arrays[index])
+		) {
+			return cache.childLines.length === 0 ? [] : cache.lines;
+		}
+
+		const childLines: string[] = [];
+		for (const lines of arrays) for (const line of lines) childLines.push(line);
+
+		if (childLines.length === 0) {
+			this.cache = { arrays, childLines, width, bgSample, lines: [] };
+			return [];
+		}
+
 		if (this.matchCache(width, childLines, bgSample)) {
+			this.cache!.arrays = arrays;
 			return this.cache!.lines;
 		}
 
@@ -157,7 +174,7 @@ export class Box implements Component {
 		}
 
 		flattenLines(result);
-		this.cache = { childLines, width, bgSample, lines: result };
+		this.cache = { arrays, childLines, width, bgSample, lines: result };
 
 		return result;
 	}

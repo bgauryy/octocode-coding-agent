@@ -1,3 +1,4 @@
+import type { ProviderPlan } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
 import type { Catalog } from "./catalog.ts";
 import { closeModels } from "./close-models.ts";
@@ -11,7 +12,15 @@ import {
 	thinkingSuffix,
 	withThinking,
 } from "./thinking.ts";
-import { canRunTask, isModelTier, type ModelRef, type ModelTier, resolveTier, taskBlocker } from "./tier.ts";
+import {
+	canRunTask,
+	isModelTier,
+	type ModelRef,
+	type ModelTier,
+	resolveTier,
+	taskBlocker,
+	type TierBilling,
+} from "./tier.ts";
 
 export {
 	currentPrice,
@@ -22,8 +31,21 @@ export {
 	SUBAGENT_DEFAULT_TIER,
 	canRunTask,
 	taskBlocker,
+	type TierBilling,
 } from "./tier.ts";
 export { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking };
+
+/** A registry's billing facts as routing reads them; no registry bills nothing by plan. */
+export const registryBilling = (
+	registry:
+		| { getProviderBilling(provider: string): ProviderPlan["billing"]; allowsUnattendedUse(provider: string): boolean }
+		| undefined,
+	background = false,
+): TierBilling => ({
+	plan: (provider) => registry?.getProviderBilling(provider) === "plan",
+	unattended: (provider) => registry?.allowsUnattendedUse(provider) !== false,
+	background,
+});
 
 /**
  * The route at the level the child will run at: a registry model without that level (no reasoning, no `xhigh`) clamps it
@@ -137,6 +159,8 @@ interface RouteInput {
 	configured?: ConfiguredModels | undefined;
 	/** Level for a route whose call and profile carry no `:thinking` suffix (`subagentThinking()`). */
 	thinking?: string | undefined;
+	/** Plan-billed providers a purpose prefers, and the unattended facts a background child's purpose respects. */
+	billing?: TierBilling | undefined;
 }
 
 /** The listed model a route's `provider/id[:thinking]` names, or undefined without a route or a listed match. */
@@ -204,8 +228,14 @@ function tierRoute(
 		};
 	}
 	const note = set ? { skipped: set.skipped } : {};
-	const chosen = resolveTier(tier, usable, input.parent, input.catalog);
+	const chosen = resolveTier(tier, usable, input.parent, input.catalog, input.billing);
 	if (chosen) return { model: `${chosen.provider}/${chosen.id}${thinking}`, ...note };
+	const { billing, parent } = input;
+	// The parent's model is an automatic route too: a background child is not sent to a plan the vendor keeps attended.
+	if (parent && billing?.background && billing.unattended?.(parent.provider) === false)
+		return {
+			error: `${parent.provider}'s plan does not allow unattended use, so a background task is not routed to it automatically. Name a model with \`model\`, or run the task in the foreground.`,
+		};
 	return parentModel.model ? { model: `${parentModel.model}${thinking}`, ...note } : note;
 }
 

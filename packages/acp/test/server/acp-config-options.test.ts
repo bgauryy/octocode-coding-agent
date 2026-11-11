@@ -29,6 +29,35 @@ describe("ACP session config options", () => {
 		expect(changed.configOptions[0]).toMatchObject({ id: "model", currentValue: "fixture/two" });
 	});
 
+	it("switches to a model whose plan allows interactive use only, with a notice beside it", async () => {
+		const h = harness();
+		await h.initialize();
+		const { sessionId } = await h.newSession();
+		const worker = h.workers[0];
+		worker.getModels.mockImplementation(async () => ({
+			current: worker.model,
+			available: ["fixture/one", "fixture/two"],
+			interactiveOnly: ["fixture/two"],
+		}));
+		const changed = await h.connection.agent.request(methods.agent.session.setConfigOption, {
+			sessionId,
+			configId: "model",
+			value: "fixture/two",
+		});
+		expect(worker.setModel).toHaveBeenCalledWith("fixture/two");
+		expect(changed.configOptions[0]).toMatchObject({
+			currentValue: "fixture/two",
+			options: [
+				{ value: "fixture/one", name: "fixture/one" },
+				{
+					value: "fixture/two",
+					name: "fixture/two",
+					description: "The vendor's plan allows interactive use only.",
+				},
+			],
+		});
+	});
+
 	it("refuses an unknown option, an unknown model and an unknown session without changing the model", async () => {
 		const h = harness();
 		await h.initialize();

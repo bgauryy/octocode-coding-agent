@@ -9,7 +9,6 @@ import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { renderSystemMessageUpdate } from "../../utils/text.ts";
 import { splitErrorToolResultImages } from "../transform-messages.ts";
 import { isCacheableBlock } from "./cache-breakpoints.ts";
-import { toClaudeCodeName } from "./claude-code.ts";
 import { type AnthropicEffort, isAnthropicEffort } from "./types.ts";
 
 function convertImageBlock(image: ImageContent) {
@@ -84,7 +83,6 @@ interface ConvertedAnthropicMessages {
 
 export function convertMessages(
 	transformedMessages: Message[],
-	isOAuthToken: boolean,
 	cacheControl?: CacheControlEphemeral,
 	allowEmptySignature = false,
 	managedProvider?: string,
@@ -122,7 +120,7 @@ export function convertMessages(
 					if (redefined.has(tool.name)) continue;
 					blocks.push({
 						type: "tool_removal",
-						tool: { type: "tool_reference", name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name },
+						tool: { type: "tool_reference", name: tool.name },
 					});
 				}
 				for (const definition of convertToolDefinitions(added)) {
@@ -209,7 +207,7 @@ export function convertMessages(
 					blocks.push({
 						type: "tool_use",
 						id: block.id,
-						name: isOAuthToken ? toClaudeCodeName(block.name) : block.name,
+						name: block.name,
 						input: block.arguments ?? {},
 					});
 				}

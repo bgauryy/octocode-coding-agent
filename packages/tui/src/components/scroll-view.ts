@@ -33,6 +33,7 @@ export class ScrollView extends Container {
 	private currentViewportHeight = 0;
 	private followingEnd: boolean;
 	private followSuppressedAtEnd = false;
+	private keepRowsAtNextLayout = false;
 	private requestRenderCallback: (() => void) | undefined;
 	private transientScrollbarVisible = false;
 	private scrollbarActive = false;
@@ -97,7 +98,8 @@ export class ScrollView extends Container {
 	}
 
 	private markScrollbarActivity(): void {
-		if (this.scrollbar !== "auto" || this.contentHeight <= this.currentViewportHeight) return;
+		if (!this.requestRenderCallback || this.scrollbar !== "auto" || this.contentHeight <= this.currentViewportHeight)
+			return;
 		this.transientScrollbarVisible = true;
 		if (this.scrollbarHideTimer) {
 			clearTimeout(this.scrollbarHideTimer);
@@ -124,6 +126,13 @@ export class ScrollView extends Container {
 		this.scrollbarActive = active;
 		this.markScrollbarActivity();
 		this.requestRenderCallback?.();
+	}
+
+	/** Release the host callback and transient timer when this view is unmounted; layout can attach it again. */
+	detach(): void {
+		this.hideTransientScrollbar();
+		this.scrollbarActive = false;
+		this.requestRenderCallback = undefined;
 	}
 
 	scrollTo(scrollTop: number, options: ScrollViewScrollToOptions = {}): void {
@@ -188,8 +197,21 @@ export class ScrollView extends Container {
 		}
 	}
 
+	/**
+	 * Keep the visible rows where they are at the next layout: the content's change in height is taken to be above the
+	 * viewport, as when earlier history is prepended. A view following the end stays at the end.
+	 */
+	keepRowsInView(): void {
+		this.keepRowsAtNextLayout = true;
+	}
+
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+		const previousHeight = this.contentHeight;
 		this.contentHeight = Math.max(0, Math.floor(contentHeight));
+		if (this.keepRowsAtNextLayout && !this.followingEnd) {
+			this.currentScrollTop += this.contentHeight - previousHeight;
+		}
+		this.keepRowsAtNextLayout = false;
 		this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
 		this.requestRenderCallback = requestRender;
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);

@@ -4,7 +4,7 @@ import type { CreateAgentSessionRuntimeFactory } from "../core/agent-session-run
 import { type AgentSessionRuntimeDiagnostic, createAgentSessionServices } from "../core/agent-session-services.ts";
 import { createSessionFromServices } from "../core/agent-session/create-session.ts";
 import { warningsBesideListing } from "../core/resource-loader/feature-loading.ts";
-import { resolveModelScope } from "../core/model-resolver.ts";
+import { resolveModelScope, unattendedUseNotice } from "../core/model-resolver.ts";
 import type { FolderTrustResolver } from "../core/folder-trust.ts";
 import type { SkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { collectSettingsDiagnostics } from "../core/settings-diagnostics.ts";
@@ -31,12 +31,14 @@ export interface CliRuntimeFactoryOptions {
 	requireTrust: boolean;
 	/** The current app mode; piped stdin can switch interactive startup to print after the factory is created. */
 	getAppMode(): AppMode;
+	/** This process serves an ACP client's session (`--mode acp` started it as a worker): no one watches it either. */
+	acpWorker?: boolean;
 	skillResourceSnapshot: SkillResourceSnapshot | undefined;
 }
 
 /** Create the factory that builds each CLI runtime, initially and after session switches. */
 export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): CreateAgentSessionRuntimeFactory {
-	const { parsed, cwd, folderTrust, requireTrust, getAppMode, skillResourceSnapshot } = options;
+	const { parsed, cwd, folderTrust, requireTrust, getAppMode, acpWorker, skillResourceSnapshot } = options;
 
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
@@ -130,10 +132,13 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			}
 		}
 
+		// Print mode and an ACP server's session run unattended: the vendor of an interactive-only plan does not allow them.
+		const unattended = acpWorker === true || getAppMode() === "print" || getAppMode() === "json";
 		const created = await createSessionFromServices({
 			services,
 			sessionManager,
 			sessionStartEvent,
+			unattended,
 			model: sessionOptions.model,
 			thinkingLevel: sessionOptions.thinkingLevel,
 			scopedModels: sessionOptions.scopedModels,
@@ -142,6 +147,9 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			noTools: sessionOptions.noTools,
 			customTools: sessionOptions.customTools,
 		});
+		const chosen = created.session.model;
+		const notice = unattended && chosen ? unattendedUseNotice(chosen, modelRuntime) : undefined;
+		if (notice) diagnostics.push({ type: "warning", message: notice });
 
 		return {
 			...created,

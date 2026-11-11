@@ -1,7 +1,7 @@
 import type { BetaCacheControlEphemeral as CacheControlEphemeral } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
-import { isOpenRouterModel } from "../../utils/provider-host.ts";
+import { isOpenRouterModel, matchesHost } from "../../utils/provider-host.ts";
 
 function getCacheControl(
 	model: Model<"anthropic-messages">,
@@ -41,11 +41,20 @@ export function shouldUseServerSideFallbackBeta(model: Model<"anthropic-messages
 	return (model.compat?.allowedFallbackModels?.length ?? 0) > 0;
 }
 
+/**
+ * Hosts whose documentation verifies the 1h cache tier through `cache_control.ttl`: Anthropic's own API, and OpenCode,
+ * which serves Claude through Anthropic's API and bills 1h writes separately (its non-Claude models opt out in their
+ * metadata). Every other Anthropic-compatible host (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax and other gateways)
+ * stays on the 5-minute tier unless a model sets `compat.supportsLongCacheRetention: true`.
+ */
+const LONG_CACHE_HOSTS = ["api.anthropic.com", "opencode.ai"];
+
 export function getAnthropicCompat(model: Model<"anthropic-messages">) {
 	const isOpenRouter = isOpenRouterModel(model);
 	return {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
-		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
+		supportsLongCacheRetention:
+			model.compat?.supportsLongCacheRetention ?? LONG_CACHE_HOSTS.some((host) => matchesHost(model.baseUrl, host)),
 		sendSessionAffinityHeaders: model.compat?.sendSessionAffinityHeaders ?? isOpenRouter,
 		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? (isOpenRouter ? "openrouter" : undefined),
 		supportsCacheControlOnTools: model.compat?.supportsCacheControlOnTools ?? true,

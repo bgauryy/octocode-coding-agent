@@ -26,7 +26,7 @@ import { messageDelta, TranscriptStream, unchangedDisplay } from "./transcript-s
 import { ToolCallStream } from "./transcript-toolcalls.ts";
 import { spillTool, spillToolData } from "./transcript-tools.ts";
 import { toolDisplay, type TranscriptSession } from "./transcript-display.ts";
-import { sameMessage, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
+import { adoptContext, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
 
 type MessageEvent = Extract<AgentSessionEvent, { type: "message_start" | "message_end" | "message_update" }>;
@@ -361,20 +361,9 @@ export class ApplicationTranscript {
 	history(options: { before?: string; limit?: number } = {}): ApplicationHistory {
 		return transcriptHistory(this.messages, this.tools, options);
 	}
-	/**
-	 * Take over a rebuilt context array whose messages equal `previous`: keep their ids and displayed state, so views
-	 * need no reset. False when any message differs.
-	 */
-	adopt(previous: readonly unknown[], next: readonly unknown[]): boolean {
-		if (previous.length !== next.length || !previous.every((message, index) => sameMessage(message, next[index])))
-			return false;
-		for (const [index, message] of next.entries()) {
-			const id = this.identities.get(asRecord(previous[index]));
-			if (id === undefined || message === previous[index]) continue;
-			this.identities.set(asRecord(message), id);
-			if (this.sources.has(id)) this.sources.set(id, message);
-		}
-		return true;
+	/** Take over a rebuilt context array that equals `previous` or extends it; returns the added messages not shown yet (`adoptContext`). */
+	adopt<T>(previous: readonly unknown[], next: readonly T[]): T[] | undefined {
+		return adoptContext(this.identities, this.sources, previous, next);
 	}
 
 	window(): { messages: ApplicationMessage[]; tools: ApplicationTool[] } {

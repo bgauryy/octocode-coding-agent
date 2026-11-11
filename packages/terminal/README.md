@@ -1,0 +1,21 @@
+# @octocodeai/octocode-terminal
+
+Private workspace that completes `!` shell lines in the terminal. It starts the user's shell as a long-lived completion driver, reads command lines the way a POSIX shell splits them, and ranks suggestions. It needs only Node (`terminal: []` in the package policy, enforced by `yarn run check:boundaries`); the coding-agent feature in `src/octocode/terminal/` supplies settings, trust, history storage and the model call.
+
+| Module | Does |
+| --- | --- |
+| `service.ts` | `ShellCompletionService`: the shell first (trusted folders only), then PATH programs, git branches and carapace |
+| `driver-process.ts`, `driver-lines.ts` | One driver process, a bounded line protocol (`id<TAB>text` in; `id<TAB>value<TAB>description<TAB>flags` and `id<TAB><RS>` out), cancellation and stall recovery |
+| `shells/` | How zsh (`zpty` capture), bash (`COMP_WORDS` and the completion function), fish (`complete --do-complete`) and PowerShell (`TabExpansion2`) are started; `index.ts` picks one from the setting or `$SHELL` |
+| `line.ts` | `parseShellLine` (quotes, escapes, separators, substitutions) and `quoteForShell` |
+| `suggest.ts` | History ranking, shell commands from a markdown reply, the deterministic ghost text |
+| `next-command.ts` | `NextCommandSuggester`: shared model calls per folder and prefix, with up to 256 recently used cached answers |
+| `git-refs.ts`, `carapace.ts`, `executables.ts` | Branch names read from `.git`, carapace's JSON export, PATH lookup |
+
+Shell processes never run a command line from a request: zsh gets the line and a Tab (never Enter) with the `_expand` completer removed, so `$(...)` is not substituted; bash gets the words and calls the completion function; fish and PowerShell get a string to complete. Completion functions themselves still run programs (git completion runs `git`), which is why the host starts a shell only in a trusted folder. Not published: `octocodeSource` declares the `terminal` mount and the coding-agent build bundles it.
+
+Cancellation releases requests even during shell startup or when a model ignores its abort signal. Canceled shell replies are discarded without retaining matches; their deadlines still detect a stalled shell. The driver closes on a protocol line above 64 Ki characters, more than 32 pending requests, or retained results above 10,000 matches or 1 Mi characters. Disposal releases pipes and startup waiters, with forced termination after 200 ms if graceful shutdown is ignored. Carapace has the same eight-second completion deadline and is terminated on cancellation. A context reset cancels pending model suggestions and clears cached answers; late replies cannot populate the new context's cache.
+
+Test: `yarn workspace @octocodeai/octocode-terminal run test` (the zsh, bash tests run when those shells are installed).
+
+PATH command scans and Git branch reads use asynchronous filesystem operations so completion does not hold up keyboard input. Concurrent command queries share a PATH scan; canceling a query stops waiting without discarding the shared scan. PATH answers refresh after 30 seconds or when PATH or PATHEXT changes.

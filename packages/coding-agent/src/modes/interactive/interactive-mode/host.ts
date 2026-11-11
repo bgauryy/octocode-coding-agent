@@ -207,8 +207,7 @@ export interface InteractiveModeMethods {
 	shouldShowStartupDetails(): boolean;
 	shouldShowStartupHeader(): boolean;
 	showAmbientAuthDialog(providerOption: AuthSelectorProvider, onBack?: () => void): void;
-	/** `secret`: a key already in hand (the token `claude setup-token` printed) answers the key prompt instead of the user. */
-	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void, secret?: string): Promise<void>;
+	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
 	showError(errorMessage: string): void;
 	showExtensionConfirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
 	showExtensionCustom: ExtensionUIContext["custom"];

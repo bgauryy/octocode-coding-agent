@@ -146,27 +146,6 @@ describe("Anthropic instruction split", () => {
 		expect(countCacheBreakpoints([payload.system, payload.tools, payload.messages])).toBe(0);
 	});
 
-	it("leaves the OAuth identity block unmarked and keeps the lookback slot", async () => {
-		const history: Message[] = [
-			{ role: "user", content: "one", timestamp: 1 },
-			assistant(model, [{ type: "text", text: "a" }], "stop"),
-			{ role: "user", content: "two", timestamp: 2 },
-			assistant(model, [{ type: "text", text: "b" }], "stop"),
-			{ role: "user", content: "three", timestamp: 3 },
-		];
-		const payload = await run(
-			contextWith(history),
-			{ instructionCacheBoundary: "project_context" },
-			"sk-ant-oat01-test",
-		);
-		expect(payload.system).toHaveLength(3);
-		expect(payload.system[0].cache_control).toBeUndefined();
-		expect(payload.system[1].cache_control).toBeDefined();
-		expect(payload.system[2].cache_control).toBeDefined();
-		// Two system markers, the last message and the lookback breakpoint: still four.
-		expect(countCacheBreakpoints([payload.system, payload.tools, payload.messages])).toBe(4);
-	});
-
 	it("keeps the one-hour instruction TTL before the five-minute history TTL", async () => {
 		const payload = await run(contextWith(simple), {
 			cacheRetention: "short",

@@ -1,6 +1,6 @@
 /**
  * Model and thinking-level controls: the /model and /effort commands, their selectors, the scoped-models selector,
- * keyboard cycling, and the Anthropic subscription warning.
+ * keyboard cycling, and the notice for a saved Claude subscription token.
  */
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
@@ -12,8 +12,8 @@ import { ModelSelectorComponent } from "../components/model-selector.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
 import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
-import { ANTHROPIC_SUBSCRIPTION_AUTH_WARNING } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { claudeSubscriptionRefusal } from "./provider-actions.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /** Interactive-mode members used by the model and thinking controls. */
@@ -174,9 +174,14 @@ export async function findExactModelMatch(
 	return findExactModelReferenceMatch(searchTerm, [...host.session.modelRuntime.getAvailableSnapshot()]);
 }
 
+/**
+ * A Claude subscription token saved before the direct Claude route was removed: say once why it is not used, since it
+ * configures nothing and requests with it are refused. With no `model` (startup) the Anthropic credential is read even
+ * though no Anthropic model is selected: such a token is never offered as one. A non-Anthropic `model` skips the check.
+ */
 export async function maybeWarnAboutAnthropicSubscriptionAuth(
 	host: ModelControlsHost,
-	model: Model<any> | undefined = host.session.model,
+	model?: Model<any>,
 ): Promise<void> {
 	if (host.settingsManager.getWarnings().anthropicExtraUsage === false) {
 		return;
@@ -184,19 +189,14 @@ export async function maybeWarnAboutAnthropicSubscriptionAuth(
 	if (host.anthropicSubscriptionWarningShown) {
 		return;
 	}
-	if (!model || model.provider !== "anthropic") {
+	if (model && model.provider !== "anthropic") {
 		return;
 	}
 
-	try {
-		if ((await host.session.modelRuntime.getCredentialKind(model.provider)) !== "subscription") {
-			return;
-		}
-		host.anthropicSubscriptionWarningShown = true;
-		host.showWarning(ANTHROPIC_SUBSCRIPTION_AUTH_WARNING);
-	} catch {
-		// Ignore auth lookup failures for warning-only checks.
-	}
+	const refusal = await claudeSubscriptionRefusal(host, "anthropic");
+	if (!refusal) return;
+	host.anthropicSubscriptionWarningShown = true;
+	host.showWarning(refusal);
 }
 
 export function showModelSelector(host: ModelControlsHost, initialSearchInput?: string): void {
@@ -289,6 +289,7 @@ export function showModelsSelector(host: ModelControlsHost): void {
 				allModels: availableModels,
 				enabledModelIds: currentEnabledIds,
 				refreshStatus: "Refreshing model catalogs…",
+				providerKind: (provider) => host.session.modelRuntime.getProviderKind(provider),
 			},
 			{
 				onChange: (enabledIds) => {

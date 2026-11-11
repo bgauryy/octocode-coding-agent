@@ -199,8 +199,7 @@ export const OpenAIResponsesCompatSchema = Type.Object(
 		}),
 		supportsLongCacheRetention: optionalCompatBoolean({
 			description:
-				'Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models.',
-			default: true,
+				'Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models. Default: true on OpenAI\'s API for GPT-5.6+ in explicit cache mode and for the models OpenAI lists for 24h retention; false elsewhere.',
 		}),
 		supportsTemperature: optionalCompatBoolean({
 			description: "Whether the model accepts the temperature request field. When false, temperature is omitted.",

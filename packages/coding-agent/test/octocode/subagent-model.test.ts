@@ -14,6 +14,7 @@ import {
 } from "../../src/octocode/subagents/model.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
+import { meteredBilling } from "./fake-host.ts";
 
 const SESSION = { dir: "/s/session", id: "inky-kraken" };
 
@@ -147,7 +148,7 @@ describe("subagent thinking", () => {
 	const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "octocode-thinking-"));
 	const plan = (models: readonly object[]) => {
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		const registry = { getAvailable: () => models, getProvider: () => undefined } as never;
+		const registry = { ...meteredBilling, getAvailable: () => models, getProvider: () => undefined } as never;
 		const ctx = { modelRegistry: registry, model: parent as never };
 		return (profile?: string, call?: string) => planRun(profiles, { profile, model: call }, ctx).route.model;
 	};
@@ -187,7 +188,7 @@ describe("subagent thinking", () => {
 		const noOff = reasoning.map((entry) => ({ ...entry, thinkingLevelMap: { off: null } }));
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
 		const ctx = {
-			modelRegistry: { getAvailable: () => noOff, getProvider: () => undefined } as never,
+			modelRegistry: { ...meteredBilling, getAvailable: () => noOff, getProvider: () => undefined } as never,
 			model: parent as never,
 		};
 		const route = planRun(profiles, { profile: "lean", model: "p/tiny:off" }, ctx).route;
@@ -197,7 +198,7 @@ describe("subagent thinking", () => {
 
 	it("routes a task without a profile or model to the medium purpose, and a profile without a model to the parent's", () => {
 		const ctx = (models: readonly object[]) => ({
-			modelRegistry: { getAvailable: () => models, getProvider: () => undefined } as never,
+			modelRegistry: { ...meteredBilling, getAvailable: () => models, getProvider: () => undefined } as never,
 			model: parent as never,
 		});
 		const profiles = new Map([["plain", { name: "plain", description: "", prompt: "" }]]);
@@ -260,7 +261,7 @@ describe("a child whose session has no model", () => {
 	});
 
 	it("keeps the level on the route a run is planned with, and starts the child with --thinking", () => {
-		const registry = { getAvailable: () => available } as never;
+		const registry = { ...meteredBilling, getAvailable: () => available } as never;
 		const plan = planRun(new Map(), {}, { modelRegistry: registry, model: undefined });
 		expect(plan.route.model).toBeUndefined();
 		expect(plan.route).toMatchObject({ thinking: subagentThinking({}) });

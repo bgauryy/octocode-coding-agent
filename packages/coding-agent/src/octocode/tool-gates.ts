@@ -16,7 +16,8 @@ import { userBashGate } from "./permission/user-bash.ts";
 import type { registerHooks } from "./hooks/register.ts";
 import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
-import { snapshotLocalReads } from "./shared/local-reads.ts";
+import type { snapshotLocalReads } from "./shared/local-reads.ts";
+import { snapshotReadCall } from "./files/read-continuations.ts";
 import { untilCommand } from "./shared/until-command.ts";
 import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
 import { protectedBranch } from "./worktrees/default-branch.ts";
@@ -191,13 +192,13 @@ export function registerToolGates(
 			const refused = await judge("tool", bodies, event, ctx, judgeOptions);
 			deferred = refused?.defer === true;
 			if (refused) return refused;
-			const snapshots = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
+			const snapshots = await snapshotReadCall(localReads, event.toolName, event.input, ctx.cwd);
 			if (snapshots.size) localReads.set(event.toolCallId, snapshots);
 			// An earlier call of the batch may change a file before this read runs (the `file` tool runs alone, in order): the
 			// snapshot is retaken when the call starts executing, so the receipt credits the content the read returns.
 			const retake: Gate | undefined = snapshots.size
 				? async () => {
-						const fresh = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
+						const fresh = await snapshotReadCall(localReads, event.toolName, event.input, ctx.cwd);
 						if (fresh.size) localReads.set(event.toolCallId, fresh);
 						else localReads.delete(event.toolCallId);
 						return undefined;

@@ -76,8 +76,8 @@ describe("the end_hint migration", () => {
 		openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false }, plan);
 
 	it("is the first step, additive, and a migrated file has the shape of a new one", () => {
-		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`), 7 (`backlog.rank`) and 8 (`cache_write`) came after these.
-		expect(SCHEMA_PLAN.version).toBe(8);
+		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`), 7 (`backlog.rank`), 8 (`cache_write`) and 9 (`shell_history`) came after these.
+		expect(SCHEMA_PLAN.version).toBe(9);
 		expect(SCHEMA_PLAN.migrations).toEqual([
 			expect.objectContaining({ to: 2, additive: true }),
 			expect.objectContaining({ to: 3, additive: true }),
@@ -86,6 +86,7 @@ describe("the end_hint migration", () => {
 			expect.objectContaining({ to: 6, additive: true }),
 			expect.objectContaining({ to: 7, additive: true }),
 			expect.objectContaining({ to: 8, additive: true }),
+			expect.objectContaining({ to: 9, additive: true }),
 		]);
 		const old = path.join(root, "old.db");
 		const first = open(old, { version: 1, migrations: [] });

@@ -1,6 +1,7 @@
 import type { MutableModels, Provider } from "@octocodeai/octocode-ai";
 import type { ModelConfig } from "../model-config.ts";
 import { composeModelProvider, type ProviderConfigInput, validateExtensionProvider } from "../provider-composer.ts";
+import { type KnownModelLookup, knownModelLookup } from "../provider-composer/known-models.ts";
 import {
 	createVirtualModel,
 	isVirtualModel,
@@ -22,6 +23,8 @@ export class ProviderLayers {
 	/** Virtual models by provider id, then model id. */
 	readonly virtualModels = new Map<string, Map<string, RegisteredVirtualModel>>();
 	readonly compositionErrors = new Map<string, string>();
+	/** Built-in models a `models.json` entry can take its metadata from (see `known-models.ts`). */
+	private readonly known: KnownModelLookup = knownModelLookup(this.builtins);
 	config: ModelConfig;
 
 	constructor(models: MutableModels, config: ModelConfig, providers: readonly Provider[]) {
@@ -60,7 +63,7 @@ export class ProviderLayers {
 			return base;
 		}
 		try {
-			const provider = composeModelProvider(providerId, base, this.config, extension);
+			const provider = composeModelProvider(providerId, base, this.config, extension, this.known);
 			this.compositionErrors.delete(providerId);
 			return provider;
 		} catch (error) {

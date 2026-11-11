@@ -161,7 +161,7 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 				sessionId={session.timeline?.sessionId || undefined}
 				startedAt={core.startedAt}
 				paused={session.paused}
-				held={session.held.length}
+				held={session.heldFrames}
 				range={session.range}
 				filter={session.filter}
 				onPause={(value) => dispatch({ type: "pause", value })}

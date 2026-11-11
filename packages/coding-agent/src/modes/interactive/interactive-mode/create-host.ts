@@ -5,6 +5,7 @@
 
 import { Container, setCapabilityOverrides, setKeybindings } from "@octocodeai/octocode-tui";
 import { getAgentDir, VERSION } from "../../../config.ts";
+import { openReference } from "../reference-opener.ts";
 import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts";
 import { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
@@ -50,6 +51,7 @@ export function createInteractiveModeHost(
 		editorComponentFactory: undefined,
 		autocompleteProvider: undefined,
 		autocompleteProviderWrappers: [],
+		editorChangeListeners: new Set(),
 		fdPath: undefined,
 		activeSelectorDispose: undefined,
 		isInitialized: false,
@@ -177,6 +179,9 @@ export function createInteractiveModeHost(
 		showHardwareCursor: host.settingsManager.getShowHardwareCursor(),
 		logDirectory: getAgentDir(),
 		terminal: options.terminal,
+		openReference: (url) => {
+			void openReference(host, url);
+		},
 		onRightClickPaste: host.onRightClickPaste,
 		fullscreenCopyOnSelect: host.settingsManager.getFullscreenCopyOnSelect(),
 		fullscreenWheelScrollLines: host.settingsManager.getFullscreenWheelScrollLines(),
@@ -226,6 +231,12 @@ export function createInteractiveModeHost(
 		initialThemeSetting: options.initialThemeSetting,
 	});
 	installFolderTrustAsker(host, options.createFolderTrustAsker);
-	bindUiState(host);
+	// The binders live as long as the host: only a permanent stop ends them, never a suspend or a session rebind.
+	const stopUiBinders = bindUiState(host);
+	const stopHost = host.stop;
+	host.stop = (fullscreenExitOutput) => {
+		stopUiBinders();
+		stopHost(fullscreenExitOutput);
+	};
 	return host;
 }

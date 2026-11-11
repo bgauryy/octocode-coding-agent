@@ -34,7 +34,7 @@ describe("communication prompt contracts", () => {
 		// The top-level session reaches other trees and names their owning parent; a child reaches only its own session
 		// tree and asks its parent to relay (the routing enforced in `team/`).
 		const rules = {
-			true: "For agents another session started, share evidence and send scope or interface changes to their coordinator.",
+			true: "Share evidence and scope/interface changes with other coordinators.",
 			false: "Your coordinator relays beyond your tree.",
 		};
 		for (const canDelegate of [true, false]) {
@@ -49,15 +49,15 @@ describe("communication prompt contracts", () => {
 		const main = { research: undefined, profiles: [], canDelegate: true };
 		const prompt = octocodePrompt(main);
 		for (const line of [
-			"Only you reach other Octocode processes; relay for a child that asks.",
-			"Finished work in a linked worktree: send `to` `coordinator`",
-			"never merge it yourself",
-			"A merge request in the main checkout: review it, `coordinate` `merge` its `branch`",
+			"Only you reach other Octocode processes; relay for children.",
+			"Finished worktree: send `to` `coordinator`",
+			"never merge yourself",
+			"Review main-checkout merge requests; `coordinate` `merge` the `branch`",
 		])
 			expect(prompt.split(line)).toHaveLength(2);
 		// The outside-agent line only where that type is declared.
 		expect(prompt).not.toContain("`agent` type `external`");
-		expect(octocodePrompt({ ...main, canExternal: true })).toContain("An outside agent: `agent` type `external`.");
+		expect(octocodePrompt({ ...main, canExternal: true })).toContain("Outside agent: `agent` type `external`.");
 		// Without the agent tool it names nothing.
 		const withoutAgent = octocodePrompt({ ...main, canUseAgent: false });
 		expect(withoutAgent).not.toContain("only you reach");
@@ -86,8 +86,10 @@ describe("communication prompt contracts", () => {
 		const message = fake.tools.get("sendMessage");
 		expect(coordinate.promptGuidelines.join(" ")).toContain("`agent` type `coordinate`");
 		expect(coordinate.promptGuidelines.join(" ")).not.toContain("input.");
-		// A read-only role is not told to lock paths: the condition is that it edits.
-		expect(coordinate.promptGuidelines.join(" ")).toContain("if you edit files, lock your paths first");
+		// A read-only role is not told to lock paths: the condition is that it edits. This registration has no `stop`,
+		// so it is a subagent's: its task's `paths` are reserved already, and it locks only what lies outside them.
+		expect(coordinate.promptGuidelines.join(" ")).toContain("Your task's `paths` are already reserved for you");
+		expect(coordinate.promptGuidelines.join(" ")).toContain("before editing a file outside them, lock it");
 		expect(identityBlock({ id: "a-1", parentId: "parent-1" })).toContain(
 			"coordinate with teammates through reservations",
 		);

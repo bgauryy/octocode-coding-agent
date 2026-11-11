@@ -27,7 +27,7 @@ import {
 /**
  * Cache edge cases for the Anthropic-format adapters that the per-adapter suites leave open: the Bedrock one-hour TTL
  * on models that only accept five minutes, cross-request breakpoint positions in a session that combines every marker
- * source at once (OAuth identity, a split prompt, native tool changes, effort markers, a parallel turn far past the
+ * source at once (a split prompt, native tool changes, effort markers, a parallel turn far past the
  * 20-block lookback), and caching turned off in that same combination.
  */
 
@@ -210,7 +210,7 @@ describe("Bedrock one-hour cache points per model", () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 const opus = getBuiltinModel("anthropic", "claude-opus-5-5");
-const OAUTH = "sk-ant-oat01-test";
+const API_KEY = "sk-ant-api03-test";
 const signed = (text: string, signature: string) => ({
 	type: "thinking" as const,
 	thinking: text,
@@ -290,18 +290,18 @@ describe("Anthropic session with every marker source", () => {
 			options: { cacheRetention: "short" as const, instructionCacheRetention: "long" as const },
 		},
 		{ name: "short", options: { cacheRetention: "short" as const } },
-	])("OAuth, split prompt, native tool changes, effort markers ($name)", async ({ options }) => {
-		const payloads = await session({ apiKey: OAUTH, ...options });
+	])("split prompt, native tool changes, effort markers ($name)", async ({ options }) => {
+		const payloads = await session({ apiKey: API_KEY, ...options });
 		for (const [index, payload] of payloads.entries()) {
 			const found = markers(payload);
 			expect(found.length).toBeLessThanOrEqual(4);
 			// A longer TTL never follows a shorter one in prefix order.
 			const ranks = found.map(({ block }) => rank(block.cache_control?.ttl));
 			for (let i = 1; i < ranks.length; i++) expect(ranks[i]).toBeLessThanOrEqual(ranks[i - 1]);
-			// OAuth identity stays unmarked; the base and project blocks carry the instruction markers.
-			expect(payload.system?.map((block) => block.cache_control !== undefined)).toEqual([false, true, true]);
-			// OAuth sends Claude Code tool names; the list never changes after the first request.
-			expect(payload.tools?.map((tool) => tool.name)).toEqual(["Read", "__pi_deferred_placeholder__"]);
+			// The base and project blocks carry the instruction markers.
+			expect(payload.system?.map((block) => block.cache_control !== undefined)).toEqual([true, true]);
+			// Tools keep their own names; the list never changes after the first request.
+			expect(payload.tools?.map((tool) => tool.name)).toEqual(["read", "__pi_deferred_placeholder__"]);
 			if (index === 0) continue;
 
 			const previous = payloads[index - 1];
@@ -321,7 +321,7 @@ describe("Anthropic session with every marker source", () => {
 	});
 
 	it("sends no cache_control anywhere when caching is off, whatever the instruction preference", async () => {
-		const payloads = await session({ apiKey: OAUTH, cacheRetention: "none", instructionCacheRetention: "long" });
+		const payloads = await session({ apiKey: API_KEY, cacheRetention: "none", instructionCacheRetention: "long" });
 		for (const payload of payloads) expect(JSON.stringify(payload)).not.toContain("cache_control");
 	});
 
@@ -337,8 +337,8 @@ describe("Anthropic session with every marker source", () => {
 			systemUpdate("Prefer grep for searches.", [grepTool]),
 		];
 		const empty: AssistantMessage = { ...assistant(opus, []), stopReason: "aborted" };
-		const before = await capture(opus, transcript(base), { apiKey: OAUTH });
-		const after = await capture(opus, transcript([...base, empty, user("retry")]), { apiKey: OAUTH });
+		const before = await capture(opus, transcript(base), { apiKey: API_KEY });
+		const after = await capture(opus, transcript([...base, empty, user("retry")]), { apiKey: API_KEY });
 		const tail = lastMarkedMessage(before);
 		expect(canonical(after, after.messages.slice(0, tail + 1))).toBe(
 			canonical(before, before.messages.slice(0, tail + 1)),
@@ -347,7 +347,7 @@ describe("Anthropic session with every marker source", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// Provider tier matrix: every catalog Claude route sends its longest supported TTL under the default (long) setting
+// Provider tier matrix: every catalog Claude route sends its default TTL under the default (long) setting
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Every `cache_control` / `cachePoint` object in a captured payload, outside caller-defined schemas and arguments. */
@@ -389,9 +389,22 @@ const FIVE_MINUTE_ONLY_BEDROCK_IDS = [
 	"us.anthropic.claude-opus-4-1-20250805-v1:0",
 ];
 
-/** The longest TTL the route documents for this model: one hour, except Bedrock models that accept only five minutes. */
-function longestTtl(model: Model<Api>): string | undefined {
-	return model.api === "bedrock-converse-stream" && FIVE_MINUTE_ONLY_BEDROCK_IDS.includes(model.id) ? undefined : "1h";
+/**
+ * Anthropic Messages hosts whose documentation verifies the one-hour TTL: Anthropic's own API and OpenCode. Other
+ * Anthropic-protocol gateways (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax) default to five minutes.
+ */
+const ONE_HOUR_ANTHROPIC_HOSTS = ["api.anthropic.com", "opencode.ai"];
+
+/**
+ * The TTL the route sends by default: one hour, except Bedrock models that accept only five minutes and Anthropic
+ * Messages gateways whose one-hour tier is not documented.
+ */
+function defaultTtl(model: Model<Api>): string | undefined {
+	if (model.api === "bedrock-converse-stream")
+		return FIVE_MINUTE_ONLY_BEDROCK_IDS.includes(model.id) ? undefined : "1h";
+	if (model.api === "anthropic-messages")
+		return ONE_HOUR_ANTHROPIC_HOSTS.includes(new URL(model.baseUrl).hostname) ? "1h" : undefined;
+	return "1h";
 }
 
 const bedrockClaudeModels = claudeRoutes
@@ -437,14 +450,15 @@ describe("Claude provider tier matrix", () => {
 		expect([...apis].sort()).toEqual(["anthropic-messages", "bedrock-converse-stream", "openai-completions"]);
 	});
 
-	// Anthropic, OpenRouter, Bedrock (models that list it) and the Anthropic-protocol gateways accept `ttl: "1h"`; the
-	// default settings ask for long instructions and long history, so both layers must carry the longest tier.
-	it.each(claudeRoutes)("$route sends its longest TTL on instructions and history by default", async ({ model }) => {
+	// The default settings ask for long instructions and long history, so both layers carry the route's default tier:
+	// one hour where it is documented (Anthropic, OpenCode, Bedrock models that list it, OpenAI-format routes), five
+	// minutes on the other Anthropic-protocol gateways.
+	it.each(claudeRoutes)("$route sends its default TTL on instructions and history by default", async ({ model }) => {
 		const found = cacheMarkers(await captureRoute(model, { cacheRetention: "long" }));
 		// Instructions (tools/system), the final message and the previous tail.
 		expect(found.length).toBeGreaterThanOrEqual(3);
 		expect(found.length).toBeLessThanOrEqual(4);
-		const ttl = longestTtl(model);
+		const ttl = defaultTtl(model);
 		for (const marker of found) expect(marker.ttl).toBe(ttl);
 	});
 

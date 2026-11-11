@@ -10,7 +10,6 @@ import type {
 	StopReason,
 	TextContent,
 	ThinkingContent,
-	Tool,
 	ToolCall,
 	UnsupportedContent,
 } from "../../types.ts";
@@ -19,7 +18,6 @@ import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { parseStreamingJson, parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { appendAssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { cacheMissDiagnostic } from "./cache-diagnostics.ts";
-import { fromClaudeCodeName } from "./claude-code.ts";
 import { providerOutputText } from "../provider-output.ts";
 import { anthropicAnnotation, anthropicNativeFields, anthropicNativeOutput } from "./rich-content.ts";
 
@@ -32,8 +30,6 @@ export interface AnthropicStreamState {
 	model: Model<"anthropic-messages">;
 	output: AssistantMessage;
 	stream: AssistantMessageEventStream;
-	isOAuth: boolean;
-	currentTools: Tool[];
 	/** Model whose cost prices usage; a server-side fallback replaces it on `message_start`. */
 	usageModel: Model<"anthropic-messages">;
 	inputTransformations: BetaInputTransformation[] | undefined;
@@ -80,7 +76,7 @@ function assumeLongWrites(state: AnthropicStreamState): void {
 
 /** Applies one Anthropic stream event to the partial message and emits the matching stream events. */
 export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: AnthropicStreamState): void {
-	const { model, output, stream, isOAuth, currentTools } = state;
+	const { model, output, stream } = state;
 	const blocks = output.content as Block[];
 	if (event.type === "message_start") {
 		output.responseId = event.message.id;
@@ -153,7 +149,7 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 			const block: Block = {
 				type: "toolCall",
 				id: event.content_block.id,
-				name: isOAuth ? fromClaudeCodeName(event.content_block.name, currentTools) : event.content_block.name,
+				name: event.content_block.name,
 				arguments: (event.content_block.input as Record<string, any>) ?? {},
 				partialJson: "",
 				index: event.index,
@@ -320,6 +316,8 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 				event.usage.cache_creation_input_tokens != null &&
 				!(event.usage.cache_creation_input_tokens === 0 && output.usage.cacheWrite > 0)
 			) {
+				// A breakdown reported for a different aggregate no longer describes these writes.
+				if (event.usage.cache_creation_input_tokens !== output.usage.cacheWrite) state.cacheBreakdownSeen = false;
 				output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
 			}
 			// Vercel AI Gateway includes the TTL breakdown in deltas, though the SDK only types it on message_start.

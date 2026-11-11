@@ -1,11 +1,12 @@
-import type { KnownProvider } from "@octocodeai/octocode-ai";
+import type { Api, KnownProvider, Model } from "@octocodeai/octocode-ai";
+import { normalizeModelId } from "../provider-composer/known-models.ts";
 
 /** Default chat model IDs for providers with built-in chat models. */
 export const defaultModelPerProvider: Partial<Record<KnownProvider, string>> = {
 	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
 	"ant-ling": "Ring-2.6-1T",
-	anthropic: "claude-opus-4-8",
-	openai: "gpt-5.5",
+	anthropic: "claude-opus-5-5",
+	openai: "gpt-6.1-sol",
 	azure: "gpt-5.4",
 	"openai-codex": "gpt-6.1-sol",
 	nvidia: "nvidia/nemotron-3.5-super-vl-120b-a12b",
@@ -43,3 +44,13 @@ export const defaultModelPerProvider: Partial<Record<KnownProvider, string>> = {
 	"xiaomi-token-plan-ams": "mimo-v2.6-pro",
 	"xiaomi-token-plan-sgp": "mimo-v2.6-pro",
 };
+
+/**
+ * A provider without a built-in default (a gateway in models.json): its model that a vendor defaults to (a gateway's
+ * `claude-opus-5-5` or `anthropic/claude-opus-5.5`), else its first available model.
+ */
+export function ownProviderDefault(available: readonly Model<Api>[], provider: string): Model<Api> | undefined {
+	const own = available.filter((model) => model.provider === provider);
+	const vendorDefaults = new Set(Object.values(defaultModelPerProvider).map((id) => normalizeModelId(id)));
+	return own.find((model) => vendorDefaults.has(normalizeModelId(model.id))) ?? own[0];
+}

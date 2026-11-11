@@ -165,7 +165,9 @@ describe("the real assembled prefix of a main session", () => {
 	// Slack stays 86.
 	// 119_282 (measured 119,196: system 30,808, tools 80,715, AGENTS.md 7,673): the user-requested challenge and
 	// numbers rules (+241 in system) and the rebuilt sibling server's tool text (+598 in tools). Slack stays 86.
-	const REAL_PREFIX_CEILING = 119_282;
+	// 119_938 (119,196 + 656): the user-requested rule for messaging an outside CLI session through a one-shot proxy
+	// of its own CLI (+656 in system). Slack stays 86.
+	const REAL_PREFIX_CEILING = 119_938;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");

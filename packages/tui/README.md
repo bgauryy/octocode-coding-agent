@@ -48,15 +48,25 @@ Both implement `TUI`; choose one only where the application is constructed.
 ## Render loop
 
 ```mermaid
-flowchart LR
-  A[requestRender] --> B{Keyboard input?}
-  B -- yes --> D
-  B -- no --> C[Coalesce, 40 ms minimum]
-  C --> D[Render children at terminal width]
-  D --> E[Composite overlays, resolve cursor]
-  E --> F[Diff against previous frame]
-  F --> G[Write inside CSI 2026 begin/end]
+flowchart TD
+  A[requestRender] --> B{Output busy?}
+  B -- yes --> C[Wait and coalesce]
+  C --> B
+  B -- no --> D[Schedule next frame]
+  D --> E[Render, composite and diff]
+  E --> F[Write inside CSI 2026 begin/end]
 ```
+
+Keyboard input gets priority, while both keyboard and ordinary repaints respect output pressure.
+POSIX terminal frames use nonblocking output so a slow reader does not stop input, cancellation
+or timers. `start()` turns it back on after a child that inherited stdout (an editor) returns the
+terminal. Before an explicit exit or suspend, stop rendering and await `drainOutput()` with a
+bounded deadline. Forced-exit cleanup writes terminal resets synchronously past any queued
+frame, waiting at most one second for a terminal that stopped reading; cleanup hooks remain
+registered until normal restore output drains.
+
+Headless consumers can import width helpers and `GLYPH` from `@octocodeai/octocode-tui/text`
+without loading terminal components or native clipboard support.
 
 ## Writing a component
 

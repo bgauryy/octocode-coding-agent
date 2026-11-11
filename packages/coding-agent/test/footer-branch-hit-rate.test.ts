@@ -48,7 +48,7 @@ function sessionAt(leafId: string): AgentSession {
 			getCwd: () => "/tmp/project",
 		},
 		getContextUsage: () => ({ contextWindow: 200_000, percent: 1 }),
-		modelRuntime: { isUsingSubscription: () => false },
+		modelRuntime: { isUsingSubscription: () => false, getProviderKind: () => "API key" },
 	} as unknown as AgentSession;
 }
 

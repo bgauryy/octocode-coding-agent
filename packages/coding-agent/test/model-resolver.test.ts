@@ -5,7 +5,7 @@ import { Agent } from "@octocodeai/octocode-agent-core";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModels, getBuiltinProviders, getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import {
@@ -16,10 +16,11 @@ import {
 	resolveModelReference,
 	resolveModelScope,
 	resolveModelScopeWithDiagnostics,
+	unattendedUseNotice,
 } from "../src/core/model-resolver.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
+import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
 // Mock models for testing
@@ -686,7 +687,7 @@ describe("resolveCliModel", () => {
 
 describe("default model selection", () => {
 	test("openai defaults track current models", () => {
-		expect(defaultModelPerProvider.openai).toBe("gpt-5.5");
+		expect(defaultModelPerProvider.openai).toBe("gpt-6.1-sol");
 		expect(defaultModelPerProvider["openai-codex"]).toBe("gpt-6.1-sol");
 	});
 
@@ -742,6 +743,7 @@ describe("default model selection", () => {
 
 		const registry = {
 			getAvailableSnapshot: () => [aiGatewayModel],
+			getProviderBilling: () => "metered",
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 
 		const result = await findInitialModel({
@@ -777,6 +779,7 @@ describe("default model selection", () => {
 				provider === savedDeepSeekModel.provider && modelId === savedDeepSeekModel.id ? savedDeepSeekModel : undefined,
 			hasConfiguredAuth: (provider: string) => provider === "spark-two",
 			getAvailableSnapshot: () => [localDeepSeekModel],
+			getProviderBilling: () => "metered",
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 
 		const result = await findInitialModel({
@@ -810,10 +813,12 @@ describe("default model selection", () => {
 			make("openai", "gpt-5.5"),
 			make("openai", "gpt-5.4-mini"),
 		];
+		let planBilled = new Set<string>();
 		const runtime = {
 			getModel: () => undefined,
 			hasConfiguredAuth: () => true,
 			getAvailableSnapshot: () => available,
+			getProviderBilling: (provider: string) => (planBilled.has(provider) ? "plan" : "metered"),
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 		const start = (options: Partial<Parameters<typeof findInitialModel>[0]>) =>
 			findInitialModel({ scopedModels: [], isContinuing: false, modelRuntime: runtime, ...options });
@@ -835,7 +840,124 @@ describe("default model selection", () => {
 
 		test("skips a per-provider default that is not available", async () => {
 			const result = await start({ defaultProvider: "anthropic", providerModels: { anthropic: "missing" } });
-			expect(`${result.model?.provider}/${result.model?.id}`).toBe("anthropic/claude-opus-4-8");
+			expect(`${result.model?.provider}/${result.model?.id}`).toBe("anthropic/claude-opus-5-5");
+		});
+
+		describe("a plan-billed provider", () => {
+			beforeEach(() => {
+				// A subscription pays for openai (a ChatGPT sign-in); anthropic is a metered key.
+				planBilled = new Set(["openai"]);
+			});
+			afterEach(() => {
+				planBilled = new Set();
+			});
+
+			test("comes before a metered one in the built-in order when nothing is saved", async () => {
+				expect(defaultModelPerProvider.anthropic).toBe("claude-opus-5-5");
+				const openaiDefault = make("openai", defaultModelPerProvider.openai ?? "");
+				const withDefault = {
+					...runtime,
+					getAvailableSnapshot: () => [...available, openaiDefault],
+				} as unknown as typeof runtime;
+				const result = await start({ modelRuntime: withDefault });
+				expect(`${result.model?.provider}/${result.model?.id}`).toBe(`openai/${openaiDefault.id}`);
+				planBilled = new Set();
+				const metered = await start({ modelRuntime: withDefault });
+				expect(`${metered.model?.provider}/${metered.model?.id}`).toBe("anthropic/claude-opus-5-5");
+			});
+
+			test("puts a plan-billed provider first among the user's per-provider defaults", async () => {
+				const result = await start({ providerModels: { anthropic: "claude-opus-4-8", openai: "gpt-5.4-mini" } });
+				expect(`${result.model?.provider}/${result.model?.id}`).toBe("openai/gpt-5.4-mini");
+			});
+
+			test("never overrides a saved default provider, a saved default model or scoped models", async () => {
+				const named = {
+					getModel: (provider: string, id: string) => available.find((m) => m.provider === provider && m.id === id),
+				};
+				const saved = await findInitialModel({
+					scopedModels: [],
+					isContinuing: false,
+					defaultProvider: "anthropic",
+					defaultModelId: "claude-opus-4-8",
+					modelRuntime: { ...runtime, ...named } as typeof runtime,
+				});
+				expect(`${saved.model?.provider}/${saved.model?.id}`).toBe("anthropic/claude-opus-4-8");
+				const provider = await start({ defaultProvider: "anthropic" });
+				expect(`${provider.model?.provider}/${provider.model?.id}`).toBe("anthropic/claude-opus-5-5");
+				const scoped = await start({ scopedModels: [{ model: available[0] }] });
+				expect(`${scoped.model?.provider}/${scoped.model?.id}`).toBe("anthropic/claude-opus-4-8");
+			});
+		});
+
+		describe("unattended runs", () => {
+			const qwen = make("qwen-token-plan-individual", "qwen3.8-max");
+			const runtimeWith = (models: Model<"anthropic-messages">[]) =>
+				({
+					getModel: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
+					hasConfiguredAuth: () => true,
+					getAvailableSnapshot: () => models,
+					getProviderBilling: () => "metered",
+					allowsUnattendedUse: (provider: string) => provider !== qwen.provider,
+				}) as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
+			const pick = async (options: Partial<Parameters<typeof findInitialModel>[0]>, models = [qwen, ...available]) => {
+				const result = await findInitialModel({
+					scopedModels: [],
+					isContinuing: false,
+					modelRuntime: runtimeWith(models),
+					...options,
+				});
+				return `${result.model?.provider}/${result.model?.id}`;
+			};
+			const qwenFirst = { providerModels: { [qwen.provider]: qwen.id } };
+
+			test("an interactive run takes an interactive-only plan's model like any other", async () => {
+				expect(await pick(qwenFirst)).toBe("qwen-token-plan-individual/qwen3.8-max");
+			});
+
+			test("automatic choice skips an interactive-only plan for the next candidate", async () => {
+				expect(await pick({ ...qwenFirst, unattended: true })).toBe("anthropic/claude-opus-5-5");
+				expect(await pick({ unattended: true }, [qwen, make("custom", "local")])).toBe("custom/local");
+			});
+
+			test("an interactive-only plan is still used when it is the only one available", async () => {
+				expect(await pick({ unattended: true }, [qwen])).toBe("qwen-token-plan-individual/qwen3.8-max");
+			});
+
+			test("a model the user named stays the choice", async () => {
+				const saved = { defaultProvider: qwen.provider, defaultModelId: qwen.id, unattended: true };
+				expect(await pick(saved)).toBe("qwen-token-plan-individual/qwen3.8-max");
+				expect(await pick({ defaultProvider: qwen.provider, unattended: true })).toBe(
+					"qwen-token-plan-individual/qwen3.8-max",
+				);
+				const scoped = { scopedModels: [{ model: qwen }], unattended: true };
+				expect(await pick(scoped)).toBe("qwen-token-plan-individual/qwen3.8-max");
+			});
+
+			test("the notice names the model and is absent for a plan that allows unattended use", () => {
+				const notice = unattendedUseNotice(qwen, runtimeWith([qwen]));
+				expect(notice).toBe(
+					"qwen-token-plan-individual/qwen3.8-max: the vendor's plan allows interactive use only, not unattended runs like this one.",
+				);
+				expect(unattendedUseNotice(available[0], runtimeWith(available))).toBeUndefined();
+			});
+
+			test("the built-in Qwen, Xiaomi and Z.AI plans are interactive-only in the real catalog", async () => {
+				const authStorage = AuthStorage.inMemory({
+					[qwen.provider]: { type: "api_key", key: "test-key" },
+					anthropic: { type: "api_key", key: "test-key" },
+				});
+				const modelRuntime = getModelRuntime(await createInMemoryModelRegistry(authStorage));
+				for (const provider of [qwen.provider, "xiaomi-token-plan-cn", "zai", "zai-coding-cn"])
+					expect(modelRuntime.allowsUnattendedUse(provider), provider).toBe(false);
+				expect(modelRuntime.allowsUnattendedUse("anthropic")).toBe(true);
+				const start = (unattended: boolean) =>
+					findInitialModel({ scopedModels: [], isContinuing: false, unattended, modelRuntime, ...qwenFirst });
+				expect((await start(false)).model?.provider).toBe(qwen.provider);
+				const unattendedChoice = (await start(true)).model;
+				expect(unattendedChoice?.provider).not.toBe(qwen.provider);
+				expect(modelRuntime.allowsUnattendedUse(unattendedChoice!.provider)).toBe(true);
+			});
 		});
 	});
 

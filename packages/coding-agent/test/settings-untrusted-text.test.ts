@@ -71,6 +71,7 @@ describe("model settings views drawing network text", () => {
 		const session = {
 			state: { model: model(`id${HOSTILE}`, `prov${HOSTILE}`, "n"), thinkingLevel: "off" },
 			routedModel: { model: model(`routed${HOSTILE}`, `rprov${HOSTILE}`, "r"), thinkingLevel: "low" },
+			modelRuntime: { getProviderKind: () => "API key" },
 		} as unknown as AgentSession;
 		for (const width of [200, 40]) {
 			const lines = coordinatorFooterLines(session, width);

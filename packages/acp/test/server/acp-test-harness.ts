@@ -12,7 +12,14 @@ import { randomUUID } from "node:crypto";
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import { afterEach, vi } from "vitest";
 import { AcpBroker, type AcpWorker } from "../../src/server/broker.ts";
-import type { AcpServerHost, AcpUiRequest, AcpUiResponse, AcpWorkerEvent, AcpWorkerState } from "../../src/host.ts";
+import type {
+	AcpModels,
+	AcpServerHost,
+	AcpUiRequest,
+	AcpUiResponse,
+	AcpWorkerEvent,
+	AcpWorkerState,
+} from "../../src/host.ts";
 import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 
 export const usage = {
@@ -59,7 +66,10 @@ export class FakeWorker implements Worker {
 		sessionFile: "/tmp/acp-fixture-session.jsonl",
 	}));
 	model = "fixture/one";
-	getModels = vi.fn(async () => ({ current: this.model, available: ["fixture/one", "fixture/two"] }));
+	getModels = vi.fn(async (): Promise<AcpModels> => ({
+		current: this.model,
+		available: ["fixture/one", "fixture/two"],
+	}));
 	setModel = vi.fn(async (model: string) => {
 		this.model = model;
 	});

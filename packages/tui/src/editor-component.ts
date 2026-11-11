@@ -45,6 +45,9 @@ export interface EditorComponent extends Component {
 
 	setAutocompleteProvider?(provider: AutocompleteProvider): void;
 
+	/** Show the untyped rest of `text`, a whole suggested input, as ghost text after the cursor; undefined clears it. */
+	setInlineSuggestion?(text: string | undefined): void;
+
 	// Appearance (optional)
 
 	borderColor?: (str: string) => string;

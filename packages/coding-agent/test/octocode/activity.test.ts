@@ -11,6 +11,25 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 afterEach(() => vi.useRealTimers());
 
+describe("model event age", () => {
+	it("measures silence separately from total run time and resets on same-phase deltas", () => {
+		const activity = new Activity();
+		activity.start(1000);
+		activity.stream("thinking_delta", 10_000, "working");
+		expect(activity.modelSilenceMs(40_000)).toBe(30_000);
+		activity.stream("thinking_delta", 41_000, "more");
+		expect(activity.modelSilenceMs(42_000)).toBe(1000);
+		activity.toolStart("tool", "bash", {}, 42_000);
+		expect(activity.modelSilenceMs(100_000)).toBeUndefined();
+		activity.toolEnd("tool", 100_000);
+		expect(activity.modelSilenceMs(101_000)).toBe(1000);
+		activity.promptStart("Approval", 102_000);
+		expect(activity.modelSilenceMs(150_000)).toBeUndefined();
+		activity.end();
+		expect(activity.modelSilenceMs(200_000)).toBeUndefined();
+	});
+});
+
 describe("Activity: consequential calls", () => {
 	it("keeps a silent shell command timed without overflowing the working line", () => {
 		const activity = new Activity();
@@ -289,7 +308,12 @@ describe("registerActivity", () => {
 			await fake.emit("agent_start", {}, ctx);
 			await fake.emit("message_update", update, ctx);
 			expect((ctx.ui as { working?: string }).working).toContain("Thinking");
-			expect(vi.getTimerCount()).toBe(0);
+			expect(vi.getTimerCount()).toBe(1);
+			vi.advanceTimersByTime(31_000);
+			expect((ctx.ui as { working?: string }).working).toContain("no model event for 31s");
+			await fake.emit("message_update", update, ctx);
+			vi.advanceTimersByTime(1000);
+			expect((ctx.ui as { working?: string }).working).not.toContain("no model event");
 			await fake.emit("agent_settled", { outcome: "aborted" }, ctx);
 			await fake.emit("message_update", update, ctx);
 			vi.advanceTimersByTime(10_000);

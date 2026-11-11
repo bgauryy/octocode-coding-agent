@@ -7,6 +7,8 @@ import type { StreamOptions } from "../../types.ts";
 import { RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
 
 export const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
+/** The `originator` a Codex request names when its credential does not carry the one its login used. */
+export const DEFAULT_CODEX_ORIGINATOR = "Octocode";
 export const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
 export const DEFAULT_MAX_RETRIES = 0;
 export const BASE_DELAY_MS = 1000;

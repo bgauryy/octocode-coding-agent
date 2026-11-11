@@ -2,6 +2,20 @@ import { extractAnsiCode } from "./ansi-codes.ts";
 import { AnsiCodeTracker } from "./ansi-tracker.ts";
 import { graphemeSegmenter, graphemeWidth } from "./width.ts";
 
+const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
+
+function* segmentedGraphemes(text: string): Generator<string> {
+	for (const { segment } of graphemeSegmenter.segment(text)) yield segment;
+}
+
+/**
+ * The graphemes of a run of text between escape codes. In printable ASCII every character is its own grapheme, so
+ * the run is iterated directly: segmenting is the main cost of slicing rows, which happens for every row of a frame.
+ */
+function graphemes(text: string): Iterable<string> {
+	return PRINTABLE_ASCII.test(text) ? text : segmentedGraphemes(text);
+}
+
 interface GraphemeCellRange {
 	start: number;
 	end: number;
@@ -19,7 +33,7 @@ export function getGraphemeCellRange(line: string, column: number): GraphemeCell
 		}
 		let textEnd = i;
 		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
-		for (const { segment } of graphemeSegmenter.segment(line.slice(i, textEnd))) {
+		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const width = graphemeWidth(segment);
 			if (width > 0 && column >= currentCol && column < currentCol + width) {
 				return { start: currentCol, end: currentCol + width };
@@ -46,7 +60,7 @@ export function getOsc8LinkAtColumn(line: string, column: number): string | unde
 		}
 		let textEnd = i;
 		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
-		for (const { segment } of graphemeSegmenter.segment(line.slice(i, textEnd))) {
+		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const width = segment === "\t" ? 3 : graphemeWidth(segment);
 			if (column >= currentCol && column < currentCol + width) return activeUrl;
 			currentCol += width;
@@ -94,7 +108,7 @@ export function sliceWithWidth(
 		let textEnd = i;
 		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
 
-		for (const { segment } of graphemeSegmenter.segment(line.slice(i, textEnd))) {
+		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const w = graphemeWidth(segment);
 			const inRange = currentCol >= startCol && currentCol < endCol;
 			const fits = !strict || currentCol + w <= endCol;
@@ -163,7 +177,7 @@ export function extractSegments(
 		let textEnd = i;
 		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
 
-		for (const { segment } of graphemeSegmenter.segment(line.slice(i, textEnd))) {
+		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const w = graphemeWidth(segment);
 
 			if (currentCol < beforeEnd && currentCol + w <= beforeEnd) {

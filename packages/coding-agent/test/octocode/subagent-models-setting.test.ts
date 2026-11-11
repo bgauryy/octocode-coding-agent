@@ -11,6 +11,7 @@ import { type ModelRef, type Refused, routeModel } from "../../src/octocode/suba
 import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
+import { meteredBilling } from "./fake-host.ts";
 
 const model = (provider: string, id: string, input: number, output: number, extra: object = {}): ModelRef =>
 	({ provider, id, cost: { input, output }, contextWindow: 200_000, reasoning: true, ...extra }) as ModelRef;
@@ -109,7 +110,7 @@ describe("subagents.models: the global setting and its surfaces", () => {
 		write({ small: "pick/chosen:high" });
 		const profiles = loadProfiles(dir, dir, false, {});
 		const ctx = {
-			modelRegistry: { getAvailable: () => available, getProvider: () => undefined },
+			modelRegistry: { ...meteredBilling, getAvailable: () => available, getProvider: () => undefined },
 			model: parent,
 		} as never;
 		const researcher = planRun(profiles, { profile: "researcher" }, ctx).route;
@@ -138,6 +139,7 @@ describe("subagents.models: the global setting and its surfaces", () => {
 			model: parent,
 			thinkingLevel: "low",
 			modelRegistry: {
+				...meteredBilling,
 				getAvailable: () => available,
 				getAll: () => available,
 				find: () => undefined,

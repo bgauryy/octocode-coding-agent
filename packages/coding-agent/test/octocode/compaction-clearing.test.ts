@@ -13,10 +13,12 @@ import { tmp } from "./helpers.ts";
 
 const HOUR = 3_600_000;
 const T0 = 1_700_000_000_000;
+// On Anthropic's own API, where the adapter sends the 1h tier the model declares.
 const model = {
 	provider: "p",
 	id: "m",
 	api: "anthropic-messages",
+	baseUrl: "https://api.anthropic.com",
 	promptCache: { short: 300, long: 3600 },
 	contextWindow: 200_000,
 };

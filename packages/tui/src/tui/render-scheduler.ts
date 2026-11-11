@@ -40,6 +40,7 @@ export class RenderScheduler {
 	private lastInputAt: number | undefined;
 	private outputPressureHeld = false;
 	private lifecycle = 0;
+	private running = false;
 
 	constructor(host: RenderSchedulerHost) {
 		this.host = host;
@@ -51,7 +52,7 @@ export class RenderScheduler {
 		assertValidRenderPacing(next);
 		this.pacing = next;
 		this.outputPressureHeld = false;
-		this.syncTerminalPacing(true);
+		this.syncTerminalPacing(this.running);
 	}
 
 	/** Mirror the pacing options into the terminal while the TUI runs; stopped, the terminal gets no gate and no telemetry. */
@@ -117,16 +118,19 @@ export class RenderScheduler {
 		this.renderRequested = false;
 		this.immediateRenderScheduled = false;
 		this.outputPressureHeld = false;
+		this.lastInputAt = undefined;
 		this.cancelTimer();
 	}
 
 	start(): void {
 		this.resetLifecycle();
+		this.running = true;
 		this.syncTerminalPacing(true);
 	}
 
 	stop(): void {
 		this.resetLifecycle();
+		this.running = false;
 		this.syncTerminalPacing(false);
 	}
 
@@ -171,6 +175,11 @@ export class RenderScheduler {
 			// A previously queued schedule() can create a timer before this
 			// callback runs. User input must preempt that throttled frame.
 			this.cancelTimer();
+			if (this.outputIsPressured()) {
+				if (this.pacing.metrics) this.stats.deferredFrames++;
+				this.schedule();
+				return;
+			}
 			if (this.pacing.metrics) this.stats.forcedFrames++;
 			this.emitFrame();
 		});

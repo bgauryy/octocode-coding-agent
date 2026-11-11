@@ -44,44 +44,56 @@ editor.setAutocompleteProvider(
 
 `/` at the start of the input lists slash commands. A `/` at the start of a later word or line lists only skills (the app marks them): it names a skill to use and never runs a command; a `/` inside a path or URL opens nothing. `@` at the start of any word, not only the first, offers attachable files; a file created after the last index build is found because a query that matches nothing rebuilds the index. `Tab` completes file paths for `~/`, `./`, `../` and `@` prefixes. File names containing control characters are never suggested.
 
+File completion retains the eight most recently used directory indexes; builds already running finish before eviction. Each fd or Git index holds at most 200,000 entries, including directories. Both commands have a five-second deadline: an unavailable or stalled command falls back to the next source, ending with a bounded directory walk. Git output is streamed so a large tree does not need to be buffered before suggestions can be indexed.
+
+Typing or dismissing completion cancels the pending provider request. The next request can proceed even if that provider ignores cancellation; a late result cannot replace the current list or stop its progress indicator.
+
 ## Rendering
+
+The editor reuses wrapping for unchanged draft lines across repaints and cursor navigation. Editing a line rewraps that line; resizing or changing paste markers refreshes the wrapping. Fragmented bracketed pastes are assembled once when complete, including when the closing marker spans input chunks.
 
 - `TuiMainScreen`: the first render writes every line without clearing scrollback. A width change or a change above the viewport clears and redraws everything. Otherwise it moves to the first changed line, clears to the end and writes the changed lines.
 - `TuiAltScreen`: owns a terminal-height viewport and updates changed rows in place. It follows streaming output at the bottom, keeps a manual scroll position while content grows, scrolls by wheel or configurable keys without touching scrollback, jumps between OSC 133 prompts, supports scrollbar hover, drag and track clicks, opens OSC 8 links, and selects text by drag (copied with OSC 52 unless `copyOnSelect` is `false`; edge auto-scroll extends the selection).
 - Both wrap frames in synchronized output (`ESC[?2026h` ... `ESC[?2026l`). See the [render loop](../README.md#render-loop).
 
-### Experimental render pacing
+### Render pacing
 
-Requests are coalesced at least 40 ms apart; keyboard input renders immediately. Opt in per renderer:
+Requests are coalesced at least 40 ms apart; keyboard input bypasses this delay when output can drain. Output gating is enabled by default. Enable diagnostic counters or adaptive cadence per renderer:
 
 ```typescript
-tui.setRenderPacing({ outputGate: true, metrics: true }); // or { adaptiveCadence: true, metrics: true }
+tui.setRenderPacing({ metrics: true }); // or { adaptiveCadence: true, metrics: true }
 const stats = tui.getRenderPacingStats();
 ```
 
 | Option            | Default | Effect                                                                             |
 | ----------------- | ------- | ---------------------------------------------------------------------------------- |
-| `outputGate`      | off     | Defer frames while `Terminal.pendingOutputBytes` is above `highWaterBytes`         |
+| `outputGate`      | on      | Defer frames while `Terminal.pendingOutputBytes` is above `highWaterBytes`         |
 | `adaptiveCadence` | off     | Space frames by the previous frame's cost, up to 200 ms                            |
 | `metrics`         | off     | Counters: frames, queued bytes, frame time, timer lateness, input-to-paint latency |
 | `highWaterBytes`  | 256 KiB | Gate closes above this                                                             |
 | `lowWaterBytes`   | 128 KiB | Gate reopens at or below this                                                      |
 | `retryMs`         | 10      | Retry interval while gated                                                         |
 
-The watermarks are unmeasured starting values, not a memory limit. `requestRender(true)`, `renderNow()`, terminal restore and final output bypass the gate; a frame may exceed it. Terminals without `pendingOutputBytes` keep the default schedule. The gate cannot stop a synchronous POSIX TTY write from blocking. `ProcessTerminal.getOutputTelemetry()` reports bytes, write sizes and writes returning `false`; no text is kept. `node scripts/profile-render-backpressure.mjs --trials 3` (repository root) compares four modes with a simulated consumer, not a live PTY.
+The watermarks are unmeasured starting values, not a memory limit. `renderNow()`, terminal restore and final output bypass the gate; a frame may exceed it. Terminals without `pendingOutputBytes` keep the default schedule. On POSIX, `ProcessTerminal` switches stdout to nonblocking TTY writes so a paused consumer cannot freeze the event loop, and switches it again on every `start()`: a child given the terminal with inherited stdio (an external editor, a sign-in CLI) leaves the shared descriptor blocking. Ordinary writes share the stdout queue and retain their order. Forced-exit restoration writes synchronously to the terminal descriptor, bypassing that queue; changing the handle mode alone cannot flush JavaScript's queued writes. Those writes retry a full terminal for at most one second in total, then drop the rest so quitting cannot hang; the descriptor is made blocking again for the shell afterwards. Cleanup hooks remain registered until normal restore output drains. Keyboard repaints also wait for the queue and paint the latest state once it drains. `ProcessTerminal.getOutputTelemetry()` reports bytes, write sizes and writes returning `false`; no text is kept. `node scripts/profile-render-backpressure.mjs --trials 3` (repository root) compares four modes with a simulated consumer, not a live PTY.
+
+Stopping or replacing a fullscreen layout cancels its scrollbar timers and releases render callbacks. Restarting attaches them again without removing transcript content.
+
+Clipboard handler failures appear as a transient error and leave input and selection usable. The OSC 52 fallback rejects transfers larger than 100,000 encoded bytes before allocating their base64 payload. An injected clipboard handler can support larger transfers.
 
 ## Terminal interface
 
 `ProcessTerminal` implements `Terminal` over `process.stdin`/`stdout`. The virtual terminal used in tests is a test helper, not an export.
 
-| Member                                                                                                              | Purpose                                                  |
-| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `start(onInput, onResize, onCapabilitiesChange?)`, `stop()`                                                         | Lifecycle                                                |
-| `drainInput(maxMs?, idleMs?)`                                                                                       | Drain stdin so Kitty key releases do not reach the shell |
-| `write(data)`, `columns`, `rows`, `kittyProtocolActive`                                                             | Output and state                                         |
-| `moveBy`, `hideCursor`, `showCursor`, `clearLine`, `clearFromCursor`, `clearScreen`                                 | Cursor and clearing                                      |
-| `setTitle`, `setProgress` (OSC 9;4), `setProgramStatus` (OSC 7501)                                                  | Title, progress, status                                  |
-| `pendingOutputBytes?`, `setDecorativeOutputPressureThreshold?`, `setOutputTelemetryEnabled?`, `getOutputTelemetry?` | Optional pacing support                                  |
+| Member                                                                                                              | Purpose                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `start(onInput, onResize, onCapabilitiesChange?)`, `stop()`                                                         | Lifecycle                                                                                          |
+| `drainInput(maxMs?, idleMs?)`                                                                                       | Drain stdin so Kitty key releases do not reach the shell                                           |
+| `drainOutput?(maxMs?)`                                                                                              | Flush queued output before exit or suspend; resolves false on error or deadline (default 1 second) |
+| `writeOnExit?(data)`                                                                                                | Synchronous terminal restoration past queued output; used only during forced exit                  |
+| `write(data)`, `columns`, `rows`, `kittyProtocolActive`                                                             | Output and state                                                                                   |
+| `moveBy`, `hideCursor`, `showCursor`, `clearLine`, `clearFromCursor`, `clearScreen`                                 | Cursor and clearing                                                                                |
+| `setTitle`, `setProgress` (OSC 9;4), `setProgramStatus` (OSC 7501)                                                  | Title, progress, status                                                                            |
+| `pendingOutputBytes?`, `setDecorativeOutputPressureThreshold?`, `setOutputTelemetryEnabled?`, `getOutputTelemetry?` | Optional pacing support                                                                            |
 
 ## Terminal multiplexers
 

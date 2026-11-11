@@ -17,7 +17,7 @@ export function compositeScrollToEndIndicator(
 	layout: LayoutFrame,
 	width: number,
 	implicitScrollView: ScrollView,
-	scrollToEndIndicator: (() => string) | undefined,
+	scrollToEndIndicator: ((rowsBelow: number) => string) | undefined,
 ): { screen: string[]; rect?: ScrollToEndIndicatorRect } {
 	const scrollView = layout.primaryScrollView ?? implicitScrollView;
 	if (!scrollToEndIndicator || !scrollView.followEnd || scrollView.isFollowingEnd) return { screen };
@@ -27,7 +27,11 @@ export function compositeScrollToEndIndicator(
 	const row = clip.y + clip.height - 1;
 	if (row >= screen.length || isImageLine(screen[row] ?? "")) return { screen };
 	const scrollbarColumn = box ? getScrollbarGeometry(box)?.column : undefined;
-	const label = truncateToWidth(scrollToEndIndicator(), clip.width, "");
+	const rowsBelow = Math.max(
+		0,
+		(box?.scrollContentLines?.length ?? 0) - scrollView.scrollTop - scrollView.viewportHeight,
+	);
+	const label = truncateToWidth(scrollToEndIndicator(rowsBelow), clip.width, "");
 	const labelWidth = visibleWidth(label);
 	const column = clip.x + Math.floor((clip.width - labelWidth) / 2);
 	const rightEdge = scrollbarColumn ?? clip.x + clip.width;

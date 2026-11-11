@@ -44,30 +44,36 @@ function acceptsSamplingParameters(model: Model<"anthropic-messages">, options?:
 function getBetaFeatures(
 	model: Model<"anthropic-messages">,
 	context: TranscriptContext,
-	isOAuthToken: boolean,
 	nativeToolChanges: boolean,
 	options?: AnthropicOptions,
 ): NonNullable<MessageCreateParamsStreaming["betas"]> {
-	let configuredFeatures: string | null | undefined;
+	// Configured betas add to the ones Octocode needs; a `null` header drops every beta set before it, Octocode's too.
+	let configuredFeatures: string[] = [];
+	let ownFeaturesDropped = false;
 	for (const headers of [model.headers, options?.headers]) {
 		for (const [name, value] of Object.entries(headers ?? {})) {
-			if (name.toLowerCase() === "anthropic-beta") configuredFeatures = value;
+			if (name.toLowerCase() !== "anthropic-beta" || value === undefined) continue;
+			if (value === null) {
+				configuredFeatures = [];
+				ownFeaturesDropped = true;
+				continue;
+			}
+			for (const feature of value.split(",")) {
+				if (feature.trim().length > 0) configuredFeatures.push(feature.trim());
+			}
 		}
 	}
-	if (configuredFeatures === null) return [];
-	if (configuredFeatures !== undefined) {
-		return [
-			...new Set(
-				configuredFeatures
-					.split(",")
-					.map((feature) => feature.trim())
-					.filter((feature) => feature.length > 0),
-			),
-		];
-	}
+	const ownFeatures = ownFeaturesDropped ? [] : getOwnBetaFeatures(model, context, nativeToolChanges, options);
+	return [...new Set([...ownFeatures, ...configuredFeatures])];
+}
 
+function getOwnBetaFeatures(
+	model: Model<"anthropic-messages">,
+	context: TranscriptContext,
+	nativeToolChanges: boolean,
+	options?: AnthropicOptions,
+): NonNullable<MessageCreateParamsStreaming["betas"]> {
 	const features: NonNullable<MessageCreateParamsStreaming["betas"]> = [];
-	if (isOAuthToken) features.push("claude-code-20250219", "oauth-2025-04-20");
 	if (shouldUseFineGrainedToolStreamingBeta(model, context)) features.push(FINE_GRAINED_TOOL_STREAMING_BETA);
 	if (
 		thinksForRequest(model, options) &&
@@ -87,7 +93,6 @@ function getBetaFeatures(
 export function buildParams(
 	model: Model<"anthropic-messages">,
 	context: TranscriptContext,
-	isOAuthToken: boolean,
 	options?: AnthropicOptions,
 	disablePreferredStrictTools = false,
 ): {
@@ -114,7 +119,6 @@ export function buildParams(
 	const convertToolDefinitions = (tools: Tool[], toolCacheControl?: CacheControlEphemeral): BetaTool[] => {
 		const definitions = convertTools(
 			tools,
-			isOAuthToken,
 			compat.supportsEagerToolInputStreaming,
 			compat.supportsStrictTools,
 			toolCacheControl,
@@ -145,14 +149,13 @@ export function buildParams(
 	const effortMessages = model.compat?.supportsMidConvoEffort === true && !thinkingDisabled;
 	const converted = convertMessages(
 		conversationMessages,
-		isOAuthToken,
 		cacheControl,
 		compat.allowEmptySignature,
 		effortMessages ? model.provider : undefined,
 		nativeToolChanges ? convertToolDefinitions : undefined,
 	);
 	const activeEffort = options?.effort ?? "high";
-	const betaFeatures = getBetaFeatures(model, context, isOAuthToken, nativeToolChanges, options);
+	const betaFeatures = getBetaFeatures(model, context, nativeToolChanges, options);
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
 		messages: effortMessages ? insertThinkingLevelMessages(converted, activeEffort) : converted.messages,
@@ -168,22 +171,7 @@ export function buildParams(
 		text: sanitizeSurrogates(text),
 		...(instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
 	}));
-	// For OAuth tokens, we MUST include Claude Code identity. Only the prompt blocks are marked:
-	// the prompt's breakpoint covers the identity line too, and a second marker would take the slot
-	// the history lookback needs.
-	if (isOAuthToken) {
-		params.system = [
-			{
-				type: "text",
-				text: "You are Claude Code, Anthropic's official CLI for Claude.",
-				...(instructionCacheControl && !initialSystemText ? { cache_control: instructionCacheControl } : {}),
-			},
-			...(initialSystemText ? promptBlocks : []),
-		];
-	} else if (initialSystemText) {
-		// Add cache control to system prompt for non-OAuth tokens
-		params.system = promptBlocks;
-	}
+	if (initialSystemText) params.system = promptBlocks;
 
 	// Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
 	if (

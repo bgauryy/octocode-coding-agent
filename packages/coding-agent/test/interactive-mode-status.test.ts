@@ -259,7 +259,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		expect(loadedResourcesChild.setExpanded).toHaveBeenCalledWith(true);
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
 		// The acknowledgement is a status line in the messages list; the footer shows state only.
-		expect(fakeThis.showStatus).toHaveBeenCalledWith("Tool output: expanded");
+		expect(fakeThis.showStatus).toHaveBeenCalledWith("Output: expanded");
 		expect(footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
 	});
 
@@ -281,7 +281,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		viewState.setToolsExpanded(host, false);
 		// A spacer and one line: the second toggle replaced the first in place; an unchanged state said nothing.
 		expect(fakeThis.chatContainer.children).toHaveLength(2);
-		expect(normalizeRenderedOutput(fakeThis.chatContainer)).toBe("Tool output: collapsed");
+		expect(normalizeRenderedOutput(fakeThis.chatContainer)).toBe("Output: collapsed");
 		expect(fakeThis.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
 	});
 });

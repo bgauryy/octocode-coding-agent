@@ -166,6 +166,39 @@ describe("trimTrailingBlanks", () => {
 		assert.strictEqual(trimTrailingBlanks("a b"), "a b");
 		assert.strictEqual(trimTrailingBlanks("ab  \x1b[0m\x1b]8;;\x07"), "ab\x1b[0m\x1b]8;;\x07");
 	});
+
+	it("reads hyperlink, empty SGR and look-alike endings like the tail they are", () => {
+		assert.strictEqual(trimTrailingBlanks("ab \x1b]8;;https://x.y/a b\x1b\\  "), "ab\x1b]8;;https://x.y/a b\x1b\\");
+		assert.strictEqual(trimTrailingBlanks("ab  \x1b[m  "), "ab\x1b[m");
+		assert.strictEqual(trimTrailingBlanks("program  "), "program");
+		assert.strictEqual(trimTrailingBlanks("a [1m  "), "a [1m");
+		assert.strictEqual(trimTrailingBlanks("a\x1b[1xm  "), "a\x1b[1xm");
+		assert.strictEqual(trimTrailingBlanks("a ]8;x\x07 "), "a ]8;x\x07");
+		assert.strictEqual(trimTrailingBlanks("\x1b]8;;u\x07\x1b]8;;\x07   "), "\x1b]8;;u\x07\x1b]8;;\x07");
+		assert.strictEqual(trimTrailingBlanks("   "), "");
+		assert.strictEqual(trimTrailingBlanks(""), "");
+	});
+
+	it("matches the leftmost-tail definition on generated rows", () => {
+		// The definition the scan replaces: the longest suffix made only of spaces, SGR codes and OSC 8 codes.
+		const token = " |\\x1b\\[[0-9;:]*m|\\x1b\\]8;[^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)";
+		const tail = new RegExp(`(?:${token})+$`);
+		const pieces = [" ", "  ", "x", "m", "[", "1", ";", "\x1b", "\x1b[0m", "\x1b[44m", "\x1b[7m", "\x1b[27m"];
+		pieces.push("\x1b[4:3m", "\x1b[m", "\x1b]8;;u\x07", "\x1b]8;;\x07", "\x1b]8;;u\x1b\\", "\x07", "\\", "日");
+		let seed = 7;
+		const next = () => {
+			seed = (seed * 1103515245 + 12345) % 2147483648;
+			return seed;
+		};
+		for (let n = 0; n < 3000; n++) {
+			const row = Array.from({ length: next() % 12 }, () => pieces[next() % pieces.length]).join("");
+			const match = tail.exec(row);
+			const trimmed = trimTrailingBlanks(row);
+			if (!match) assert.strictEqual(trimmed, row, JSON.stringify(row));
+			else assert.strictEqual(trimmed.slice(0, match.index), row.slice(0, match.index), JSON.stringify(row));
+			assert.ok(row.startsWith(trimmed.slice(0, match?.index ?? row.length)));
+		}
+	});
 });
 
 describe("alternate-screen scroll", () => {

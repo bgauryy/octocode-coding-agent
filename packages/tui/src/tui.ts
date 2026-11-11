@@ -217,12 +217,10 @@ export abstract class TuiBase extends Container implements TUI {
 		if (!this.stopped) this.terminal.hideCursor();
 	}
 
-	/** Check if there are any visible overlays */
 	hasOverlay(): boolean {
 		return this.focus.hasVisibleOverlay();
 	}
 
-	/** Check if the focused component is a visible overlay */
 	protected isOverlayFocused(): boolean {
 		return this.focus.isOverlayFocused();
 	}
@@ -283,6 +281,7 @@ export abstract class TuiBase extends Container implements TUI {
 
 	stop(options: TuiStopOptions = {}): void {
 		this.stopped = true;
+		this.resizeDebounce.stop();
 		this.scheduler.stop();
 		this.queries.stop();
 		this.beforeTerminalStop(options);

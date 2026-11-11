@@ -3,6 +3,7 @@ import { envApiKeyAuth, lazyOAuth } from "../auth/helpers.ts";
 import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
 import { loadKimiCodingOAuth } from "../auth/oauth/load.ts";
 import { createProvider, type Provider } from "../models.ts";
+import { KIMI_CODE_PLAN } from "./plans.ts";
 import { KIMI_CODING_MODELS } from "./kimi-coding.models.ts";
 
 export function kimiCodingProvider(): Provider<"openai-completions"> {
@@ -18,6 +19,7 @@ export function kimiCodingProvider(): Provider<"openai-completions"> {
 				loginLabel: "Sign in with Kimi Code",
 				load: loadKimiCodingOAuth,
 			}),
+			plan: KIMI_CODE_PLAN,
 		},
 		models: Object.values(KIMI_CODING_MODELS),
 		api: openAICompletionsApi(),

@@ -81,6 +81,8 @@ For VS Code, add to `keybindings.json`:
 
 ## Actions
 
+`/links` provides keyboard reference actions in either display mode, including terminals without native hyperlink support. `/links message` chooses an earlier answer; `/copy code` copies original code without terminal decoration. See [references and copying](tui.md#references-and-copying). Ctrl+G and file opens share the same configured editor.
+
 ### Terminal UI
 
 #### Cursor movement
@@ -103,6 +105,8 @@ For VS Code, add to `keybindings.json`:
 | `tui.editor.pageDown`        | `pageDown`, `ctrl+pageDown`        | Scroll down by page                                    |
 
 The dedicated history actions browse prompt history regardless of cursor position and take precedence over application actions using the same key.
+
+When ghost text shows after the cursor (a suggested `!` command, see [shell completion](configuration.md#shell-completion)), `tui.editor.cursorRight` and `tui.editor.cursorLineEnd` accept all of it and `tui.editor.cursorWordRight` accepts its next word.
 
 #### Text editing
 
@@ -199,6 +203,8 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 | `app.thinking.cycle`      | `shift+ctrl+t` (`alt+t` on Windows and WSL) | Cycle thinking level (`shift+tab` cycles the permission mode instead)     |
 | `app.thinking.save`       | `ctrl+s`                                    | Save current thinking level to settings                                   |
 | `app.thinking.toggle`     | `ctrl+t`                                    | Collapse or expand thinking blocks                                        |
+
+In the model selector, `tui.editor.cursorLeft` and `tui.editor.cursorRight` (`left`/`right`, `ctrl+b`/`ctrl+f`) switch the shown provider: all providers, then each provider in turn. The line under the search box names the provider shown.
 
 ### Display and Message Queue
 

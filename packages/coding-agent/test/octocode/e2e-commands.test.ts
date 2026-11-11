@@ -134,7 +134,7 @@ const CASES: Record<string, Case> = {
 		check: (run) => expect(run.opened).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/#access=/)]),
 	},
 	// Terminal commands that open a picker or menu.
-	help: { check: asks(/\/btw\s+Ask a quick side question/) },
+	help: { check: asks(/\/btw\s+Ask a side question without tools/) },
 	configuration: { check: asks(/Interface and session/) },
 	model: { check: asks(/Models from configured providers/) },
 	effort: { check: asks(/Thinking Level/) },
@@ -162,6 +162,7 @@ const CASES: Record<string, Case> = {
 	},
 	export: { check: says(/Nothing to export yet/) },
 	copy: { check: says(/No agent messages to copy yet/) },
+	links: { check: says(/No matching references/) },
 	compact: { check: says(/Nothing to compact yet/) },
 	queue: { check: says(/No queued messages/) },
 	rename: {

@@ -3,6 +3,7 @@ import {
 	AGENT_RUNS_SCHEMA_V3,
 	BACKLOG_AUDIT_TRIGGERS,
 	BACKLOG_AUDIT_TRIGGERS_V5,
+	SHELL_HISTORY_SCHEMA_V9,
 	TIMERS_REBUILD_INDEXES,
 	TIMERS_REBUILD_TABLE,
 	TIMERS_SCHEMA_V4,
@@ -144,8 +145,20 @@ const ADD_CACHE_WRITE: Migration = {
 	},
 };
 
+/**
+ * 9: `shell_history`, the user's `!` commands per folder for the editor's suggestions (`queries/shell-history.ts`). A new
+ * table, so an Octocode that knows only version 8 keeps using the file (it never reads it).
+ */
+const ADD_SHELL_HISTORY: Migration = {
+	to: 9,
+	additive: true,
+	up: (db) => {
+		db.exec(SHELL_HISTORY_SCHEMA_V9);
+	},
+};
+
 export const SCHEMA_PLAN: SchemaPlan = {
-	version: 8,
+	version: 9,
 	migrations: [
 		ADD_END_HINT,
 		ADD_AGENT_RUNS,
@@ -154,6 +167,7 @@ export const SCHEMA_PLAN: SchemaPlan = {
 		WIDEN_TIMERS,
 		ADD_BACKLOG_RANK,
 		ADD_CACHE_WRITE,
+		ADD_SHELL_HISTORY,
 	],
 };
 

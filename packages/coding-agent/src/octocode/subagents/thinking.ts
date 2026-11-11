@@ -1,5 +1,7 @@
+import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
+
 /** The `:<level>` suffixes Octocode's `--model <pattern>` accepts. */
-export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+export const THINKING_LEVELS: ReadonlySet<string> = new Set(VALID_THINKING_LEVELS);
 
 /** The `:<level>` suffix a model value or purpose ends with (`:low`), or "" without one. */
 export function thinkingSuffix(value: string | undefined): string {

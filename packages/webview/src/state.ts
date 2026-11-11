@@ -51,7 +51,10 @@ export function createWorkspaceStore() {
 				const changedSession = state.snapshot !== null && state.snapshot.sessionId !== snapshot.sessionId;
 				if (changedSession)
 					return { snapshot, drafts: {}, requests: {}, paused: false, displayedEvents: snapshot.events };
-				const sameEvents = JSON.stringify(state.displayedEvents) === JSON.stringify(snapshot.events);
+				const sameEvents =
+					state.paused ||
+					state.displayedEvents === snapshot.events ||
+					JSON.stringify(state.displayedEvents) === JSON.stringify(snapshot.events);
 				return { snapshot, displayedEvents: state.paused || sameEvents ? state.displayedEvents : snapshot.events };
 			}),
 		setFilter: (filter) => set({ filter }),

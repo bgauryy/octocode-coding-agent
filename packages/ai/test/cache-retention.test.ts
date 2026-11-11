@@ -100,7 +100,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			},
 		);
 
-		it("should add ttl for non-api.anthropic.com baseUrl by default", async () => {
+		it("should omit ttl for a non-api.anthropic.com baseUrl by default (5-minute tier on other hosts)", async () => {
 			process.env.OCTOCODE_CACHE_RETENTION = "long";
 
 			// Create a model with a different baseUrl (simulating a proxy)
@@ -128,6 +128,35 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 				});
 
 				// This will fail since we're using a fake key and fake proxy, but the payload should be captured
+				for await (const event of s) {
+					if (event.type === "error") break;
+				}
+			} catch {
+				// Expected to fail
+			}
+
+			expect(capturedPayload).not.toBeNull();
+			expect(capturedPayload.system[0].cache_control).toEqual({ type: "ephemeral" });
+		});
+
+		it("should add ttl on another host when supportsLongCacheRetention is true", async () => {
+			const baseModel = getBuiltinModel("anthropic", "claude-haiku-4-5");
+			const proxyModel = {
+				...baseModel,
+				baseUrl: "https://my-proxy.example.com/v1",
+				compat: { supportsLongCacheRetention: true },
+			};
+			let capturedPayload: any = null;
+
+			try {
+				const s = streamAnthropic(proxyModel, context, {
+					apiKey: "fake-key",
+					cacheRetention: "long",
+					onPayload: stopAfterPayload((payload) => {
+						capturedPayload = payload;
+					}),
+				});
+
 				for await (const event of s) {
 					if (event.type === "error") break;
 				}
@@ -277,7 +306,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			"should set prompt_cache_retention to 24h when OCTOCODE_CACHE_RETENTION=long",
 			async () => {
 				process.env.OCTOCODE_CACHE_RETENTION = "long";
-				const model = getBuiltinModel("openai", "gpt-4o-mini");
+				const model = getBuiltinModel("openai", "gpt-4.1");
 				let capturedPayload: any = null;
 
 				const s = stream(model, context, {
@@ -300,7 +329,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			process.env.OCTOCODE_CACHE_RETENTION = "long";
 
 			// Create a model with a different baseUrl (simulating a proxy)
-			const baseModel = getBuiltinModel("openai", "gpt-4o-mini");
+			const baseModel = getBuiltinModel("openai", "gpt-4.1");
 			const proxyModel = {
 				...baseModel,
 				baseUrl: "https://my-proxy.example.com/v1",
@@ -410,7 +439,8 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it.each([
-			["gpt-4o-mini", "24h", undefined],
+			["gpt-4.1", "24h", undefined],
+			["gpt-4o-mini", undefined, undefined],
 			["gpt-6-astra", undefined, { ttl: "12h" }],
 			["gpt-6-sol", undefined, { ttl: "12h" }],
 			["gpt-6-luna", undefined, { ttl: "12h" }],

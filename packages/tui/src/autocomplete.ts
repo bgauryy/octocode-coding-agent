@@ -71,7 +71,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 			const command = this.commands.find((cmd) => ("name" in cmd ? cmd.name : cmd.value) === commandName);
 			if (command && "argumentKind" in command && command.argumentKind === "path") {
-				const items = getFileSuggestions(this.basePath, argumentText);
+				const items = await getFileSuggestions(this.basePath, argumentText);
 				return items.length ? { items, prefix: argumentText } : null;
 			}
 			if (!command || !("getArgumentCompletions" in command) || !command.getArgumentCompletions) {
@@ -103,7 +103,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			return null;
 		}
 
-		const suggestions = getFileSuggestions(this.basePath, pathMatch);
+		const suggestions = await getFileSuggestions(this.basePath, pathMatch);
 		if (suggestions.length === 0) return null;
 
 		return {
@@ -300,7 +300,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		try {
-			const scopedQuery = resolveScopedFuzzyQuery(this.basePath, query);
+			const scopedQuery = await resolveScopedFuzzyQuery(this.basePath, query);
 			const fuzzyQuery = scopedQuery?.query ?? query;
 			let ranked = await this.rankIndex(scopedQuery, fuzzyQuery, options.signal);
 			// The cached index may predate the file the user means (a new file, a checkout): when nothing matched,

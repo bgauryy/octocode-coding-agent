@@ -181,8 +181,6 @@ describe("provider rich output", () => {
 			model: selected,
 			output,
 			stream: new AssistantMessageEventStream(),
-			isOAuth: false,
-			currentTools: [],
 			usageModel: selected,
 			inputTransformations: undefined,
 		};

@@ -25,6 +25,7 @@ function createSession(options: {
 	compactionUsage?: AssistantUsage;
 	toolUsage?: AssistantUsage;
 	usingSubscription?: boolean;
+	kind?: string;
 	contextPercent?: number;
 	routedModel?: { model: { id: string }; thinkingLevel?: string };
 }): AgentSession {
@@ -88,6 +89,7 @@ function createSession(options: {
 		routedModel: options.routedModel,
 		modelRuntime: {
 			isUsingSubscription: () => options.usingSubscription ?? false,
+			getProviderKind: () => options.kind ?? (options.usingSubscription ? "subscription" : "API key"),
 		},
 	};
 
@@ -310,10 +312,12 @@ describe("FooterComponent width handling", () => {
 		expect(statsLine).toContain("CH25.0%");
 	});
 
-	it("marks Kimi Coding costs as subscription estimates", () => {
+	// The runtime's plan billing decides (model-runtime-plan-billing.test.ts); the footer shows its answer.
+	it("marks Kimi Coding costs as subscription estimates when the runtime bills it by plan", () => {
 		const session = createSession({
 			sessionName: "",
 			provider: "kimi-coding",
+			usingSubscription: true,
 			usage: {
 				input: 100,
 				output: 10,
@@ -332,6 +336,16 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(1));
 
 		expect(stripAnsi(footer.render(120)[1])).toContain("≈$0.00 (sub)");
+	});
+
+	it("names the provider's kind beside the model and drops it first when narrow", () => {
+		const session = createSession({ sessionName: "", modelId: "gpt-5", provider: "openai", kind: "subscription" });
+		const footer = new FooterComponent(session, createFooterData(1));
+		expect(stripAnsi(footer.render(120).join("\n"))).toContain("openai/gpt-5 · subscription");
+		const narrow = stripAnsi(footer.render(55).join("\n"));
+		expect(narrow).toContain("Coordinator · thinking unavailable · openai/gpt-5");
+		expect(narrow).toContain("openai/gpt-5");
+		expect(narrow).not.toContain("subscription");
 	});
 
 	it("does not mark generic OAuth sign-in as a subscription", () => {

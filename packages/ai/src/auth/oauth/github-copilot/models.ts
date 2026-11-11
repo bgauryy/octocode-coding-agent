@@ -87,13 +87,27 @@ async function fetchWithRateLimitRetry(
 	}
 }
 
+/**
+ * Where and as whom account requests go. Absent: the VS Code client, at the endpoint the Copilot token names. The
+ * Octocode identity passes its own endpoint and headers.
+ */
+export interface CopilotRoute {
+	baseUrl: string;
+	headers: Record<string, string>;
+}
+
+function routeFor(token: string, enterpriseDomain: string | undefined, route: CopilotRoute | undefined): CopilotRoute {
+	return route ?? { baseUrl: getGitHubCopilotBaseUrl(token, enterpriseDomain), headers: { ...COPILOT_HEADERS } };
+}
+
 export async function fetchGitHubCopilotModels(
 	copilotToken: string,
 	enterpriseDomain: string | undefined,
 	signal: AbortSignal,
 	retryPolicy: { maxRetries: number; maxElapsedMs: number },
+	route?: CopilotRoute,
 ) {
-	const baseUrl = getGitHubCopilotBaseUrl(copilotToken, enterpriseDomain);
+	const { baseUrl, headers } = routeFor(copilotToken, enterpriseDomain, route);
 	// Some Individual accounts return false for every picker flag despite explicit enabled policies.
 	// Limit the fallback to that endpoint so other account types keep strict picker semantics.
 	const allowPolicyFallback = baseUrl === "https://api.individual.githubcopilot.com";
@@ -103,7 +117,7 @@ export async function fetchGitHubCopilotModels(
 			headers: {
 				Accept: "application/json",
 				Authorization: `Bearer ${copilotToken}`,
-				...COPILOT_HEADERS,
+				...headers,
 				"X-GitHub-Api-Version": COPILOT_API_VERSION,
 			},
 		},
@@ -125,8 +139,9 @@ async function enableGitHubCopilotModel(
 	modelId: string,
 	enterpriseDomain: string | undefined,
 	signal: AbortSignal,
+	route: CopilotRoute | undefined,
 ): Promise<boolean> {
-	const baseUrl = getGitHubCopilotBaseUrl(token, enterpriseDomain);
+	const { baseUrl, headers } = routeFor(token, enterpriseDomain, route);
 	const url = `${baseUrl}/models/${modelId}/policy`;
 
 	let response: Response;
@@ -138,7 +153,7 @@ async function enableGitHubCopilotModel(
 				headers: {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${token}`,
-					...COPILOT_HEADERS,
+					...headers,
 					"openai-intent": "chat-policy",
 					"x-interaction-type": "chat-policy",
 				},
@@ -166,11 +181,12 @@ export async function enableGitHubCopilotModels(
 	modelIds: readonly string[],
 	enterpriseDomain: string | undefined,
 	signal: AbortSignal,
+	route?: CopilotRoute,
 ): Promise<string[]> {
 	const enabledModelIds: string[] = [];
 	for (const modelId of modelIds) {
 		try {
-			if (await enableGitHubCopilotModel(token, modelId, enterpriseDomain, signal)) {
+			if (await enableGitHubCopilotModel(token, modelId, enterpriseDomain, signal, route)) {
 				enabledModelIds.push(modelId);
 			}
 		} catch (error) {

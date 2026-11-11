@@ -49,7 +49,7 @@ describe("llama.cpp extension", () => {
 			"builtin:llama.cpp",
 		);
 
-		expect(extension.commands.get("llama")?.description).toBe("Manage llama.cpp router models");
+		expect(extension.commands.get("llama")?.description).toBe("Manage local llama.cpp models");
 		expect(runtime.pendingNativeProviderRegistrations.map((entry) => entry.provider.id)).toEqual([LLAMA_PROVIDER_ID]);
 	});
 

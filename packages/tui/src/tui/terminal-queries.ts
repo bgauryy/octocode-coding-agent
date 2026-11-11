@@ -70,6 +70,10 @@ export class TerminalQueries {
 	/** The TUI is stopping: turn color scheme reports off, leaving the request for the next start. */
 	stop(): void {
 		if (this.colorSchemeNotificationsEnabled) this.writeColorSchemeMode(false);
+		for (const query of this.pendingColorQueries.splice(0)) {
+			if (query.timer) this.completeTerminalColorQuery(query);
+			else query.deliver = undefined;
+		}
 	}
 
 	onColorSchemeChange(listener: (scheme: TerminalColorScheme) => void): () => void {
@@ -157,6 +161,7 @@ export class TerminalQueries {
 		const deliver = query.deliver;
 		query.deliver = undefined;
 		clearTimeout(query.timer);
+		query.timer = undefined;
 		deliver?.(this.terminalColorQueryResult(query));
 	}
 
@@ -215,6 +220,7 @@ export class TerminalQueries {
 			};
 			// Resolve with the replies so far, and keep collecting late replies for `onLateReply`.
 			query.timer = setTimeout(() => {
+				query.timer = undefined;
 				query.deliver = onLateReply;
 				resolve(this.terminalColorQueryResult(query));
 			}, timeoutMs);

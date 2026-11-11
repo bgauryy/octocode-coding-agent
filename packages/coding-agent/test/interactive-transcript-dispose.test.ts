@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { disposeTranscript } from "../src/modes/interactive/interactive-mode/transcript-dispose.ts";
+import { stop } from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { renderCurrentSessionState } from "../src/modes/interactive/interactive-mode/session-binding.ts";
 import { showTreeNavigationResult } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
 import { toolTimerText, startToolTimer } from "../src/core/tools/render-utils.ts";
@@ -59,6 +60,42 @@ describe("transcript rows are disposed when dropped", () => {
 		disposeTranscript(chat);
 		chat.clear();
 		await expectQuiet(ui);
+	});
+
+	it("permanent stop releases live rows after final output without dropping the transcript", async () => {
+		const ui = fakeUi();
+		const chat = new Container();
+		runningRows(ui, chat);
+		const rows = [...chat.children];
+		const host = createFakeHost({
+			ui,
+			chatContainer: chat,
+			loadedResourcesContainer: new Container(),
+			settingsManager: { getShowTerminalProgress: () => false },
+			disposeActiveSelector: vi.fn(),
+			clearStatusIndicator: vi.fn(),
+			themeController: { disableAutoSync: vi.fn() },
+			clearExtensionTerminalInputListeners: vi.fn(),
+			footerDataProvider: { dispose: vi.fn() },
+			unsubscribe: vi.fn(),
+			isInitialized: true,
+			stopInteractiveTui: vi.fn(() => {
+				expect(animationClock.isRunning()).toBe(true);
+				expect(chat.children).toEqual(rows);
+			}),
+			unregisterSignalHandlers: vi.fn(),
+		});
+		try {
+			stop(host, "transcript");
+			expect(host.stopInteractiveTui).toHaveBeenCalledWith("transcript");
+			expect(chat.children).toEqual(rows);
+			await expectQuiet(ui);
+			stop(host, "transcript");
+			expect(host.stopInteractiveTui).toHaveBeenCalledTimes(1);
+			await expectQuiet(ui);
+		} finally {
+			disposeTranscript(chat);
+		}
 	});
 
 	it("renderCurrentSessionState stops them", async () => {

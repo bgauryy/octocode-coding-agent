@@ -29,6 +29,9 @@ const LINES: Record<Mode, string> = {
 		"Queue steering, questions or evidence to teammates; only reachable non-isolated background children resume on a message.",
 };
 
+/** Added to the task line only while a runner is connected (the task schema then declares `runner`). */
+const RUNNER_LINE = " With runner, a connected vendor CLI does it on its own plan (models lists them).";
+
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
 const LEAF_MESSAGE_LINE =
 	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle recipient.";
@@ -46,7 +49,7 @@ type Schema = { properties?: Record<string, TSchema & { description?: string }> 
  * description marked with the type it belongs to. A mode's own `reason` is the call's `reason`. Two modes declaring
  * the same public name fail registration unless it is in `SHARED_FIELDS`, so a new collision is renamed rather than shared.
  */
-function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean) {
+function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean, batches = true) {
 	const owners = new Map<string, Mode[]>();
 	const properties: Record<string, TSchema & { description: string }> = {};
 	for (const [type, tool] of entries) {
@@ -69,7 +72,7 @@ function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean) {
 			properties[field] = { ...rest, description: `${before}${marked}` };
 		}
 	}
-	if (entries.some(([type]) => type === "task")) {
+	if (batches && entries.some(([type]) => type === "task")) {
 		owners.set(TASKS_FIELD, ["task"]);
 		properties[TASKS_FIELD] = tasksSchema();
 	}
@@ -91,9 +94,14 @@ export function agentModes() {
 		register(api: ExtensionAPI) {
 			const entries = [...modes];
 			const types = entries.map(([type]) => type);
+			const taskTool = modes.get("task");
+			const task = taskTool ? (taskTool.parameters as Schema & { required?: string[] }) : undefined;
+			// A subagent's task type starts runner tasks only (`subagents/runner-task.ts`): it starts no Octocode children.
+			const runnerOnly = task?.required?.includes("runner") === true;
+			const runnerTasks = !runnerOnly && task?.properties?.runner !== undefined;
 			// A session without the task type starts no children, so starter-only fields and wording do not apply.
-			const leaf = !modes.has("task");
-			const { owners, properties } = flatFields(entries, leaf);
+			const leaf = !modes.has("task") || runnerOnly;
+			const { owners, properties } = flatFields(entries, leaf, !runnerOnly);
 			// Only the types this session registered: a subagent has no task or external.
 			const triggers = entries.map(([type]) => renderInstruction(`tools/agent/trigger-${type}.md`));
 			api.registerTool({
@@ -103,9 +111,10 @@ export function agentModes() {
 				description:
 					"Set type and that type's fields. " +
 					entries
-						.map(
-							([type]) =>
-								`${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? ` At most ${maxSubagents()} at once; more wait.` : ""}`,
+						.map(([type, tool]) =>
+							type === "task" && runnerOnly
+								? `${type}: ${tool.description}`
+								: `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? `${runnerTasks ? RUNNER_LINE : ""} At most ${maxSubagents()} at once; more wait.` : ""}`,
 						)
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),

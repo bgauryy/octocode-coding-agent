@@ -1,11 +1,11 @@
 ---
 name: octocode-debugging
-description: "Debug and profile running programs from the shell: breakpoints with lldb, gdb, pdb, dlv or a Node inspector, stack and locals, crashes, hangs, deadlocks, CPU and memory hotspots. Use when a program crashes, hangs, leaks or runs slow and logs and tests cannot explain why."
+description: "Debug crashes, hangs, deadlocks and wrong values with breakpoints, stacks and locals. Profile CPU functions/callers, memory/allocations, processes, timing, event-loop/GC, I/O and browser/GPU work. Use for profiling requests, bottlenecks, leaks or unexplained slowness."
 ---
 
 # Octocode Debugging
 
-Run the program, stop it where it goes wrong, and read the real values instead of guessing from source. Every command here runs through `bash` and must finish on its own: debuggers run in batch mode with their commands on the command line and stdin closed, never as an interactive prompt. Reading code and logs comes first; use this skill when they do not explain the behavior.
+Run the program, stop it where it goes wrong, and read the real values instead of guessing from source. Every command here runs through `bash` and must finish on its own: debuggers run in batch mode with their commands on the command line and stdin closed, never as an interactive prompt. Reading code and logs comes first for debugging; for a profiling request, establish the workload and baseline before recording.
 
 ```mermaid
 flowchart LR
@@ -25,7 +25,7 @@ flowchart LR
 
 Find the smallest command that shows the failure: one test, one input file, one request. Run it once without a debugger and keep its output; it is the check you rerun after the fix. When the failure is intermittent, loop it (`for i in $(seq 20); do <cmd> || break; done`) before attaching anything.
 
-Build native code with debug information and without optimization (`-g -O0`, `cargo build` without `--release`, `go build -gcflags=all="-N -l"`); optimized builds show wrong lines and missing locals.
+For stepping and locals, build native code with debug information and without optimization (`-g -O0`, `cargo build` without `--release`, `go build -gcflags=all="-N -l"`). For performance measurements, keep production optimization and add symbols; debug-build costs are not production bottlenecks.
 
 ## Pick the tool for the language
 
@@ -53,12 +53,15 @@ Dump every thread's stack while it hangs, twice a few seconds apart: frames that
 
 ## Slow or memory-heavy
 
-Measure before changing code: time the reproduction, profile it, and read only the top rows. Fix the function with the most self time, or the caller that calls it too often, then measure again with the same command. Details per language are in [profiling](references/profiling.md).
+Read [profiling](references/profiling.md) before recording. Name the workload, runtime, headless/visible mode and duration; separate startup, idle and active phases. Start with wall time and the process tree, then choose CPU call stacks, allocations/retention, event-loop/GC, I/O or browser/GPU traces from the observed symptom. For a comprehensive request, cover each dimension or explicitly record why it is unavailable. The [Node metrics preload](scripts/node-metrics.mjs) adds process CPU, memory, resource counters and main-thread loop/GC timing to a launched Node workload.
+
+Inspect both self cost and inclusive callers. Sampling does not count exact invocations, and elapsed waiting is not CPU work. Test the leading hotspot against a rival explanation before changing code, then repeat the same workload. Do not claim a leak from one heap sample or a speedup from one run.
 
 ## Rules
 
 - Always set a timeout or a cap (node-break `--timeout` and `--max-hits`, `faulthandler`, a bounded loop); a debugger waiting for input stalls the session.
-- Run the debugger in the foreground with closed stdin (`</dev/null`); do not leave a debugged process running. Kill what you started.
+- Run batch debuggers with closed stdin (`</dev/null`). Keep stdin/TTY for a terminal workload whose rendering you are measuring; run long captures in the background with a bounded workload or external timeout. Stop only processes you started.
+- Check tool availability before recording. Do not install tools, escalate privileges, signal peer sessions or expose an inspector without authorization. Profiles can contain source paths and user data; keep them local. Heap snapshots pause the process and can require roughly twice its heap; ask before taking one on a live session.
 - Remove temporary `debugger;` statements, `breakpoint()` calls and debug prints before you finish, and check with a search.
 - State the cause with the evidence: the line, the value you saw and the value it should have been.
 - After the fix, rerun the original reproduction and the affected tests.
@@ -70,7 +73,8 @@ Measure before changing code: time the reproduction, profile it, and read only t
 | Debugging C, C++, Rust, Swift or Go       | [native](references/native.md)             | lldb and gdb batch commands, crashes, attach, hangs, cores |
 | Debugging Python                          | [python](references/python.md)             | pdb batch runs, post-mortem, pytest, hangs                 |
 | Debugging Node or TypeScript              | [node](references/node.md)                 | node-break options and output, tests, transformed code     |
-| Profiling CPU or memory in any language   | [profiling](references/profiling.md)       | Profiler commands and how to read the result               |
+| Profiling CPU, memory, timing, processes, I/O or GPU | [profiling](references/profiling.md) | Choose captures, interpret evidence and name coverage gaps |
+| Measuring Node CPU, memory, event-loop and GC | [node-metrics.mjs](scripts/node-metrics.mjs) | Preload that writes local JSONL without changing stdout |
 | Breaking inside a Node program            | [node-break.mjs](scripts/node-break.mjs)   | Runs the inspector protocol and prints each pause as JSON  |
 | Reading a `.cpuprofile` or `.heapprofile` | [profile-top.mjs](scripts/profile-top.mjs) | Prints the heaviest functions by self or total cost        |
 

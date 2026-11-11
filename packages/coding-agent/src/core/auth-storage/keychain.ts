@@ -43,6 +43,14 @@ export interface KeychainBackend {
 	isOwnReference(key: string | undefined, provider: string): boolean;
 }
 
+/** A secret too long for the backend's write channel; nothing was run, so nothing was written. */
+export class KeychainSecretTooLargeError extends Error {
+	constructor(backend: string) {
+		super(`The secret is too long for the ${backend}; nothing was written.`);
+		this.name = "KeychainSecretTooLargeError";
+	}
+}
+
 export function isValidKeychainProviderId(provider: string): boolean {
 	return PROVIDER_ID.test(provider);
 }
@@ -82,7 +90,16 @@ interface BackendSpec {
 	remove(provider: string): string[];
 	reference(provider: string): string;
 	isNotFound(result: KeychainRunResult): boolean;
+	/** The longest write input the channel takes whole; a longer one is refused before anything runs. */
+	maxInputBytes?: number;
 }
+
+/**
+ * `security -i` reads each command as one line of at most about 4096 bytes (measured on macOS 26: a 4085-byte line is
+ * stored, a 4135-byte one is not). A longer line is split and its remainder, secret text, is run as further commands, so
+ * the write is refused before `security` starts.
+ */
+const MACOS_INTERACTIVE_LINE_BYTES = 4000;
 
 function macSpec(file: string): BackendSpec {
 	return {
@@ -95,6 +112,7 @@ function macSpec(file: string): BackendSpec {
 		remove: (provider) => ["delete-generic-password", "-s", SERVICE, "-a", provider],
 		reference: (provider) => `!${file} find-generic-password -s ${SERVICE} -a ${provider} -w`,
 		isNotFound: (result) => result.code === MACOS_ITEM_NOT_FOUND,
+		maxInputBytes: MACOS_INTERACTIVE_LINE_BYTES,
 	};
 }
 
@@ -119,6 +137,8 @@ function createBackend(spec: BackendSpec, run: KeychainRunner): KeychainBackend 
 			assertProvider(provider);
 			assertSecret(secret);
 			const { args, input } = spec.store(provider, secret);
+			if (spec.maxInputBytes !== undefined && Buffer.byteLength(input) > spec.maxInputBytes)
+				throw new KeychainSecretTooLargeError(spec.name);
 			const result = await run(spec.file, args, input);
 			clearConfigValueCache();
 			// Secret-write output can echo escaped or partial input, which exact token replacement cannot redact safely.

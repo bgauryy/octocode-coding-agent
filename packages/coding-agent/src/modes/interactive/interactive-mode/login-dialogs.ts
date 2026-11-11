@@ -17,6 +17,7 @@ import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import { theme } from "../../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { InteractiveModeHost } from "./host.ts";
+import { checkPastedKey } from "./pasted-key.ts";
 
 /** Interactive-mode members used by the provider login dialogs. */
 type LoginDialogsHost = Pick<
@@ -79,10 +80,8 @@ export async function showApiKeyLoginDialog(
 	providerId: string,
 	providerName: string,
 	onBack?: () => void,
-	secret?: string,
 ): Promise<void> {
 	const dialog = new LoginDialogComponent(host.ui, providerId, () => {}, providerName);
-	if (secret !== undefined) dialog.showInfo("Saving the token Claude Code printed.");
 	if (providerId === "amazon-bedrock") {
 		dialog.showDetails([
 			theme.fg("text", "You can also use an AWS profile, IAM keys, or role-based credentials."),
@@ -90,7 +89,7 @@ export async function showApiKeyLoginDialog(
 			theme.fg("accent", `  ${path.join(getDocsPath(), "providers.md")}`),
 		]);
 	}
-	await runLoginDialog(host, dialog, providerId, providerName, "api_key", onBack, secret);
+	await runLoginDialog(host, dialog, providerId, providerName, "api_key", onBack);
 }
 
 export async function showLoginDialog(
@@ -119,11 +118,10 @@ async function runLoginDialog(
 	providerName: string,
 	method: "api_key" | "oauth",
 	onBack: (() => void) | undefined,
-	secret?: string,
 ): Promise<void> {
 	showInEditorSlot(host, dialog);
 	try {
-		await loginProvider(host, dialog, providerId, providerName, method, secret);
+		await loginProvider(host, dialog, providerId, providerName, method);
 		showInEditorSlot(host, host.editor);
 		await host.completeProviderAuthentication(providerId, providerName, method);
 	} catch (error: unknown) {
@@ -208,30 +206,54 @@ function notifyAuthDialog(dialog: LoginDialogComponent, event: AuthEvent): void 
 	}
 }
 
+/** Throws for a key that is never saved, and asks before saving one whose prefix belongs to another provider. */
+async function confirmPastedKey(
+	host: LoginDialogsHost,
+	dialog: LoginDialogComponent,
+	providerId: string,
+	providerName: string,
+	key: string,
+): Promise<void> {
+	const check = checkPastedKey(providerId, key);
+	if (check.kind === "refuse") throw new Error(check.message);
+	if (check.kind === "ok") return;
+	const owner = host.session.modelRuntime.getProvider(check.owner)?.name ?? check.owner;
+	const choice = await showAuthPrompt(host, dialog, {
+		type: "select",
+		message: `This looks like a key for ${owner}, not ${providerName}. Save it for ${providerName} anyway?`,
+		signal: dialog.signal,
+		options: [
+			{ id: "save", label: `Save it for ${providerName}` },
+			{ id: "cancel", label: "Cancel" },
+		],
+	});
+	if (choice !== "save") throw new Error("Login cancelled");
+}
+
 async function loginProvider(
 	host: LoginDialogsHost,
 	dialog: LoginDialogComponent,
 	providerId: string,
 	providerName: string,
 	method: "api_key" | "oauth",
-	secret: string | undefined,
 ): Promise<void> {
 	host.programStatus.setBlocked("login", { kind: "auth", message: `Log in to ${providerName}` });
 	try {
-		const keychain = method === "api_key" ? detectKeychain(process.platform) : undefined;
-		// A key already in hand answers the first secret prompt once; every other prompt still asks the user.
-		let given = secret;
-		const prompt = (request: AuthPrompt) => {
-			if (request.type !== "secret" || given === undefined) return showAuthPrompt(host, dialog, request);
-			const answer = given;
-			given = undefined;
-			return Promise.resolve(answer);
+		// API keys and account sign-ins alike go to the system keychain when the user picks it (OAuth as one blob).
+		const keychain = detectKeychain(process.platform);
+		// A pasted key is checked before anything is saved: refused, or confirmed when it belongs to another provider.
+		const prompt = async (request: AuthPrompt) => {
+			const answer = await showAuthPrompt(host, dialog, request);
+			if (method === "api_key" && request.type === "secret")
+				await confirmPastedKey(host, dialog, providerId, providerName, answer);
+			return answer;
 		};
 		const storage = keychain
 			? new KeychainLoginSession(keychain, providerId, async () => {
 					const choice = await showAuthPrompt(host, dialog, {
 						type: "select",
-						message: "Where should this API key be stored?",
+						message:
+							method === "oauth" ? "Where should this sign-in be stored?" : "Where should this API key be stored?",
 						signal: dialog.signal,
 						options: [
 							{ id: "keychain", label: `${keychain.name} (recommended)` },
@@ -246,6 +268,7 @@ async function loginProvider(
 				"No system keychain is available. API keys are stored in plaintext in auth.json, created with owner-only permissions.",
 			);
 		}
+		if (method === "oauth") await storage?.chooseForSignIn();
 		await host.session.modelRuntime.login(
 			providerId,
 			method,

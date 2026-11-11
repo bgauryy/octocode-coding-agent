@@ -1,4 +1,5 @@
 import type { ApplicationHistory, ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cloneDisplay } from "./normalize.ts";
 
 const WINDOW_MESSAGES = 50;
@@ -43,6 +44,8 @@ export function transcriptWindow(
 		tools = select();
 	}
 	// Tools are kept in the order the transcript first saw them, oldest first.
+	// Drop the excess prefix once; shifting a long tool-only history repeatedly is quadratic.
+	if (tools.length > WINDOW_TOOLS) tools = tools.slice(-WINDOW_TOOLS);
 	while (over() && tools.length) tools.shift();
 	return cloneDisplay({ messages, tools });
 }
@@ -73,11 +76,77 @@ export function transcriptHistory(
 }
 
 /** The same object, or an equal copy rebuilt from the session file. */
-export function sameMessage(a: unknown, b: unknown): boolean {
+function sameMessage(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	try {
 		return JSON.stringify(a) === JSON.stringify(b);
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * Splits what a rebuilt context added at its end: the ids of the messages already shown (announced before the
+ * rebuild), then the messages no view has seen. Undefined when a shown message follows an unseen one: the views would
+ * hold them in another order than the context does.
+ */
+function splitAdded<T>(
+	identities: WeakMap<object, string>,
+	sources: ReadonlyMap<string, unknown>,
+	previous: readonly unknown[],
+	added: readonly T[],
+): { shown: string[]; unseen: T[] } | undefined {
+	const result = { shown: [] as string[], unseen: [] as T[] };
+	if (added.length === 0) return result;
+	const taken = new Set<string>();
+	for (const message of previous) {
+		const id = identities.get(asRecord(message));
+		if (id !== undefined) taken.add(id);
+	}
+	for (const message of added) {
+		let id = identities.get(asRecord(message));
+		if (id === undefined || taken.has(id)) {
+			id = undefined;
+			for (const [candidate, source] of sources) {
+				if (taken.has(candidate) || !sameMessage(source, message)) continue;
+				id = candidate;
+				break;
+			}
+		}
+		if (id === undefined) result.unseen.push(message);
+		else if (result.unseen.length > 0) return undefined;
+		else {
+			taken.add(id);
+			result.shown.push(id);
+		}
+	}
+	return result;
+}
+
+/**
+ * Take over a rebuilt context array whose messages equal `previous`: keep their ids and displayed state, so views
+ * need no reset. The array may also have grown at its end. Messages the transcript already shows (a custom message is
+ * announced, then the context is rebuilt with it) keep their ids; the ones no view has seen are returned for the
+ * caller to show. Undefined when a message differs, so the views must be rebuilt.
+ */
+export function adoptContext<T>(
+	identities: WeakMap<object, string>,
+	sources: Map<string, unknown>,
+	previous: readonly unknown[],
+	next: readonly T[],
+): T[] | undefined {
+	if (next.length < previous.length || !previous.every((message, index) => sameMessage(message, next[index])))
+		return undefined;
+	const added = splitAdded(identities, sources, previous, next.slice(previous.length));
+	if (!added) return undefined;
+	const known = previous.length + added.shown.length;
+	for (let index = 0; index < known; index++) {
+		const message = next[index];
+		const from = previous[index];
+		const id = index < previous.length ? identities.get(asRecord(from)) : added.shown[index - previous.length];
+		if (id === undefined || message === from) continue;
+		identities.set(asRecord(message), id);
+		if (sources.has(id)) sources.set(id, message);
+	}
+	return added.unseen;
 }

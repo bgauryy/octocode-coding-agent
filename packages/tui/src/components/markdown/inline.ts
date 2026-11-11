@@ -2,6 +2,7 @@ import type { Token } from "marked";
 import { renderLatex } from "../../latex.ts";
 import { getCapabilities } from "../../terminal-image/capabilities.ts";
 import { hyperlink } from "../../terminal-image.ts";
+import { markdownReferenceUrl } from "../../markdown-content.ts";
 import { fileReferenceUrl, findFileReferences, splitFileReferences } from "./linkify.ts";
 import type { LatexToken } from "./parser.ts";
 import type { InlineStyleContext, MarkdownRenderHost } from "./types.ts";
@@ -20,13 +21,16 @@ export function renderInlineTokens(
 	};
 
 	// A file reference is coloured as a link (clickable where the terminal supports it); its text is unchanged.
-	const linkifiedText = (text: string): string =>
+	const linkifiedText = (text: string, token: Token): string =>
 		splitFileReferences(text)
-			.map((piece) => {
+			.map((piece, index) => {
 				if (!piece.reference) return applyTextWithNewlines(piece.text);
 				const styled = host.theme.link(piece.text);
-				const url = fileReferenceUrl(piece.reference.path, process.cwd());
-				return (getCapabilities().hyperlinks ? hyperlink(styled, url) : styled) + stylePrefix;
+				const { path, line, column } = piece.reference;
+				const url = fileReferenceUrl(path, host.options.cwd ?? process.cwd(), line, column);
+				return (
+					(getCapabilities().hyperlinks ? hyperlink(styled, url, host.linkId(token, index)) : styled) + stylePrefix
+				);
 			})
 			.join("");
 
@@ -51,7 +55,7 @@ export function renderInlineTokens(
 				if (token.tokens && token.tokens.length > 0) {
 					result += renderInlineTokens(host, token.tokens, resolvedStyleContext);
 				} else {
-					result += linkifiedText(token.text);
+					result += linkifiedText(token.text, token);
 				}
 				break;
 
@@ -79,7 +83,11 @@ export function renderInlineTokens(
 				const isReference = only !== undefined && only.start === 0 && only.end === token.text.length;
 				result +=
 					(isReference && getCapabilities().hyperlinks
-						? hyperlink(code, fileReferenceUrl(only.path, process.cwd()))
+						? hyperlink(
+								code,
+								fileReferenceUrl(only.path, host.options.cwd ?? process.cwd(), only.line, only.column),
+								host.linkId(token),
+							)
 						: code) + stylePrefix;
 				break;
 			}
@@ -87,10 +95,11 @@ export function renderInlineTokens(
 			case "link": {
 				const linkText = renderInlineTokens(host, token.tokens ?? [], resolvedStyleContext);
 				const styledLink = host.theme.link(host.theme.underline(linkText));
-				if (getCapabilities().hyperlinks) {
+				const url = markdownReferenceUrl(token.href, host.options.cwd ?? process.cwd());
+				if (getCapabilities().hyperlinks && url) {
 					// OSC 8: render as a clickable hyperlink. The URL is not printed inline,
 					// so we always show only the link text regardless of whether it matches href.
-					result += hyperlink(styledLink, token.href) + stylePrefix;
+					result += hyperlink(styledLink, url, host.linkId(token)) + stylePrefix;
 				} else {
 					// Fallback: print URL in parentheses when text differs from href.
 					// Compare raw token.text (not styled) against href for the equality check.

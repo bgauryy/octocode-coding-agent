@@ -241,7 +241,7 @@ export async function executePreparedToolCall(
 	signal: AbortSignal | undefined,
 	onUpdate: ToolUpdateSink,
 ): Promise<ExecutedToolCallOutcome> {
-	const updateEvents: Promise<void>[] = [];
+	const updateEvents = new Set<Promise<void>>();
 	let acceptingUpdates = true;
 	const startedAt = performance.now();
 	const elapsed = () => Math.round(performance.now() - startedAt);
@@ -253,11 +253,13 @@ export async function executePreparedToolCall(
 
 	try {
 		// Not awaited without a check: a tool that starts at once must still run before the next call's thunk begins.
-		const stale = prepared.revalidate ? await prepared.revalidate(signal) : undefined;
-		if (stale?.block || (prepared.revalidate && signal?.aborted)) {
+		const stale = prepared.revalidate
+			? await raceAbort(Promise.resolve(prepared.revalidate(signal)), signal, ABORT_GRACE_MS)
+			: undefined;
+		if (stale === ABANDONED || stale?.block || signal?.aborted) {
 			return {
 				result: createErrorToolResult(
-					stale?.block ? stale.reason || "Tool execution was blocked" : "Operation aborted",
+					stale !== ABANDONED && stale?.block ? stale.reason || "Tool execution was blocked" : "Operation aborted",
 				),
 				isError: true,
 				durationMs: elapsed(),
@@ -266,20 +268,29 @@ export async function executePreparedToolCall(
 		const execution = (async () =>
 			prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
 				if (!acceptingUpdates) return;
-				updateEvents.push(new Promise<void>((resolve) => resolve(onUpdate(partialResult))).catch(reportUpdateFailure));
+				try {
+					const delivery = onUpdate(partialResult);
+					if (delivery) {
+						const event = Promise.resolve(delivery).catch(reportUpdateFailure);
+						updateEvents.add(event);
+						void event.then(() => updateEvents.delete(event));
+					}
+				} catch (error) {
+					reportUpdateFailure(error);
+				}
 			}))();
 		const result = await raceAbort(execution, signal, prepared.tool.abortGraceMs ?? ABORT_GRACE_MS);
 		const durationMs = elapsed();
 		acceptingUpdates = false;
-		await Promise.all(updateEvents);
 		if (result === ABANDONED) {
 			return { result: createErrorToolResult(ABANDONED_MESSAGE), isError: true, durationMs };
 		}
+		await raceAbort(Promise.all(updateEvents), signal, ABORT_GRACE_MS);
 		return { result, isError: result.isError === true, durationMs };
 	} catch (error) {
 		const durationMs = elapsed();
 		acceptingUpdates = false;
-		await Promise.allSettled(updateEvents);
+		await raceAbort(Promise.allSettled(updateEvents), signal, ABORT_GRACE_MS);
 		return {
 			result:
 				error instanceof AgentToolExecutionError

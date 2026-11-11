@@ -327,13 +327,22 @@ export class AltScreenSelection {
 		// "Copied!" while leaving the system clipboard untouched (e.g. macOS Terminal.app, tmux
 		// without OSC 52 clipboard passthrough), so only report success when it actually copies.
 		if (this.host.copySelection) {
-			const result = await this.host.copySelection(text);
+			let result: boolean | string;
+			try {
+				result = await this.host.copySelection(text);
+			} catch (error) {
+				result = error instanceof Error ? error.message : "Copy failed";
+			}
 			const ok = result === true;
 			this.host.flash(
 				ok ? "Copied!" : typeof result === "string" ? result : "Copy failed",
 				ok ? undefined : COPY_ERROR_FLASH_DURATION_MS,
 			);
 			return ok;
+		}
+		if (Math.ceil(Buffer.byteLength(text) / 3) * 4 > 100_000) {
+			this.host.flash("Copy failed: selection exceeds terminal clipboard limit", COPY_ERROR_FLASH_DURATION_MS);
+			return false;
 		}
 		this.host.getTerminal().write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
 		this.host.flash("Copied!");

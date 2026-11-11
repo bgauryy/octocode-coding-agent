@@ -22,6 +22,7 @@ function createInteractiveContext(options: {
 			modelRuntime: {
 				refresh: vi.fn().mockResolvedValue({ aborted: false, errors: new Map() }),
 				getAvailableSnapshot,
+				getProviderKind: () => "API key",
 			},
 			scopedModels: options.scopedModels ?? [],
 			setScopedModels,

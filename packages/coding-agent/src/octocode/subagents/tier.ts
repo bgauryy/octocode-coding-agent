@@ -142,13 +142,16 @@ const firstNonEmpty = (...groups: Facts[][]): Facts[] => groups.find((group) => 
  * the parent come first. The parent's provider ranks before its lab: only that provider's auth and endpoint are proven
  * (another provider counts as available once a key is configured, even an expired one). So the order is the parent's
  * provider and lab, its provider, its lab elsewhere, then anything. `small` is the cheapest; `medium` the dearest
- * between `MEDIUM_MIN_SHARE` and `MEDIUM_MAX_SHARE` of the parent's price.
+ * between `MEDIUM_MIN_SHARE` and `MEDIUM_MAX_SHARE` of the parent's price. A model the user's plan pays for costs
+ * nothing more per request, so it qualifies whatever its list price and a capable one is chosen before any metered
+ * model (its list price still places it in a tier); a background child leaves out plans that forbid unattended use.
  */
 export function resolveTier(
 	tier: ModelTier,
 	available: readonly ModelRef[],
 	parent: ModelRef | undefined,
 	catalog?: Catalog,
+	billing: TierBilling = {},
 ): ModelRef | undefined {
 	if (!parent) return undefined;
 	const own = available.find((model) => model.provider === parent.provider && model.id === parent.id) ?? parent;
@@ -161,9 +164,12 @@ export function resolveTier(
 		.map((model) => facts(model, catalog))
 		.filter((model) => !(model.ref.provider === own.provider && model.ref.id === own.id))
 		.filter((model) => canRunTask(model.ref, catalog))
-		.filter((model) => !needsImages || model.input === undefined || model.input.includes("image"));
+		.filter((model) => !needsImages || model.input === undefined || model.input.includes("image"))
+		.filter((model) => !billing.background || billing.unattended?.(model.ref.provider) !== false);
+	const onPlan = (model: Facts) => billing.plan?.(model.ref.provider) === true;
+	const cheaper = (model: Facts) => model.price !== undefined && model.price < top.price!;
 	const eligible = currentGeneration(
-		capable.filter((model) => model.price !== undefined && model.price < top.price!),
+		capable.filter((model) => model.price !== undefined && (cheaper(model) || onPlan(model))),
 		[...capable, top],
 	);
 	const parentReleased = time(top.released);
@@ -173,13 +179,26 @@ export function resolveTier(
 				(model) => Number.isNaN(time(model.released)) || time(model.released) >= parentReleased - STALE_AFTER_MS,
 			);
 	const fresh = recent.length > 0 ? recent : eligible;
-	const sameLab = top.lab ? fresh.filter((model) => model.lab === top.lab) : [];
-	const sameProvider = fresh.filter((model) => model.ref.provider === own.provider);
-	const ownLab = sameProvider.filter((model) => sameLab.includes(model));
-	const pool = firstNonEmpty(ownLab, sameProvider, sameLab, fresh).sort((a, b) => a.price! - b.price!);
-	if (tier === "small") return pool[0]?.ref;
-	const band = pool.filter(
-		(model) => model.price! <= top.price! * MEDIUM_MAX_SHARE && model.price! >= top.price! * MEDIUM_MIN_SHARE,
-	);
-	return band.at(-1)?.ref;
+	const choose = (candidates: Facts[]): ModelRef | undefined => {
+		const sameLab = top.lab ? candidates.filter((model) => model.lab === top.lab) : [];
+		const sameProvider = candidates.filter((model) => model.ref.provider === own.provider);
+		const ownLab = sameProvider.filter((model) => sameLab.includes(model));
+		const pool = firstNonEmpty(ownLab, sameProvider, sameLab, candidates).sort((a, b) => a.price! - b.price!);
+		if (tier === "small") return pool[0]?.ref;
+		const band = pool.filter(
+			(model) => model.price! <= top.price! * MEDIUM_MAX_SHARE && model.price! >= top.price! * MEDIUM_MIN_SHARE,
+		);
+		return band.at(-1)?.ref;
+	};
+	const planned = fresh.filter(onPlan);
+	return (planned.length > 0 ? choose(planned) : undefined) ?? choose(fresh.filter(cheaper));
+}
+
+/** What routing knows of each provider's billing (`ModelRegistry.getProviderBilling`, `allowsUnattendedUse`). */
+export interface TierBilling {
+	/** The user's plan pays for this provider's requests. */
+	plan?: (provider: string) => boolean;
+	/** False for a provider whose plan forbids unattended use; asked only for a background child. */
+	unattended?: (provider: string) => boolean;
+	background?: boolean;
 }

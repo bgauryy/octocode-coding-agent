@@ -33,6 +33,7 @@ function createStartupHost() {
 		pendingUserInputs: [] as string[],
 		session: { isStreaming: false, isBashRunning: false, isCompacting: false },
 		uiStore: createUiStore(),
+		editorChangeListeners: new Set<(text: string) => void>(),
 	});
 	bindEditorState(host);
 	defaultEditor.onSubmit = (text) => handleStartupSubmit(host, text);

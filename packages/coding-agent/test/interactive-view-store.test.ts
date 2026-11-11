@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { addMessageToChat } from "../src/modes/interactive/interactive-mode/chat-messages.ts";
+import { applicationRenderer } from "../src/modes/interactive/interactive-mode/application-events.ts";
 import { toggleThinkingBlockVisibility } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
 import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
@@ -80,7 +81,7 @@ describe("interactive view store", () => {
 		expect(expanded).toBeGreaterThan(collapsed);
 		// Two store changes (the expansion and its notice) and the notice's status line in the messages list.
 		expect(requestRender).toHaveBeenCalledTimes(3);
-		expect(rows(chatContainer).join("\n")).toContain("Tool output: expanded");
+		expect(rows(chatContainer).join("\n")).toContain("Output: expanded");
 
 		uiStore.getState().setToolsExpanded(true);
 		expect(requestRender).toHaveBeenCalledTimes(3);
@@ -88,8 +89,8 @@ describe("interactive view store", () => {
 		uiStore.getState().toggleToolsExpanded();
 		// The tool row is back to its collapsed height; below it, one spacer and one status line, updated in place.
 		expect(rows(chatContainer).length).toBe(collapsed + 2);
-		expect(rows(chatContainer).join("\n")).toContain("Tool output: collapsed");
-		expect(rows(chatContainer).join("\n")).not.toContain("Tool output: expanded");
+		expect(rows(chatContainer).join("\n")).toContain("Output: collapsed");
+		expect(rows(chatContainer).join("\n")).not.toContain("Output: expanded");
 		expect(requestRender).toHaveBeenCalledTimes(6);
 	});
 
@@ -102,6 +103,37 @@ describe("interactive view store", () => {
 		addMessageToChat(host, message);
 		const both = rows(chatContainer).length;
 		expect(both - collapsed).toBeGreaterThan(collapsed);
+	});
+
+	it("seeds resumed assistant rows from the current expansion state", () => {
+		const { host, uiStore, chatContainer } = setup();
+		uiStore.getState().setToolsExpanded(true);
+		const text = Array.from({ length: 140 }, (_, i) => `line ${i}`).join("\n\n");
+		addMessageToChat(host, { role: "assistant", content: [{ type: "text", text }], timestamp: 1 } as never);
+		expect(rows(chatContainer).join("\n")).toContain("line 70");
+		expect(rows(chatContainer).join("\n")).not.toContain("lines hidden");
+	});
+
+	it("seeds new live assistant rows from the current expansion state", () => {
+		const { host, uiStore, chatContainer } = setup();
+		uiStore.getState().setToolsExpanded(true);
+		const text = Array.from({ length: 140 }, (_, i) => `line ${i}`).join("\n\n");
+		const render = applicationRenderer(host, { readAsset: () => undefined } as never);
+		render({ type: "message.started", message: { id: "live", role: "assistant", text, complete: false } } as never);
+		expect(rows(chatContainer).join("\n")).toContain("line 70");
+		expect(rows(chatContainer).join("\n")).not.toContain("lines hidden");
+	});
+
+	it("expands and recollapses assistant output through the view store", () => {
+		const { uiStore, chatContainer } = setup();
+		const text = Array.from({ length: 140 }, (_, i) => `line ${i}`).join("\n\n");
+		const message = new AssistantMessageComponent({ role: "assistant", content: [{ type: "text", text }] } as never);
+		chatContainer.addChild(message);
+		expect(rows(chatContainer).join("\n")).toContain("lines hidden");
+		uiStore.getState().toggleToolsExpanded();
+		expect(rows(chatContainer).join("\n")).toContain("line 70");
+		uiStore.getState().toggleToolsExpanded();
+		expect(rows(chatContainer).join("\n")).toContain("lines hidden");
 	});
 
 	it("shows the hidden-thinking label and persists the toggle", () => {

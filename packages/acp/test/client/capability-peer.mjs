@@ -7,6 +7,8 @@ const [journal, json] = process.argv.slice(2);
 const options = JSON.parse(json);
 const record = (event, params) => appendFileSync(journal, `${JSON.stringify({ event, params })}\n`);
 let authenticated = false;
+// Which of the named variables this peer was started with (names only), so a test can see what its host passed.
+if (options.recordEnv) record("env", { present: options.recordEnv.filter((name) => name in process.env) });
 const needsAuth = () => {
 	if (options.authMethods && !authenticated) throw new RequestError(-32000, "Authentication required");
 };

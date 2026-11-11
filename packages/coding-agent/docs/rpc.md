@@ -33,7 +33,7 @@ If a write to stdout fails because the driver closed its end, the session is rel
 | Command | Fields | Description |
 |---|---|---|
 | `prompt` | `message`: string<br>`images?`: object[]<br>`streamingBehavior?`: "steer" \| "followUp"<br>`waitForCompletion?`: boolean<br>`dispatchId?`: string | Send a message. During a run, `streamingBehavior` queues it as `steer` or `followUp`. `dispatchId` correlates extension-dispatched work when `waitForCompletion` is set. |
-| `steer` | `message`: string<br>`images?`: object[] | Queue a message delivered while the agent is running. On an idle session it still answers `queued` and starts nothing: it waits for the next prompt. To avoid that race at the end of a run, send `prompt` with `streamingBehavior`. |
+| `steer` | `message`: string<br>`images?`: object[]<br>`toolChoice?`: "none" | Queue a message delivered while the agent is running. On an idle session it still answers `queued` and starts nothing: it waits for the next prompt. To avoid that race at the end of a run, send `prompt` with `streamingBehavior`. |
 | `follow_up` | `message`: string<br>`images?`: object[] | Queue a message for after the agent stops. On an idle session it answers `queued` and starts nothing, as `steer` does. |
 | `abort` |  | Stop the current run. |
 | `clear_queue` |  | Drop all queued steering and follow-up messages; returns what was dropped. |
@@ -46,7 +46,7 @@ If a write to stdout fails because the driver closed its end, the session is rel
 | `get_state` |  | Protocol and Octocode versions, model, thinking level, streaming and compaction flags, queue modes, session identity and message counts. |
 | `set_model` | `provider`: string<br>`modelId`: string | Select a model by provider and ID from the available models; fails if it is not available. |
 | `cycle_model` |  | Switch to the next model; `data` is `null` when there is nothing to cycle. |
-| `get_available_models` |  | List the available models. |
+| `get_available_models` |  | List the available models. A model whose plan allows interactive use only carries `interactiveOnly: true`. |
 | `set_thinking_level` | `level`: "off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" | Set the thinking level. |
 | `cycle_thinking_level` |  | Switch to the next thinking level the model supports. |
 | `get_available_thinking_levels` |  | List the levels the current model supports. |

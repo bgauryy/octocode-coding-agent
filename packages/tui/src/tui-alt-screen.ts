@@ -2,10 +2,11 @@ import { AltScreenFlashContainer } from "./components/alt-screen-flash.ts";
 import { ScrollView } from "./components/scroll-view.ts";
 import type { LayoutFrame } from "./layout/types.ts";
 import { renderLayoutFrame } from "./layout.ts";
+import { detachScrollViews } from "./layout/detach.ts";
 import type { Terminal } from "./terminal.ts";
 import type { ImageProtocol, TerminalCapabilities } from "./terminal-image/types.ts";
 import { getCapabilities, setCapabilities } from "./terminal-image/capabilities.ts";
-import { registerExitRestore } from "./terminal/exit-restore.ts";
+import { registerTerminalRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
 import { clipLinesToWidth } from "./tui/clip.ts";
 import {
 	type Component,
@@ -59,11 +60,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private imageProtocol: ImageProtocol = null;
 	private savedCapabilities?: TerminalCapabilities;
 	private readonly uploadedKittyImages = new Map<number, CachedKittyImage>();
-	/** Transcript search overlay and matches. */
 	private readonly search: AltScreenSearchController;
-	/** Application-owned text selection. */
 	private readonly selection: AltScreenSelection;
-	/** Scrollbar hover and dragging. */
 	private readonly scrollbar: AltScreenScrollbar;
 	/** Component mouse dispatch and the press, capture and click gesture. */
 	private readonly mouse: AltScreenMouseGesture;
@@ -74,7 +72,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly mouseEnabled: boolean;
 	private readonly searchMatchStyle: (text: string) => string;
 	private readonly searchCurrentMatchStyle: (text: string) => string;
-	private readonly scrollToEndIndicator?: () => string;
+	private readonly scrollToEndIndicator?: (rowsBelow: number) => string;
 	private copyOnSelect: boolean;
 
 	constructor(
@@ -198,6 +196,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	setLayoutRoot(component: Component | undefined): void {
 		if (this.layoutRoot === component) return;
+		detachScrollViews(this.layoutRoot ?? this.implicitScrollView, ...this.children);
 		this.layoutRoot = component;
 		this.currentLayout = undefined;
 		this.requestRender();
@@ -237,9 +236,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.scrollbar.stopScrollbarDrag();
 		this.flashes.dispose();
 		this.altScreenActive = true;
-		this.disposeExitRestore = registerExitRestore(() =>
-			this.terminal.write(buildAltScreenForcedExit(this.mouseEnabled)),
-		);
+		this.disposeExitRestore = registerTerminalRestore(this.terminal, buildAltScreenForcedExit(this.mouseEnabled));
 		const capabilities = getCapabilities();
 		this.imageProtocol = capabilities.images;
 		this.uploadedKittyImages.clear();
@@ -266,6 +263,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	}
 
 	protected override beforeTerminalStop(_options: TuiStopOptions): void {
+		detachScrollViews(this.layoutRoot ?? this.implicitScrollView, ...this.children);
 		this.search.closeSearch();
 		this.selection.stopSelectionAutoScroll();
 		this.selection.selectionPressActive = false;
@@ -273,7 +271,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.scrollbar.stopScrollbarDrag();
 		this.mouse.clearComponentMouseGesture();
 		this.flashes.dispose();
-		this.disposeExitRestore?.();
 		if (!this.altScreenActive) return;
 		this.terminal.write(
 			`${BEGIN_SYNCHRONIZED_OUTPUT}${this.deleteKittyImages()}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`,
@@ -298,6 +295,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			setCapabilities(this.savedCapabilities);
 			this.savedCapabilities = undefined;
 		}
+		if (this.disposeExitRestore) unregisterAfterOutput(this.terminal, this.disposeExitRestore);
+		this.disposeExitRestore = undefined;
 	}
 
 	private deleteKittyImages(): string {

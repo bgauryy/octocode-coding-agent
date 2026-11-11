@@ -1,5 +1,11 @@
 import { readSkillResourceSnapshot } from "./core/skill-resource-snapshot.ts";
-import { envFlag, PERMISSION_ENV, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
+import {
+	ACP_WORKER_ENV,
+	envFlag,
+	PERMISSION_ENV,
+	SKILL_SNAPSHOT_FILE_ENV,
+	SUBAGENT_ENV,
+} from "../../common/src/env.ts";
 import { runCompletionCommand } from "./cli/completion.ts";
 /**
  * Main entry point for the coding agent CLI.
@@ -250,6 +256,8 @@ export async function main(args: string[]) {
 		folderTrust,
 		requireTrust,
 		getAppMode: () => appMode,
+		// Read before RPC mode clears it, so a session the worker switches to later still knows.
+		acpWorker: envFlag(process.env, ACP_WORKER_ENV),
 		skillResourceSnapshot,
 	});
 	time("createRuntime");

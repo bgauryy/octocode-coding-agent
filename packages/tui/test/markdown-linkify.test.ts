@@ -15,7 +15,10 @@ const theme = {
 
 function render(text: string, hyperlinks: boolean): string {
 	setCapabilities({ ...getCapabilities(), hyperlinks });
-	return new Markdown(text, 0, 0, theme).render(120).join("\n");
+	return new Markdown(text, 0, 0, theme)
+		.render(120)
+		.join("\n")
+		.replace(/\x1b\]8;id=[^;]+;/g, "\x1b]8;;");
 }
 
 const OSC8 = (url: string) => `\x1b]8;;${url}\x1b\\`;
@@ -72,7 +75,7 @@ describe("file references", () => {
 	describe("rendering", () => {
 		it("links a reference in prose when the terminal supports hyperlinks", () => {
 			const out = render("Look at src/a.ts:12:3 please", true);
-			assert.ok(out.includes(`${OSC8(here("src/a.ts"))}<L>src/a.ts:12:3</L>${CLOSE}`), JSON.stringify(out));
+			assert.ok(out.includes(`${OSC8(`${here("src/a.ts")}#L12:3`)}<L>src/a.ts:12:3</L>${CLOSE}`), JSON.stringify(out));
 		});
 
 		it("colours it but adds no link sequence without hyperlink support", () => {
@@ -94,7 +97,7 @@ describe("file references", () => {
 
 		it("links an inline code span that is only a reference", () => {
 			const out = render("Edit `src/a.ts:12` next", true);
-			assert.ok(out.includes(`${OSC8(here("src/a.ts"))}<C>src/a.ts:12</C>${CLOSE}`), JSON.stringify(out));
+			assert.ok(out.includes(`${OSC8(`${here("src/a.ts")}#L12`)}<C>src/a.ts:12</C>${CLOSE}`), JSON.stringify(out));
 			assert.ok(!render("Edit `src/a.ts:12` next", false).includes("\x1b]8"));
 		});
 
@@ -107,7 +110,7 @@ describe("file references", () => {
 
 		it("links absolute paths as written", () => {
 			const out = render("in /tmp/x/a.ts:5 done", true);
-			assert.ok(out.includes(OSC8("file:///tmp/x/a.ts")));
+			assert.ok(out.includes(OSC8("file:///tmp/x/a.ts#L5")));
 		});
 	});
 });

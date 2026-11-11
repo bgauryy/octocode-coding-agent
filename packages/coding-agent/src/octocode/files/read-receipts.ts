@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { appendReadDigests, completedLocalReads, type snapshotLocalReads } from "../shared/local-reads.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
+import { clearReadContinuations, rememberReadContinuations } from "./read-continuations.ts";
 
 /** Credit source reads before the file guard sees them, and expose whole-source anchors to the model. */
 export function registerReadReceipts(api: ExtensionAPI) {
@@ -12,6 +13,7 @@ export function registerReadReceipts(api: ExtensionAPI) {
 		if (!snapshots || event.isError || details.outputTruncated || details.fullOutputPath) return;
 		// The whole result: its structured content, else its one JSON text block (`resultData`).
 		const result = { content: event.content, structuredContent: event.structuredContent };
+		rememberReadContinuations(snapshotsByCall, event.toolName, ctx.cwd, snapshots, result);
 		const reads = await completedLocalReads(snapshots, result, ctx.cwd, event.input);
 		if (reads.length)
 			return {
@@ -24,6 +26,9 @@ export function registerReadReceipts(api: ExtensionAPI) {
 	api.on("tool_execution_end", (event) => {
 		if (event.isError) snapshotsByCall.delete(event.toolCallId);
 	});
-	api.on("session_shutdown", () => snapshotsByCall.clear());
+	api.on("session_shutdown", () => {
+		snapshotsByCall.clear();
+		clearReadContinuations(snapshotsByCall);
+	});
 	return snapshotsByCall;
 }

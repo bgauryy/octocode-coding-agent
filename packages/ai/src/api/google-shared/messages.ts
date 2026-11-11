@@ -5,6 +5,7 @@ import { collapseSystemMessages, withoutInitialSystemMessage } from "../../utils
 import { fitToolCallId } from "../tool-call-id.ts";
 import { transformMessages } from "../transform-messages.ts";
 import { resolveThoughtSignature } from "./signatures.ts";
+import { GEMINI_LATEST_ALIAS } from "./thinking-format.ts";
 import type { GoogleApiType } from "./thinking.ts";
 
 /**
@@ -19,8 +20,13 @@ export function requiresToolCallId(modelId: string): boolean {
 	);
 }
 
+/** The generation the `-latest` aliases point at, the oldest one they may name today. */
+const LATEST_ALIAS_MAJOR = 3;
+
 export function getGeminiMajorVersion(modelId: string): number | undefined {
-	const match = modelId.toLowerCase().match(/^gemini(?:-live)?-(\d+)/);
+	const id = modelId.toLowerCase();
+	if (GEMINI_LATEST_ALIAS.test(id)) return LATEST_ALIAS_MAJOR;
+	const match = id.match(/^gemini(?:-live)?-(\d+)/);
 	if (!match) return undefined;
 	return Number.parseInt(match[1], 10);
 }
@@ -40,6 +46,14 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 	// Gemini has no mid-conversation system messages; the leading prompt is sent as systemInstruction.
 	const conversation = withoutInitialSystemMessage(collapseSystemMessages(context).messages);
 	const contents: Content[] = [];
+	// Images of tool results for models without multimodal function responses. They follow the whole run of results: an
+	// image turn between two results would split the function responses of one model turn across two user turns.
+	let pendingImages: Part[] = [];
+	const flushImages = () => {
+		if (pendingImages.length === 0) return;
+		contents.push({ role: "user", parts: [{ text: "Tool result image:" }, ...pendingImages] });
+		pendingImages = [];
+	};
 	const normalizeToolCallId = (id: string): string => {
 		if (!requiresToolCallId(model.id)) return id;
 		return fitToolCallId(id);
@@ -48,6 +62,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 	const transformedMessages = transformMessages(conversation, model, normalizeToolCallId);
 
 	for (const msg of transformedMessages) {
+		if (msg.role !== "toolResult") flushImages();
 		if (msg.role === "user") {
 			if (typeof msg.content === "string") {
 				contents.push({
@@ -195,15 +210,11 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 				});
 			}
 
-			// For Gemini < 3, add images in a separate user message
-			if (hasImages && !modelSupportsMultimodalFunctionResponse) {
-				contents.push({
-					role: "user",
-					parts: [{ text: "Tool result image:" }, ...imageParts],
-				});
-			}
+			// For Gemini < 3, the images go in a separate user message after the last result of this run.
+			if (hasImages && !modelSupportsMultimodalFunctionResponse) pendingImages.push(...imageParts);
 		}
 	}
+	flushImages();
 
 	return contents;
 }

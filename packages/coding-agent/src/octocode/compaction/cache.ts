@@ -1,4 +1,5 @@
 import { type Api, type Model, resolveModelCapabilities } from "@octocodeai/octocode-ai";
+import { getAnthropicCompat } from "@octocodeai/octocode-ai/api/anthropic-messages/compat";
 import type {
 	CacheWarmingDecisionEvent,
 	CacheWarmingDecisionEventResult,
@@ -26,11 +27,17 @@ type CacheModel = Pick<Model<Api>, "provider" | "id" | "api" | "promptCache" | "
  * (`supportsLongCacheRetention: false`: octocode-ai then sends no `ttl`) or when its replies showed the provider granting only
  * 5 minutes (`grantedLong` false), so its long tier is then the short one.
  */
-export function inferredPromptCache(model: Pick<Model<Api>, "compat">, grantedLong = true): PromptCache {
-	// Not every API compat object declares this flag (Bedrock and Mistral do not).
+export function inferredPromptCache(
+	model: Pick<Model<Api>, "compat"> & Partial<Pick<Model<Api>, "api" | "baseUrl" | "provider" | "id">>,
+	grantedLong = true,
+): PromptCache {
+	// An Anthropic-protocol model on a known host follows the adapter's own rule (1h only where the host verifies it), so
+	// the plan matches what is sent. Not every other API's compat declares the flag (Bedrock and Mistral do not).
 	const compat = model.compat;
 	const deniesLong =
-		compat !== undefined && "supportsLongCacheRetention" in compat && compat.supportsLongCacheRetention === false;
+		model.api === "anthropic-messages" && model.baseUrl
+			? !getAnthropicCompat(model as Model<"anthropic-messages">).supportsLongCacheRetention
+			: compat !== undefined && "supportsLongCacheRetention" in compat && compat.supportsLongCacheRetention === false;
 	const long = grantedLong && !deniesLong;
 	return {
 		short: INFERRED_CACHE_TTL_SECONDS.short,

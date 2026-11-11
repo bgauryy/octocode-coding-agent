@@ -9,19 +9,20 @@ flowchart TD
     B -- no --> D{Local GGUF files?}
     D -- yes --> E["/llama (llama.cpp router)"]
     D -- no --> F{Endpoint speaks OpenAI, Anthropic or Google API?}
-    F -- yes --> G["add it to models.json"]
+    F -- yes --> G["/providers: Add from a template, or edit models.json"]
     F -- no --> H[not supported]
     C --> M["/model: pick a model"]
     E --> M
     G --> M
 ```
 
-| What you have                                       | Setup                                                |
-| --------------------------------------------------- | ---------------------------------------------------- |
-| A supported subscription                            | Sign in through `/providers`                         |
-| A provider API key                                  | `/providers`, or the provider's environment variable |
-| A local GGUF model                                  | `/llama`                                             |
-| Ollama, LM Studio, vLLM, SGLang, a proxy or gateway | [`models.json`](#configure-a-compatible-endpoint)    |
+| What you have                                       | Setup                                                     |
+| --------------------------------------------------- | --------------------------------------------------------- |
+| A supported subscription                            | Sign in through `/providers`                              |
+| A provider API key                                  | `/providers`, or the provider's environment variable      |
+| A local GGUF model                                  | `/llama`                                                  |
+| Another API-key host, a gateway or a local server   | [`/providers` → Add from a template](#provider-templates) |
+| Ollama, LM Studio, vLLM, SGLang, a proxy or gateway | [`models.json`](#configure-a-compatible-endpoint)         |
 
 Octocode starts with a bundled catalog; cached catalog data works offline. `OCTOCODE_MODEL_CATALOG_URL` points at a compatible catalog service for remote overlays (there is no default service) and `octocode update --models` refreshes from it. Catalog entries whose id holds a control character are dropped; control sequences are removed from names; a bad catalog response is reported without quoting its body.
 
@@ -35,6 +36,7 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 | Thinking level   | `/effort` (`Ctrl+S` saves the startup level); only levels the model supports are offered                                                                                |
 | Context budget   | `/context` shows usage; `/context size` or `/context 32k` sets a budget; `/context reset` restores catalog capacity                                                     |
 
+- Each model row's badge names its provider and the provider's kind, such as `[openai · subscription]`, `[my-gateway · API key]` or `[ollama · local]`; the selected model's details name it too ([provider kinds](providers.md#subscriptions-and-billing)).
 - A model switch keeps your last chosen level (from `/effort` or `--thinking`), lowered to what the new model supports; switching back restores it. A level in `modelThinkingLevels` or the `--models` pattern wins; before you choose one, `defaultThinkingLevel` applies.
 - Context budgets apply to the selected physical model in this session, cannot exceed its catalog capacity, have a minimum of 8,192 tokens (or the full capacity of smaller models), need an idle session and are not saved.
 - Model details show catalog context, maximum output, thinking support, input/output/cache prices and known cache lifetimes. A time-limited price (`cost.until` with `cost.after`) shows today's rates. Prices are provider-specific estimates; reasoning output, cache-write retention, long-context tiers, service tiers, subscription billing, credits and regional premiums can change totals.
@@ -49,6 +51,55 @@ Octocode integrates with the llama.cpp router, which discovers GGUF files and lo
 - Live router updates stop if it sends more than 1 MiB without ending an event; `/llama` then keeps polling the catalog.
 - Thinking support comes from each model's chat template. A model whose template cannot be read is listed without thinking support until the next refresh, with a warning.
 - A dialog, selector or session reset closes the view; a running load, download or restore finishes anyway.
+
+## Provider templates
+
+`/providers` → **Add from a template** sets up a provider Octocode does not build in: you choose a template, give the host when the template has none, choose model ids and say where the key comes from. Octocode adds the provider to your global `models.json` with the right API type and request settings; the rest of the file stays as it was.
+
+```mermaid
+flowchart LR
+    A[Pick a template] --> B{Fixed host?}
+    B -- no --> C[Give the host]
+    B -- yes --> D[Pick model ids]
+    C --> D
+    D --> E{Key}
+    E -- save it --> F[API-key sign-in: stored in auth.json]
+    E -- environment --> G["apiKey: $NAME"]
+    E -- local, none --> H[no key]
+    F --> I["/model"]
+    G --> I
+    H --> I
+```
+
+| Template                       | Host                                     | API                     | Key variable              | Models offered     |
+| ------------------------------ | ---------------------------------------- | ----------------------- | ------------------------- | ------------------ |
+| Nebius Token Factory           | `https://api.tokenfactory.nebius.com/v1` | OpenAI Chat Completions | `NEBIUS_API_KEY`          | models.dev listing |
+| DeepInfra                      | `https://api.deepinfra.com/v1/openai`    | OpenAI Chat Completions | `DEEPINFRA_API_KEY`       | models.dev listing |
+| SambaNova Cloud                | `https://api.sambanova.ai/v1`            | OpenAI Chat Completions | you name it               | models.dev listing |
+| Hyperbolic                     | `https://api.hyperbolic.ai/inference/v1` | OpenAI Chat Completions | you name it               | you type the ids   |
+| Ollama Cloud                   | `https://ollama.com/v1`                  | OpenAI Chat Completions | `OLLAMA_API_KEY`          | models.dev listing |
+| Anthropic API gateway          | yours                                    | Anthropic Messages      | you name it               | Anthropic's models |
+| OpenAI API gateway (Responses) | yours                                    | OpenAI Responses        | you name it               | OpenAI's models    |
+| Google Gemini API gateway      | yours                                    | Google Gemini           | you name it               | Google's models    |
+| LiteLLM proxy                  | yours (default `http://localhost:4000`)  | OpenAI Chat Completions | `LITELLM_API_KEY`         | you type the ids   |
+| Ollama                         | default `http://localhost:11434/v1`      | OpenAI Chat Completions | no key needed             | you type the ids   |
+| LM Studio                      | default `http://localhost:1234/v1`       | OpenAI Chat Completions | `LM_API_TOKEN` (optional) | you type the ids   |
+| vLLM                           | default `http://localhost:8000/v1`       | OpenAI Chat Completions | `VLLM_API_KEY` (optional) | you type the ids   |
+
+Providers Octocode builds in (OpenRouter, Together, Fireworks, Groq, Cerebras, DeepSeek, Hugging Face and others) have no template: sign in to them with **Add a provider**.
+
+| Choice          | What is written                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider id     | The template id (`nebius`); when that id is taken by a provider or a saved credential, the next free one (`nebius-2`). An id already in `models.json` is never replaced      |
+| Models          | All offered ids, one picked from the list, or ids you type as the server names them                                                                                          |
+| Vendor model id | Only `{ "id": ... }`: it starts from Octocode's model when the file loads (context window, output limit, thinking, image input, prices), without direct-host cache lifetimes |
+| Listed model id | The host's context window, thinking, image input and input/output price from [models.dev](https://models.dev); an id the listing lacks keeps the plain defaults              |
+| Save a key      | No `apiKey`: the provider's API-key sign-in opens next and stores the key in `auth.json` under the provider id                                                               |
+| Environment     | `"apiKey": "$NAME"` with the variable the vendor documents or one you name; set it where you start Octocode                                                                  |
+| No key (local)  | `"apiKey": "no-key"`, a marker the server ignores; choose a key instead when the server was started with one                                                                 |
+| Request fields  | OpenAI-compatible servers get `max_tokens` and no OpenAI-only `store` field or `developer` role, which their documentation does not list                                     |
+
+The file is written atomically with private permissions (owner read and write only). A `models.json` with `//` comments is left unchanged, since a rewrite would drop them: the error shows the entry to paste. The models.dev listing is read from Octocode's cached copy (refreshed at most once a day; `OCTOCODE_MODELS_DEV=0` turns it off) and may not list every model a host serves. Edit the entry in `models.json` afterwards to change anything; opening `/model` reloads it.
 
 ## Configure a compatible endpoint
 
@@ -71,12 +122,46 @@ The dummy key makes the model available; Ollama ignores it. `apiKey` and header 
 
 | Goal                                      | Use                                                                                                                                         |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add or replace a model                    | A `models` entry (same id on that provider replaces it)                                                                                     |
+| Add or replace a model                    | A `models` entry (same id on that provider layers over it; a known vendor id starts from that model)                                        |
 | Change metadata of an existing model      | `modelOverrides` (unknown ids are ignored)                                                                                                  |
 | Route a built-in provider through a proxy | Only `baseUrl`; models and authentication stay unchanged: `{ "providers": { "anthropic": { "baseUrl": "https://proxy.example.com/v1" } } }` |
 | Describe verified request differences     | `compat` (never enable it just because an endpoint claims OpenAI or Anthropic compatibility)                                                |
 
 For editor validation, point `$schema` at `schemas/models.schema.json` in the installed package. User code extensions cannot register providers; use `models.json`.
+
+### Use a vendor's models through a gateway
+
+A gateway or proxy that serves Anthropic, OpenAI or Google models needs only its host, its API and the model ids. Each provider id keeps its own host and key:
+
+```json
+{
+	"providers": {
+		"anthropic-gateway": {
+			"baseUrl": "https://gateway.example.com/anthropic",
+			"api": "anthropic-messages",
+			"models": [{ "id": "claude-opus-5-5" }, { "id": "claude-haiku-5-5" }]
+		},
+		"openai-gateway": {
+			"baseUrl": "https://gateway.example.com/openai/v1",
+			"api": "openai-responses",
+			"models": [{ "id": "gpt-6.1-sol" }, { "id": "gpt-6-luna" }]
+		},
+		"google-gateway": {
+			"baseUrl": "https://gateway.example.com/google",
+			"api": "google-generative-ai",
+			"models": [{ "id": "gemini-3.1-pro-preview" }]
+		}
+	}
+}
+```
+
+Add each key on the provider's page in `/providers` (stored under that provider id), or set `apiKey` to `$NAME` so the key stays in your environment. An id Octocode knows for that API starts from the vendor's model: context window, output limit, thinking levels, image input, prices and request compatibility, so subagent routing (`small`, `medium`) can price and place it. A vendor prefix or dot spelling (`anthropic/claude-opus-5.5`) names the same model. Fields you set win.
+
+| Starts from the vendor's model                                                                          | Needs your confirmation for this host                                                                                          |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `contextWindow`, `maxTokens`, `reasoning`, `thinkingLevelMap`, `input`, `inputLimits`, `cost`, `compat` | `promptCache` (cache lifetimes) and `compat.supportsLongCacheRetention`: set them when the gateway passes long caching through |
+
+A gateway that serves a vendor's model through another API (a LiteLLM proxy speaking `openai-completions` for `claude-sonnet-5-5`) gets only the parts that do not depend on the API: context window, output limit, reasoning, image input, input limits and prices; thinking levels and request compatibility stay at the API's defaults. An id Octocode does not know keeps the plain defaults below (128k context, 16k output, text only, no thinking): describe it yourself. With such a provider as your default provider and no default model, Octocode opens its model that a vendor defaults to (for example `claude-opus-5-5`), else its first one.
 
 ### Attach images by path
 

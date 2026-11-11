@@ -53,7 +53,7 @@ vi.mock("openai", () => {
 	return { AzureOpenAI };
 });
 
-const OCTOCODE_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
+const OCTOCODE_USER_AGENT = `octocode (${platform()} ${release()}; ${arch()})`;
 
 const context: Context = {
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],

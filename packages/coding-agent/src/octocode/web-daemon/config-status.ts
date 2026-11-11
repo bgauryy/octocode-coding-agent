@@ -28,6 +28,7 @@ import {
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/config-value.ts";
+import { getLegacyOctocodeDirs } from "../../config.ts";
 import { discoveryInput } from "../../core/discovery/service.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { readProviderOrigins, type ProviderOriginsView } from "./provider-origins.ts";
@@ -201,10 +202,12 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 		.map(({ scope }) => ({ scope: scope === "project" ? "workspace" : "global", message: SETTINGS_ERROR }));
 	const origins = await readProviderOrigins({
 		agentDir: options.agentDir,
-		piDirs:
-			options.piDirs ??
-			discoveryInput({ cwd: options.cwd ?? options.agentDir, agentDir: options.agentDir, projectTrusted: false })
+		// The fallback folders the runtime reads credentials and models from: the Octocode Pi extension's, then Pi's.
+		piDirs: options.piDirs ?? [
+			...getLegacyOctocodeDirs(options.agentDir),
+			...discoveryInput({ cwd: options.cwd ?? options.agentDir, agentDir: options.agentDir, projectTrusted: false })
 				.piRoots,
+		],
 		...(options.home ? { home: options.home } : {}),
 		// Only entries that give a usable credential: signed-out, keyless and unset-reference entries are not an origin.
 		octocodeAuthIds: [...stored.byProvider].filter(([, sources]) => sources.length > 0).map(([id]) => id),

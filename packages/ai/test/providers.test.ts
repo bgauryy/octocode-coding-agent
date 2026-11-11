@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lazyApi } from "../src/api/lazy.ts";
+import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { envApiKeyAuth } from "../src/auth/helpers.ts";
 import type { AuthContext, AuthEvent } from "../src/auth/types.ts";
 import { createModels, createProvider, getSupportedThinkingLevels } from "../src/models.ts";
@@ -292,15 +293,38 @@ describe("builtin providers", () => {
 		});
 	});
 
-	it("preserves Anthropic OAuth token precedence over the API key", async () => {
+	it("prefers the Anthropic API key over a subscription token in ANTHROPIC_OAUTH_TOKEN", async () => {
 		const models = createModels({
-			authContext: fakeAuthContext({ ANTHROPIC_API_KEY: "key", ANTHROPIC_OAUTH_TOKEN: "oauth-token" }),
+			authContext: fakeAuthContext({ ANTHROPIC_API_KEY: "key", ANTHROPIC_OAUTH_TOKEN: "sk-ant-oat01-token" }),
 		});
 		models.setProvider(anthropicProvider());
 
 		const result = await models.getAuth("anthropic");
-		expect(result?.auth.apiKey).toBe("oauth-token");
-		expect(result?.source).toBe("ANTHROPIC_OAUTH_TOKEN");
+		expect(result?.auth.apiKey).toBe("key");
+		expect(result?.source).toBe("ANTHROPIC_API_KEY");
+	});
+
+	it("counts a Claude subscription token as no Anthropic credential, while a request still resolves it", async () => {
+		const credentials = new InMemoryCredentialStore();
+		await credentials.modify("anthropic", async () => ({ type: "api_key", key: "sk-ant-oat01-saved" }));
+		const saved = createModels({ credentials, authContext: fakeAuthContext({}) });
+		saved.setProvider(anthropicProvider());
+		expect(await saved.checkAuth("anthropic")).toBeUndefined();
+		expect(await saved.getAvailable("anthropic")).toEqual([]);
+		// The request path still sees the token, so it refuses with the reason.
+		expect((await saved.getAuth("anthropic"))?.auth.apiKey).toBe("sk-ant-oat01-saved");
+
+		for (const name of ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]) {
+			const env: Record<string, string> = { [name]: "sk-ant-oat01-env" };
+			const ambient = createModels({ authContext: fakeAuthContext(env) });
+			ambient.setProvider(anthropicProvider());
+			expect(await ambient.checkAuth("anthropic")).toBeUndefined();
+		}
+
+		const keyed = createModels({ authContext: fakeAuthContext({ ANTHROPIC_API_KEY: "sk-ant-api03-key" }) });
+		keyed.setProvider(anthropicProvider());
+		expect(await keyed.checkAuth("anthropic")).toEqual({ type: "api_key", source: "ANTHROPIC_API_KEY" });
+		expect((await keyed.getAvailable("anthropic")).length).toBeGreaterThan(0);
 	});
 
 	it("runs provider-owned Bedrock bearer token and AWS profile login flows", async () => {

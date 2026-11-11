@@ -145,7 +145,7 @@ describe("openAgentDb", () => {
 		}
 	});
 
-	it.each([0, 9, 99])("refuses unsupported version %i before changing the file", (version) => {
+	it.each([0, 10, 99])("refuses unsupported version %i before changing the file", (version) => {
 		const { DatabaseSync } = loadSqlite();
 		const file = path.join(tmp(), "other.db");
 		const old = new DatabaseSync(file);

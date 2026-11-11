@@ -1,22 +1,69 @@
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { stripJsonComments } from "../../common/src/json.ts";
 
 /**
  * Fails a run that leaves transcript folders of its own temporary projects under the developer's real
- * `~/.octocode`, and gives the run its temporary home (`VITEST_TEST_USER_HOME`). The per-file setup files point HOME and
- * OCTOCODE_HOME at temporary folders; this is the check that they did, for every test and every child process a test
- * starts.
+ * `~/.octocode`, or that removes a provider from the developer's real `auth.json` or `models.json`, and gives the run
+ * its temporary home (`VITEST_TEST_USER_HOME`). The per-file setup files point HOME and OCTOCODE_HOME at temporary
+ * folders; this is the check that they did, for every test and every child process a test starts.
  *
  * A running Octocode (often the one that started this suite) writes to the same folders, so only folders named after a
  * temporary directory count: a session folder is named after its working directory, and a test project lives in the
- * temporary directory.
+ * temporary directory. For the same reason a provider a running session adds, or a token it refreshes, is not a leak;
+ * only a provider that disappears is.
  */
 const realHome = homedir();
 const SESSION_FOLDERS = [
+	join(realHome, ".octocode", "octocodecode", "agent", "sessions"),
 	join(realHome, ".octocode", "octocodecode", "sessions"),
 	join(realHome, ".octocode", "agent", "sessions"),
 ];
+const CONFIG_DIRS = [
+	join(realHome, ".octocode", "octocodecode"),
+	join(realHome, ".octocode", "agent"),
+	join(realHome, ".octocode"),
+	join(realHome, ".pi", "agent"),
+	join(realHome, ".pi"),
+];
+/** The provider ids a credential or provider file names: `auth.json` keys, `models.json` `providers` keys. */
+const PROVIDER_FILES: Record<string, (parsed: Record<string, unknown>) => unknown> = {
+	"auth.json": (parsed) => parsed,
+	"models.json": (parsed) => parsed.providers,
+};
+
+function providerIds(file: string, pick: (parsed: Record<string, unknown>) => unknown): string[] | undefined {
+	try {
+		const parsed: unknown = JSON.parse(stripJsonComments(readFileSync(file, "utf8")));
+		if (typeof parsed !== "object" || parsed === null) return undefined;
+		const providers = pick(parsed as Record<string, unknown>);
+		return typeof providers === "object" && providers !== null ? Object.keys(providers) : [];
+	} catch {
+		// Missing, unreadable or mid-write: nothing to compare.
+		return undefined;
+	}
+}
+
+function providerSnapshot(): Map<string, string[] | undefined> {
+	const result = new Map<string, string[] | undefined>();
+	for (const dir of CONFIG_DIRS) {
+		for (const [name, pick] of Object.entries(PROVIDER_FILES))
+			result.set(join(dir, name), providerIds(join(dir, name), pick));
+	}
+	return result;
+}
+
+function lostProviders(before: Map<string, string[] | undefined>): string[] {
+	const lost: string[] = [];
+	for (const [file, after] of providerSnapshot()) {
+		const known = before.get(file);
+		if (!known?.length) continue;
+		const missing = known.filter((id) => !after?.includes(id));
+		if (missing.length > 0) lost.push(`${file}: ${missing.join(", ")}`);
+	}
+	return lost;
+}
 
 const encode = (dir: string): string => dir.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-");
 
@@ -41,6 +88,7 @@ function snapshot(): Map<string, string[]> {
 
 export default function setup(): () => void {
 	const before = snapshot();
+	const providersBefore = providerSnapshot();
 	// One home for the run, beside the run's temporary directory rather than inside it: the folder trust gate ignores a
 	// trusted subtree that contains the home folder, and tests trust the temporary directory.
 	const userHome = mkdtempSync(join(dirname(tmpdir()), "octocode-test-userhome-"));
@@ -56,12 +104,17 @@ export default function setup(): () => void {
 				if (!known.has(name) && markers.some((marker) => name.includes(marker))) leaked.push(join(dir, name));
 			}
 		}
-		if (leaked.length > 0) {
+		const lost = lostProviders(providersBefore);
+		if (leaked.length > 0 || lost.length > 0) {
 			// Vitest reports a teardown error but exits 0, so the exit code is set here.
 			process.exitCode = 1;
-			throw new Error(
-				`Tests wrote under the real home (${realHome}); isolate HOME/OCTOCODE_HOME in the test:\n${leaked.join("\n")}`,
-			);
+			const parts = [
+				...(leaked.length > 0 ? [`Tests wrote under the real home (${realHome}):`, ...leaked] : []),
+				...(lost.length > 0
+					? ["Providers disappeared from the real home's configuration (or a concurrent /logout):", ...lost]
+					: []),
+			];
+			throw new Error(`${parts.join("\n")}\nIsolate HOME/OCTOCODE_HOME in the test.`);
 		}
 	};
 }

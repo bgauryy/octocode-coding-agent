@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { contextReport, renderContextReport } from "../src/core/agent-session/context-report.ts";
+import { prepareCompaction, shouldCompact } from "../src/core/compaction/compaction.ts";
 import { createHarness } from "./suite/harness.ts";
 
 it("attributes each effective instruction and tool once, labels unknown usage and hides prompt text", async () => {
@@ -113,6 +114,24 @@ it("compacts before dispatch using the routed model's output reserve", async () 
 	}
 });
 
+it("does not promise compaction when an oversized context has no summarizable history", async () => {
+	const harness = await createHarness({
+		models: [{ id: "faux-1", contextWindow: 3200, maxTokens: 100 }],
+		compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 500 },
+	});
+	try {
+		harness.sessionManager.appendMessage({ role: "user", content: "x".repeat(12_000), timestamp: 1 });
+		const settings = harness.settingsManager.getCompactionSettings();
+		expect(prepareCompaction(harness.sessionManager.getBranch(), settings)).toBeUndefined();
+		const report = harness.session.getContextReport();
+		expect(report.currentTokens ?? report.estimatedTotal).toBeGreaterThan(report.threshold!);
+		expect(renderContextReport(report)).toContain("may compact eligible history first");
+		expect(renderContextReport(report)).not.toContain("the next request compacts first");
+	} finally {
+		harness.cleanup();
+	}
+});
+
 it("suggests /context all only while contributors are folded into 'Other contributors'", () => {
 	const report = (count: number) =>
 		({
@@ -159,14 +178,19 @@ it("leads with the total in use, free space and distance to compaction, and tota
 		[
 			"**Total context: 50,000 of 200,000 tokens in use (25%)**",
 			`\`${"█".repeat(8)}${"░".repeat(22)}\` 150,000 free`,
-			"Compaction starts at 175,000 tokens, 125,000 from now.",
+			"Automatic compaction is eligible above 175,000 tokens, 125,000 from now.",
 		].join("\n"),
 	);
 	expect(text).toContain("| user messages | 40,000 | 80% |");
 	expect(text).toContain("| **Total** | **50,000** | 100% |");
-	// Without a usage figure the contents estimate stands in, labelled; past the threshold it says compaction comes next.
+	// Without a usage figure the contents estimate stands in, labelled; crossing the threshold does not guarantee a cut.
 	expect(renderContextReport({ ...base, currentTokens: null })).toContain("(estimated from the contents below)");
+	const settings = { enabled: true, reserveTokens: 25_000, keepRecentTokens: 1000 };
+	expect(shouldCompact(175_000, base.capacity, settings)).toBe(false);
+	expect(renderContextReport({ ...base, currentTokens: 175_000 })).toContain(
+		"Automatic compaction is eligible above 175,000 tokens, 0 from now.",
+	);
 	expect(renderContextReport({ ...base, currentTokens: 180_000 })).toContain(
-		"Past the compaction point (175,000 tokens): the next request compacts first.",
+		"Above the compaction threshold (175,000 tokens): the next request may compact eligible history first.",
 	);
 });

@@ -90,10 +90,10 @@ describe("native prompt section updates", () => {
 			const options = normalizeBuildSystemPromptOptions({ cwd: "/workspace", selectedTools });
 			await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 			const prompt = buildSystemPrompt(options);
-			expect(prompt.match(/Tests drive the public entry point/g)).toHaveLength(1);
-			expect(prompt).toContain("assert observable behavior");
-			expect(prompt).toContain("reproduce a bug with a failing test first");
-			expect(prompt).toContain("mock only external boundaries");
+			expect(prompt.match(/Test public behavior/g)).toHaveLength(1);
+			expect(prompt).toContain("Test public behavior");
+			expect(prompt).toContain("reproduce bugs with failing tests");
+			expect(prompt).toContain("mocking only external boundaries");
 			expect(prompt).toContain("Never weaken or delete tests");
 			// The agent tool's message guideline owns when to message; the policy does not restate it.
 			expect(prompt).not.toContain("promptly exchange");
@@ -109,14 +109,30 @@ describe("native prompt section updates", () => {
 		const root = octocodePrompt(input);
 		const writer = octocodePrompt({ ...input, canDelegate: false });
 		const reader = octocodePrompt({ ...input, canDelegate: false, readOnly: true });
-		for (const prompt of [root, writer])
-			expect(prompt).toContain("know its blast radius (exports, config, tests, docs)");
+		for (const prompt of [root, writer]) expect(prompt).toContain("check exports, config and docs");
 		expect(root).toContain("propose wider cleanups.");
-		expect(writer).toContain("within your assigned area; report anything outside it instead of changing it");
+		expect(writer).toContain("report issues outside your assignment");
 		expect(reader).not.toContain("blast radius");
 		// Plain-text visuals the terminal shows as written (user request: no Mermaid); only the main session answers the user.
-		expect(root).toContain("flow or dependencies → box-and-arrow sketch; hierarchy → tree");
+		const forms = [
+			"Flow / dependencies → arrows",
+			"Branches            → decision tree",
+			"Hierarchy           → tree",
+			"Comparison          → table",
+			"Runnable procedure  → numbered steps + commands",
+			"Simple answer       → sentence",
+		];
+		for (const form of forms) {
+			expect(root).toContain(form);
+			for (const prompt of [writer, reader]) expect(prompt).not.toContain(form);
+		}
 		expect(root).toContain("within 100 columns, no Mermaid:");
+		expect(root).toContain("Numeric comparisons need units; before/after needs change.");
+		expect(root).toContain("Compare choices by criteria.");
+		expect(root).toContain("Fence code with its known language, logs as `text`;");
+		expect(root).toContain("keep commands and link targets exact.");
+		expect(root).toContain("Do not repeat visuals in prose;");
+		expect(root).toContain("Use the shortest clear form.");
 		expect(root).toContain("Finish or revert partial edits; stop only your jobs whose result is moot.");
 		for (const prompt of [writer, reader]) {
 			expect(prompt).not.toContain("draw it in plain text");

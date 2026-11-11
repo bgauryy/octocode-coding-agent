@@ -132,8 +132,6 @@ describe("Anthropic cache miss reason", () => {
 			model,
 			output,
 			stream: new AssistantMessageEventStream(),
-			isOAuth: false,
-			currentTools: [],
 			usageModel: model,
 			inputTransformations: undefined,
 		};

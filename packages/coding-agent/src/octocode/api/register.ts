@@ -25,7 +25,7 @@ export function registerApi(
 	let chosen: { options: ApiOptions | undefined } | undefined;
 
 	commands.add("api", {
-		description: "External API status, start or stop",
+		description: "Show, start or stop the local session API",
 		complete: (prefix) => wordCompletions(["on", "on http", "off"], prefix),
 		handler: async (args, ctx) => {
 			const line = args.trim();

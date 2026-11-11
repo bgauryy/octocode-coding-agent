@@ -6,9 +6,9 @@ import {
 	type ContentBlock,
 	type PromptResponse,
 	type SessionNotification,
+	type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
-import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import { askClient } from "./ask.ts";
 import { modelConfigOptions } from "./config-options.ts";
 import { advertiseCommands } from "./commands.ts";

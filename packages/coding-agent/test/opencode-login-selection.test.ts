@@ -1,10 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getBuiltinModels } from "@octocodeai/octocode-ai/providers/all";
 import { completeProviderAuthentication } from "../src/modes/interactive/interactive-mode/login-dialogs.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { findExactModelReferenceMatch } from "../src/core/model-resolver.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+
+// Sign-in checks an OpenCode key against its model list; answer that call here so the test never reaches the network.
+const realFetch = globalThis.fetch;
+beforeEach(() =>
+	vi.stubGlobal("fetch", (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+		String(input).startsWith("https://opencode.ai/inference/") && String(input).endsWith("/v1/models")
+			? Promise.resolve(new Response("{}", { status: 200 }))
+			: realFetch(input, init),
+	),
+);
+afterEach(() => vi.unstubAllGlobals());
 
 describe.each(["anthropic", "openai", "google", "opencode", "opencode-go"] as const)(
 	"%s login model selection",

@@ -313,8 +313,11 @@ export function renderImage(
  * @param text - The visible text to display
  * @param url - The URL to link to
  */
-export function hyperlink(text: string, url: string): string {
-	return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+export function hyperlink(text: string, url: string, id?: string): string {
+	if (/[\x00-\x20\x7f-\x9f]/u.test(url) || !URL.canParse(url)) return text;
+	const params = id && /^[A-Za-z0-9_-]{1,100}$/.test(id) ? `id=${id}` : "";
+	const target = /[^\x20-\x7e]/u.test(url) ? new URL(url).href : url;
+	return `\x1b]8;${params};${target}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
 /** Shorten home-prefixed absolute paths to ~/... for compact display. */

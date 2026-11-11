@@ -26,6 +26,7 @@ import {
 import type { PermissionRequest } from "./request.ts";
 import { type CheckHost, checkPermission, selectedFileQueries } from "./ask/check.ts";
 import { TurnCap } from "./ask/cap.ts";
+import { clearActionGrants } from "./ask/grants.ts";
 import { modeSummary, revertedNotice, selectAnswer, unaskedRunLine } from "./ask/text.ts";
 import { PermissionTrail } from "./ask/trail.ts";
 import type {
@@ -299,10 +300,7 @@ export class Permission {
 
 	/** Removes the external-message grants (and denials) alone and says how many: nothing delegated rests on them, so nothing stops. */
 	clearMessageGrants(): number {
-		const action = "message.external";
-		let count = this.#kinds.delete(action) ? 1 : 0;
-		for (const answers of [this.#grants, this.#denials])
-			for (const key of answers.keys()) if (key.startsWith(`${action}\0`) && answers.delete(key)) count++;
+		const count = clearActionGrants("message.external", this.#kinds, [this.#grants, this.#denials]);
 		if (count > 0) this.#invalidate();
 		return count;
 	}

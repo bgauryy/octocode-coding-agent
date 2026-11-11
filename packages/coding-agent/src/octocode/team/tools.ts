@@ -1,5 +1,6 @@
 import { textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
+import { envFlag, LEAN_ENV } from "../../../../common/src/env.ts";
 import path from "node:path";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
@@ -186,7 +187,12 @@ function registerCoordinateTool(
 			label: "Coordinate",
 			description:
 				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/code/temp/` scratch are per worktree.",
-			promptGuidelines: renderInstruction("tools/coordinate/guidelines.md").split("\n"),
+			promptGuidelines: renderInstruction("tools/coordinate/guidelines.md", {
+				subagent: !canStop,
+				lean: envFlag(process.env, LEAN_ENV),
+			})
+				.split("\n")
+				.filter((line) => line.trim() !== ""),
 			parameters: Type.Object({
 				action: StringEnum(actions, {
 					description:

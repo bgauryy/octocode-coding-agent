@@ -1,7 +1,7 @@
 import { getFileStamp } from "../../../../common/src/paths.ts";
 import { existsSync, statSync } from "node:fs";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { type AgentDb, transcripts } from "../../../../db/src/api.ts";
+import { type AgentDb, history, transcripts } from "../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
@@ -39,6 +39,13 @@ type Update = "open" | "replace" | { previousSize: number; previousMtime: string
 const REBUILD_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000];
 
 /**
+ * Longest a mirror write waits for another process's database lock. It runs on the main thread, inside the session file
+ * lock, for every saved entry: the connection's usual 5 s wait would freeze the screen and hold that lock, while a
+ * missed mirror write is repaired at the next append or open.
+ */
+const MIRROR_BUSY_MS = 100;
+
+/**
  * JSONL has already committed under its writer lock. A missed SQLite commit is repaired on the next append
  * or open. A current mirror needs no write on open and only one new row on append.
  */
@@ -48,22 +55,7 @@ export function mirrorTranscript(state: SessionState, sessionFile: string, mode:
 	const work = { rebuild: true };
 	try {
 		const agent = sharedAgentDb();
-		if (mode === "open") {
-			const previous = transcripts.stamp(agent.db, state.sessionId);
-			const stat = getFileStamp(file);
-			if (
-				previous?.file === file &&
-				previous.byte_size === stat.size &&
-				previous.mtime === stat.mtime &&
-				previous.file_binding === stat.binding
-			) {
-				workspaceForMirror(agent, state.cwd, previous.workspace_id, "open");
-				return;
-			}
-			withSessionFileLock(file, () => syncTranscript(agent, state, file, mode, work));
-		} else if (!syncTranscript(agent, state, file, mode, work)) return;
-		state.mirrorProblem = undefined;
-		state.mirrorRebuild = undefined;
+		history.withBusyTimeout(agent.db, MIRROR_BUSY_MS, () => syncMirror(agent, state, file, mode, work));
 	} catch (error) {
 		const problem = errorMessage(error);
 		if (state.mirrorProblem !== problem) notify(`Session saved to ${file}. Database mirror pending: ${problem}`);
@@ -74,6 +66,26 @@ export function mirrorTranscript(state: SessionState, sessionFile: string, mode:
 			state.mirrorRebuild = { notBefore: Date.now() + wait, failures };
 		}
 	}
+}
+
+/** One mirror update; throws what the caller reports as a pending mirror. */
+function syncMirror(agent: AgentDb, state: SessionState, file: string, mode: Update, work: { rebuild: boolean }): void {
+	if (mode === "open") {
+		const previous = transcripts.stamp(agent.db, state.sessionId);
+		const stat = getFileStamp(file);
+		if (
+			previous?.file === file &&
+			previous.byte_size === stat.size &&
+			previous.mtime === stat.mtime &&
+			previous.file_binding === stat.binding
+		) {
+			workspaceForMirror(agent, state.cwd, previous.workspace_id, "open");
+			return;
+		}
+		withSessionFileLock(file, () => syncTranscript(agent, state, file, mode, work));
+	} else if (!syncTranscript(agent, state, file, mode, work)) return;
+	state.mirrorProblem = undefined;
+	state.mirrorRebuild = undefined;
 }
 
 /** Bring the mirror level with the file; false when an append left a needed rebuild for after its backoff. */

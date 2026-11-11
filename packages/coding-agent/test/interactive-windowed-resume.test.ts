@@ -1,4 +1,4 @@
-import { Container, type Component } from "@octocodeai/octocode-tui";
+import { Container, type Component, ScrollView } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 import {
@@ -10,6 +10,8 @@ import {
 	loadEarlierMessages,
 	RESUME_WINDOW_ENTRIES,
 } from "../src/modes/interactive/interactive-mode/session-window.ts";
+import { applicationRenderer } from "../src/modes/interactive/interactive-mode/application-events.ts";
+import { initTheme } from "../src/theme/theme.ts";
 
 class Row implements Component {
 	disposed = false;
@@ -76,6 +78,23 @@ describe("windowed resume", () => {
 		expect(host.showStatus).toHaveBeenCalledWith("No earlier messages to load");
 	});
 
+	it("load earlier keeps the rows the reader is looking at in view", () => {
+		initTheme("dark");
+		const host = fakeHost(entries);
+		const transcript = new ScrollView(host.chatContainer, { follow: "end" });
+		const layout = () => transcript.updateLayout(host.chatContainer.render(40).length, 10, () => {});
+		renderInitialMessages(host as never);
+		layout();
+		transcript.scrollTo(25);
+		const topRow = () => host.chatContainer.render(40)[transcript.scrollTop];
+		const reading = topRow();
+
+		loadEarlierMessages({ ...host, transcriptScrollView: transcript } as never);
+		layout();
+		expect(topRow()).toBe(reading);
+		expect(transcript.scrollTop).toBe(25 + RESUME_WINDOW_ENTRIES);
+	});
+
 	it("keeps the compaction summary on top and a tool call with its results", () => {
 		const long = [compaction, ...entries.slice(0, 500)];
 		// make the window start fall on a tool result: entry 300 of the context
@@ -104,5 +123,23 @@ describe("windowed resume", () => {
 		const short = fakeHost(entries.slice(0, 10));
 		renderInitialMessages(short as never);
 		expect(labels(short)).toEqual(entries.slice(0, 10).map((e) => e.id));
+	});
+});
+
+describe("windowed live rebuild", () => {
+	it("a transcript reset during a session renders the same bounded window", () => {
+		const entries = Array.from({ length: 2000 }, (_, i) => message(i));
+		const host = { ...fakeHost(entries), entriesRenderedByRebuild: new Set<string>() };
+		host.renderSessionEntries.mockImplementation((batch: SessionEntry[]) => {
+			for (const entry of batch) host.chatContainer.addChild(new Row(entry.id));
+		});
+		const render = applicationRenderer(host as never, { readAsset: () => undefined } as never);
+		render({ type: "session.reset", messages: [], tools: [] } as never);
+		expect(host.chatContainer.children).toHaveLength(RESUME_WINDOW_ENTRIES + 1);
+		expect((host.chatContainer.children.at(-1) as Row).label).toBe("e1999");
+		// Every entry is remembered, hidden ones too: a late announcement of one must not draw it a second time.
+		expect(host.entriesRenderedByRebuild.size).toBe(2000);
+		expect(loadEarlierMessages(host as never)).toBe(true);
+		expect(host.chatContainer.children).toHaveLength(2 * RESUME_WINDOW_ENTRIES + 1);
 	});
 });

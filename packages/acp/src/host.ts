@@ -26,6 +26,11 @@ interface AcpProcessTree {
 export interface AcpClientHost {
 	readonly saveOutput: AcpSaveOutput;
 	readonly processTree: AcpProcessTree;
+	/**
+	 * The environment an agent of `vendor` starts with. Never the host's own as is: the host removes its provider
+	 * credentials (an API key would bill in place of the agent's own sign-in) and its internal variables.
+	 */
+	childEnv(vendor: string): NodeJS.ProcessEnv;
 }
 
 /** A displayed message an extension, hook or subagent injected into the transcript. */
@@ -133,12 +138,22 @@ export interface AcpWorkerClient {
 	onClose(listener: (error: Error) => void): () => void;
 	onExtensionUIRequest(listener: (request: AcpUiRequest) => void): () => void;
 	respondToExtensionUIRequest(response: AcpUiResponse): Promise<void>;
-	/** The models this session can use and the current one, each as `provider/id`. */
-	getModels(): Promise<{ current?: string; available: string[] }>;
+	/**
+	 * The models this session can use and the current one, each as `provider/id`; `interactiveOnly` lists those whose
+	 * plan allows interactive use only. They can still be chosen: the model list says so beside them.
+	 */
+	getModels(): Promise<AcpModels>;
 	/** Switches the session to one of `getModels().available`; rejects when the worker refuses it. */
 	setModel(model: string): Promise<void>;
 	/** The slash commands a prompt can run in this session. */
 	getCommands(): Promise<Array<{ name: string; description?: string; argumentHint?: string }>>;
+}
+
+/** A worker's models as `provider/id`: what it can use, the current one, and those its vendor allows interactively only. */
+export interface AcpModels {
+	current?: string;
+	available: string[];
+	interactiveOnly?: string[];
 }
 
 /** What the broker passes to start a worker. */

@@ -2,6 +2,10 @@
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import {
+	carriesClaudeSubscriptionToken,
+	CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL,
+} from "@octocodeai/octocode-ai/api/anthropic-messages/token";
+import {
 	AuthRequiredError,
 	formatAuthExpiredMessage,
 	formatNoApiKeyFoundMessage,
@@ -116,6 +120,15 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		(await session.modelRuntime.checkAuth(session.model.provider)) !== undefined;
 	checkSessionDispatch(session);
 	if (!hasConfiguredAuth) {
+		// Catalog availability hides rejected credentials; preserve their request diagnostic before calling them missing.
+		if (session.model.api === "anthropic-messages") {
+			const resolved = await session.modelRuntime.getAuth(session.model);
+			checkSessionDispatch(session);
+			if (
+				carriesClaudeSubscriptionToken(resolved?.auth.apiKey, { ...session.model.headers, ...resolved?.auth.headers })
+			)
+				throw new AuthRequiredError(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
+		}
 		const isOAuth = session.modelRuntime.isUsingOAuth(session.model.provider);
 		if (isOAuth) {
 			throw new AuthRequiredError(formatAuthExpiredMessage(session.model.provider));

@@ -79,6 +79,22 @@ Details: [memory](memory.md).
 
 Details: [worktrees](native-features.md#worktrees).
 
+## Message a CLI session Octocode did not start
+
+Octocode sessions message each other directly. A Claude Code or Codex session that Octocode did not start has no such channel, so the agent sends through that tool's own command line, once per message:
+
+1. Write the message to a file, and name a reply file in it.
+2. Run the other tool's CLI as a one-shot proxy from `bash`: its cheapest model, with no MCP servers, skills or saved session, told to pass the file's text word for word to the intended session and print the result.
+3. Wait for the reply file with a timer (`until file`) and a short deadline.
+
+For Claude Code the proxy command is:
+
+```sh
+claude -p "<prompt>" --model haiku --strict-mcp-config --disable-slash-commands --no-session-persistence --allowedTools "ListAgents,SendMessage,ToolSearch,Read"
+```
+
+Leave out `--bare`: it breaks the login. When a tool's `--help` shows no way to message another session (Codex), the agent tells you instead of guessing. Secrets are never sent this way, and when it is unclear which session is meant, the agent asks.
+
 ## See what happened in a compacted part of this session
 
 - Ask the agent: its `archive` tool searches this session's compacted messages and your repository's other sessions.

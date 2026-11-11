@@ -47,6 +47,7 @@ it("selects only the chosen provider, including when shortcuts point elsewhere",
 		getModel: (provider: string, id: string) => models.find((item) => item.provider === provider && item.id === id),
 		refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 		getError: () => undefined,
+		getProviderKind: () => "API key",
 	} as unknown as ModelRuntime;
 	const select = vi.fn();
 	const selector = new ModelSelectorComponent(

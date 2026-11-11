@@ -10,7 +10,7 @@ import type { Theme } from "../../theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../history/archive.ts";
 import { fencedParts } from "../shared/fence.ts";
 import { presentAgentReport } from "./presentation.ts";
-import { formatCost, formatDuration, formatTokens, formatTokenUsage, toolCallCount } from "../shared/format.ts";
+import { formatDuration, formatSpend, formatTokens, formatTokenUsage, toolCallCount } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { resultBlock, toolHeader } from "../render/tool.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
@@ -114,6 +114,7 @@ type Progress = Pick<
 	| "fallback"
 	| "refusedBy"
 	| "compactions"
+	| "billing"
 >;
 
 /** `inky-kraken · 4 tool calls · ↑12k +48k cached ↓2k · ≈$0.12 · model` while a run works (no tool calls yet: none named). */
@@ -124,7 +125,7 @@ export function runStats(details: Progress): string {
 		deniedLabel(details),
 		compactionLabel(details),
 		formatTokenUsage(details),
-		formatCost(details),
+		formatSpend(details, details.billing),
 		modelLabel(details),
 	]
 		.filter(Boolean)
@@ -133,10 +134,10 @@ export function runStats(details: Progress): string {
 
 /** What the expanded summary adds to a finished run's row: compactions, tokens, cost and model. */
 export function finishedStats(
-	totals: Parameters<typeof formatTokenUsage>[0] & Parameters<typeof formatCost>[0],
-	details: Pick<RunDetails, "model" | "fallback" | "refusedBy" | "compactions" | "cache">,
+	totals: Parameters<typeof formatTokenUsage>[0] & Parameters<typeof formatSpend>[0],
+	details: Pick<RunDetails, "model" | "fallback" | "refusedBy" | "compactions" | "cache" | "billing">,
 ): string {
-	return [compactionLabel(details), formatTokenUsage(totals), formatCost(totals), modelLabel(details)]
+	return [compactionLabel(details), formatTokenUsage(totals), formatSpend(totals, details.billing), modelLabel(details)]
 		.concat(details.cache ? [`conversation cache: ${childCacheLabel(details.cache)}`] : [])
 		.filter(Boolean)
 		.join(" · ");

@@ -6,7 +6,7 @@ import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A start whose paths only running children of this session hold waits for their release. */
@@ -75,6 +75,7 @@ function setup() {
 	Object.assign(ctx, {
 		model,
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => [model],
 			find: () => model,
 			getCachePolicy: fakeCachePolicy,

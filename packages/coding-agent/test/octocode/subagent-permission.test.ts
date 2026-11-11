@@ -8,7 +8,7 @@ import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { doneSummary } from "../../src/octocode/subagents/render.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 
@@ -53,7 +53,12 @@ describe("a child's refused actions", () => {
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
-			modelRegistry: { getAvailable: () => [], find: () => undefined, getCachePolicy: fakeCachePolicy },
+			modelRegistry: {
+				...meteredBilling,
+				getAvailable: () => [],
+				find: () => undefined,
+				getCachePolicy: fakeCachePolicy,
+			},
 		});
 		team.start(ctx);
 		const result = await f.tools
@@ -75,7 +80,12 @@ describe("a child's refused actions", () => {
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
-			modelRegistry: { getAvailable: () => [], find: () => undefined, getCachePolicy: fakeCachePolicy },
+			modelRegistry: {
+				...meteredBilling,
+				getAvailable: () => [],
+				find: () => undefined,
+				getCachePolicy: fakeCachePolicy,
+			},
 		});
 		team.start(ctx);
 		await f.tools
@@ -107,7 +117,12 @@ describe("kinds allowed for the session", () => {
 		);
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
-			modelRegistry: { getAvailable: () => [], find: () => undefined, getCachePolicy: fakeCachePolicy },
+			modelRegistry: {
+				...meteredBilling,
+				getAvailable: () => [],
+				find: () => undefined,
+				getCachePolicy: fakeCachePolicy,
+			},
 		});
 		permission.start(ctx);
 		team.start(ctx);

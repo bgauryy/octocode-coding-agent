@@ -4,7 +4,6 @@ import {
 	type Focusable,
 	fuzzyFilter,
 	getKeybindings,
-	GLYPH,
 	Input,
 	Spacer,
 	Text,
@@ -29,6 +28,9 @@ import {
 } from "./model-selector/model-items.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { modelDetails } from "./model-selector/details.ts";
+import { emptyModelListText } from "./model-selector/empty-state.ts";
+import { filterByProvider, providerLine, providersOf, stepProvider } from "./model-selector/provider-filter.ts";
+import { modelListLines } from "./model-selector/rows.ts";
 
 /**
  * Component that renders a model selector with search
@@ -65,6 +67,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private scope: ModelScope = "all";
 	private scopeText?: Text;
 	private scopeHintText?: Text;
+	/** The one provider shown, switched with left/right; undefined shows every provider. */
+	private providerFilter?: string;
+	private providerText: Text;
 	private readonly refreshAbortController = new AbortController();
 	private refreshTimeout?: ReturnType<typeof setTimeout>;
 	private closed = false;
@@ -105,6 +110,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const hintText = "Models from configured providers. /providers manages access; /modelsettings sets shortcuts.";
 			this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
 		}
+		this.providerText = new Text(providerLine(undefined), 0, 0);
+		this.addChild(this.providerText);
 		this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
@@ -242,16 +249,18 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	private filterModels(query: string): void {
+		const shown = filterByProvider(this.activeModels, this.providerFilter);
+		this.providerFilter = shown.filter;
+		this.providerText.setText(providerLine(shown.filter));
+		const pool = shown.items;
 		if (query) {
-			const candidates = query.endsWith("/")
-				? this.activeModels.filter((item) => item.provider === query.slice(0, -1))
-				: this.activeModels;
+			const candidates = query.endsWith("/") ? pool.filter((item) => item.provider === query.slice(0, -1)) : pool;
 			const filtered = fuzzyFilter(candidates, query, (item) => {
 				const defaultText = this.isDefaultModel(item.model) ? " default" : "";
 				return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
 			});
 			if (isDefaultSearch(query)) {
-				const defaultItems = this.activeModels.filter((item) => this.isDefaultModel(item.model));
+				const defaultItems = pool.filter((item) => this.isDefaultModel(item.model));
 				const defaultKeys = new Set(defaultItems.map((item) => `${item.provider}\0${item.id}`));
 				this.filteredModels = [
 					...defaultItems,
@@ -261,7 +270,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				this.filteredModels = this.scope === "all" ? groupModelItems(filtered) : filtered;
 			}
 		} else {
-			this.filteredModels = this.activeModels;
+			this.filteredModels = pool;
 		}
 		// When filtering by a query, move the selector to the top row so the best
 		// match is highlighted. When the query is cleared, keep the current position
@@ -273,38 +282,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private updateList(): void {
 		this.listContainer.clear();
 
-		const maxVisible = 6;
-		const startIndex = Math.max(
-			0,
-			Math.min(this.selectedIndex - Math.floor(maxVisible / 2), this.filteredModels.length - maxVisible),
-		);
-		const endIndex = Math.min(startIndex + maxVisible, this.filteredModels.length);
-
-		for (let i = startIndex; i < endIndex; i++) {
-			const item = this.filteredModels[i];
-			if (!item) continue;
-			if (i === startIndex || this.filteredModels[i - 1].provider !== item.provider) {
-				this.listContainer.addChild(new Text(theme.fg("accent", theme.bold(item.provider)), 0, 0));
-			}
-
-			const isSelected = i === this.selectedIndex;
-			const isCurrent = modelsAreEqual(this.currentModel, item.model);
-			const isDefault = this.isDefaultModel(item.model);
-			const defaultBadge = isDefault ? theme.fg("muted", " · default") : "";
-
-			const cursor = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
-			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
-			const modelText = isSelected ? theme.fg("accent", item.id) : item.id;
-			const providerBadge = theme.fg("muted", `[${item.provider}]`);
-			const line = `${cursor}${currentMarker}${modelText} ${providerBadge}${defaultBadge}`;
-
-			this.listContainer.addChild(new Text(line, 0, 0));
-		}
-
-		if (startIndex > 0 || endIndex < this.filteredModels.length) {
-			const scrollInfo = theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredModels.length})`);
-			this.listContainer.addChild(new Text(scrollInfo, 0, 0));
-		}
+		const lines = modelListLines(this.filteredModels, this.selectedIndex, (item) => ({
+			current: modelsAreEqual(this.currentModel, item.model),
+			isDefault: this.isDefaultModel(item.model),
+			kind: this.modelRuntime.getProviderKind(item.provider),
+		}));
+		for (const line of lines) this.listContainer.addChild(new Text(line, 0, 0));
 
 		if (this.errorMessage) {
 			const errorLines = this.errorMessage.split("\n");
@@ -312,11 +295,13 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				this.listContainer.addChild(new Text(theme.fg("error", line), 0, 0));
 			}
 		} else if (this.filteredModels.length === 0) {
-			this.listContainer.addChild(new Text(theme.fg("muted", "  No matching models"), 0, 0));
+			const text = emptyModelListText(this.modelRuntime, this.searchInput.getValue().trim() !== "");
+			this.listContainer.addChild(new Text(theme.fg("muted", `  ${text}`), 0, 0));
 		} else {
 			const selected = this.filteredModels[this.selectedIndex];
 			this.listContainer.addChild(new Spacer(1));
-			this.listContainer.addChild(new Text(theme.fg("muted", modelDetails(selected.model)), 0, 0));
+			const kind = this.modelRuntime.getProviderKind(selected.provider);
+			this.listContainer.addChild(new Text(theme.fg("muted", modelDetails(selected.model, Date.now(), kind)), 0, 0));
 		}
 		if (this.refreshStatusMessage) {
 			this.listContainer.addChild(new Spacer(1));
@@ -336,6 +321,13 @@ export class ModelSelectorComponent extends Container implements Focusable {
 					this.scopeHintText.setText(this.getScopeHintText());
 				}
 			}
+			return;
+		}
+		if (kb.matches(keyData, "tui.editor.cursorLeft") || kb.matches(keyData, "tui.editor.cursorRight")) {
+			const step = kb.matches(keyData, "tui.editor.cursorLeft") ? -1 : 1;
+			this.providerFilter = stepProvider(providersOf(this.activeModels), this.providerFilter, step);
+			this.selectedIndex = 0;
+			this.filterModels(this.searchInput.getValue());
 			return;
 		}
 		// Up arrow - wrap to bottom when at top

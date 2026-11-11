@@ -51,6 +51,8 @@ const REASONS: Record<AskReason, [string, string, string]> = {
 	"memory.wide": ["ask", "ask", "ask"],
 	"shell.target": ["ask", "ask", "allow"],
 	"credential.read": ["ask", "ask", "allow"],
+	// Another tool's credential store: the deliberate exception to "full asks nothing" among reads.
+	"credential.vendor": ["ask", "ask", "ask"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],
 	"profile.permissions": ["ask", "ask", "allow"],

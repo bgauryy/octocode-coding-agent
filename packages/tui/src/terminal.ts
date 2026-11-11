@@ -5,7 +5,7 @@ import { hasTmuxSession } from "./multiplexer.ts";
 import { StdinBuffer } from "./stdin-buffer.ts";
 import { BracketedPasteRearm, DISABLE_BRACKETED_PASTE, ENABLE_BRACKETED_PASTE } from "./terminal/bracketed-paste.ts";
 import { DEVICE_ATTRIBUTES_QUERY } from "./terminal/device-attributes.ts";
-import { registerExitRestore } from "./terminal/exit-restore.ts";
+import { registerExitRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
 import {
 	isAppleTerminalSession,
 	normalizeNativeShiftEnterInput,
@@ -66,6 +66,10 @@ export class ProcessTerminal implements Terminal {
 		return this.output.pendingBytes;
 	}
 
+	drainOutput(maxMs?: number): Promise<boolean> {
+		return this.output.drain(maxMs);
+	}
+
 	setDecorativeOutputPressureThreshold(bytes: number | undefined): void {
 		this.output.setDecorativePressureThreshold(bytes);
 	}
@@ -93,6 +97,8 @@ export class ProcessTerminal implements Terminal {
 			onResize();
 		};
 		this.capabilitiesHandler = onCapabilitiesChange;
+		// A child that held the terminal since the last start() left stdout blocking.
+		this.output.useNonblockingWrites();
 
 		// Save previous state and enable raw mode
 		this.wasRaw = process.stdin.isRaw || false;
@@ -251,14 +257,13 @@ export class ProcessTerminal implements Terminal {
 
 	/** Undo the modes start() turned on when the process ends without stop(): the same synchronous writes stop() makes. */
 	private restoreOnExit(): void {
-		this.progress.clear();
-		this.keyboardProtocol.disable();
-		process.stdout.write(`${DISABLE_BRACKETED_PASTE}\x1b[?25h`);
+		const write = (data: string) => this.output.writeOnExit(data);
+		this.progress.clear(write, true);
+		this.keyboardProtocol.restoreOnExit(write);
+		write(`${DISABLE_BRACKETED_PASTE}\x1b[?25h`);
 	}
 
 	stop(): void {
-		this.disposeExitRestore?.();
-		this.disposeExitRestore = undefined;
 		this.graphicsProbe.stop();
 		this.capabilitiesHandler = undefined;
 		this.progress.clear();
@@ -293,10 +298,16 @@ export class ProcessTerminal implements Terminal {
 		if (process.stdin.setRawMode) {
 			process.stdin.setRawMode(this.wasRaw);
 		}
+		if (this.disposeExitRestore) unregisterAfterOutput(this, this.disposeExitRestore);
+		this.disposeExitRestore = undefined;
 	}
 
 	write(data: string): void {
 		this.output.write(data);
+	}
+
+	writeOnExit(data: string): void {
+		this.output.writeOnExit(data);
 	}
 
 	get columns(): number {

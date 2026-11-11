@@ -1,3 +1,4 @@
+import type { RunnerBilling } from "./runner-port.ts";
 import type { Usage } from "@octocodeai/octocode-ai";
 import type { ChildCacheMetrics } from "./cache-monitor.ts";
 import type { ReportStatus } from "../instructions/report.ts";
@@ -88,6 +89,8 @@ export interface RunDetails {
 	firstTurnTokens?: number;
 	/** The run failed before its first model turn (`cause`: the one error line). */
 	startup?: { failed: true; cause?: string };
+	/** Who paid for a runner's turns (`runner` tasks): `plan`, its own subscription, counts no cost. */
+	billing?: RunnerBilling;
 }
 
 /** What the background-result message carries for its renderer: the outcome, not parsed back out of the text. */
@@ -134,4 +137,5 @@ export interface ResultDetails {
 	requests?: number;
 	cache?: ChildCacheMetrics;
 	startup?: { failed: true; cause?: string };
+	billing?: RunnerBilling;
 }

@@ -13,6 +13,8 @@ import type {
 	MarkdownTheme,
 } from "./markdown/types.ts";
 
+let nextMarkdownId = 0;
+
 export class Markdown implements Component {
 	private text: string;
 	private paddingX: number; // Left/right padding
@@ -33,6 +35,7 @@ export class Markdown implements Component {
 	// Rows depend on the theme, the default style and the width: `invalidate` clears them, a new width replaces them.
 	private blockRows = new WeakMap<Token, { width: number; nextType: string | undefined; rows: string[] }>();
 	private blockRowsWidth = 0;
+	private readonly linkPrefix = `oc${++nextMarkdownId}`;
 
 	constructor(
 		text: string,
@@ -47,7 +50,7 @@ export class Markdown implements Component {
 		this.paddingY = paddingY;
 		this.theme = theme;
 		this.defaultTextStyle = defaultTextStyle;
-		this.options = options ? { ...options } : {};
+		this.options = { ...options, cwd: options?.cwd ?? process.cwd() };
 	}
 
 	setText(text: string): void {
@@ -98,13 +101,13 @@ export class Markdown implements Component {
 			this.blockRows = new WeakMap();
 			this.blockRowsWidth = contentWidth;
 		}
-		const host = this.renderHost();
 		const wrappedLines: string[] = [];
 		for (let i = 0; i < tokens.length; i++) {
 			const token = tokens[i];
 			const nextType = tokens[i + 1]?.type;
 			let entry = this.blockRows.get(token);
 			if (!entry || entry.width !== contentWidth || entry.nextType !== nextType) {
+				const host = this.renderHost(i);
 				const rows: string[] = [];
 				for (const line of renderToken(host, token, contentWidth, nextType)) {
 					if (isImageLine(line)) rows.push(line);
@@ -191,10 +194,21 @@ export class Markdown implements Component {
 	}
 
 	/** The component's theme, options and default style, as the token renderers read them. */
-	private renderHost(): MarkdownRenderHost {
+	private renderHost(blockIndex: number): MarkdownRenderHost {
+		// Source order, rather than token lifetime, keeps links stable when a streaming block is re-lexed.
+		const linkIds = new WeakMap<object, number>();
+		let nextLinkId = 0;
 		return {
 			theme: this.theme,
 			options: this.options,
+			linkId: (token, index = 0) => {
+				let id = linkIds.get(token);
+				if (id === undefined) {
+					id = ++nextLinkId;
+					linkIds.set(token, id);
+				}
+				return `${this.linkPrefix}-${blockIndex}-${id}-${index}`;
+			},
 			applyDefaultStyle: (text: string) => this.applyDefaultStyle(text),
 			getDefaultInlineStyleContext: () => this.getDefaultInlineStyleContext(),
 		};

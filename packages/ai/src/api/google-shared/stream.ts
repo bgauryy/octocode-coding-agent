@@ -65,6 +65,8 @@ export function streamGoogle<T extends GoogleApiType>(
 
 			stream.push({ type: "start", partial: output });
 			let currentBlock: TextContent | ThinkingContent | null = null;
+			/** The block reason (or its message) when the provider refused the prompt itself. */
+			let promptBlock: string | undefined;
 			const blocks = output.content;
 			const blockIndex = () => blocks.length - 1;
 			const endBlock = (block: TextContent | ThinkingContent) =>
@@ -183,6 +185,13 @@ export function streamGoogle<T extends GoogleApiType>(
 				}
 
 				applyGoogleAnnotations(output, candidate, stream);
+				// A blocked prompt has no candidate: its only answer is the block reason.
+				const blocked = chunk.promptFeedback?.blockReason;
+				if (blocked && !candidate?.finishReason) {
+					output.rawStopReason = blocked;
+					output.stopReason = "error";
+					promptBlock = chunk.promptFeedback?.blockReasonMessage || blocked;
+				}
 				if (candidate?.finishReason) {
 					output.rawStopReason = candidate.finishReason;
 					output.stopReason = mapStopReason(candidate.finishReason);
@@ -209,9 +218,11 @@ export function streamGoogle<T extends GoogleApiType>(
 				throw new Error(`${adapter.streamName} stream ended without a finish reason`);
 			}
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				const errorMessage = output.rawStopReason
-					? `Provider stopped with: ${output.rawStopReason}`
-					: "An unknown error occurred";
+				const errorMessage = promptBlock
+					? `The provider blocked the prompt: ${promptBlock}`
+					: output.rawStopReason
+						? `Provider stopped with: ${output.rawStopReason}`
+						: "An unknown error occurred";
 				throw new Error(errorMessage);
 			}
 

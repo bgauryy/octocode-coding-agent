@@ -1,5 +1,6 @@
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { ModelConfig } from "../../../core/model-config.ts";
 import { keyText } from "../components/keybinding-hints.ts";
 import type { PageRow } from "../components/manage-page.ts";
 import {
@@ -9,6 +10,7 @@ import {
 	setProviderEnabled,
 } from "./provider-actions.ts";
 import { providerDefinitionFile } from "./provider-custom.ts";
+import { unsupportedPiSignIn } from "./provider-pi.ts";
 import { testProviderCredential } from "./provider-test.ts";
 import { type PageContext, signInActions } from "./provider-signin.ts";
 import { successNotice, showPage } from "./provider-ui.ts";
@@ -78,6 +80,13 @@ export async function showProviderDetail(
 	});
 
 	const status = await providerStatus(host, id);
+	const piSignIn = await unsupportedPiSignIn(host, id, name).catch(() => undefined);
+	// Fields its models.json ignores (a misspelled `apikey`) or an `api` no built-in serves explain "not configured".
+	const definitionWarnings = definition
+		? (await ModelConfig.loadFile(definition.path))
+				.getWarnings()
+				.filter((warning) => warning.includes(`: providers.${id}.`))
+		: [];
 	if (runtime.getProviderAuthStatus(id).configured && available > 0) {
 		actions.set("Test credential — send one small request to this provider", {
 			run: () => testProviderCredential(host, id, name),
@@ -86,16 +95,30 @@ export async function showProviderDetail(
 
 	const rows: PageRow[] = [...actions.keys()].map((label) => ({ id: label, name: label }));
 	const catalog = runtime.getModels(id).length;
+	// A plan's terms show before sign-in: who bills it, the vendor's page, and whether the route is retiring or paused.
+	const plan = runtime.getProviderPlan(id);
+	const paused = runtime.getPlanDisabledReason(id);
+	const planFacts = plan
+		? [
+				{ label: "Billing", value: plan.billing === "plan" ? "Billed by plan" : "Billed per token" },
+				{ label: "Plan terms", value: plan.terms },
+				...(plan.deprecated ? [{ label: "Deprecated", value: plan.deprecated }] : []),
+				...(paused ? [{ label: "Paused", value: paused }] : []),
+			]
+		: [];
 	const choice = await showPage(host, {
 		title: `${name} — ${disabled ? "disabled" : runtime.getProviderAuthStatus(id).configured ? "configured" : "not configured"}`,
 		facts: [
 			{ label: "Status", value: disabled ? `disabled · ${status}` : status },
 			{ label: "Provider", value: disabled ? "disabled (hidden from /model)" : "enabled" },
 			{ label: "Models", value: `${available} available · ${catalog} in catalog` },
+			...planFacts,
 			{
 				label: "Definition",
 				value: definition ? `${definition.origin} models.json · ${definition.path}` : "built-in (no models.json entry)",
 			},
+			...(piSignIn ? [{ label: "Pi sign-in", value: piSignIn }] : []),
+			...definitionWarnings.map((value) => ({ label: "Warning", value })),
 		],
 		sections: [{ heading: "ACTIONS", rows }],
 		hints: [

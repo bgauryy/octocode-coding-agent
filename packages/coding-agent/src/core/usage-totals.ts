@@ -92,50 +92,68 @@ interface UsageCostBreakdownEntry {
 	key: string;
 	cost: number;
 	tokens: number;
+	/** A plan paid for these tokens (an external runner on its own subscription): they have no cost to show. */
+	plan?: true;
 }
 
 const TOOLS_AND_SUMMARIES = "Tools/summaries";
 
 /**
+ * Where a subagent's run carries who paid for it: the details of its tool result (foreground) or report (background).
+ * A plan-billed runner run is listed apart, under its route (`claude-code/sonnet`), so its tokens are not priced.
+ */
+function planBilled(details: unknown): { key: string; plan: true } | undefined {
+	if (!details || typeof details !== "object") return undefined;
+	const { billing, model } = details as { billing?: unknown; model?: unknown };
+	if (billing !== "plan") return undefined;
+	return { key: typeof model === "string" && model ? model : TOOLS_AND_SUMMARIES, plan: true };
+}
+
+/**
  * The spend a session entry carries and its cost-breakdown bucket: a reply's or a `usage` entry's under `provider/model`;
  * a tool result's (a foreground subagent), a compaction or branch summary's and a background subagent report's under
- * "Tools/summaries". The /session totals and its breakdown both read entries through this, so they count the same ones.
+ * "Tools/summaries"; a plan-billed runner run's under its route, marked `plan`. The /session totals and its breakdown both
+ * read entries through this, so they count the same ones.
  */
-export function entryUsage(entry: SessionEntry): { key: string; usage: Usage } | undefined {
+export function entryUsage(entry: SessionEntry): { key: string; usage: Usage; plan?: true } | undefined {
 	if (entry.type === "message") {
 		const message = entry.message;
 		if (message.role === "assistant")
 			return { key: `${message.provider}/${message.responseModel ?? message.model}`, usage: message.usage };
-		if (message.role === "toolResult" && message.usage) return { key: TOOLS_AND_SUMMARIES, usage: message.usage };
+		if (message.role === "toolResult" && message.usage)
+			return { key: TOOLS_AND_SUMMARIES, ...planBilled(message.details), usage: message.usage };
 		return undefined;
 	}
 	if (entry.type === "usage") return { key: `${entry.provider}/${entry.model}`, usage: entry.usage };
 	if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage)
 		return { key: TOOLS_AND_SUMMARIES, usage: entry.usage };
 	const usage = customMessageUsage(entry);
-	return usage ? { key: TOOLS_AND_SUMMARIES, usage } : undefined;
+	if (!usage) return undefined;
+	return { key: TOOLS_AND_SUMMARIES, ...(entry.type === "custom_message" ? planBilled(entry.details) : {}), usage };
 }
 
 /** Group model-attributed usage by model and all other usage into a separate bucket. */
 export function getUsageCostBreakdown(entries: SessionEntry[]): UsageCostBreakdownEntry[] {
-	const totalsByKey = new Map<string, UsageTotals>();
+	const totalsByKey = new Map<string, { key: string; plan?: true; totals: UsageTotals }>();
 
 	for (const entry of entries) {
 		const spend = entryUsage(entry);
 		if (!spend) continue;
-		const { key, usage } = spend;
-		let totals = totalsByKey.get(key);
-		if (!totals) {
-			totals = createUsageTotals();
-			totalsByKey.set(key, totals);
+		const { key, usage, plan } = spend;
+		const bucket = `${plan ? "plan" : "priced"}:${key}`;
+		let group = totalsByKey.get(bucket);
+		if (!group) {
+			group = { key, ...(plan ? { plan } : {}), totals: createUsageTotals() };
+			totalsByKey.set(bucket, group);
 		}
-		addUsageToTotals(totals, usage);
+		addUsageToTotals(group.totals, usage);
 	}
 
-	return Array.from(totalsByKey, ([key, totals]) => ({
+	return Array.from(totalsByKey.values(), ({ key, plan, totals }) => ({
 		key,
 		cost: totals.cost,
 		tokens: totals.input + totals.output + totals.cacheRead + totals.cacheWrite,
+		...(plan ? { plan } : {}),
 	}))
 		.filter((entry) => entry.cost > 0 || entry.tokens > 0)
 		.sort((a, b) => b.cost - a.cost);

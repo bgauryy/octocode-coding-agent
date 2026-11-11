@@ -2,6 +2,7 @@
 
 import { type TSchemaOptions, Type } from "typebox";
 import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
+import { TerminalCompletionSettingsSchema, TerminalSuggestionSettingsSchema } from "./terminal-completion.ts";
 
 export function timeoutSetting(options?: TSchemaOptions) {
 	return Type.Union([Type.Number({ minimum: 0 }), Type.Literal("disabled")], options);
@@ -109,6 +110,8 @@ export const TerminalSettingsSchema = Type.Object({
 		Type.Union([Type.Literal("kitty"), Type.Literal("iterm2"), Type.Literal("auto"), Type.Literal(false)]),
 	),
 	trueColor: Type.Optional(Type.Union([Type.Boolean(), Type.Literal("auto")])),
+	completion: Type.Optional(TerminalCompletionSettingsSchema),
+	suggestions: Type.Optional(TerminalSuggestionSettingsSchema),
 });
 
 export const ImageSettingsSchema = Type.Object({

@@ -7,6 +7,7 @@ import type { AssistantMessage } from "../src/types.ts";
 export interface StreamOptions {
 	stopReason?: string;
 	startUsage?: Record<string, unknown>;
+	deltaUsage?: Record<string, unknown>;
 	/** Pass a 1h cache_control marker in the request. */
 	longRetention?: boolean;
 }
@@ -18,7 +19,7 @@ export async function streamAnthropic(stopReason = "end_turn", options: StreamOp
 			type: "message_start",
 			message: { id: "msg_t", usage: { input_tokens: 10, output_tokens: 0, ...options.startUsage } },
 		},
-		{ type: "message_delta", delta: { stop_reason: stopReason }, usage: { output_tokens: 1 } },
+		{ type: "message_delta", delta: { stop_reason: stopReason }, usage: { output_tokens: 1, ...options.deltaUsage } },
 		{ type: "message_stop" },
 	];
 	const body = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n`).join("\n");

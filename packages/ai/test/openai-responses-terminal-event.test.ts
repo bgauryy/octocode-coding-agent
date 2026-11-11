@@ -407,4 +407,36 @@ describe("OpenAI Responses terminal event handling", () => {
 		);
 		expect(output.rawStopReason).toBe("failed");
 	});
+
+	it("keeps the usage a failed response reports", async () => {
+		const model = { ...createModel(), cost: { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 0 } };
+		const output = createOutput(model);
+		const stream = new AssistantMessageEventStream();
+		async function* failedWithUsage(): AsyncIterable<ResponseStreamEvent> {
+			yield { type: "response.created", sequence_number: 0, response: { id: "resp_failed" } } as ResponseStreamEvent;
+			yield {
+				type: "response.failed",
+				sequence_number: 1,
+				response: {
+					id: "resp_failed",
+					status: "failed",
+					error: { code: "server_error", message: "boom" },
+					usage: {
+						input_tokens: 30,
+						output_tokens: 12,
+						total_tokens: 42,
+						input_tokens_details: { cached_tokens: 5 },
+						output_tokens_details: { reasoning_tokens: 4 },
+					},
+				},
+			} as ResponseStreamEvent;
+		}
+
+		await expect(processResponsesStream(failedWithUsage(), output, stream, model)).rejects.toThrow(
+			"server_error: boom",
+		);
+		expect(output.usage).toMatchObject({ input: 25, output: 12, cacheRead: 5, reasoning: 4, totalTokens: 42 });
+		expect(output.usage.lowerBound).toBeUndefined();
+		expect(output.usage.cost.total).toBeGreaterThan(0);
+	});
 });

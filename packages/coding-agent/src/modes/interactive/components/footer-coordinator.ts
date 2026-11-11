@@ -16,10 +16,15 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 	// Model ids and providers can come from vendor model lists and the remote catalog.
 	const selection = model ? plainText(`${model.provider}/${model.id}`) : "No model selected · /providers";
 	const combined = `${identity} · ${selection}`;
+	// The provider's kind follows the model and is the first thing a narrow footer drops.
+	const kind = model ? session.modelRuntime.getProviderKind(model.provider) : undefined;
+	const withKind = kind ? `${combined} · ${kind}` : combined;
 	const lines =
-		visibleWidth(combined) <= width
-			? [combined]
-			: [truncateToWidth(identity, width, ELLIPSIS), truncateToWidth(`Model · ${selection}`, width, ELLIPSIS)];
+		visibleWidth(withKind) <= width
+			? [withKind]
+			: visibleWidth(combined) <= width
+				? [combined]
+				: [truncateToWidth(identity, width, ELLIPSIS), truncateToWidth(`Model · ${selection}`, width, ELLIPSIS)];
 	const routed = session.routedModel;
 	if (routed) {
 		const provider = routed.model.provider ? `${plainText(routed.model.provider)}/` : "";

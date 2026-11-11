@@ -16,8 +16,12 @@ export interface Terminal {
 	 * @param idleMs - Exit early if no input arrives within this time (default: 50ms)
 	 */
 	drainInput(maxMs?: number, idleMs?: number): Promise<void>;
+	/** Flush queued output before exit; false after the deadline or a stream error. */
+	drainOutput?(maxMs?: number): Promise<boolean>;
 
 	write(data: string): void;
+	/** Synchronous mode restoration on process exit, bypassing any unfinished stdout queue. */
+	writeOnExit?(data: string): void;
 
 	/** Queued output bytes when the implementation can observe them; absent retains legacy rendering cadence. */
 	readonly pendingOutputBytes?: number;

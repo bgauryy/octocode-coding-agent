@@ -6,7 +6,7 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
 const [mode, journal] = process.argv.slice(2);
 const record = (value) => appendFileSync(journal, `${JSON.stringify(value)}\n`);
 const pending = () => new Promise(() => undefined);
-record({ event: 'start', pid: process.pid, cwd: process.cwd(), args: process.argv.slice(2) });
+record({ event: 'start', pid: process.pid, cwd: process.cwd(), args: process.argv.slice(2), env: Object.keys(process.env).filter((name) => /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE_|OCTOCODE_)/.test(name)) });
 if (mode === 'descendant') {
   const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
   record({ event: 'descendant', pid: child.pid });
@@ -38,6 +38,17 @@ const app = agent({ name: 'external-acp-fixture' })
     const chunk = async (text, id = sessionId, kind = 'agent_message_chunk') => client.notify(methods.client.session.update, {
       sessionId: id, update: { sessionUpdate: kind, content: { type: 'text', text } },
     });
+    if (mode === 'report') {
+      // A runner's turn: a tool call, a usage update with a cost, the report, and token totals with the response.
+      await client.notify(methods.client.session.update, {
+        sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'Read src/app.ts', kind: 'read' },
+      });
+      await client.notify(methods.client.session.update, {
+        sessionId, update: { sessionUpdate: 'usage_update', used: 1200, size: 200000, cost: { amount: 0.42, currency: 'USD' } },
+      });
+      await chunk('done: the runner read src/app.ts\nNoticed: none');
+      return { stopReason: 'end_turn', usage: { inputTokens: 1000, outputTokens: 200, cachedReadTokens: 50, totalTokens: 1250 } };
+    }
     await chunk('wrong-session-output', 'unrelated-session');
     await chunk('private-thought', sessionId, 'agent_thought_chunk');
     await chunk('first\n');

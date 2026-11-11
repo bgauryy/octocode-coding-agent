@@ -22,7 +22,10 @@ import { registerBacklog } from "./backlog/index.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
 import { registerArchiveTool } from "./archive/tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
+import { registerClaudeCode } from "./claude-code/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
+import { connectedRunners, runnerRows } from "./external/connected.ts";
+import { externalListing } from "./external/describe.ts";
 import { externalAgentsEnabled } from "./external/enabled.ts";
 import { externalPermission } from "./external/permission-dialog.ts";
 import { Peers } from "./external/peers.ts";
@@ -54,12 +57,14 @@ import { setCurrentSession } from "./shared/home.ts";
 import { registerTrustCommand } from "./trust/command.ts";
 import { registerSkills } from "./skills.ts";
 import { registerPromptOptimization } from "./prompt-optimization/register.ts";
+import { registerTerminal } from "./terminal/register.ts";
 import { registerSkillTool } from "./skill/tool.ts";
 import { statusCommand } from "./status-command.ts";
 import { currentCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
 import { registerModelsTool } from "./subagents/models-tool.ts";
+import { registerChildRunnerTask } from "./subagents/runner-task.ts";
 import type { AgentProfile } from "./subagents/profiles.ts";
 import { registerChildSession } from "./subagents/child-session.ts";
 import { loadSessionProfiles } from "./subagents/session-profiles.ts";
@@ -111,6 +116,10 @@ export default function octocode(host: ExtensionAPI): void {
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ api, isSubagent, agent: () => team.id });
 	const provenance = createProvenance();
+	// Vendor CLIs signed in with their own plan, which run `agent` tasks over ACP (`external/connected.ts`).
+	const runners = connectedRunners(externalAgentsEnabled(), externalPermission(permission));
+	// With Claude Code connected on its plan, its models run this session's turns with Octocode's tools over MCP.
+	registerClaudeCode(api, runners.states);
 
 	api.on("session_start", async (event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
@@ -209,6 +218,7 @@ export default function octocode(host: ExtensionAPI): void {
 			(branch, ctx) => messaging.typedMerge(branch, ctx),
 		);
 		registerAskUser(api, (id) => team.readMessage(id, team.id ?? ""));
+		registerTerminal(api);
 		agents = registerAgentTool(
 			api,
 			() => profiles,
@@ -216,6 +226,7 @@ export default function octocode(host: ExtensionAPI): void {
 			permission,
 			() => refused,
 			agentTool.collect,
+			runners,
 		);
 		commands.add("agents", agents.command);
 		// A user's narrowing mode change names the running subagents it would stop and asks first.
@@ -224,9 +235,12 @@ export default function octocode(host: ExtensionAPI): void {
 		registerModelsTool(
 			api,
 			() => profiles,
-			() => (externalAgentsEnabled() ? external : undefined),
+			async (ctx) => [
+				...runnerRows(runners.states),
+				...(externalAgentsEnabled() ? await externalListing(external, ctx) : []),
+			],
 		);
-	}
+	} else if (runners.ids.length > 0) registerChildRunnerTask(runners, permission, agentTool.collect);
 	registerSkills(api);
 	registerPromptOptimization(commands, api);
 	registerUi(api, isSubagent);

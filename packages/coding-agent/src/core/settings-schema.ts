@@ -38,7 +38,7 @@ export const SettingsSchema = Type.Object(
 		providerModels: Type.Optional(
 			Type.Record(Type.String(), Type.String(), {
 				description:
-					'Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults.',
+					'Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before a metered one.',
 			}),
 		),
 		defaultThinkingLevel: Type.Optional(ModelThinkingLevelSchema),
@@ -82,7 +82,7 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		externalEditor: Type.Optional(
-			Type.String({ description: "Command for Ctrl+G external editor; takes precedence over VISUAL and EDITOR." }),
+			Type.String({ description: "Editor for prompts, references and diffs; overrides VISUAL and EDITOR." }),
 		),
 		shellPath: Type.Optional(
 			Type.String({
@@ -102,7 +102,7 @@ export const SettingsSchema = Type.Object(
 		externalAgents: Type.Optional(
 			Type.Boolean({
 				description:
-					"Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
+					"Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. Connecting a runner in /providers (its Sign in, or Check again finding it signed in) turns it on while it was never set; a value you set stays.",
 				default: SETTINGS_DEFAULTS.externalAgents,
 			}),
 		),

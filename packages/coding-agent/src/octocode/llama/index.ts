@@ -208,7 +208,7 @@ export default function llamaExtension(api: ExtensionAPI): void {
 	};
 
 	api.registerCommand("llama", {
-		description: "Manage llama.cpp router models",
+		description: "Manage local llama.cpp models",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") {
 				say(ctx, "/llama is available in interactive mode", "warning");

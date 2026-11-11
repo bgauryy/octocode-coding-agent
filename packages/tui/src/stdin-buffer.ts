@@ -73,7 +73,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	private readonly escapeTimeoutMs: number;
 	private readonly pasteTimeoutMs: number;
 	private pasteMode: boolean = false;
-	private pasteBuffer: string = "";
+	private pasteChunks: string[] = [];
+	private pasteTail = "";
 	private pendingKittyPrintableCodepoint: number | undefined;
 
 	/** True between a bracketed paste's start marker and its end marker. */
@@ -116,9 +117,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.buffer += str;
 
 		if (this.pasteMode) {
-			this.pasteBuffer += this.buffer;
+			const chunk = this.buffer;
 			this.buffer = "";
-			this.continuePaste();
+			this.continuePaste(chunk);
 			return;
 		}
 
@@ -135,9 +136,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
 			this.pendingKittyPrintableCodepoint = undefined;
 			this.pasteMode = true;
-			this.pasteBuffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length);
+			const chunk = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length);
 			this.buffer = "";
-			this.continuePaste();
+			this.continuePaste(chunk);
 			return;
 		}
 
@@ -173,21 +174,29 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	}
 
 	/** Emit the paste once its end marker arrived, then process what followed; otherwise wait for more of it. */
-	private continuePaste(): void {
-		const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END);
+	private continuePaste(chunk: string): void {
+		// Search only new input plus the possible split marker, never flatten and rescan the entire paste per chunk.
+		const pending = this.pasteTail + chunk;
+		const endIndex = pending.indexOf(BRACKETED_PASTE_END);
 		if (endIndex === -1) {
-			this.timeout = setTimeout(() => this.endPaste(this.pasteBuffer, ""), this.pasteTimeoutMs);
+			const safeEnd = Math.max(0, pending.length - BRACKETED_PASTE_END.length + 1);
+			if (safeEnd > 0) this.pasteChunks.push(pending.slice(0, safeEnd));
+			this.pasteTail = pending.slice(safeEnd);
+			this.timeout = setTimeout(() => this.endPaste(this.pasteTail, ""), this.pasteTimeoutMs);
 			return;
 		}
-		this.endPaste(this.pasteBuffer.slice(0, endIndex), this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length));
+		this.endPaste(pending.slice(0, endIndex), pending.slice(endIndex + BRACKETED_PASTE_END.length));
 	}
 
 	private endPaste(content: string, remaining: string): void {
+		this.pasteChunks.push(content);
+		const pasted = this.pasteChunks.join("");
 		this.timeout = null;
 		this.pasteMode = false;
-		this.pasteBuffer = "";
+		this.pasteChunks = [];
+		this.pasteTail = "";
 		this.pendingKittyPrintableCodepoint = undefined;
-		this.emit("paste", content);
+		this.emit("paste", pasted);
 		if (remaining.length > 0) this.process(remaining);
 	}
 
@@ -229,7 +238,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 		this.buffer = "";
 		this.pasteMode = false;
-		this.pasteBuffer = "";
+		this.pasteChunks = [];
+		this.pasteTail = "";
 		this.pendingKittyPrintableCodepoint = undefined;
 	}
 

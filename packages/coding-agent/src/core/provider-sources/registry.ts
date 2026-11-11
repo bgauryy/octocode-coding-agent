@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getAgentDir } from "../../config.ts";
+import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { COPILOT_ENV_VAR } from "./copilot-env.ts";
 import { displayPath, nodeProviderSourceFs } from "./detect.ts";
 import { isSourceEnabled, normalizeProviderSources, SOURCE_DEFAULTS } from "./gate.ts";
@@ -16,7 +16,13 @@ export function describeProviderSources(overrides: unknown, options: ProviderSou
 	const fs = options.fs ?? nodeProviderSourceFs;
 	const agentDir = options.agentDir ?? getAgentDir();
 	const chosen: ProviderSourceOverrides = normalizeProviderSources(overrides);
-	const piDirs = [join(home, ".pi", "agent"), join(home, ".pi")];
+	// The `pi` switch governs every read-only fallback folder: the Octocode Pi extension's, then Pi's.
+	const piDirs = [
+		join(home, CONFIG_DIR_NAME, "agent"),
+		join(home, CONFIG_DIR_NAME),
+		join(home, ".pi", "agent"),
+		join(home, ".pi"),
+	];
 	const piPaths = piDirs.flatMap((dir) => [join(dir, "auth.json"), join(dir, "models.json")]);
 	const ownPaths = [join(agentDir, "auth.json"), join(agentDir, "models.json")];
 	const state = (id: ProviderSource["id"], present: boolean) => ({

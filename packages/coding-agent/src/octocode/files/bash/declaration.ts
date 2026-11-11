@@ -10,7 +10,7 @@ import { toolHeader } from "../../render/tool.ts";
 import type { RenderContext } from "../../render/types.ts";
 import { probeCliHost, renderCliGuide } from "./cli-guide.ts";
 import { LONG_COMMAND_AFTER_SECONDS } from "./long-commands.ts";
-import { DEFAULT_BASH_TIMEOUT, MAX_FOREGROUND_TIMEOUT } from "./results.ts";
+import { MAX_FOREGROUND_TIMEOUT } from "./results.ts";
 import { verificationSchema } from "./verification.ts";
 
 /** `structuredContent` of a background start; a foreground command returns Octocode's own bash output. */
@@ -45,7 +45,7 @@ export const bashParameters = Type.Object({
 	command: Type.String({ description: "Command in the selected syntax" }),
 	timeout: Type.Optional(
 		Type.Number({
-			description: `Seconds until the command is stopped: foreground default ${DEFAULT_BASH_TIMEOUT}s, max ${MAX_FOREGROUND_TIMEOUT}s; a background job has none unless set`,
+			description: `Seconds (max ${MAX_FOREGROUND_TIMEOUT}): a foreground command moves to the background then, or is stopped with background false; a background job has none unless set`,
 		}),
 	),
 	maxOutputTokens: maxOutputTokensParameter,

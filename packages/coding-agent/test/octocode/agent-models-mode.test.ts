@@ -3,6 +3,7 @@ import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
+import { meteredBilling } from "./fake-host.ts";
 
 // The native `models` tool, formerly `agent` type `models`; the file keeps its old name.
 
@@ -37,11 +38,12 @@ function mode(profiles = new Map()) {
 			model: { ...opus, contextWindow: 180_000 },
 			thinkingLevel: "high",
 			modelRegistry: {
+				...meteredBilling,
 				getAvailable: () => available,
 				streamSimple,
 				getAll: () => catalog,
 				find: (provider: string, id: string) => catalog.find((e) => e.provider === provider && e.id === id),
-				...(kinds ? { getCredentialKind: async (provider: string) => kinds[provider] ?? "key" } : {}),
+				...(kinds ? { getProviderKind: (provider: string) => kinds[provider] ?? "API key" } : {}),
 				getProviderAuthStatus: (provider: string) => ({
 					configured: true,
 					source: provider === "opencode" ? "runtime" : "stored",
@@ -91,12 +93,14 @@ describe("models tool", () => {
 		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
 	});
 
-	it("names a subscription credential on the provider row and leaves a plain key unmarked", async () => {
+	it("names each provider's kind on its row", async () => {
 		const { run } = mode();
 		const text = await run({}, undefined, { anthropic: "subscription" });
 		expect(text).toContain("\n  anthropic · subscription · saved credential · 2 runnable");
 		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
-		expect(await run({}, undefined, { anthropic: "key" })).toContain("\n  anthropic · saved credential · 2 runnable");
+		const keyed = await run({}, undefined, { anthropic: "API key" });
+		expect(keyed).toContain("\n  anthropic · API key · saved credential · 2 runnable");
+		expect(await run({}, undefined, { anthropic: "local" })).toContain("\n  anthropic · local · saved credential");
 	});
 
 	it("lists unconnected catalog models as not runnable only when asked for the catalog scope", async () => {

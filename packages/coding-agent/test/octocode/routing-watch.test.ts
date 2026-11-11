@@ -4,7 +4,7 @@ import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { ROUTING_NOTICE_ID, RoutingWatch } from "../../src/octocode/subagents/routing-watch.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakeHost } from "./fake-host.ts";
+import { fakeHost, meteredBilling } from "./fake-host.ts";
 import { allSections, tmp } from "./helpers.ts";
 
 // `reasoning` lets a profile's thinking level stand (`supportedThinking`); it is a registry field ModelRef leaves out.
@@ -95,7 +95,7 @@ describe("coordinator prompt routing", () => {
 		const profiles = new Map([["researcher", researcher]]);
 		const turn = registerTurnSetup(fake.api, { isSubagent: false, profiles: () => profiles });
 		let available = [opus, sonnet, haiku, other];
-		const ctx = { hasUI: true, model: opus, modelRegistry: { getAvailable: () => available } };
+		const ctx = { hasUI: true, model: opus, modelRegistry: { ...meteredBilling, getAvailable: () => available } };
 		const start = async () => {
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
 			const [result] = (await fake.emit("before_agent_start", event, ctx)) as Array<

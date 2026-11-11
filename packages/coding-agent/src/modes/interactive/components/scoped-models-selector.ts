@@ -25,6 +25,8 @@ import {
 	toggle,
 } from "./scoped-models-selector/enabled-ids.ts";
 import { plainText } from "./styled-line.ts";
+import { providerBadge } from "./model-selector/rows.ts";
+import type { ProviderKind } from "../../../core/model-runtime/catalog.ts";
 
 interface ModelItem {
 	fullId: string;
@@ -36,6 +38,8 @@ interface ModelsConfig {
 	allModels: Model<any>[];
 	enabledModelIds: string[] | null;
 	refreshStatus?: string;
+	/** Each provider's kind for its badge (`ModelRuntime.getProviderKind`); without it the badge names the provider only. */
+	providerKind?: (provider: string) => ProviderKind;
 }
 
 interface ModelsCallbacks {
@@ -70,6 +74,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	private listContainer: Container;
 	private footerText: Text;
 	private callbacks: ModelsCallbacks;
+	private providerKind: ModelsConfig["providerKind"];
 	private maxVisible = 8;
 	private isDirty = false;
 	private refreshStatusText?: Text;
@@ -77,6 +82,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	constructor(config: ModelsConfig, callbacks: ModelsCallbacks) {
 		super();
 		this.callbacks = callbacks;
+		this.providerKind = config.providerKind;
 
 		for (const model of config.allModels) {
 			const fullId = `${model.provider}/${model.id}`;
@@ -213,9 +219,11 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			const id = plainText(item.model?.id ?? item.fullId);
 			const styledId = item.model ? id : theme.strikethrough(id);
 			const modelText = isSelected ? theme.fg("accent", styledId) : styledId;
-			const providerBadge = theme.fg("muted", item.model ? ` [${plainText(item.model.provider)}]` : " [unavailable]");
+			const provider = item.model?.provider;
+			const badge = provider ? providerBadge(plainText(provider), this.providerKind?.(provider)) : "[unavailable]";
+			const providerText = theme.fg("muted", ` ${badge}`);
 			const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
-			this.listContainer.addChild(new Text(`${prefix}${status}${modelText}${providerBadge}`, 0, 0));
+			this.listContainer.addChild(new Text(`${prefix}${status}${modelText}${providerText}`, 0, 0));
 		}
 
 		if (startIndex > 0 || endIndex < this.filteredItems.length) {

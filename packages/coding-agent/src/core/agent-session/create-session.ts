@@ -30,6 +30,11 @@ export interface CreateSessionFromServicesOptions {
 	model?: Model<any>;
 	/** Thinking level. Default: from the session or settings, clamped to model capabilities. */
 	thinkingLevel?: ThinkingLevel;
+	/**
+	 * No one watches the run (print mode, an ACP server's session): when no model is named, restored or set as the
+	 * default, the automatic choice skips plans that allow interactive use only (`findInitialModel`).
+	 */
+	unattended?: boolean;
 	/** Models available for cycling (Ctrl+P in interactive mode). */
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 	/**
@@ -121,6 +126,7 @@ export async function createSessionFromServices(
 			defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
 			modelThinkingLevels: settingsManager.getAllModelThinkingLevels(),
 			providerModels: settingsManager.getProviderModels(),
+			unattended: options.unattended,
 			modelRuntime,
 		});
 		model = result.model;

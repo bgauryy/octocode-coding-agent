@@ -215,3 +215,14 @@ describe("Gemini Flash-Lite budget parity", () => {
 		expect(payload.config?.thinkingConfig).toEqual({ includeThoughts: true, thinkingBudget: 512 });
 	});
 });
+
+describe("Gemini -latest aliases", () => {
+	it.each(["gemini-pro-latest", "gemini-flash-latest", "gemini-flash-lite-latest"])(
+		"sends a thinking level, not a token budget, for %s",
+		async (id) => {
+			const payload = await captureGooglePayload(googleModel(id, { high: "high" }), "high");
+
+			expect(payload.config?.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: "HIGH" });
+		},
+	);
+});

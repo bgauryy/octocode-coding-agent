@@ -243,7 +243,7 @@ export class OutputAccumulator {
 		try {
 			const size = (await file.stat()).size;
 			if (size <= maxBytes) {
-				return { content: new TextDecoder().decode(await file.readFile()), truncated: false };
+				return { content: new TextDecoder().decode(await file.readFile()), truncated: this.spillDroppedBytes > 0 };
 			}
 			const headBytes = Math.floor(maxBytes / 2);
 			const tailBytes = maxBytes - headBytes;

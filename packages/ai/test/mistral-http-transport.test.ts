@@ -6,7 +6,7 @@ import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, FetchFunction, Model, ProviderResponse } from "../src/types.ts";
 
-const OCTOCODE_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
+const OCTOCODE_USER_AGENT = `octocode (${platform()} ${release()}; ${arch()})`;
 
 function createSseResponse(events: unknown[], headers?: Record<string, string>): Response {
 	const body = `${events.map((event) => `data: ${JSON.stringify(event)}`).join("\r\n\r\n")}\r\n\r\ndata: [DONE]\r\n\r\n`;

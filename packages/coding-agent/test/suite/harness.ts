@@ -96,6 +96,8 @@ export function createTestUiContext(overrides: Partial<ExtensionUIContext> = {})
 		getEditorText: () => "",
 		editor: async () => undefined,
 		addAutocompleteProvider: () => {},
+		onEditorChange: () => () => {},
+		setEditorSuggestion: () => {},
 		setEditorComponent: () => {},
 		getEditorComponent: () => undefined,
 		get theme() {

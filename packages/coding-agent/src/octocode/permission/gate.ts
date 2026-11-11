@@ -14,10 +14,10 @@ import type { Classification } from "../../utils/windows/winclassify/types.ts";
 import { classifyPowerShell } from "../../utils/windows/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
-import type { PermissionRequest } from "./request.ts";
+import type { PermissionRequest, SourceGrant } from "./request.ts";
 import type { AllowedSource, CheckContext } from "./provenance/ignorable.ts";
-import { grantedSource, sourceGrant } from "./provenance/grant.ts";
-import { credentialRead, credentialReason } from "./credential-store.ts";
+import { grantedSource, isGranted, sourceGrant } from "./provenance/grant.ts";
+import { credentialAsk, credentialHit } from "./credential-store.ts";
 import { args, callRequest, classify, reasonPurpose } from "./gate/classify.ts";
 import { prepareReplacement, type ReplacementOwner } from "./gate/replacement.ts";
 import { decide, type Decision, type GateVerdict, type PermissionStepBodies } from "./judge.ts";
@@ -98,6 +98,8 @@ export function permissionGate(options: PermissionGateOptions) {
 	const { permission, provenance, powershell = powershellDestructive } = options;
 	// Text from a subagent the user allowed for this session is no provenance hit; the grant is revoked with the others.
 	const allowedSource = grantedSource(permission);
+	// A vendor credential store the user allowed for this session asks no more than Octocode's own (`credentialAsk`).
+	const granted = (grant: SourceGrant) => isGranted(permission, grant);
 	const steps: PermissionStepBodies<Call> = {
 		"source-projection": ({ originalEvent, invocation }) => {
 			if (invocation) return;
@@ -148,15 +150,14 @@ export function permissionGate(options: PermissionGateOptions) {
 		},
 		reasons: (state) => {
 			const { event, input, hit, prior, request } = state;
-			const credential = credentialRead(event.toolName, input, state.ctx.cwd);
+			const credential = credentialAsk(credentialHit(event.toolName, input, state.ctx.cwd), granted);
 			const reasons: AskReason[] = [
 				...(hit ? (["provenance"] as const) : []),
 				...(prior?.ask ? (["hook.ask"] as const) : []),
-				...(credential === undefined ? [] : (["credential.read"] as const)),
+				...(credential?.reasons ?? []),
 			];
-			const reason = [hit?.why, prior?.ask, credential === undefined ? undefined : credentialReason(credential)]
-				.filter(Boolean)
-				.join("\n");
+			const reason = [hit?.why, prior?.ask, credential?.reason].filter(Boolean).join("\n");
+			const grant = hit?.agent ? sourceGrant(hit.agent) : credential?.grant;
 			state.call =
 				reasons.length > 0
 					? {
@@ -168,7 +169,7 @@ export function permissionGate(options: PermissionGateOptions) {
 								...(event.parentToolCallId ? { nested: true } : {}),
 							}),
 							reasons,
-							...(hit?.agent ? { sourceGrant: sourceGrant(hit.agent) } : {}),
+							...(grant ? { sourceGrant: grant } : {}),
 							...(reason
 								? {
 										reason: [request?.reason, reason].filter(Boolean).join("\n"),

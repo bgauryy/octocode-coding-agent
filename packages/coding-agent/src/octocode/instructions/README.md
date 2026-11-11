@@ -9,10 +9,10 @@ instructions/
   shared/            one rule each, included by the policies that need it (`{{> shared/rule.md}}`)
   policy/            the parts of the `work`, `research`, `delegation`, `safety` and `communication` sections: work.md research.md delegation.md subagent.md safety.md communication.md scratch.md readonly.md
   lean/              lean.md                  (the whole policy of a `lean: true` child)
-  subagent/          identity.md worktree.md why.md report.md   (a child's task message); role-skills.md (its role section)
+  subagent/          identity.md worktree.md why.md report.md   (a child's task message); role-skills.md (its role section); runner.md (an external runner's task message)
   notices/           runtime messages the model reads: compaction, recovery, resume, subagents, mail, hooks, the loop guard
   tools/             each tool's snippet and guidelines (`tools/<tool>/snippet.md`, `guidelines.md`); `tools/bash/cli.md` is the CLI guide appended to the bash description
-  system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md harnesses.md harness.md
+  system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md harnesses.md harness.md; claude-code.md and claude-code-history.md (what a `claude-code/*` model's Claude Code is told, `claude-code/transcript.ts`)
   workflows/         planning.md plan-approved.md plan-reminder.md side-question.md summarization.md title.md optimize-prompt.md
   roles/             researcher.md implementer.md reviewer.md browser.md lean.md   (profiles with front matter)
   policy.ts lean.ts task.ts report.ts   thin TypeScript: derive the flags once, render the files
@@ -25,7 +25,7 @@ A file is plain Markdown plus a small template syntax (renderer: [`../../core/pr
 - `{{name}}` inserts a value the TypeScript passes in; an unknown name is an error.
 - `{{> shared/rule.md}}` inserts another instruction file with the same values. A rule two prompts share lives once in `shared/`, not copied.
 - `{{#if flag}}…{{else}}…{{/if}}` and `{{#unless flag}}…{{/unless}}` work inline and on lines of their own; a block that is off on its own lines leaves no blank line.
-- Show branching logic or a lookup visually when that is no longer than the prose it replaces: a fenced `text` arrow list or tree (`condition → action`, `├─`/`└─`), a table, or a compact `mermaid` diagram, whichever is shortest and clear (`shared/ask-parent.md`, `policy/delegation.md`, `policy/readonly.md`). Linear lists stay prose. Keep a block alone on its lines; in a Mermaid diagram keep labels free of `;`, `(`, `)` and `{{`, since the renderer does not parse it. The agent still never writes Mermaid to the user.
+- Show branching logic or a lookup visually when that is no longer than the prose it replaces: a fenced `text` arrow list or tree (`condition → action`, `├─`/`└─`), a table, or a compact `mermaid` diagram, whichever is shortest and clear (`shared/ask-parent.md`, `policy/delegation.md`, `policy/readonly.md`). Keep simple linear one-liners as prose. Keep a block alone on its lines; in a Mermaid diagram keep labels free of `;`, `(`, `)` and `{{`, since the renderer does not parse it. The agent still never writes Mermaid to the user.
 - Write no comments, size notes or other metadata in these files: only text the model reads (and a role's front matter). The reason for a rule belongs in the commit or backlog item that added it.
 - Every file ends with a newline; the renderer drops the last one.
 

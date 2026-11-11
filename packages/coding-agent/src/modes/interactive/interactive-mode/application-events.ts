@@ -9,6 +9,7 @@ import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { FullContentReader, toolContent } from "../components/application-content.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { addToolExecution } from "./session-render.ts";
+import { renderWindowedEntries } from "./session-window.ts";
 import { TOOL_NOT_RUN } from "../../../core/application/interrupted-tools.ts";
 import { addApplicationUserMessage } from "./user-message-render.ts";
 
@@ -32,10 +33,13 @@ type Host = Pick<
 	| "renderSessionEntries"
 >;
 
-/** Draws the branch's entries into the cleared transcript and remembers them: their announcements can still follow. */
+/**
+ * Draws the branch's entries into the cleared transcript, the last window of them as a resume does (earlier ones wait
+ * behind the "load earlier" row), and remembers them all: their announcements can still follow.
+ */
 function renderRebuild(host: Host): void {
 	const entries = host.sessionManager.buildContextEntries();
-	host.renderSessionEntries(entries);
+	renderWindowedEntries(host, entries);
 	host.entriesRenderedByRebuild.clear();
 	for (const entry of entries) host.entriesRenderedByRebuild.add(entry.id);
 }
@@ -54,6 +58,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		host.ui.requestRender();
 	};
 	const contentOptions = () => ({
+		cwd: host.session.sessionManager.getCwd(),
 		readAsset: (id: string) => port.readAsset(id),
 		showImages: host.settingsManager.getShowImages(),
 		imageWidthCells: host.settingsManager.getImageWidthCells(),
@@ -91,6 +96,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				);
 				// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
 				component.setMouseHint(host.ui.mode === "fullscreen");
+				component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 				assistants.set(message.id, component);
 				host.chatContainer.addChild(component);
 			}

@@ -20,8 +20,21 @@ let root: string;
 let agentDir: string;
 let keychainDir: string;
 const cleanup: Array<() => Promise<void> | void> = [];
+/** Provider key checks answer from here; only requests to the local daemon reach the network stack. */
+const realFetch = globalThis.fetch;
+let providerAnswer: number | Error;
+const providerRequests: string[] = [];
 
 beforeEach(() => {
+	providerAnswer = 200;
+	providerRequests.length = 0;
+	vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+		const url = String(input instanceof Request ? input.url : input);
+		if (url.startsWith("http://127.0.0.1:")) return realFetch(input, init);
+		providerRequests.push(url);
+		if (providerAnswer instanceof Error) throw providerAnswer;
+		return new Response("{}", { status: providerAnswer });
+	});
 	root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-config-credentials-"));
 	agentDir = path.join(root, "agent");
 	keychainDir = path.join(root, "keychain");
@@ -30,6 +43,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	for (const fn of cleanup.splice(0).reverse()) await fn();
 	fs.rmSync(root, { recursive: true, force: true });
 });
@@ -136,6 +150,26 @@ describe("POST /api/admin/config/credentials", () => {
 		expect(readAuth().openai).toBeUndefined();
 	});
 
+	it("refuses a key the provider rejects and saves nothing; saves one it cannot check", async () => {
+		const { server, call, audits } = await daemon(fakeKeychain());
+		providerAnswer = 401;
+		const refused = await call(server.token, set());
+		expect(refused.status).toBe(400);
+		expect(refused.json().error ?? refused.text).toContain("rejected this key");
+		expect(refused.text).not.toContain(SECRET);
+		expect(providerRequests).toEqual(["https://api.openai.com/v1/models"]);
+		expect(fs.existsSync(authFile())).toBe(false);
+		expect(entryOf("openai")).toBeUndefined();
+		expect(audits()[0]).toMatchObject({ action: "credential.set", outcome: "refused", errorCode: "rejected" });
+
+		providerAnswer = new TypeError("fetch failed");
+		expect((await call(server.token, set())).status).toBe(200);
+		expect(entryOf("openai")).toBe(SECRET);
+		providerAnswer = 503;
+		expect((await call(server.token, { ...set(), key: OLD_SECRET })).status).toBe(200);
+		expect(entryOf("openai")).toBe(OLD_SECRET);
+	});
+
 	it("refuses an OAuth sign-in being replaced by a key, and keeps other providers' entries", async () => {
 		fs.writeFileSync(
 			authFile(),
@@ -149,6 +183,16 @@ describe("POST /api/admin/config/credentials", () => {
 		expect((await call(server.token, set("openai"))).status).toBe(200);
 		expect(readAuth().anthropic.type).toBe("oauth");
 		expect(readAuth().other).toEqual({ type: "api_key", key: "x" });
+	});
+
+	it("refuses a Claude subscription token for any provider and saves nothing", async () => {
+		const { server, call } = await daemon(fakeKeychain());
+		const token = "sk-ant-oat01-synthetic-token-value";
+		const refused = await call(server.token, { action: "set", provider: "anthropic", key: token });
+		expect(refused.status).toBe(400);
+		expect(refused.text).toContain("Claude Code");
+		expect(refused.text).not.toContain(token);
+		expect(fs.existsSync(authFile()) ? fs.readFileSync(authFile(), "utf8") : "").not.toContain("sk-ant-oat");
 	});
 
 	it("does not fall back to plaintext when the keychain refuses, and does not echo the key", async () => {

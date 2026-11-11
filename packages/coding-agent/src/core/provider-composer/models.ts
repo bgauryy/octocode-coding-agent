@@ -1,6 +1,7 @@
 import { type AnyModel, type Api, isModelType, type Model, type Provider } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import type { ModelsJsonModel, ModelsJsonModelOverride, ModelsJsonProvider } from "../model-config.ts";
+import type { KnownModelLookup } from "./known-models.ts";
 import type { ProviderConfigInput, ProviderModelConfig } from "./types.ts";
 
 export function getAllProviderModels(provider: Provider | undefined): readonly AnyModel[] {
@@ -120,6 +121,7 @@ function modelFromJson(
 	definition: ModelsJsonModel,
 	providerConfig: ModelsJsonProvider,
 	defaults: Model<Api> | undefined,
+	knownBase: Model<Api> | undefined,
 ): Model<Api> {
 	const api = definition.api ?? providerConfig.api ?? defaults?.api;
 	if (!api) {
@@ -135,24 +137,27 @@ function modelFromJson(
 	if (definition.maxTokens !== undefined && definition.maxTokens <= 0) {
 		throw new Error(`Provider ${providerId}, model ${definition.id}: invalid maxTokens`);
 	}
+	// The same model's metadata seen through this entry's host: a direct provider's endpoint-bound claims (long cache
+	// retention, explicit cache mode, cache lifetimes) do not carry to another host. Only a model of the same API qualifies.
+	const known = knownBase && knownBase.api === api ? withCacheEndpoint(knownBase, baseUrl) : undefined;
 	return {
 		id: definition.id,
-		name: definition.name ?? definition.id,
+		name: definition.name ?? known?.name ?? definition.id,
 		api: api,
 		provider: providerId,
 		baseUrl,
-		reasoning: definition.reasoning ?? false,
-		thinkingLevelMap: definition.thinkingLevelMap,
-		input: definition.input ?? ["text"],
-		inputLimits: definition.inputLimits,
-		cost: definition.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		promptCache: definition.promptCache,
-		contextWindow: definition.contextWindow ?? 128000,
-		maxTokens: definition.maxTokens ?? 16384,
-		samplingParams: definition.samplingParams,
-		samplingParamsByThinkingLevel: definition.samplingParamsByThinkingLevel,
+		reasoning: definition.reasoning ?? known?.reasoning ?? false,
+		thinkingLevelMap: definition.thinkingLevelMap ?? known?.thinkingLevelMap,
+		input: definition.input ?? known?.input ?? ["text"],
+		inputLimits: mergeInputLimits(known?.inputLimits, definition.inputLimits),
+		cost: definition.cost ?? known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		promptCache: definition.promptCache ?? known?.promptCache,
+		contextWindow: definition.contextWindow ?? known?.contextWindow ?? 128000,
+		maxTokens: definition.maxTokens ?? known?.maxTokens ?? 16384,
+		samplingParams: definition.samplingParams ?? known?.samplingParams,
+		samplingParamsByThinkingLevel: definition.samplingParamsByThinkingLevel ?? known?.samplingParamsByThinkingLevel,
 		headers: undefined,
-		compat: mergeCompat(providerConfig.compat, definition.compat),
+		compat: mergeCompat(mergeCompat(known?.compat, providerConfig.compat), definition.compat),
 	};
 }
 
@@ -205,10 +210,15 @@ function extensionModelFromDefinition(
 	return { ...definition, api: api, provider: providerId, baseUrl, headers: undefined };
 }
 
+/**
+ * Layer a provider's `models.json` entry over its models. An entry whose id names a known model (the provider's own,
+ * else the built-in model of the vendor its API belongs to, through `known`) inherits that model's metadata.
+ */
 export function applyModelsJson(
 	providerId: string,
 	baseModels: readonly AnyModel[],
 	config: ModelsJsonProvider | undefined,
+	known?: KnownModelLookup,
 ): AnyModel[] {
 	if (!config) return [...baseModels];
 	const hasOverrides = config.modelOverrides && Object.keys(config.modelOverrides).length > 0;
@@ -237,7 +247,10 @@ export function applyModelsJson(
 	for (const definition of config.models ?? []) {
 		const existingIndex = models.findIndex((model) => isModelType(model, "chat") && model.id === definition.id);
 		const defaults = findModelDefaults(models, definition.id, definition.api ?? config.api);
-		const model = modelFromJson(providerId, definition, config, defaults);
+		const api = definition.api ?? config.api ?? defaults?.api;
+		const existing = existingIndex >= 0 ? (models[existingIndex] as Model<Api>) : undefined;
+		const knownBase = existing?.api === api ? existing : api ? known?.(api, definition.id) : undefined;
+		const model = modelFromJson(providerId, definition, config, defaults, knownBase);
 		if (existingIndex >= 0) models[existingIndex] = model;
 		else models.push(model);
 	}

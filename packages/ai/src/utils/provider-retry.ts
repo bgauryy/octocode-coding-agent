@@ -1,6 +1,7 @@
 import { APICallError } from "@ai-sdk/provider";
 import { createAbortError, sleepUnlessAborted } from "./abort.ts";
-import { parseRetryAfterMs, validateRetryDelayMs } from "./retry.ts";
+import { normalizeProviderError } from "./error-body.ts";
+import { isUsageLimitError, parseRetryAfterMs, validateRetryDelayMs } from "./retry.ts";
 
 interface ProviderRetryOptions {
 	maxRetries?: number;
@@ -113,6 +114,8 @@ export async function retryProviderRequest<T>(
 			const providerError = getProviderError(error);
 			if (retriesRemaining <= 0 || !providerError || !isRetryableProviderError(providerError)) throw error;
 			if (providerError.status !== undefined && options.noRetryStatuses?.includes(providerError.status)) throw error;
+			// A 429 can name a quota or billing limit (OpenAI `insufficient_quota`), final until the account changes.
+			if (isUsageLimitError(`${providerError.message}\n${normalizeProviderError(error).body ?? ""}`)) throw error;
 
 			const retryIndex = maxRetries - retriesRemaining;
 			retriesRemaining--;

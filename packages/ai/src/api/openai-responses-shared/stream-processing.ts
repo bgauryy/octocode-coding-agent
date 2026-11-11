@@ -44,6 +44,7 @@ type ResponsesOutputSlot =
 	| { type: "rich"; contentIndex: number };
 
 type ToolCallOutputSlot = Extract<ResponsesOutputSlot, { type: "toolCall" }>;
+type TerminalType = "response.completed" | "response.incomplete" | "response.failed";
 
 export async function processResponsesStream<TApi extends Api>(
 	openaiStream: AsyncIterable<ResponseStreamEvent>,
@@ -167,19 +168,10 @@ export async function processResponsesStream<TApi extends Api>(
 			});
 		}
 	};
-	const finalizeResponse = (
-		response: Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>["response"],
-	): void => {
-		sawTerminalResponseEvent = true;
+	// Terminal usage, priced; a failed response reports it too, and the error message keeps it.
+	const applyTerminalUsage = (response: Extract<ResponseStreamEvent, { type: TerminalType }>["response"]): void => {
 		delete output.usage.lowerBound;
-		backfillReasoningSignatures(response.output ?? []);
-		artifacts.finish(response.output ?? []);
-		if (response?.id) {
-			output.responseId = response.id;
-		}
-		if (response?.usage) {
-			output.usage = parseResponsesUsage(response.usage);
-		}
+		if (response?.usage) output.usage = parseResponsesUsage(response.usage);
 		calculateCost(model, output.usage);
 		if (options?.applyServiceTierPricing) {
 			const serviceTier = options.resolveServiceTier
@@ -187,6 +179,17 @@ export async function processResponsesStream<TApi extends Api>(
 				: (response?.service_tier ?? options.serviceTier);
 			options.applyServiceTierPricing(output.usage, serviceTier);
 		}
+	};
+	const finalizeResponse = (
+		response: Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>["response"],
+	): void => {
+		sawTerminalResponseEvent = true;
+		backfillReasoningSignatures(response.output ?? []);
+		artifacts.finish(response.output ?? []);
+		if (response?.id) {
+			output.responseId = response.id;
+		}
+		applyTerminalUsage(response);
 		// Map status to stop reason. For incomplete responses, retain the provider's
 		// specific reason so max-output truncation and content filtering stay distinct.
 		const status = response?.status;
@@ -361,6 +364,7 @@ export async function processResponsesStream<TApi extends Api>(
 			throw new Error(`Error Code ${event.code}: ${event.message || "Unknown error"}`);
 		} else if (event.type === "response.failed") {
 			sawTerminalResponseEvent = true;
+			if (event.response?.usage) applyTerminalUsage(event.response);
 			output.rawStopReason = event.response?.status;
 			const error = event.response?.error;
 			const details = event.response?.incomplete_details;

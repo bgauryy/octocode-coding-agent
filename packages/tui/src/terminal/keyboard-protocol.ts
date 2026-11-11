@@ -44,6 +44,22 @@ export interface KeyboardProtocolHooks {
  * See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
  */
 export class KeyboardProtocol {
+	private readonly pendingResets = new Map<string, object>();
+
+	private writeReset(sequence: string): void {
+		const receipt = {};
+		this.pendingResets.set(sequence, receipt);
+		process.stdout.write(sequence, () => {
+			if (this.pendingResets.get(sequence) === receipt) this.pendingResets.delete(sequence);
+		});
+	}
+
+	/** Include mode resets queued by normal cleanup but not yet sent to the terminal. */
+	restoreOnExit(write: (sequence: string) => void): void {
+		const resets = new Set(this.pendingResets.keys());
+		this.disable((sequence) => resets.add(sequence));
+		for (const sequence of resets) write(sequence);
+	}
 	private readonly hooks: KeyboardProtocolHooks;
 	private kittyActive = false;
 	private modifyOtherKeysEnabled = false;
@@ -181,21 +197,21 @@ export class KeyboardProtocol {
 	}
 
 	/** Drop pending protocol negotiation and turn off the Kitty keyboard protocol and modifyOtherKeys; safe to repeat. */
-	disable(): void {
+	disable(write: (sequence: string) => void = (sequence) => this.writeReset(sequence)): void {
 		const shouldDisableKittyProtocol = this.pushed || this.kittyActive;
 		this.clearBuffer();
 		if (shouldDisableKittyProtocol) {
-			process.stdout.write("\x1b[<u");
+			write("\x1b[<u");
 			this.pushed = false;
 			this.kittyActive = false;
 			setKittyProtocolActive(false);
 		}
-		this.disableModifyOtherKeys();
+		this.disableModifyOtherKeys(write);
 	}
 
-	private disableModifyOtherKeys(): void {
+	private disableModifyOtherKeys(write: (sequence: string) => void = (sequence) => this.writeReset(sequence)): void {
 		if (!this.modifyOtherKeysEnabled) return;
-		process.stdout.write("\x1b[>4;0m");
+		write("\x1b[>4;0m");
 		this.modifyOtherKeysEnabled = false;
 	}
 }

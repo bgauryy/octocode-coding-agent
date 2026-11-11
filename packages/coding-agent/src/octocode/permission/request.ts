@@ -1,10 +1,16 @@
 import type { ToolInvocation } from "../../core/features/types.ts";
 import type { ActionClass, AskReason, PermissionMode } from "./mode.ts";
 
-/** What "Allow text from <agent> for this session" covers: every later hit whose source is that subagent's report. */
+/**
+ * The one session answer a forcing reason has. "Allow text from <agent> for this session" covers every later provenance
+ * hit whose source is that subagent's report; "Allow reads of <store> for this session" every later read of that vendor
+ * credential store (`credential.vendor`).
+ */
 export interface SourceGrant {
 	key: string;
 	label: string;
+	/** The forcing reason it answers; `provenance` when absent. */
+	reason?: AskReason;
 }
 
 /** What an ask shows: the effect card, any reasons that tighten it, and exactly what it would do. */
@@ -51,7 +57,7 @@ export interface PermissionRequest {
 	 * <label> for this session": the user's remembered answer, given in place of a later dialog the grant would have answered.
 	 */
 	grant?: { key: string; label: string; deniable?: boolean };
-	/** Set when the request's provenance hit came from one subagent's report: the user may allow that source for the session. */
+	/** Set when the request's provenance hit came from one subagent's report, or it reads one vendor credential store: the user may allow that source for the session. */
 	sourceGrant?: SourceGrant;
 	/** Issued by another tool (`parentToolCallId` set). */
 	nested?: boolean;

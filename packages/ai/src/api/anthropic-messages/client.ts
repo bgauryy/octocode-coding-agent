@@ -11,9 +11,7 @@ import type { Model, ProviderEnv, ProviderHeaders } from "../../types.ts";
 import { getProviderCapabilities } from "../../utils/provider-capabilities.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
-import { claudeCodeVersion } from "./claude-code.ts";
 import { getAnthropicCompat } from "./compat.ts";
-import { isOAuthToken } from "./token.ts";
 
 function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
 	const merged: ProviderHeaders = {};
@@ -104,7 +102,7 @@ export function createClient(
 	dynamicHeaders?: Record<string, string>,
 	sessionId?: string,
 	federation?: AnthropicFederationConfig,
-): { client: Anthropic; isOAuthToken: boolean } {
+): Anthropic {
 	if (getProviderCapabilities(model.provider).anthropicBearerAuth) {
 		const client = new HeaderAuthAnthropic({
 			apiKey: null,
@@ -123,30 +121,7 @@ export function createClient(
 			),
 		});
 
-		return { client, isOAuthToken: false };
-	}
-
-	// OAuth: Bearer auth, Claude Code identity headers
-	if (apiKey && isOAuthToken(apiKey)) {
-		const client = new HeaderAuthAnthropic({
-			apiKey: null,
-			authToken: apiKey,
-			baseURL: model.baseUrl,
-			dangerouslyAllowBrowser: true,
-			fetch,
-			defaultHeaders: mergeClientHeaders(
-				{
-					accept: "application/json",
-					"anthropic-dangerous-direct-browser-access": "true",
-					"user-agent": `claude-cli/${claudeCodeVersion}`,
-					"x-app": "cli",
-				},
-				model.headers,
-				optionsHeaders,
-			),
-		});
-
-		return { client, isOAuthToken: true };
+		return client;
 	}
 
 	// API key, header-owned auth, or workload identity federation.
@@ -178,7 +153,7 @@ export function createClient(
 			});
 			federationClient = { key, fetch, client };
 		}
-		return { client: federationClient.client.withOptions({ defaultHeaders }), isOAuthToken: false };
+		return federationClient.client.withOptions({ defaultHeaders });
 	}
 
 	const client = new HeaderAuthAnthropic({
@@ -190,5 +165,5 @@ export function createClient(
 		defaultHeaders,
 	});
 
-	return { client, isOAuthToken: false };
+	return client;
 }

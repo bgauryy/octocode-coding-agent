@@ -6,7 +6,7 @@ import { formatTokens } from "../shared/format.ts";
 import { textResult } from "../shared/util.ts";
 import type { ModelRef } from "./model.ts";
 import { THINKING_LEVELS } from "./thinking.ts";
-import { canRunTask } from "./model.ts";
+import { canRunTask, registryBilling } from "./model.ts";
 import {
 	CREDENTIAL_MARKS,
 	describeModels,
@@ -16,13 +16,17 @@ import {
 	modelAbilities,
 	modelCatalog,
 } from "./models-command.ts";
-import { credentialKinds, providerRows, providerSummary } from "./models-summary.ts";
-import type { ExternalAgents } from "../external/manager.ts";
-import { externalRows } from "../external/describe.ts";
+import { providerKinds, providerRows, providerSummary } from "./models-summary.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { checkCandidates, checkProviders, providerHealth } from "./provider-health.ts";
 
 type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRegistry">;
+
+/**
+ * The blocks about agents outside Octocode's model loop (connected runners, external agents), from `octocode/index.ts`:
+ * subagents reach no transport themselves. Empty when there are none or they are off.
+ */
+export type ExternalListing = (ctx: ExtensionContext, signal?: AbortSignal) => Promise<string[]>;
 
 /**
  * The `models` tool: this session's model and thinking level, the configured providers with their credential status,
@@ -33,7 +37,7 @@ type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRe
 export function registerModelsTool(
 	api: ExtensionAPI,
 	getProfiles: () => Map<string, AgentProfile>,
-	getExternal: () => ExternalAgents | undefined = () => undefined,
+	listExternal: ExternalListing = async () => [],
 ): void {
 	api.registerTool({
 		name: "models",
@@ -68,7 +72,7 @@ export function registerModelsTool(
 				named(model) && (!params.ability || modelAbilities(model, catalog).includes(params.ability));
 			const all = ctx.modelRegistry.getAvailable();
 			const shown = all.filter(matches);
-			const kinds = await credentialKinds(ctx.modelRegistry, all, signal);
+			const kinds = providerKinds(ctx.modelRegistry, all);
 			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
 			const filtered = query || provider || params.ability;
 			if (filtered && shown.length === 0 && unconnected.length === 0)
@@ -82,7 +86,7 @@ export function registerModelsTool(
 			if (params.check)
 				await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
 			const footer = `Pass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
-			const outside = await externalSection(getExternal(), ctx);
+			const outside = await externalSection(listExternal, ctx, signal);
 			const credentials = `${source}\n${CREDENTIAL_MARKS}`;
 			// An unfiltered call, or a query or ability that keeps too many rows, gets one row per provider; a provider
 			// (or a short filter) gets the models themselves.
@@ -95,7 +99,15 @@ export function registerModelsTool(
 						...(kept
 							? [`${kept.length} models match; too many to list. Set \`provider\` to list one provider's models.`]
 							: []),
-						describeRoutes(all, ctx.model, getProfiles(), catalog),
+						describeRoutes(
+							all,
+							ctx.model,
+							getProfiles(),
+							catalog,
+							undefined,
+							undefined,
+							registryBilling(ctx.modelRegistry),
+						),
 						...outside,
 						...(kept ? [] : ["Set `provider` to list one provider's models."]),
 						credentials,
@@ -112,6 +124,9 @@ export function registerModelsTool(
 				catalog,
 				undefined,
 				(model) => matches(model) && canRunTask(model, catalog),
+				undefined,
+				undefined,
+				registryBilling(ctx.modelRegistry),
 			);
 			const unrunnable = describeUnrunnable(shown, ctx.model, catalog);
 			return textResult(
@@ -130,12 +145,10 @@ export function registerModelsTool(
 	});
 }
 
-/** Connected and installed external agents, when the setting enables them; discovery that fails adds nothing. */
-async function externalSection(external: ExternalAgents | undefined, ctx: ModelsContext): Promise<string[]> {
-	if (!external) return [];
+/** Connected runners and external agents, when the setting enables them; a listing that fails adds nothing. */
+async function externalSection(list: ExternalListing, ctx: ExtensionContext, signal?: AbortSignal): Promise<string[]> {
 	try {
-		const rows = externalRows(await external.call({ action: "list" }, ctx as ExtensionContext));
-		return rows.length ? [rows.join("\n")] : [];
+		return (await list(ctx, signal)).filter((block) => block.trim());
 	} catch {
 		return [];
 	}

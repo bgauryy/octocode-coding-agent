@@ -91,6 +91,7 @@ function batchRest(running: readonly RunningTool[]): string {
 export class Activity {
 	phase: Phase = "idle";
 	private phaseAt = 0;
+	private lastEventAt = 0;
 	private readonly tools = new Map<string, RunningTool>();
 	private prompt: { title: string; at: number } | undefined;
 	/** The latest consequential call the permission check let through, while its tool runs (`id`: that call, when its check was running). */
@@ -116,6 +117,7 @@ export class Activity {
 	/** An assistant streaming event (`thinking_delta` with its `delta`, `text_start`, `toolcall_delta`, …); true when the line changed. */
 	stream(type: string, now: number, delta?: string): boolean {
 		if (this.phase === "idle") return false;
+		this.lastEventAt = now;
 		const phase: Phase | undefined = type.startsWith("thinking")
 			? "thinking"
 			: type.startsWith("text")
@@ -268,6 +270,13 @@ export class Activity {
 		return this.tools.size > 0;
 	}
 
+	/** Silence is not a failure or the run's total duration; tools and approvals have their own progress. */
+	modelSilenceMs(now: number): number | undefined {
+		return this.phase === "idle" || this.prompt || this.tools.size > 0
+			? undefined
+			: Math.max(0, now - this.lastEventAt);
+	}
+
 	/** Whether a run is under way (the working line shows). */
 	ticking(): boolean {
 		return this.phase !== "idle";
@@ -276,5 +285,6 @@ export class Activity {
 	private setPhase(phase: Phase, now: number): void {
 		this.phase = phase;
 		this.phaseAt = now;
+		this.lastEventAt = now;
 	}
 }

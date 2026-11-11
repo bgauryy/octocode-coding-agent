@@ -155,11 +155,14 @@ export interface PrepareRequestContext {
 export type AgentRequestUpdate = Omit<AgentLoopTurnUpdate, "messages"> & {
 	/** Tool choice for this one provider request only; later requests are unchanged. */
 	toolChoice?: ToolChoice;
+	/** After long preparation, select steering once if no batch was selected, gate/commit it, then prepare again. */
+	refreshInput?: boolean;
 };
 
 /**
  * Called immediately before every conversational provider request, including the first.
  * Pending messages have already been appended and emitted when this callback runs.
+ * Returning `refreshInput` can run this callback once more after newly selected input is committed.
  */
 export type PrepareRequest = (
 	request: PrepareRequestContext,

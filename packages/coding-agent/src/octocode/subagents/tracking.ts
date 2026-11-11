@@ -59,6 +59,7 @@ export const reportFacts = (
 	| "startup"
 	| "structured"
 	| "reportArtifact"
+	| "billing"
 > => {
 	const usage = spent.get(details);
 	return {
@@ -78,6 +79,7 @@ export const reportFacts = (
 		...(details.startup ? { startup: details.startup } : {}),
 		...(details.structured ? { structured: details.structured } : {}),
 		...(details.reportArtifact ? { reportArtifact: details.reportArtifact } : {}),
+		...(details.billing ? { billing: details.billing } : {}),
 	};
 };
 

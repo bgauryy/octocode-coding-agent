@@ -1,6 +1,6 @@
 import type { OutputTelemetry } from "../terminal/types.ts";
 
-/** Experimental scheduler controls. Both behaviors are off unless explicitly enabled. */
+/** Scheduler controls: output gating is on by default; adaptive cadence and metrics are opt-in. */
 export interface RenderPacingOptions {
 	outputGate?: boolean;
 	adaptiveCadence?: boolean;
@@ -24,7 +24,7 @@ export interface RenderPacingStats {
 }
 
 export const DEFAULT_RENDER_PACING: Required<RenderPacingOptions> = {
-	outputGate: false,
+	outputGate: true,
 	adaptiveCadence: false,
 	metrics: false,
 	highWaterBytes: 256 * 1024,

@@ -78,9 +78,11 @@ function createWorker(launch: AcpWorkerLaunch): AcpWorkerClient {
 		getCommands: () => client.getCommands(),
 		async getModels() {
 			const [models, state] = await Promise.all([client.getAvailableModels(), client.getState()]);
+			const interactiveOnly = models.filter((model) => model.interactiveOnly);
 			return {
 				current: state.model ? `${state.model.provider}/${state.model.id}` : undefined,
 				available: models.map((model) => `${model.provider}/${model.id}`),
+				...(interactiveOnly.length ? { interactiveOnly: interactiveOnly.map((m) => `${m.provider}/${m.id}`) } : {}),
 			};
 		},
 		async setModel(model) {

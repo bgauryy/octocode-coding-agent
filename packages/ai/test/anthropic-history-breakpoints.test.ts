@@ -121,30 +121,6 @@ describe("Anthropic history lookback breakpoint", () => {
 		expect(markers(payload)).toHaveLength(3);
 	});
 
-	it("marks only the last OAuth system block, leaving a slot for the lookback", async () => {
-		const payload = await capture(history, { apiKey: "sk-ant-oat-test" });
-
-		// The prompt block's breakpoint covers the identity line too, so a marker there would only use a slot.
-		expect(payload.system.map((block) => block.cache_control)).toEqual([undefined, { type: "ephemeral" }]);
-		expect(markers(payload)).toHaveLength(4);
-		expect(marked(payload.messages[0])).toEqual([{ type: "ephemeral" }]);
-		expect(marked(payload.messages[2])).toEqual([{ type: "ephemeral" }]);
-	});
-
-	it("marks the OAuth identity block when there is no prompt to follow it", async () => {
-		let payload: Payload | undefined;
-		await anthropicStream(model, normalizeContext({ messages: [user("only")], tools: [tool] }), {
-			apiKey: "sk-ant-oat-test",
-			onPayload: (value) => {
-				payload = value as Payload;
-				throw new Captured();
-			},
-		}).result();
-
-		expect(payload?.system).toHaveLength(1);
-		expect(payload?.system[0].cache_control).toEqual({ type: "ephemeral" });
-	});
-
 	it("skips a previous tail that cannot carry a breakpoint", async () => {
 		const payload = await capture([user("   "), assistant([{ type: "text", text: "reply" }]), user("second")], {
 			apiKey,

@@ -55,7 +55,7 @@ export function createViewActions(set: Set, get: Get): ViewActions {
 		setToolsExpanded(expanded) {
 			if (expanded === get().view.toolsExpanded) return;
 			patchView(set, { toolsExpanded: expanded });
-			get().showNotice(`Tool output: ${expanded ? "expanded" : "collapsed"}`);
+			get().showNotice(`Output: ${expanded ? "expanded" : "collapsed"}`);
 		},
 		toggleToolsExpanded() {
 			get().setToolsExpanded(!get().view.toolsExpanded);

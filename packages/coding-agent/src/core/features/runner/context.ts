@@ -31,6 +31,8 @@ export const noOpUIContext: ExtensionUIContext = {
 	getEditorText: () => "",
 	editor: async () => undefined,
 	addAutocompleteProvider: () => {},
+	onEditorChange: () => () => {},
+	setEditorSuggestion: () => {},
 	setEditorComponent: () => {},
 	getEditorComponent: () => undefined,
 	get theme() {

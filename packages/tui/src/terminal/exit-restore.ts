@@ -8,10 +8,32 @@
  * A signal that no listener handles ends the process without an `exit` event; the application owns its signals.
  */
 
+import { setTerminalOutputBlocking } from "./output.ts";
+import type { Terminal } from "./types.ts";
+
+function writeTerminalRestore(terminal: Terminal, data: string): void {
+	if (terminal.writeOnExit) terminal.writeOnExit(data);
+	else terminal.write(data);
+}
+
+/** Capture the terminal and restore bytes, never the renderer graph whose lifecycle is ending. */
+export function registerTerminalRestore(terminal: Terminal, data: string): () => void {
+	return registerExitRestore(() => writeTerminalRestore(terminal, data));
+}
+
+/** Queued normal cleanup still needs a forced-exit fallback until those bytes have actually drained. */
+export function unregisterAfterOutput(terminal: Terminal, dispose: () => void): void {
+	if ((terminal.pendingOutputBytes ?? 0) > 0 && terminal.drainOutput)
+		void terminal.drainOutput(Infinity).then(dispose, dispose);
+	else dispose();
+}
+
 const hooks: Array<() => void> = [];
 let installed = false;
 
 function runHooks(): void {
+	// The event loop will not run again after exit hooks, so restore sequences are written synchronously; stdout stays
+	// nonblocking while they are, so a terminal that stopped reading costs a bounded wait (`writeOnExit`), not a hang.
 	const errors: unknown[] = [];
 	while (hooks.length > 0) {
 		try {
@@ -21,6 +43,8 @@ function runHooks(): void {
 			errors.push(error);
 		}
 	}
+	// The shell gets the terminal back as it lent it: the nonblocking flag lives on the open file it shares.
+	setTerminalOutputBlocking(true);
 	if (errors.length > 0) throw errors[0];
 }
 

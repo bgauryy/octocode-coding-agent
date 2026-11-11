@@ -27,6 +27,27 @@ interface InlineRun {
 class StrictStrikethroughTokenizer extends Tokenizer {
 	/** Inline runs in progress, innermost last. */
 	readonly runs: InlineRun[] = [];
+	readonly blocks: Array<{ source: string; from: number; found: number }> = [];
+
+	/** Marked asks each paragraph where the next block extension starts; scan a block run only once. */
+	blockLatexStart(suffix: string): number | undefined {
+		const pattern = /(?:^|\n) {0,3}(?:\$\$|\\\[)/g;
+		const run = this.blocks.at(-1);
+		const offset = run ? run.source.length - suffix.length : -1;
+		if (!run || offset < 0 || !run.source.startsWith(suffix.slice(0, 3), offset)) {
+			const match = pattern.exec(suffix);
+			return match ? match.index + (match[0].startsWith("\n") ? 1 : 0) : undefined;
+		}
+		// A suffix may begin mid-line, so its own start is a candidate even without a preceding newline.
+		if (/^ {0,3}(?:\$\$|\\\[)/.test(suffix)) return 0;
+		if (run.from < 0 || offset < run.from || (run.found >= 0 && run.found < offset)) {
+			pattern.lastIndex = offset;
+			const match = pattern.exec(run.source);
+			run.from = offset;
+			run.found = match ? match.index + (match[0].startsWith("\n") ? 1 : 0) : -1;
+		}
+		return run.found < 0 ? undefined : run.found - offset;
+	}
 
 	/** The innermost run and the position of `suffix` in it; a fresh run when lexed without StrictStrikethroughLexer. */
 	locate(suffix: string): { run: InlineRun; offset: number } {
@@ -81,6 +102,17 @@ class StrictStrikethroughLexer extends Lexer {
 	constructor(options: MarkedOptions, strikethrough: StrictStrikethroughTokenizer) {
 		super(options);
 		this.strikethrough = strikethrough;
+	}
+
+	override blockTokens(src: string, tokens?: TokensList, lastParagraphClipped?: boolean): TokensList;
+	override blockTokens(src: string, tokens?: Token[], lastParagraphClipped?: boolean): Token[];
+	override blockTokens(src: string, tokens?: Token[], lastParagraphClipped?: boolean): Token[] {
+		this.strikethrough.blocks.push({ source: src, from: -1, found: -1 });
+		try {
+			return super.blockTokens(src, tokens, lastParagraphClipped);
+		} finally {
+			this.strikethrough.blocks.pop();
+		}
 	}
 
 	override inlineTokens(src: string, tokens?: Token[]): Token[] {
@@ -208,8 +240,7 @@ const LATEX_MARKDOWN_EXTENSIONS: readonly TokenizerExtension[] = [
 		name: "latexBlock",
 		level: "block",
 		start(source) {
-			const match = /(?:^|\n) {0,3}(?:\$\$|\\\[)/.exec(source);
-			return match ? match.index + (match[0].startsWith("\n") ? 1 : 0) : undefined;
+			return inlineTokenizer.blockLatexStart(source);
 		},
 		tokenizer: tokenizeBlockLatex,
 	},

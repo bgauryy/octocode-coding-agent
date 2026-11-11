@@ -45,6 +45,12 @@ async function flushAutocomplete(): Promise<void> {
 	await new Promise((resolve) => setImmediate(resolve));
 }
 
+/** A provider that reads the real filesystem finishes after its I/O, not on the next tick: wait for `done`, bounded. */
+async function settleAutocomplete(done: () => boolean, maxMs = 2000): Promise<void> {
+	const end = Date.now() + maxMs;
+	while (!done() && Date.now() < end) await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe("wordWrapLine with oversized graphemes", () => {
 	it("splits a grapheme wider than the line without recursing forever", () => {
 		const cluster = `\u0915${"\u093e".repeat(100)}`;
@@ -2272,11 +2278,11 @@ describe("Editor component", () => {
 				const before = editor.getText();
 				editor.handleInput("文");
 				editor.handleInput("\t");
-				await flushAutocomplete();
+				await settleAutocomplete(() => editor.getText() === `${before}文档/`);
 				assert.strictEqual(editor.getText(), `${before}文档/`);
 				editor.handleInput("说");
 				editor.handleInput("\t");
-				await flushAutocomplete();
+				await settleAutocomplete(() => editor.getText() === `${before}文档/说明.md`);
 				assert.strictEqual(editor.getText(), `${before}文档/说明.md`);
 				assert.deepStrictEqual(editor.getCursor(), { line: 0, col: editor.getText().length });
 			}

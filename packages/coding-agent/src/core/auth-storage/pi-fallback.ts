@@ -5,27 +5,45 @@ import { isCommandConfigValue, resolveConfigValue } from "../config-value.ts";
 import { providerSourceGate } from "../provider-sources/gate.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
 
+interface FallbackCredentialOptions {
+	/**
+	 * Whether the user's own configuration gives this provider a key (`apiKey` in Octocode's models.json). Such a
+	 * provider never uses a fallback file: Octocode's own files win over Pi's.
+	 */
+	ownsKey?: (providerId: string) => boolean | Promise<boolean>;
+	/** Whether Octocode can use an OAuth sign-in for this provider. A fallback OAuth entry it cannot use is skipped. */
+	supportsOAuth?: (providerId: string) => boolean;
+}
+
 /**
  * Octocode's credential store with Pi's `auth.json` files as a read-only fallback. A provider with an Octocode
- * credential never sees Pi's; every write (login, refresh, logout) goes to Octocode's store, so a refreshed Pi OAuth
- * token is saved in Octocode's file and Pi's files are never changed. A Pi key held in a secret command (`!cmd`) is not
- * used: its command runs only after the user configures the provider in Octocode. While the `pi` provider source is
- * off, Pi's files are not read at all.
+ * credential, or with an `apiKey` in Octocode's own models.json, never sees Pi's; every write (login, refresh, logout)
+ * goes to Octocode's store, so a refreshed Pi OAuth token is saved in Octocode's file and Pi's files are never changed.
+ * A Pi key held in a secret command (`!cmd`) is not used (a later file's entry is): its command runs only after the
+ * user configures the provider in Octocode. A fallback file that cannot be read, or an entry Octocode does not
+ * recognize, is skipped with a warning naming the file. While the `pi` provider source is off, Pi's files are not read.
  */
 export class PiFallbackCredentialStore implements CredentialStore {
 	private readonly primary: AuthStorage;
 	private readonly piAuthPaths: readonly string[];
+	private readonly options: FallbackCredentialOptions;
 
-	private readonly isEnabled: () => boolean;
-
-	constructor(
-		primary: AuthStorage,
-		piDirs: readonly string[],
-		isEnabled: () => boolean = () => providerSourceGate.isEnabled("pi"),
-	) {
-		this.isEnabled = isEnabled;
+	constructor(primary: AuthStorage, piDirs: readonly string[], options: FallbackCredentialOptions = {}) {
 		this.primary = primary;
 		this.piAuthPaths = piDirs.map((dir) => join(dir, "auth.json"));
+		this.options = options;
+	}
+
+	private isEnabled(): boolean {
+		return providerSourceGate.isEnabled("pi");
+	}
+
+	/**
+	 * A fallback file read leniently: a bad entry or file is skipped. The user sees why at startup
+	 * (`checkAuthFileSafety`), so the problem needs no second report here.
+	 */
+	private file(path: string): ReadOnlyAuthStorage {
+		return new ReadOnlyAuthStorage(path, { onProblem: () => {} });
 	}
 
 	/** Octocode's file only; Pi's files are read fresh on every read. */
@@ -33,13 +51,15 @@ export class PiFallbackCredentialStore implements CredentialStore {
 		return this.primary.watch(onChange);
 	}
 
-	/** The first Pi entry for the provider, unresolved; read fresh so edits to Pi's file apply. */
+	/** The first usable fallback entry for the provider, unresolved; read fresh so edits to Pi's file apply. */
 	private async readPi(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		if (!this.isEnabled()) return undefined;
+		if (await this.options.ownsKey?.(providerId)) return undefined;
 		for (const path of this.piAuthPaths) {
-			const credential = await new ReadOnlyAuthStorage(path).readRaw(providerId, options);
+			const credential = await this.file(path).readRaw(providerId, options);
 			if (!credential) continue;
-			if (credential.type === "api_key" && credential.key && isCommandConfigValue(credential.key)) return undefined;
+			if (credential.type === "api_key" && credential.key && isCommandConfigValue(credential.key)) continue;
+			if (credential.type === "oauth" && this.options.supportsOAuth?.(providerId) === false) continue;
 			return credential;
 		}
 		return undefined;
@@ -56,7 +76,7 @@ export class PiFallbackCredentialStore implements CredentialStore {
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		const entries = new Map((await this.primary.list(options)).map((entry) => [entry.providerId, entry]));
 		for (const path of this.isEnabled() ? this.piAuthPaths : []) {
-			for (const entry of await new ReadOnlyAuthStorage(path).list(options)) {
+			for (const entry of await this.file(path).list(options)) {
 				if (entries.has(entry.providerId)) continue;
 				if (await this.readPi(entry.providerId, options)) entries.set(entry.providerId, entry);
 			}

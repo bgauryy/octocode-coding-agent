@@ -1,4 +1,8 @@
+import { join } from "node:path";
+import { getLegacyProviderDirs } from "../../../config.ts";
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
+import { ReadOnlyAuthStorage } from "../../../core/auth-storage/read-only.ts";
+import { providerSourceGate } from "../../../core/provider-sources/gate.ts";
 import { discoveryInput } from "../../../core/discovery/service.ts";
 import {
 	listPiProviderCredentials,
@@ -16,6 +20,31 @@ export function piConfigDirs(host: Pick<ProviderManagerHost, "session">): string
 	return directory
 		? [...discoveryInput({ cwd: process.cwd(), agentDir: directory, projectTrusted: false }).piRoots]
 		: [];
+}
+
+/**
+ * Why a Pi (or legacy `~/.octocode`) account sign-in for `id` is not used, when the provider has no account sign-in in
+ * Octocode: Pi's Claude Pro/Max sign-in is one. Undefined when there is none or Pi is off.
+ */
+export async function unsupportedPiSignIn(
+	host: Pick<ProviderManagerHost, "session">,
+	id: string,
+	name: string,
+): Promise<string | undefined> {
+	const runtime = host.session.modelRuntime;
+	const directory = runtime.getConfigurationDirectory();
+	if (!directory || !providerSourceGate.isEnabled("pi") || runtime.getProvider(id)?.auth.oauth) return undefined;
+	for (const dir of getLegacyProviderDirs(directory)) {
+		const path = join(dir, "auth.json");
+		// Problems in the file are startup warnings; here they only mean no sign-in.
+		const credential = await new ReadOnlyAuthStorage(path, { onProblem: () => {} }).readRaw(id);
+		if (credential?.type !== "oauth") continue;
+		const next = runtime.getProviderAuthStatus(id).configured
+			? "Octocode uses this provider's other credentials."
+			: "Add an API key to use it.";
+		return `The account sign-in in ${path} is a type Octocode's ${name} provider does not support, so it is not used. ${next}`;
+	}
+	return undefined;
 }
 
 /** Pi is a setup source. Its providers still own authentication, model IDs and requests. */

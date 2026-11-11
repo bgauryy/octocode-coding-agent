@@ -21,7 +21,8 @@ const QuerySchema = Type.Object({
 		Type.Array(
 			Type.Object({
 				oldText: Type.String({
-					description: "Exact text; with line, the whole original line without its terminator",
+					description:
+						"Exact text, unique in the file unless replaceAll; with line, the whole original line without its terminator",
 				}),
 				newText: Type.String({ description: "Replacement text" }),
 				line: Type.Optional(Type.Integer({ description: "1-based line anchor; needs sourceSha256" })),

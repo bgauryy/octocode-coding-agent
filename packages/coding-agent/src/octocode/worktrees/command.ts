@@ -182,9 +182,9 @@ const PLACEMENTS: Array<[string, string]> = [
 /** `/worktree`: list, create, open, switch to and remove the repository's git worktrees. */
 export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcommand {
 	return {
-		description: "List, create, open, switch and remove worktrees",
+		description: "Create, open, switch, merge and remove worktrees",
 		argumentHint:
-			"[list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | remove <name> [--force]]",
+			"[list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | merge <branch> | remove <name> [--force]]",
 		complete: (prefix) => {
 			const placing = /^open\s+\S+\s+(.*)$/su.exec(prefix);
 			if (placing) return wordCompletions(PLACEMENTS, placing[1]);
@@ -198,17 +198,14 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 			}
 			return wordCompletions(
 				[
-					["list", "list — worktrees with branch, changes, unmerged commits, live agents and tmux panes"],
-					["new", "new <name> — create one and open Octocode in it"],
-					["open", "open <name> [pane [right|down]|window] — open Octocode in an existing worktree in tmux"],
-					[
-						"switch",
-						"switch <name|main> — move this session into a worktree or back to main (the old one stays saved)",
-					],
-					["merge", "merge <branch> — in the main checkout, land a linked worktree's branch"],
+					["list", "worktrees with branch, changes, unmerged commits, live agents and tmux panes"],
+					["new", "<name> — create one and open Octocode in it"],
+					["open", "<name> [pane [right|down]|window] — open Octocode in an existing worktree in tmux"],
+					["switch", "<name|main> — move this session into a worktree or back to main (the old one stays saved)"],
+					["merge", "<branch> — in the main checkout, land a linked worktree's branch"],
 					[
 						"remove",
-						"remove <name> [--force] — remove one that holds no unsaved work, live agents, reachable finished agents or tmux panes",
+						"<name> [--force] — remove one that holds no unsaved work, live agents, reachable finished agents or tmux panes",
 					],
 				],
 				prefix,

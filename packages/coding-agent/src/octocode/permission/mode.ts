@@ -157,7 +157,9 @@ export const actionWhy = (action: ActionClass): string => MATRIX[action].why;
 /**
  * Reasons tighten a call. They are not action classes and never a session grant. A provenance hit, a hook ask and a
  * profile that declares permissions ask in manual and workspace; full runs them and records the reason; so does a read of Octocode's credential store (`credential.read`). A source policy's
- * ask and an agent's save of a global or pinned memory ask in every mode. A reason forces
+ * ask, an agent's save of a global or pinned memory, and a read of another tool's credential store (`credential.vendor`,
+ * which comes with `credential.read`) ask in every mode: the one exception to "full asks nothing" among reads, since
+ * those tokens are another program's sign-in. A reason forces
  * one ask on the call's effect. It does not replace that effect, and a session grant of the effect does not answer it.
  */
 export const ASK_REASONS = [
@@ -168,6 +170,7 @@ export const ASK_REASONS = [
 	"shell.target",
 	"memory.wide",
 	"credential.read",
+	"credential.vendor",
 ] as const;
 export type AskReason = (typeof ASK_REASONS)[number];
 
@@ -176,6 +179,7 @@ const REASON_RULES: Record<AskReason, [Rule, Rule, Rule]> = {
 	"source.ask": ["ask", "ask", "ask"],
 	"memory.wide": ["ask", "ask", "ask"],
 	"credential.read": ["ask", "ask", "allow"],
+	"credential.vendor": ["ask", "ask", "ask"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],
 	"profile.permissions": ["ask", "ask", "allow"],

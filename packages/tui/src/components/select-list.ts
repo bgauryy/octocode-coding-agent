@@ -128,9 +128,8 @@ export class SelectList implements Component {
 			return lines;
 		}
 
-		const primaryColumnWidth = this.getPrimaryColumnWidth();
-
 		const { startIndex, endIndex } = this.getVisibleRange();
+		const primaryColumnWidth = this.getPrimaryColumnWidth(startIndex, endIndex);
 
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredItems[i];
@@ -306,9 +305,10 @@ export class SelectList implements Component {
 		return prefix + name + (parentText ? this.theme.description(parentText) : "");
 	}
 
-	private getPrimaryColumnWidth(): number {
+	/** The widest label among the rows in view, within the layout's bounds: a long label elsewhere in the list does not narrow these rows' descriptions. */
+	private getPrimaryColumnWidth(startIndex: number, endIndex: number): number {
 		const { min, max } = this.getPrimaryColumnBounds();
-		const widestPrimary = this.filteredItems.reduce((widest, item) => {
+		const widestPrimary = this.filteredItems.slice(startIndex, endIndex).reduce((widest, item) => {
 			return Math.max(widest, visibleWidth(this.getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
 		}, 0);
 

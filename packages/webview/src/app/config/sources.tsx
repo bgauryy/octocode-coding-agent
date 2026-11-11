@@ -6,7 +6,7 @@ import type {
 import { stamp } from "../model/format.ts";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, type BadgeTone } from "../ui/primitives.tsx";
-import { CLAUDE_TOKEN_PROVIDER, CredentialEditor, type SaveCredential } from "./CredentialEditor.tsx";
+import { CredentialEditor, type SaveCredential } from "./CredentialEditor.tsx";
 import { ProviderSwitch, type SetProvider } from "./ProviderControls.tsx";
 import { SignInControl, type SignInRequest } from "./SignIn.tsx";
 
@@ -81,7 +81,6 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 	const names = [
 		oauth ? (oauth.isSubscription ? "Subscription sign-in" : "Account sign-in") : undefined,
 		apiKey ? "API key" : undefined,
-		row.provider === CLAUDE_TOKEN_PROVIDER ? "Claude subscription token" : undefined,
 	].filter((name): name is string => !!name);
 	if (names.length === 0) return null;
 	return (

@@ -64,6 +64,8 @@ export const SETTINGS_DEFAULTS = {
 		clearOnShrink: false,
 		showTerminalProgress: false,
 		reduceMotion: "auto" as boolean | "auto",
+		completion: { shell: "auto" as "auto" | "zsh" | "bash" | "fish" | "pwsh" | "none", loadRc: true, carapace: true },
+		suggestions: { history: true, model: true },
 	},
 	images: {
 		autoResize: true,

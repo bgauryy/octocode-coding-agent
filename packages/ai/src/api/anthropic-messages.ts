@@ -25,6 +25,7 @@ import {
 import { assertRequestAuth, createClient, getAnthropicFederation } from "./anthropic-messages/client.ts";
 import { getAnthropicCompat } from "./anthropic-messages/compat.ts";
 import { buildParams } from "./anthropic-messages/params.ts";
+import { refuseClaudeSubscriptionToken } from "./anthropic-messages/token.ts";
 import { hasStrictToolDowngrade, rememberStrictToolDowngrade } from "./anthropic-messages/strict-tool-downgrades.ts";
 import { iterateAnthropicEvents } from "./anthropic-messages/sse.ts";
 import { fitClaudeThinkingBudget } from "./anthropic-messages/thinking-budget.ts";
@@ -51,12 +52,12 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 		if (options?.thinkingBudgetReduction) output.thinkingBudget = options.thinkingBudgetReduction;
 
 		try {
+			// A subscription token is refused before any request is built, whichever client sends it.
+			refuseClaudeSubscriptionToken(options?.apiKey, { ...model.headers, ...options?.headers });
 			let client: Anthropic;
-			let isOAuth: boolean;
 
 			if (options?.client) {
 				client = options.client;
-				isOAuth = false;
 			} else {
 				const apiKey = options?.apiKey;
 				const federation = getAnthropicFederation(model, apiKey, options?.headers, options?.env);
@@ -67,7 +68,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
 				const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
 
-				const created = createClient(
+				client = createClient(
 					model,
 					apiKey,
 					options?.headers,
@@ -76,8 +77,6 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 					cacheSessionId,
 					federation,
 				);
-				client = created.client;
-				isOAuth = created.isOAuthToken;
 			}
 			const requestOptions = {
 				...(options?.signal ? { signal: options.signal } : {}),
@@ -89,7 +88,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			let sentParams: MessageCreateParamsStreaming;
 			for (;;) {
 				options?.signal?.throwIfAborted();
-				const built = buildParams(model, normalizedContext, isOAuth, options, disablePreferredStrictTools);
+				const built = buildParams(model, normalizedContext, options, disablePreferredStrictTools);
 				if (built.providerThinkingLevel) output.providerThinkingLevel = built.providerThinkingLevel;
 				let params = built.params;
 				const nextParams = await options?.onPayload?.(params, model);
@@ -142,8 +141,6 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				model,
 				output,
 				stream,
-				isOAuth,
-				currentTools,
 				usageModel: model,
 				longCacheRequested: requestsLongCache(sentParams),
 				inputTransformations: undefined,

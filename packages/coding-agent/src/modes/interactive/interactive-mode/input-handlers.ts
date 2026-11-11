@@ -24,6 +24,7 @@ type InputHandlersHost = Pick<
 	| "cycleThinkingLevel"
 	| "defaultEditor"
 	| "editor"
+	| "editorChangeListeners"
 	| "handleClearCommand"
 	| "handleClipboardPaste"
 	| "handleCopyCommand"
@@ -133,6 +134,13 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 
 	host.defaultEditor.onChange = (text: string) => {
 		host.uiStore.getState().setBashMode(text.trimStart().startsWith("!"));
+		for (const listener of host.editorChangeListeners) {
+			try {
+				listener(text);
+			} catch {
+				// A failing extension listener must not break typing.
+			}
+		}
 	};
 
 	// Handle clipboard paste (triggered on Ctrl+V). Copied files use their original paths,

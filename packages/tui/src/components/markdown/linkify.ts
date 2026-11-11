@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /** A `path:line[:col]` reference found in text. */
@@ -20,7 +20,7 @@ export interface FileReference {
  * a longer path; the lookahead stops it before more identifier characters.
  */
 const REFERENCE =
-	/(?<![\w./@:~+-])((?:~\/|\.{1,2}\/)?[\w.+~/-]*[\w-]\.([A-Za-z]\w{0,9})):(\d+)(?::(\d+))?(?![\w/@]|:\d|\.\w)/g;
+	/(?<![\w./\\@:~+-])((?:(?:[A-Za-z]:)?[\\/]|~[\\/]|\.{1,2}[\\/])?[\w.+~\\/-]*[\w-]\.([A-Za-z]\w{0,9})):(\d+)(?::(\d+))?(?![\w/@\\]|:\d|\.\w)/g;
 
 /** Extensions that count as a file without a directory part: `example.com:8080` is a host, `main.ts:4` is a file. */
 const BARE_FILE_EXTENSIONS = new Set(
@@ -34,7 +34,7 @@ export function findFileReferences(text: string): FileReference[] {
 	const found: FileReference[] = [];
 	for (const match of text.matchAll(REFERENCE)) {
 		const path = match[1];
-		if (!path.includes("/") && !BARE_FILE_EXTENSIONS.has(match[2].toLowerCase())) continue;
+		if (!/[\\/]/.test(path) && !BARE_FILE_EXTENSIONS.has(match[2].toLowerCase())) continue;
 		const line = Number(match[3]);
 		if (line < 1) continue;
 		const column = match[4] === undefined ? undefined : Number(match[4]);
@@ -44,13 +44,20 @@ export function findFileReferences(text: string): FileReference[] {
 }
 
 /** A `file://` URL for `path`: absolute paths as written, `~/` from the home directory, others from `cwd`. */
-export function fileReferenceUrl(path: string, cwd: string): string {
-	const absolute = path.startsWith("~/")
-		? resolve(homedir(), path.slice(2))
-		: isAbsolute(path)
-			? path
-			: resolve(cwd, path);
-	return pathToFileURL(absolute).href;
+export function fileReferenceUrl(path: string, cwd: string, line?: number, column?: number): string {
+	const windows = /^[A-Za-z]:[\\/]|^\\\\/.test(path) || /^[A-Za-z]:[\\/]|^\\\\/.test(cwd);
+	const absolute = windows
+		? win32.resolve(cwd, path)
+		: path.startsWith("~/")
+			? resolve(homedir(), path.slice(2))
+			: isAbsolute(path)
+				? path
+				: resolve(cwd, path);
+	const url = pathToFileURL(absolute, { windows });
+	if (line !== undefined && Number.isSafeInteger(line) && line > 0) {
+		url.hash = `L${line}${column !== undefined && Number.isSafeInteger(column) && column > 0 ? `:${column}` : ""}`;
+	}
+	return url.href;
 }
 
 /** Splits `text` into plain pieces and file references, in order; the pieces joined are `text` unchanged. */

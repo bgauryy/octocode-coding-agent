@@ -11,7 +11,7 @@ export interface ProviderNoticeSession {
 	): Promise<void>;
 }
 
-export const PROVIDER_NOTICE_TYPE = "provider-disabled";
+const PROVIDER_NOTICE_TYPE = "provider-disabled";
 
 const noticed = new WeakMap<object, string>();
 

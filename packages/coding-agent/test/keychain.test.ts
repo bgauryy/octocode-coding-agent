@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
 	detectKeychain,
 	isValidKeychainProviderId,
+	KeychainSecretTooLargeError,
 	type KeychainRunner,
 	type KeychainRunResult,
 } from "../src/core/auth-storage/keychain.ts";
@@ -169,5 +170,16 @@ describe("own references", () => {
 		expect(keychain?.isOwnReference("!security find-generic-password -ws 'opencode'", "opencode")).toBe(false);
 		expect(keychain?.isOwnReference("sk-plain", "opencode")).toBe(false);
 		expect(keychain?.isOwnReference(undefined, "opencode")).toBe(false);
+	});
+});
+
+describe("macOS write size", () => {
+	test("refuses a secret longer than one `security -i` line before running anything; a long API key still fits", async () => {
+		const { calls, run } = recorder();
+		const keychain = detectKeychain("darwin", available, run)!;
+		await expect(keychain.store("openai", "x".repeat(4000))).rejects.toBeInstanceOf(KeychainSecretTooLargeError);
+		expect(calls).toEqual([]);
+		await keychain.store("openai", "x".repeat(3500));
+		expect(calls).toHaveLength(1);
 	});
 });

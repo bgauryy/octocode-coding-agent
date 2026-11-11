@@ -9,6 +9,7 @@ import { clampNote, type ModelRef, routeSummary } from "../../src/octocode/subag
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
+import { meteredBilling } from "./fake-host.ts";
 
 const model = (id: string, input: number, extra: object = {}): ModelRef =>
 	({
@@ -25,7 +26,10 @@ const big = model("big", 10);
 const available = [big, beam];
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "octocode-clamp-"));
-const ctx = { modelRegistry: { getAvailable: () => available, getProvider: () => undefined }, model: big } as never;
+const ctx = {
+	modelRegistry: { ...meteredBilling, getAvailable: () => available, getProvider: () => undefined },
+	model: big,
+} as never;
 
 describe("the run line says when a thinking level was clamped", () => {
 	const profiles = loadProfiles(tmp(), tmp(), false, {});
@@ -76,6 +80,7 @@ describe("the models tool", () => {
 			model: big,
 			thinkingLevel: "low",
 			modelRegistry: {
+				...meteredBilling,
 				getAvailable: () => available,
 				getAll: () => available,
 				find: () => undefined,

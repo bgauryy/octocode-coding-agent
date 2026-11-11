@@ -14,7 +14,6 @@ import { cachedPercent, formatCost, formatTokens } from "../../../octocode/share
 import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
-import { billedBySubscription } from "../../../core/subscription.ts";
 import { styledLine } from "./styled-line.ts";
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
@@ -163,9 +162,7 @@ export class FooterComponent implements Component {
 			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
 		}
 
-		const usingSubscription = state.model
-			? billedBySubscription(this.session.modelRuntime, state.model.provider)
-			: false;
+		const usingSubscription = state.model ? this.session.modelRuntime.isUsingSubscription(state.model.provider) : false;
 		if (usageTotals.cost || usingSubscription) {
 			const money = formatCost({ cost: usageTotals.cost, unpriced: false }) || "≈$0.00";
 			statsParts.push(usingSubscription ? `${money} (sub)` : money);

@@ -34,6 +34,8 @@ export interface ModelInfo {
 	id: string;
 	contextWindow: number;
 	reasoning: boolean;
+	/** The model's plan allows interactive use only. */
+	interactiveOnly?: true;
 }
 
 export type RpcEvent = JsonAgentSessionEvent | RpcExtensionErrorEvent;

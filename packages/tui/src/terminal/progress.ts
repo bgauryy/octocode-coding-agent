@@ -29,9 +29,14 @@ export class ProgressIndicator {
 	}
 
 	/** Clear a progress indicator that is still showing; nothing is written when there is none. */
-	clear(): void {
-		if (this.stopKeepalive()) {
-			process.stdout.write(TERMINAL_PROGRESS_CLEAR_SEQUENCE);
+	clear(
+		write: (sequence: string) => void = (sequence) => {
+			process.stdout.write(sequence);
+		},
+		force = false,
+	): void {
+		if (this.stopKeepalive() || force) {
+			write(TERMINAL_PROGRESS_CLEAR_SEQUENCE);
 		}
 	}
 

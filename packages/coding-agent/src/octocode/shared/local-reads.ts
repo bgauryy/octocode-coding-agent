@@ -142,7 +142,7 @@ export async function snapshotLocalReads(
 }
 
 /** A result's data: its structured content, else its one text block parsed as JSON; nothing for an error. */
-function resultData(output: unknown): unknown {
+export function resultData(output: unknown): unknown {
 	if (!isRecord(output) || output.isError === true) return undefined;
 	if (output.structuredContent !== undefined) return output.structuredContent;
 	const blocks = output.content;

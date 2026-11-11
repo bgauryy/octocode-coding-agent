@@ -1,3 +1,7 @@
+import {
+	CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL,
+	carriesClaudeSubscriptionToken,
+} from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
@@ -8,8 +12,28 @@ import { confirmAction, successNotice } from "./provider-ui.ts";
 export async function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): Promise<string> {
 	const runtime = host.session.modelRuntime;
 	const status = runtime.getProviderAuthStatus(id);
-	if (!status.configured) return "Not configured";
-	return `${KIND_LABELS[await runtime.getCredentialKind(id, AbortSignal.timeout(15_000))]} configured · ${credentialSource(host, id)}`;
+	if (!status.configured) {
+		const refusal = await claudeSubscriptionRefusal(host, id);
+		return refusal ? `Not configured: ${refusal}` : "Not configured";
+	}
+	return `${KIND_LABELS[await runtime.getCredentialKind(id)]} configured · ${credentialSource(host, id)}`;
+}
+
+/**
+ * Why a provider has no usable credential although one is saved or set: it is a Claude subscription token, which
+ * configures nothing (no model is offered) and which every request refuses. The key is resolved the way a request
+ * resolves it, inspected and not kept; a lookup that fails reports nothing.
+ */
+export async function claudeSubscriptionRefusal(
+	host: Pick<ProviderManagerHost, "session">,
+	id: string,
+): Promise<string | undefined> {
+	try {
+		const auth = (await host.session.modelRuntime.getAuth(id))?.auth;
+		return carriesClaudeSubscriptionToken(auth?.apiKey, auth?.headers) ? CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /** The credential kind in a provider's words, for its page. */

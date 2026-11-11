@@ -19,10 +19,8 @@ function isRemoteSession(env: NodeJS.ProcessEnv): boolean {
 }
 
 function emitOsc52(text: string): boolean {
+	if (Math.ceil(Buffer.byteLength(text) / 3) * 4 > MAX_OSC52_ENCODED_LENGTH) return false;
 	const encoded = Buffer.from(text).toString("base64");
-	if (encoded.length > MAX_OSC52_ENCODED_LENGTH) {
-		return false;
-	}
 	process.stdout.write(`\x1b]52;c;${encoded}\x07`);
 	return true;
 }

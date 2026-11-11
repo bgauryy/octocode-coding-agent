@@ -59,6 +59,8 @@ const ALLOWED: Record<string, string[]> = {
 	api: ["shared", "render"],
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
 	external: ["shared", "api", "worktrees", "ask", "child-sessions"],
+	// Claude Code as the model backend: the connected runner, its cleaned environment and the ACP host come from `external`.
+	"claude-code": ["external"],
 	ask: ["shared", "render"],
 	// `cli`: the bash guide names the research CLI only when its shim is installed. `ask`: the file review is an approval question.
 	files: ["shared", "permission", "cli", "ask", "render", "tool-input"],
@@ -107,6 +109,8 @@ const ALLOWED: Record<string, string[]> = {
 	"context-optimization": ["shared"],
 	// `/optimize`: its helper call is the small-tier route `subagents/` owns.
 	"prompt-optimization": ["shared", "subagents"],
+	// `!` shell mode: Tab completion and ghost text (`packages/terminal`); its model suggestion is one small-tier call.
+	terminal: ["subagents"],
 	// `/processes`, process titles and memory samples: process helpers from `shared`, agent-id variables from `team`.
 	processes: ["shared", "team"],
 	"native-skills": [],

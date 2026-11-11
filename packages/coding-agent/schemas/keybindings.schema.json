@@ -277,7 +277,7 @@
     },
     "app.tools.expand": {
       "$ref": "#/$defs/KeybindingValue",
-      "description": "Toggle tool output"
+      "description": "Toggle output expansion"
     },
     "app.thinking.toggle": {
       "$ref": "#/$defs/KeybindingValue",

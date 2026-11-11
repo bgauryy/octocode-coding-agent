@@ -103,7 +103,7 @@ describe("relay claims", () => {
 		const store = team();
 		try {
 			await sendMessage(child(store, "a-1"), "done-1", "question", { replyRequired: true });
-			const resumer = vi.fn<Resumer>(async () => undefined as never);
+			const resumer = vi.fn<Resumer>(async () => undefined);
 			const relays = new Relays({
 				id: () => "p-1",
 				finished: new Map([["done-1", "x"]]),

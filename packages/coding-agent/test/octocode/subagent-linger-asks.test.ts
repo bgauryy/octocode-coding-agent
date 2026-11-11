@@ -8,7 +8,7 @@ import type * as Parked from "../../src/octocode/subagents/parked.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakePermission, fakeHost, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
@@ -59,6 +59,7 @@ function setup() {
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => [],
 			find: () => undefined,
 			getCachePolicy: (_model: unknown, settings: readonly CachePreferenceLayer[] = []) =>

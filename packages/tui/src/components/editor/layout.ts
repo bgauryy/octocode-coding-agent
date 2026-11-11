@@ -1,7 +1,7 @@
 import { visibleWidth } from "../../utils/width.ts";
 import { sliceByColumn } from "../../utils/columns.ts";
 import type { EditorState, LayoutLine } from "./types.ts";
-import { wordWrapLine } from "./word-wrap.ts";
+import type { TextChunk } from "./word-wrap.ts";
 
 export function createScrollBorder(direction: "↑" | "↓", hiddenLineCount: number, width: number): string {
 	const availableWidth = Math.max(0, width);
@@ -22,11 +22,7 @@ export function createScrollBorder(direction: "↑" | "↓", hiddenLineCount: nu
 }
 
 /** Lay out the editor lines for `contentWidth`, marking the layout line that holds the cursor. */
-export function layoutText(
-	state: EditorState,
-	contentWidth: number,
-	segmentGraphemes: (line: string) => Intl.SegmentData[],
-): LayoutLine[] {
+export function layoutText(state: EditorState, wrapLine: (line: string, index: number) => TextChunk[]): LayoutLine[] {
 	const layoutLines: LayoutLine[] = [];
 
 	if (state.lines.length === 0 || (state.lines.length === 1 && state.lines[0] === "")) {
@@ -41,9 +37,8 @@ export function layoutText(
 	for (let i = 0; i < state.lines.length; i++) {
 		const line = state.lines[i] || "";
 		const isCurrentLine = i === state.cursorLine;
-		const lineVisibleWidth = visibleWidth(line);
-
-		if (lineVisibleWidth <= contentWidth) {
+		const chunks = wrapLine(line, i);
+		if (chunks.length === 1 && chunks[0].text === line) {
 			if (isCurrentLine) {
 				layoutLines.push({
 					text: line,
@@ -57,8 +52,6 @@ export function layoutText(
 				});
 			}
 		} else {
-			const chunks = wordWrapLine(line, contentWidth, segmentGraphemes(line));
-
 			for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
 				const chunk = chunks[chunkIndex];
 				if (!chunk) continue;
@@ -118,27 +111,18 @@ export function layoutText(
  */
 export function buildVisualLineMap(
 	lines: string[],
-	width: number,
-	segmentGraphemes: (line: string) => Intl.SegmentData[],
+	wrapLine: (line: string, index: number) => TextChunk[],
 ): Array<{ logicalLine: number; startCol: number; length: number }> {
 	const visualLines: Array<{ logicalLine: number; startCol: number; length: number }> = [];
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i] || "";
-		const lineVisWidth = visibleWidth(line);
-		if (line.length === 0) {
-			visualLines.push({ logicalLine: i, startCol: 0, length: 0 });
-		} else if (lineVisWidth <= width) {
-			visualLines.push({ logicalLine: i, startCol: 0, length: line.length });
-		} else {
-			const chunks = wordWrapLine(line, width, segmentGraphemes(line));
-			for (const chunk of chunks) {
-				visualLines.push({
-					logicalLine: i,
-					startCol: chunk.startIndex,
-					length: chunk.endIndex - chunk.startIndex,
-				});
-			}
+		for (const chunk of wrapLine(line, i)) {
+			visualLines.push({
+				logicalLine: i,
+				startCol: chunk.startIndex,
+				length: chunk.endIndex - chunk.startIndex,
+			});
 		}
 	}
 

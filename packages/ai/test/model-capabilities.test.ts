@@ -58,7 +58,13 @@ describe("model capabilities", () => {
 	});
 
 	it.each([
-		["Anthropic", model("anthropic-messages"), "markers", { short: 300, long: 3600 }],
+		[
+			"Anthropic",
+			model("anthropic-messages", { baseUrl: "https://api.anthropic.com" }),
+			"markers",
+			{ short: 300, long: 3600 },
+		],
+		["Anthropic-compatible gateway", model("anthropic-messages"), "markers", { short: 300 }],
 		[
 			"Anthropic without long retention",
 			model("anthropic-messages", { compat: { supportsLongCacheRetention: false } }),
@@ -85,7 +91,7 @@ describe("model capabilities", () => {
 		["OpenAI implicit", model("openai-responses"), "key", {}],
 		[
 			"OpenAI implicit with extended retention",
-			model("openai-responses", { provider: "openai", baseUrl: "https://api.openai.com/v1" }),
+			model("openai-responses", { id: "gpt-4.1", provider: "openai", baseUrl: "https://api.openai.com/v1" }),
 			"key",
 			{ long: 86_400 },
 		],
@@ -101,7 +107,10 @@ describe("model capabilities", () => {
 	});
 
 	it("uses declared lifetimes, with a long tier only where the endpoint accepts it", () => {
-		const declared = model("anthropic-messages", { promptCache: { short: 240, long: 1800 } });
+		const declared = model("anthropic-messages", {
+			baseUrl: "https://api.anthropic.com",
+			promptCache: { short: 240, long: 1800 },
+		});
 		expect(resolveModelCapabilities(declared).cache.lifetimes).toEqual({ short: 240, long: 1800 });
 		const refused = model("anthropic-messages", {
 			promptCache: { short: 300, long: 3600 },

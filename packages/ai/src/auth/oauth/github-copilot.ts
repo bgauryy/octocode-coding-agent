@@ -4,15 +4,36 @@
 
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
+import { GITHUB_COPILOT_PLAN } from "../../providers/plans.ts";
+import { getUserAgent } from "../../utils/user-agent.ts";
 import {
 	CLIENT_ID,
 	COPILOT_HEADERS,
+	COPILOT_SIGN_IN_NOTICE,
 	fetchJson,
 	getGitHubCopilotBaseUrl,
 	getUrls,
 	normalizeDomain,
+	octocodeCopilotClientId,
+	markOctocodeAppToken,
+	octocodeCopilotHeaders,
 } from "./github-copilot/endpoints.ts";
 import { enableGitHubCopilotModels, fetchGitHubCopilotModels } from "./github-copilot/models.ts";
+import {
+	completeOctocodeCopilotLogin,
+	isOctocodeCopilotCredential,
+	octocodeCopilotRequestBaseUrl,
+	refreshOctocodeCopilotCredential,
+} from "./github-copilot/octocode.ts";
+
+/** The GitHub OAuth app a device sign-in runs as, and the User-Agent it sends. */
+interface DeviceClient {
+	id: string;
+	userAgent: string;
+}
+
+/** The VS Code Copilot Chat client: today's sign-in while no Octocode app is configured. */
+const VSCODE_CLIENT: DeviceClient = { id: CLIENT_ID, userAgent: COPILOT_HEADERS["User-Agent"] };
 
 type DeviceCodeResponse = {
 	device_code: string;
@@ -34,17 +55,17 @@ type DeviceTokenErrorResponse = {
 	interval?: number;
 };
 
-async function startDeviceFlow(domain: string, signal: AbortSignal): Promise<DeviceCodeResponse> {
+async function startDeviceFlow(domain: string, client: DeviceClient, signal: AbortSignal): Promise<DeviceCodeResponse> {
 	const urls = getUrls(domain);
 	const data = await fetchJson(urls.deviceCodeUrl, {
 		method: "POST",
 		headers: {
 			Accept: "application/json",
 			"Content-Type": "application/x-www-form-urlencoded",
-			"User-Agent": "GitHubCopilotChat/0.35.0",
+			"User-Agent": client.userAgent,
 		},
 		body: new URLSearchParams({
-			client_id: CLIENT_ID,
+			client_id: client.id,
 			scope: "read:user",
 		}),
 		signal,
@@ -93,6 +114,7 @@ async function startDeviceFlow(domain: string, signal: AbortSignal): Promise<Dev
 
 async function pollForGitHubAccessToken(
 	domain: string,
+	client: DeviceClient,
 	device: DeviceCodeResponse,
 	signal: AbortSignal,
 ): Promise<string> {
@@ -108,10 +130,10 @@ async function pollForGitHubAccessToken(
 				headers: {
 					Accept: "application/json",
 					"Content-Type": "application/x-www-form-urlencoded",
-					"User-Agent": "GitHubCopilotChat/0.35.0",
+					"User-Agent": client.userAgent,
 				},
 				body: new URLSearchParams({
-					client_id: CLIENT_ID,
+					client_id: client.id,
 					device_code: device.device_code,
 					grant_type: "urn:ietf:params:oauth:grant-type:device_code",
 				}),
@@ -198,6 +220,20 @@ async function refreshGitHubCopilotToken(
 }
 
 async function loginGitHubCopilot(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {
+	const octocodeClientId = octocodeCopilotClientId();
+	interaction.notify({
+		type: "info",
+		message: octocodeClientId
+			? `${COPILOT_SIGN_IN_NOTICE} Signing in as Octocode's own GitHub app.`
+			: `${COPILOT_SIGN_IN_NOTICE} Without an Octocode GitHub app configured, this sign-in uses the VS Code Copilot Chat client.`,
+		links: [
+			{ url: GITHUB_COPILOT_PLAN.terms, label: "GitHub Acceptable Use Policies" },
+			{
+				url: "https://github.blog/changelog/2026-01-16-github-copilot-now-supports-opencode/",
+				label: "GitHub and OpenCode",
+			},
+		],
+	});
 	const input = await interaction.prompt({
 		type: "text",
 		message: "GitHub Enterprise URL/domain (blank for github.com)",
@@ -210,7 +246,8 @@ async function loginGitHubCopilot(interaction: ProviderAuthInteraction): Promise
 	if (trimmed && !enterpriseDomain) throw new Error("Invalid GitHub Enterprise URL/domain");
 	const domain = enterpriseDomain || "github.com";
 
-	const device = await startDeviceFlow(domain, interaction.signal);
+	const client = octocodeClientId ? { id: octocodeClientId, userAgent: getUserAgent() } : VSCODE_CLIENT;
+	const device = await startDeviceFlow(domain, client, interaction.signal);
 	interaction.notify({
 		type: "device_code",
 		userCode: device.user_code,
@@ -219,7 +256,15 @@ async function loginGitHubCopilot(interaction: ProviderAuthInteraction): Promise
 		expiresInSeconds: device.expires_in,
 	});
 
-	const githubAccessToken = await pollForGitHubAccessToken(domain, device, interaction.signal);
+	const githubAccessToken = await pollForGitHubAccessToken(domain, client, device, interaction.signal);
+	if (octocodeClientId) {
+		return completeOctocodeCopilotLogin(
+			interaction,
+			githubAccessToken,
+			enterpriseDomain ?? undefined,
+			octocodeClientId,
+		);
+	}
 	const credentials = await refreshGitHubCopilotAccessToken(
 		githubAccessToken,
 		enterpriseDomain ?? undefined,
@@ -256,10 +301,23 @@ export const githubCopilotOAuth: OAuthAuth = {
 	isSubscription: true,
 	login: loginGitHubCopilot,
 	refresh: (credential, signal) =>
-		refreshGitHubCopilotToken(credential.refresh, copilotEnterpriseDomain(credential), signal),
+		isOctocodeCopilotCredential(credential)
+			? refreshOctocodeCopilotCredential(credential, signal)
+			: refreshGitHubCopilotToken(credential.refresh, copilotEnterpriseDomain(credential), signal),
 
-	/** Derive the credential-specific proxy endpoint for each request. */
+	/**
+	 * Derive the credential-specific endpoint for each request. An Octocode-app credential also carries Octocode's
+	 * identity headers, which the provider's streams use in place of the VS Code ones.
+	 */
 	async toAuth(credential) {
+		if (isOctocodeCopilotCredential(credential)) {
+			markOctocodeAppToken(credential.access);
+			return {
+				apiKey: credential.access,
+				baseUrl: octocodeCopilotRequestBaseUrl(credential),
+				headers: octocodeCopilotHeaders(),
+			};
+		}
 		return {
 			apiKey: credential.access,
 			baseUrl: getGitHubCopilotBaseUrl(credential.access, copilotEnterpriseDomain(credential)),

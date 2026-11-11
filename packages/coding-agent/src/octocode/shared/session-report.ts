@@ -66,17 +66,20 @@ export function formatSessionReport(input: SessionReportInput, style: ReportStyl
 	info += `${dim("Recorded refresh usage:")} ${refreshUsage.requests} requests, $${refreshUsage.cost.toFixed(3)}\n`;
 	if (input.afterCache) info += `\n${input.afterCache}`;
 
-	if (stats.cost > 0 || cacheWaste.missedTokens > 0 || stats.lowerBoundEntries > 0) {
+	// Tokens a plan paid for (an external runner on its subscription) are listed as `(sub)`, never as a $0 cost.
+	const planPaid = usageBreakdown.some((entry) => entry.plan);
+	if (stats.cost > 0 || planPaid || cacheWaste.missedTokens > 0 || stats.lowerBoundEntries > 0) {
 		info += `\n${bold("Cost")}\n`;
-		info += `${dim("Total:")} ${stats.cost.toFixed(3)}`;
+		info += `${dim("Total:")} ${stats.cost > 0 || !planPaid ? stats.cost.toFixed(3) : "(sub)"}`;
 		if (stats.lowerBoundEntries > 0) {
 			const dropped = stats.lowerBoundEntries === 1 ? "1 response" : `${stats.lowerBoundEntries} responses`;
-			info += ` ${dim(`(at least: ${dropped} ended before the provider's final count)`)}`;
+			info += ` ${dim(`(at least: ${dropped} without the provider's final count)`)}`;
 		}
 		// A single entry repeats the total, unless it names a model other than the selected one.
 		if (usageBreakdown.length > 1 || usageBreakdown[0]?.key !== selectedModelKey) {
 			for (const entry of usageBreakdown) {
-				info += `\n  ${dim(`${entry.key}:`)} $${entry.cost.toFixed(3)} ${dim(`(${formatTokens(entry.tokens)} tokens)`)}`;
+				const cost = entry.plan ? "(sub)" : `$${entry.cost.toFixed(3)}`;
+				info += `\n  ${dim(`${entry.key}:`)} ${cost} ${dim(`(${formatTokens(entry.tokens)} tokens)`)}`;
 			}
 		}
 		if (cacheWaste.missedTokens > 0) {

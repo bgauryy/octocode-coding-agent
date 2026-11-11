@@ -131,7 +131,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `lastChangelogVersion` | string |  | Version whose changelog was last recorded. Octocode sets it; it decides whether to show the changelog and send the install ping after an update. |
 | `theme` | string |  | Name of the active interface theme. |
 | `hideThinkingBlock` | boolean | `true` | Collapse each finished thinking block to one line (`Thought for 4s`); `app.thinking.toggle` (ctrl+t) or a click expands it. |
-| `externalEditor` | string |  | Command for Ctrl+G external editor; takes precedence over VISUAL and EDITOR. |
+| `externalEditor` | string |  | Editor for prompts, references and diffs; overrides VISUAL and EDITOR. |
 | `quietStartup` | `boolean \| "header"` | `false` | When true, hide all startup output. When "header", keep only the startup header. |
 | `collapseChangelog` | boolean | `false` | Show the condensed changelog after update; use /changelog for the full changelog. |
 | `terminal` | object |  | Terminal rendering. See [Terminal images](configuration.md#terminal-images) and [Reduced motion](configuration.md#reduced-motion). |
@@ -143,6 +143,13 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `terminal.hyperlinks` | `boolean \| "auto"` |  | OSC 8 hyperlinks: `true`, `false` or `auto`. `OCTOCODE_HYPERLINKS` overrides detection. |
 | `terminal.images` | `"kitty" \| "iterm2" \| "auto" \| false` |  | Inline image protocol: `"kitty"`, `"iterm2"`, `"auto"` or `false`. See [terminal images](configuration.md#terminal-images). |
 | `terminal.trueColor` | `boolean \| "auto"` |  | Truecolor output: `true`, `false` or `auto`. `OCTOCODE_TRUE_COLOR` overrides detection. |
+| `terminal.completion` | object |  | Tab completion of `!` shell commands. |
+| `terminal.completion.shell` | `"auto" \| "zsh" \| "bash" \| "fish" \| "pwsh" \| "none"` | `"auto"` | The shell whose completions Tab offers after `!`: "auto" follows your login shell ($SHELL; PowerShell on Windows without it). "none" starts no shell: Tab then completes program names, git branches and paths only. The shell runs only in a trusted folder. |
+| `terminal.completion.loadRc` | boolean | `true` | Start the completion shell with your own startup files (.zshrc, .bashrc, config.fish, the PowerShell profile), so plugin and custom completions work. Off loads only the shell's built-in completion system, which starts faster. |
+| `terminal.completion.carapace` | boolean | `true` | When the shell has no completion for a command and `carapace` is on PATH, ask carapace. Trusted folders only. |
+| `terminal.suggestions` | object |  | Ghost text while typing a `!` command. |
+| `terminal.suggestions.history` | boolean | `true` | Show ghost text while typing a `!` command: a command from the agent's last reply or your earlier `!` commands that starts with what you typed. Right or End accepts it. |
+| `terminal.suggestions.model` | boolean | `true` | When neither the last reply nor your history has a match, ask the cheapest connected model (the small tier, resolved from the providers you are signed in to) for the rest of the command. Costs a small call per pause in typing, recorded in the session's usage; no call is made when no cheaper model is available. Read from the global settings only: a project file cannot turn it on. |
 | `images` | object |  | Image attachments sent to models. |
 | `images.autoResize` | boolean | `true` | Resize images to 2000x2000 maximum for better model compatibility. |
 | `images.blockImages` | boolean | `false` | When true, prevents all images from being sent to LLM providers. |
@@ -154,7 +161,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `markdown.codeBlockIndent` | string | `"  "` | Indent prepended to code blocks in rendered Markdown. |
 | `markdown.mermaid` | `"off" \| "final" \| "streaming"` | `"streaming"` | Render Mermaid code blocks as Unicode diagrams: `off`, `final` (after a response completes) or `streaming` (also while it streams). |
 | `warnings` | object |  | Optional warnings. |
-| `warnings.anthropicExtraUsage` | boolean | `true` | Warn once per run when an Anthropic model is used with subscription authentication. |
+| `warnings.anthropicExtraUsage` | boolean | `true` | Show the once-per-run notice that a saved Claude subscription token is refused; `false` turns it off. The token is refused either way. |
 | `tuiMode` | `"regular" \| "fullscreen"` | `"fullscreen"` | Interface layout; `regular` uses the terminal's normal scrollback. `--tui-mode` overrides it for one run. |
 | `fullscreenExitOutput` | `"transcript" \| "resume-hint"` | `"transcript"` | No effect in regular TUI mode. |
 | `fullscreenScrollbar` | `"auto" \| "always" \| "hidden"` | `"auto"` | No effect in regular TUI mode. |
@@ -166,9 +173,9 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `$schema` | string |  | JSON Schema reference. |
-| `providerModels` | object |  | Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. |
+| `providerModels` | object |  | Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before a metered one. |
 | `contextBudget` | `integer \| "full"` | `300000` | Working context per session in tokens, capped at 90% of the model's capacity; "full" uses the whole capacity. /context overrides it for one session. |
-| `externalAgents` | boolean | `false` | Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. |
+| `externalAgents` | boolean | `false` | Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. Connecting a runner in /providers (its Sign in, or Check again finding it signed in) turns it on while it was never set; a value you set stays. |
 | `sessionApi` | boolean | `true` | Start the local session API on an owner-only Unix socket, so other processes of this user can find and message a running session. On by default; on Windows, which has no such socket here, it starts only with `/api on` or `OCTOCODE_API_HTTP`. Read from the global settings file; a project file cannot change it. `/api on` and `/api off` override it for the running process. Takes effect for new sessions. |
 | `sessionApiTurnPermission` | `"workspace" \| "session"` | `"session"` | The permission mode a turn the local session API starts runs under. `session` (default) follows the session's own mode: a session in full takes the message unasked and runs the turn in full, audited, so a remote agent is never stuck on a prompt; workspace and manual sessions ask as they always do. `workspace` holds API-started turns, and messages that steer a running turn, to workspace mode even when the session is in full: its user is asked about the message, and a tool call workspace asks about asks or, with nobody to ask, is refused. Read from the global settings file; a project file cannot change it. Applies to the next message. |
 | `mcpExposure` | `"direct" \| "deferred" \| string` | `"direct"` | How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server's or tool's own `exposure` wins). "direct": the full description and schema. "deferred": the server's purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. "auto:&lt;bytes>": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server's full schema either way, and nothing is deferred for an agent without the `mcp` tool. |

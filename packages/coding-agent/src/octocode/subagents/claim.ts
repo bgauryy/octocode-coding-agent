@@ -18,6 +18,7 @@ import { type ReportQueue } from "./handoff.ts";
 import {
 	clampNote,
 	type ModelRoute,
+	registryBilling,
 	routedModel,
 	routeModel,
 	SUBAGENT_DEFAULT_TIER,
@@ -173,6 +174,7 @@ interface AgentParams {
 	profile?: string;
 	model?: string;
 	headless?: boolean;
+	background?: boolean;
 }
 
 /** A claimed subagent run: who it is, who started it, where it hands files back, and how it gives its slot back. */
@@ -216,7 +218,7 @@ function childAvailable(registry: ExtensionContext["modelRegistry"] | undefined,
 }
 
 /** What a call asks for, checked before anything waits, asks or starts: its profile and the model it routes to. */
-type RunPlan = Pick<Run, "profile" | "route">;
+export type RunPlan = Pick<Run, "profile" | "route">;
 
 /**
  * Checks the profile and routes the model; throws the refusal (unknown profile, unavailable model). `refused` holds why
@@ -224,7 +226,7 @@ type RunPlan = Pick<Run, "profile" | "route">;
  */
 export function planRun(
 	profiles: Map<string, AgentProfile>,
-	params: Pick<AgentParams, "profile" | "model" | "headless">,
+	params: Pick<AgentParams, "profile" | "model" | "headless" | "background">,
 	ctx: Pick<ExtensionContext, "modelRegistry" | "model">,
 	refused: ReadonlyMap<string, string> = new Map(),
 ): RunPlan {
@@ -253,6 +255,8 @@ export function planRun(
 		refused: (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
 		thinking: subagentThinking(),
 		configured: configuredSubagentModels(),
+		// A purpose prefers a model the user's subscription pays for; a background child skips a plan that forbids unattended use.
+		billing: registryBilling(ctx.modelRegistry, params.background === true),
 	});
 	if ("error" in routed) throw new Error(routed.error);
 	const route = routed.model ? { ...routed, model: supportedThinking(routed.model, available) } : routed;

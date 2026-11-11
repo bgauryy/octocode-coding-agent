@@ -11,6 +11,7 @@ import { createAgentLoopConfig } from "./agent/loop-config.ts";
 import type { AgentOptions } from "./agent/options.ts";
 import {
 	createMutableAgentState,
+	createAgentContext,
 	defaultConvertToLlm,
 	type MutableAgentState,
 	normalizePromptInput,
@@ -20,7 +21,6 @@ import {
 import { runAgentLoop, runAgentLoopContinue, runFailureMessage } from "./agent-loop.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
-	AgentContext,
 	AgentEvent,
 	AgentLoopConfig,
 	AgentLoopTurnUpdate,
@@ -303,7 +303,7 @@ export class Agent {
 		await this.runWithLifecycle(async (signal) => {
 			await runAgentLoop(
 				messages,
-				this.createContextSnapshot(),
+				createAgentContext(this._state, this.pendingToolNames),
 				this.createLoopConfig(options),
 				(event) => this.processEvents(event),
 				signal,
@@ -315,21 +315,13 @@ export class Agent {
 	private async runContinuation(): Promise<void> {
 		await this.runWithLifecycle(async (signal) => {
 			await runAgentLoopContinue(
-				this.createContextSnapshot(),
+				createAgentContext(this._state, this.pendingToolNames),
 				this.createLoopConfig(),
 				(event) => this.processEvents(event),
 				signal,
 				this.streamFunction,
 			);
 		});
-	}
-
-	private createContextSnapshot(): AgentContext {
-		return {
-			messages: this._state.messages.slice(),
-			tools: this._state.tools.slice(),
-			pendingToolNames: this.pendingToolNames,
-		};
 	}
 
 	private createLoopConfig(options: { skipInitialSteeringPoll?: boolean } = {}): AgentLoopConfig {

@@ -237,6 +237,15 @@ export interface ExtensionUIContext {
 	/** Stack additional autocomplete behavior on top of the built-in provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 
+	/** Call `handler` with the editor's text after each change; returns a function that stops it. */
+	onEditorChange(handler: (text: string) => void): () => void;
+
+	/**
+	 * Show a whole suggested input as ghost text: while the typed text is a prefix of `text` and the cursor is at the end,
+	 * the rest shows dimmed and Right or End accepts it. Undefined clears it; an editor without support ignores it.
+	 */
+	setEditorSuggestion(text: string | undefined): void;
+
 	/**
 	 * Set a custom editor component via factory function.
 	 * Pass undefined to restore the default editor.

@@ -1,4 +1,5 @@
 import type { Model, OpenAIResponsesCompat } from "../../types.ts";
+import { isOpenAIExtendedRetentionModel } from "../../utils/cache-capabilities.ts";
 import { isOpenRouterModel } from "../../utils/provider-host.ts";
 import type { OpenAIResponsesOptions } from "./types.ts";
 
@@ -24,9 +25,11 @@ export function getCompat(model: Model<"openai-responses">): Required<OpenAIResp
 		supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
 		supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
 		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? detectSessionAffinityFormat(model),
+		// OpenAI documents the long tier per model: 12h in explicit mode (GPT-5.6 and later), 24h retention for a list.
 		supportsLongCacheRetention:
 			model.compat?.supportsLongCacheRetention ??
-			(model.provider === "openai" || new URL(model.baseUrl).hostname === "api.openai.com"),
+			((model.provider === "openai" || new URL(model.baseUrl).hostname === "api.openai.com") &&
+				(model.compat?.supportsExplicitPromptCacheMode === true || isOpenAIExtendedRetentionModel(model.id))),
 		supportsTemperature: model.compat?.supportsTemperature ?? true,
 		supportsStrictMode: model.compat?.supportsStrictMode ?? false,
 		supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,

@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { readCatalog } from "./catalog.ts";
+import { registryBilling } from "./model.ts";
 import { type RoutingFacts, routingFacts } from "./models-command.ts";
 import { providerCount } from "../instructions/policy.ts";
 import type { AgentProfile } from "./profiles.ts";
@@ -15,7 +16,15 @@ export function currentRouting(
 ): RoutingFacts | undefined {
 	// Without a session model nothing routes (`routingFacts`), so the registry is not read.
 	if (!ctx.model) return undefined;
-	return routingFacts(ctx.modelRegistry.getAvailable(), ctx.model, profiles, readCatalog());
+	return routingFacts(
+		ctx.modelRegistry.getAvailable(),
+		ctx.model,
+		profiles,
+		readCatalog(),
+		undefined,
+		undefined,
+		registryBilling(ctx.modelRegistry),
+	);
 }
 
 const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);

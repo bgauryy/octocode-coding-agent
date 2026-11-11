@@ -1,6 +1,8 @@
 import { discoverProviderModels } from "@octocodeai/octocode-ai/providers/discovery";
-import { APP_NAME } from "../config.ts";
+import { APP_NAME, getAgentDir } from "../config.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
+import { providerSourceGate } from "../core/provider-sources/gate.ts";
+import { SettingsManager } from "../core/settings-manager.ts";
 import { isOfflineModeEnabled } from "../utils/env-flag.ts";
 import { sanitizeTerminalText } from "../../../common/src/sanitize.ts";
 
@@ -46,6 +48,8 @@ export async function runModelDiscoveryCommand(args: string[]): Promise<boolean>
 			else throw new Error(`Unknown model discovery argument: ${arg}`);
 		}
 		const signal = AbortSignal.timeout(60_000);
+		// As a session does: the `providerSources` setting decides whether Pi's files are read.
+		providerSourceGate.set(SettingsManager.create(process.cwd(), getAgentDir()).getProviderSources());
 		const runtime = await ModelRuntime.create({ allowModelNetwork: false, signal });
 		const ids = providerId ? [providerId] : runtime.getProviders().map((provider) => provider.id);
 		// Bound concurrency; vendor failures remain separate results.

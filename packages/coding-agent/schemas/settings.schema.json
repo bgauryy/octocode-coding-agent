@@ -58,7 +58,7 @@
           "type": "string"
         }
       },
-      "description": "Default model id per provider, e.g. { \"anthropic\": \"claude-opus-5-5\" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults."
+      "description": "Default model id per provider, e.g. { \"anthropic\": \"claude-opus-5-5\" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before a metered one."
     },
     "defaultThinkingLevel": {
       "$ref": "#/$defs/ModelThinkingLevel"
@@ -226,7 +226,7 @@
     },
     "externalEditor": {
       "type": "string",
-      "description": "Command for Ctrl+G external editor; takes precedence over VISUAL and EDITOR."
+      "description": "Editor for prompts, references and diffs; overrides VISUAL and EDITOR."
     },
     "shellPath": {
       "type": "string",
@@ -280,7 +280,7 @@
     },
     "externalAgents": {
       "type": "boolean",
-      "description": "Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
+      "description": "Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. Connecting a runner in /providers (its Sign in, or Check again finding it signed in) turns it on while it was never set; a value you set stays.",
       "default": false
     },
     "sessionApi": {
@@ -710,6 +710,70 @@
               "const": "auto"
             }
           ]
+        },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "shell": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "auto"
+                },
+                {
+                  "type": "string",
+                  "const": "zsh"
+                },
+                {
+                  "type": "string",
+                  "const": "bash"
+                },
+                {
+                  "type": "string",
+                  "const": "fish"
+                },
+                {
+                  "type": "string",
+                  "const": "pwsh"
+                },
+                {
+                  "type": "string",
+                  "const": "none"
+                }
+              ],
+              "description": "The shell whose completions Tab offers after `!`: \"auto\" follows your login shell ($SHELL; PowerShell on Windows without it). \"none\" starts no shell: Tab then completes program names, git branches and paths only. The shell runs only in a trusted folder.",
+              "default": "auto"
+            },
+            "loadRc": {
+              "type": "boolean",
+              "description": "Start the completion shell with your own startup files (.zshrc, .bashrc, config.fish, the PowerShell profile), so plugin and custom completions work. Off loads only the shell's built-in completion system, which starts faster.",
+              "default": true
+            },
+            "carapace": {
+              "type": "boolean",
+              "description": "When the shell has no completion for a command and `carapace` is on PATH, ask carapace. Trusted folders only.",
+              "default": true
+            }
+          },
+          "additionalProperties": false,
+          "description": "Tab completion of `!` shell commands."
+        },
+        "suggestions": {
+          "type": "object",
+          "properties": {
+            "history": {
+              "type": "boolean",
+              "description": "Show ghost text while typing a `!` command: a command from the agent's last reply or your earlier `!` commands that starts with what you typed. Right or End accepts it.",
+              "default": true
+            },
+            "model": {
+              "type": "boolean",
+              "description": "When neither the last reply nor your history has a match, ask the cheapest connected model (the small tier, resolved from the providers you are signed in to) for the rest of the command. Costs a small call per pause in typing, recorded in the session's usage; no call is made when no cheaper model is available. Read from the global settings only: a project file cannot turn it on.",
+              "default": true
+            }
+          },
+          "additionalProperties": false,
+          "description": "Ghost text while typing a `!` command."
         }
       }
     },

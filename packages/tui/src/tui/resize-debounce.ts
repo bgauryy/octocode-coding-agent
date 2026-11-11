@@ -23,4 +23,9 @@ export class ResizeDebounce {
 		}, this.delayMs);
 		this.timer.unref();
 	}
+
+	stop(): void {
+		clearTimeout(this.timer);
+		this.timer = undefined;
+	}
 }

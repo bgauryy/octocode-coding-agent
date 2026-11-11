@@ -79,13 +79,13 @@ describe("environment API keys", () => {
 		expect(getEnvApiKey("zai-coding-cn")).toBe("zai-coding-cn-token");
 	});
 
-	it("reports ANTHROPIC_AUTH_TOKEN but preserves OAuth token API key lookup", () => {
+	it("reports ANTHROPIC_AUTH_TOKEN and prefers the API key over ANTHROPIC_OAUTH_TOKEN", () => {
 		process.env.ANTHROPIC_AUTH_TOKEN = "auth-token";
 		process.env.ANTHROPIC_OAUTH_TOKEN = "oauth-token";
 		process.env.ANTHROPIC_API_KEY = "api-key";
 
-		expect(findEnvKeys("anthropic")).toEqual(["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]);
-		expect(getEnvApiKey("anthropic")).toBe("oauth-token");
+		expect(findEnvKeys("anthropic")).toEqual(["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_OAUTH_TOKEN"]);
+		expect(getEnvApiKey("anthropic")).toBe("api-key");
 	});
 
 	it("does not return ANTHROPIC_AUTH_TOKEN as an API key", () => {

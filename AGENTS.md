@@ -15,6 +15,7 @@ A coding agent forked from [Pi](https://github.com/earendil-works/pi). `../octoc
 | `tui/` | terminal components, input, rendering | depend on the app |
 | `mcp/src/` | the only MCP owner: `client/`, config, registry, lifecycle, exposure; `recommended/` and `presets/browser/` are data | open their own connections |
 | `acp/src/` | ACP `server/` and `client/`, host reached through `host.ts` ports | import coding-agent |
+| `terminal/src/` | shell completion for `!` lines: completion shells and their drivers, line parsing, history ranking, model-suggestion cache | read settings, history storage or models itself: `coding-agent/src/octocode/terminal/` passes them in |
 | `common/src/` | host-free utilities (JSON, env names, atomic writes, paths, sanitizing, redaction, web guard) | import coding-agent, mcp or acp |
 | `contracts/`, `telemetry/` | serializable contracts and schemas | hold DB, provider, DOM or permission code |
 | `webview/` | browser state, transport, rendering | execute, authenticate or authorize |

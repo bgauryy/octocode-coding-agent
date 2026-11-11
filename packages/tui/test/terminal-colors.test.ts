@@ -221,4 +221,18 @@ describe("TUI.queryTerminalColors", () => {
 			tui.stop();
 		}
 	});
+
+	it("settles pending queries on stop without calling late-reply handlers", async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		const { tui } = setup();
+		const late: TerminalColors[] = [];
+		const timedOut = tui.queryTerminalColors({ timeoutMs: 1, onLateReply: (colors) => late.push(colors) });
+		t.mock.timers.tick(1);
+		await timedOut;
+		const pending = tui.queryTerminalColors({ timeoutMs: 60_000 });
+		tui.stop();
+		assert.deepStrictEqual(await pending, { foreground: undefined, background: undefined, palette: undefined });
+		t.mock.timers.tick(60_000);
+		assert.deepStrictEqual(late, []);
+	});
 });

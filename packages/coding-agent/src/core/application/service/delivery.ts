@@ -1,5 +1,5 @@
 import type { ApplicationEvent, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
-import { cloneDisplay } from "../normalize.ts";
+import { cloneApplicationEvent } from "../clone-event.ts";
 import type { ApplicationStateStore } from "../state.ts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import type { ApplicationSession } from "../session-port.ts";
@@ -167,7 +167,7 @@ export class ApplicationDelivery {
 			for (const [listener, { report }] of listeners) {
 				if (!this.events.has(listener)) continue;
 				try {
-					listener(cloneDisplay(event));
+					listener(cloneApplicationEvent(event));
 				} catch (error) {
 					report(error);
 				}
